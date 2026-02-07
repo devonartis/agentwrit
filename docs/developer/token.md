@@ -4,6 +4,14 @@
 
 The token module issues, verifies, and renews short-lived task-scoped tokens.
 
+## Design decisions
+
+**Hand-built JWTs over library dependency**: Tokens use standard JWT structure (header.payload.signature) but are built using only `crypto/ed25519` and `encoding/json` from the standard library. This preserves the zero-dependency policy and avoids supply-chain risk in the security-critical signing path.
+
+**EdDSA over RSA/ECDSA**: Ed25519 signatures are deterministic, fast, and produce compact 64-byte signatures. The key size (32 bytes) is well-suited for ephemeral agent environments.
+
+**Scope attenuation on delegation**: `ScopeIsSubset` enforces that delegated tokens can never exceed the delegator's permissions. This is a fundamental security invariant — the delegation chain can only narrow access, never widen it.
+
 ## Token format
 
 AgentAuth currently uses a JWT-style compact format:

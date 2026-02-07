@@ -14,6 +14,8 @@
 
 **Zero dependencies**: `go.mod` has zero `require` entries. All cryptography uses `crypto/ed25519` from the standard library. JWT-style tokens are hand-built rather than importing a JWT library. This keeps the supply chain minimal for a security-critical component.
 
+**Tiered quality gates**: `task` runs fast local checks (build, lint, unit, docs) after each micro-task. `module` adds integration, live, and regression checks and is required before advancing to the next module. Integration/live are excluded from the task tier to keep the inner development loop fast; regressions can still surface during task work, but the module gate is the enforcement point that blocks progression.
+
 **Structured logging over stdlib log**: The `obs` package provides level-filtered, module-tagged logging with separate stdout/stderr streams. This enables machine-parseable output while keeping the dependency count at zero.
 
 ## Extension points

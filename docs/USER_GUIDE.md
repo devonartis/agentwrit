@@ -96,6 +96,60 @@ Expected:
 - `200` with new `access_token`
 - `401` for invalid/expired token
 
+## Token revocation (M04)
+
+Use `POST /v1/revoke` to revoke tokens at one of four levels:
+
+| Level | Target | Effect |
+|---|---|---|
+| `token` | Single JWT by its `jti` claim | Revokes one specific token |
+| `agent` | Agent by SPIFFE ID | Revokes all tokens for that agent |
+| `task` | Task by `task_id` | Revokes all tokens issued for that task |
+| `delegation_chain` | Chain by SHA-256 hash | Revokes all tokens sharing a delegation chain |
+
+### Revoke a single token
+
+```bash
+curl -sS -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"level":"token","target_id":"<jti>","reason":"compromised"}' \
+  http://127.0.0.1:8080/v1/revoke | jq .
+```
+
+Expected success (`200`):
+```json
+{
+  "revoked": true,
+  "level": "token",
+  "target_id": "<jti>",
+  "revoked_at": "2026-02-07T12:00:00Z"
+}
+```
+
+### Revoke all tokens for an agent
+
+```bash
+curl -sS -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"level":"agent","target_id":"spiffe://agentauth.local/agent/orch-1/task-1/abc123","reason":"agent decommissioned"}' \
+  http://127.0.0.1:8080/v1/revoke | jq .
+```
+
+### Verify revocation
+
+After revoking, any request using the revoked token (or any token matching the revoked agent/task/chain) receives `401`:
+
+```bash
+curl -i -H "Authorization: Bearer <revoked_token>" \
+  http://127.0.0.1:8080/v1/protected/customers/12345
+# → 401 with {"type":"urn:agentauth:error:token-revoked","title":"token has been revoked","status":401}
+```
+
+### Error responses
+
+- `400` — invalid `level` value or missing required fields
+- `405` — non-POST method
+
 ## Protected resource authorization workflow (M03)
 
 Protected route:
@@ -160,6 +214,14 @@ Common issues and actions:
 - `403` on protected route
   - token scope does not match route requirement
   - validate token payload and requested scope
+
+- `401` with `token-revoked` on protected route
+  - token (or its agent/task/chain) was revoked via `/v1/revoke`
+  - issue a new token through the challenge/register flow
+
+- `400` on `/v1/revoke`
+  - `level` must be one of: `token`, `agent`, `task`, `delegation_chain`
+  - `target_id` and `reason` are required fields
 
 - gate failures at `GITFLOW`
   - branch and `.active_module` mismatch

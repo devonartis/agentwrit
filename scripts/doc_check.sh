@@ -130,3 +130,28 @@ for mod in "${MODULE_DOCS[@]}"; do
   check_file "docs/developer/${mod}.md"
 done
 echo "[DOC:PASS] all module docs present"
+
+# ── Module doc section-depth check ────────────────────────────────────
+# Verify each module doc contains required sections:
+#   - Purpose/scope statement ("Purpose" or "What exists")
+#   - Design/architecture rationale ("Design" or "Architecture" or "Decision")
+echo "[DOC] checking module doc section depth..."
+MOD_DEPTH_MISSING=0
+for mod in "${MODULE_DOCS[@]}"; do
+  modfile="docs/developer/${mod}.md"
+  # Check purpose/scope section.
+  if ! grep -Eq '^## (Purpose|What exists)' "$ROOT/$modfile"; then
+    echo "[DOC:WARN] $modfile missing required Purpose/scope section"
+    MOD_DEPTH_MISSING=$((MOD_DEPTH_MISSING + 1))
+  fi
+  # Check design/architecture section.
+  if ! grep -Eq '^## .*(Design|Architecture|Decision)' "$ROOT/$modfile"; then
+    echo "[DOC:WARN] $modfile missing required Design/Architecture/Decision section"
+    MOD_DEPTH_MISSING=$((MOD_DEPTH_MISSING + 1))
+  fi
+done
+
+if [ "$MOD_DEPTH_MISSING" -gt 0 ]; then
+  fail "found $MOD_DEPTH_MISSING missing required sections in module docs"
+fi
+echo "[DOC:PASS] all module docs have required section depth"
