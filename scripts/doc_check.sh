@@ -60,3 +60,73 @@ check_contains "docs/api/openapi.yaml" "^openapi:"
 check_contains "docs/api/openapi.yaml" "/v1/health:"
 
 echo "[DOC:PASS] documentation baseline checks passed"
+
+# ── Godoc check ──────────────────────────────────────────────────────
+# Verify all exported symbols in internal/ packages have doc comments.
+echo "[DOC] checking godoc comments on exported symbols..."
+GODOC_MISSING=0
+for gofile in "$ROOT"/internal/*/*.go; do
+  # Skip test files.
+  case "$gofile" in *_test.go) continue ;; esac
+
+  # Find exported declarations without a preceding // comment.
+  # Match lines like: func FooBar(, type FooBar , var FooBar, const FooBar
+  prev=""
+  while IFS= read -r line; do
+    if echo "$line" | grep -Eq '^(func|type|var|const) [A-Z]'; then
+      if ! echo "$prev" | grep -Eq '^\s*//'; then
+        relpath="${gofile#"$ROOT"/}"
+        symbol=$(echo "$line" | sed -E 's/^(func|type|var|const) ([A-Za-z0-9_]+).*/\2/')
+        echo "[DOC:WARN] missing godoc: $relpath -> $symbol"
+        GODOC_MISSING=$((GODOC_MISSING + 1))
+      fi
+    fi
+    prev="$line"
+  done < "$gofile"
+done
+
+if [ "$GODOC_MISSING" -gt 0 ]; then
+  fail "found $GODOC_MISSING exported symbols without godoc comments"
+fi
+echo "[DOC:PASS] all exported symbols have godoc comments"
+
+# ── Endpoint-OpenAPI parity check ────────────────────────────────────
+# Verify every mux.Handle path in main.go appears in openapi.yaml.
+echo "[DOC] checking endpoint-OpenAPI parity..."
+MAIN_FILE="$ROOT/cmd/broker/main.go"
+OPENAPI_FILE="$ROOT/docs/api/openapi.yaml"
+PARITY_MISSING=0
+
+if [ -f "$MAIN_FILE" ] && [ -f "$OPENAPI_FILE" ]; then
+  # Extract endpoint paths from mux.Handle/mux.HandleFunc calls.
+  grep -oE 'mux\.Handle(Func)?\("([^"]+)"' "$MAIN_FILE" | \
+    sed -E 's/mux\.Handle(Func)?\("([^"]+)"/\2/' | \
+    while IFS= read -r endpoint; do
+      # Convert /v1/foo to the YAML key format: /v1/foo:
+      if ! grep -qF "${endpoint}:" "$OPENAPI_FILE"; then
+        echo "[DOC:WARN] endpoint $endpoint in main.go but not in openapi.yaml"
+        PARITY_MISSING=$((PARITY_MISSING + 1))
+      fi
+    done
+  # Re-check the exit status by running it again (subshell issue).
+  PARITY_COUNT=$(grep -oE 'mux\.Handle(Func)?\("([^"]+)"' "$MAIN_FILE" | \
+    sed -E 's/mux\.Handle(Func)?\("([^"]+)"/\2/' | \
+    while IFS= read -r endpoint; do
+      if ! grep -qF "${endpoint}:" "$OPENAPI_FILE"; then
+        echo "MISS"
+      fi
+    done | wc -l | tr -d ' ')
+  if [ "$PARITY_COUNT" -gt 0 ]; then
+    fail "found $PARITY_COUNT endpoints in main.go missing from openapi.yaml"
+  fi
+fi
+echo "[DOC:PASS] all endpoints documented in openapi.yaml"
+
+# ── Module doc check ─────────────────────────────────────────────────
+# Verify docs/developer/<module>.md exists for known completed modules.
+echo "[DOC] checking module documentation..."
+MODULE_DOCS=("scaffold" "identity" "token" "authz" "revoke")
+for mod in "${MODULE_DOCS[@]}"; do
+  check_file "docs/developer/${mod}.md"
+done
+echo "[DOC:PASS] all module docs present"
