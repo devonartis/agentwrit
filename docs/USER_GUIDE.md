@@ -221,7 +221,7 @@ Common issues and actions:
 
 - `400` on `/v1/revoke`
   - `level` must be one of: `token`, `agent`, `task`, `delegation_chain`
-  - `target_id` and `reason` are required fields
+  - `target_id` is required; `reason` is optional
 
 - gate failures at `GITFLOW`
   - branch and `.active_module` mismatch
