@@ -192,6 +192,48 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /v1/revoke:
+    post:
+      summary: Revoke tokens at 4 levels (token, agent, task, delegation_chain)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [level, target_id]
+              properties:
+                level:
+                  type: string
+                  enum: [token, agent, task, delegation_chain]
+                  description: Revocation level
+                target_id:
+                  type: string
+                  description: Identifier to revoke (JTI, agent ID, task ID, or chain hash)
+                  example: jti-abc123
+                reason:
+                  type: string
+                  description: Human-readable reason for revocation
+                  example: compromised credentials
+      responses:
+        "200":
+          description: Revocation successful
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked, level, target_id, revoked_at]
+                properties:
+                  revoked: { type: boolean, example: true }
+                  level: { type: string, example: token }
+                  target_id: { type: string, example: jti-abc123 }
+                  revoked_at: { type: string, format: date-time }
+        "400":
+          description: Invalid level or missing target_id
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /v1/protected/customers/12345:
     get:
       summary: Protected customer resource (authz middleware example)

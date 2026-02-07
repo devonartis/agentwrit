@@ -10,7 +10,7 @@ OpenAPI document:
 Local development:
 - `http://127.0.0.1:8080`
 
-## Endpoints currently implemented (M01-M03)
+## Endpoints currently implemented (M01-M04)
 
 ### GET /v1/health
 
@@ -120,6 +120,32 @@ Success response:
 
 Error responses:
 - `401` invalid token
+
+### POST /v1/revoke
+
+Purpose:
+- revoke tokens at 4 levels: token, agent, task, delegation_chain
+
+Authentication:
+- none (admin endpoint)
+
+Request body:
+- `level` (required) — one of: `token`, `agent`, `task`, `delegation_chain`
+- `target_id` (required) — the identifier to revoke (JTI, agent SPIFFE ID, task ID, or chain hash)
+- `reason` (optional) — human-readable reason for the revocation
+
+Success response:
+- status: `200`
+- body fields:
+  - `revoked` (boolean, always true)
+  - `level` (echoed back)
+  - `target_id` (echoed back)
+  - `revoked_at` (RFC 3339 timestamp)
+
+Error responses:
+- `400` invalid level or missing target_id
+
+Errors are returned as RFC 7807 `application/problem+json`.
 
 ### GET /v1/protected/customers/12345
 
