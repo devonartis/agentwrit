@@ -16,6 +16,7 @@ import (
 	"github.com/divineartis/agentauth/internal/cfg"
 	"github.com/divineartis/agentauth/internal/handler"
 	"github.com/divineartis/agentauth/internal/identity"
+	"github.com/divineartis/agentauth/internal/revoke"
 	"github.com/divineartis/agentauth/internal/store"
 	"github.com/divineartis/agentauth/internal/token"
 )
@@ -31,7 +32,9 @@ func TestIdentityChallengeRegisterAndSingleUseLaunchToken(t *testing.T) {
 	mux.Handle("/v1/register", handler.NewRegHdl(idSvc, tknSvc, cfg.Cfg{DefaultTTL: 300}))
 	mux.Handle("/v1/token/validate", handler.NewValHdl(tknSvc))
 	mux.Handle("/v1/token/renew", handler.NewRenewHdl(tknSvc))
-	valMw := authz.NewValMw(tknSvc)
+	revSvc := revoke.NewRevSvc()
+	valMw := authz.NewValMw(tknSvc, revSvc)
+	mux.Handle("/v1/revoke", handler.NewRevokeHdl(revSvc))
 	mux.Handle("/v1/protected/customers/12345", authz.WithRequiredScope("read:Customers:12345", valMw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"customer_id":"12345"}`))
@@ -168,5 +171,36 @@ func TestIdentityChallengeRegisterAndSingleUseLaunchToken(t *testing.T) {
 	defer regRes2.Body.Close()
 	if regRes2.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expected 401 on reused launch token, got %d", regRes2.StatusCode)
+	}
+
+	// Revoke token, then verify protected route returns 401.
+	claims, verifyErr := tknSvc.Verify(renewedToken)
+	if verifyErr != nil {
+		t.Fatalf("verify renewed token for JTI extraction: %v", verifyErr)
+	}
+	revokeBody, _ := json.Marshal(map[string]string{
+		"level":     "token",
+		"target_id": claims.Jti,
+		"reason":    "integration test revocation",
+	})
+	revokeRes, err := http.Post(srv.URL+"/v1/revoke", "application/json", bytes.NewReader(revokeBody))
+	if err != nil {
+		t.Fatalf("revoke request failed: %v", err)
+	}
+	defer revokeRes.Body.Close()
+	if revokeRes.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from /v1/revoke, got %d", revokeRes.StatusCode)
+	}
+
+	// Protected route should now deny the revoked token.
+	revokedReq, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/protected/customers/12345", nil)
+	revokedReq.Header.Set("Authorization", "Bearer "+renewedToken)
+	revokedRes, err := http.DefaultClient.Do(revokedReq)
+	if err != nil {
+		t.Fatalf("protected route with revoked token: %v", err)
+	}
+	defer revokedRes.Body.Close()
+	if revokedRes.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 on revoked token, got %d", revokedRes.StatusCode)
 	}
 }

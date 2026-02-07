@@ -27,11 +27,16 @@ VALIDATE_CODE="$(curl -sS -o /tmp/aa_validate_body.json -w "%{http_code}" -H 'Co
 RENEW_CODE="$(curl -sS -o /tmp/aa_renew_body.json -w "%{http_code}" -H 'Content-Type: application/json' -d '{"token":"invalid"}' http://127.0.0.1:8080/v1/token/renew)"
 PROTECTED_NOAUTH_CODE="$(curl -sS -o /tmp/aa_protected_noauth_body.json -w "%{http_code}" http://127.0.0.1:8080/v1/protected/customers/12345)"
 
+REVOKE_OK_CODE="$(curl -sS -o /tmp/aa_revoke_ok_body.json -w "%{http_code}" -H 'Content-Type: application/json' -d '{"level":"token","target_id":"test-jti","reason":"live test"}' http://127.0.0.1:8080/v1/revoke)"
+REVOKE_BAD_CODE="$(curl -sS -o /tmp/aa_revoke_bad_body.json -w "%{http_code}" -H 'Content-Type: application/json' -d '{"level":"invalid","target_id":"test","reason":"test"}' http://127.0.0.1:8080/v1/revoke)"
+
 echo "$HEALTH" | grep -q '"status":"healthy"'
 echo "$CHALLENGE" | grep -q '"nonce":"'
 echo "$CHALLENGE" | grep -q '"expires_at":"'
 test "$VALIDATE_CODE" = "401"
 test "$RENEW_CODE" = "401"
 test "$PROTECTED_NOAUTH_CODE" = "401"
+test "$REVOKE_OK_CODE" = "200"
+test "$REVOKE_BAD_CODE" = "400"
 
-echo "[LIVE:PASS] health/challenge/token/authz error-paths validated"
+echo "[LIVE:PASS] health/challenge/token/authz/revoke error-paths validated"
