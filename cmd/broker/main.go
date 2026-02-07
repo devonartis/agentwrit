@@ -12,6 +12,7 @@ import (
 	"github.com/divineartis/agentauth/internal/handler"
 	"github.com/divineartis/agentauth/internal/identity"
 	"github.com/divineartis/agentauth/internal/obs"
+	"github.com/divineartis/agentauth/internal/revoke"
 	"github.com/divineartis/agentauth/internal/store"
 	"github.com/divineartis/agentauth/internal/token"
 )
@@ -33,11 +34,14 @@ func main() {
 	regHdl := handler.NewRegHdl(idSvc, tknSvc, c)
 	valHdl := handler.NewValHdl(tknSvc)
 	renewHdl := handler.NewRenewHdl(tknSvc)
-	valMw := authz.NewValMw(tknSvc)
+	revSvc := revoke.NewRevSvc()
+	revokeHdl := handler.NewRevokeHdl(revSvc)
+	valMw := authz.NewValMw(tknSvc, revSvc)
 	mux.Handle("/v1/challenge", challengeHdl)
 	mux.Handle("/v1/register", regHdl)
 	mux.Handle("/v1/token/validate", valHdl)
 	mux.Handle("/v1/token/renew", renewHdl)
+	mux.Handle("/v1/revoke", revokeHdl)
 	mux.Handle("/v1/protected/customers/12345", authz.WithRequiredScope("read:Customers:12345", valMw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
