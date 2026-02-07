@@ -1,6 +1,6 @@
 # AgentAuth Developer Guide
 
-## Architecture snapshot (M00-M03)
+## Architecture snapshot (M00-M04)
 
 Implemented packages and responsibilities:
 
@@ -28,11 +28,15 @@ Implemented packages and responsibilities:
   - claims model + validation
   - scope parser/matcher/subset logic
   - signed token issue/verify/renew
-- `internal/handler` (M01-M02)
-  - challenge/register/token validate/token renew HTTP handlers
+- `internal/handler` (M01-M04)
+  - challenge/register/token validate/token renew/revoke HTTP handlers
 - `internal/authz` (M03)
   - zero-trust authorization middleware (`ValMw`)
   - required scope context injection and authenticated agent context helper
+- `internal/revoke` (M04)
+  - 4-level revocation service (token/agent/task/delegation_chain)
+  - `RevChecker` interface for pluggable backends
+  - integrated into `ValMw` for real-time revocation enforcement
 
 ## Repository layout (current)
 
@@ -45,6 +49,7 @@ internal/
   handler/
   identity/
   obs/
+  revoke/
   store/
   token/
 docs/
@@ -53,11 +58,12 @@ docs/
   API_REFERENCE.md
   GIT_WORKFLOW.md
   api/openapi.yaml
-  dev/
+  developer/
     scaffold.md
     identity.md
     token.md
     authz.md
+    revoke.md
 scripts/
   gates.sh
   doc_check.sh
@@ -80,7 +86,7 @@ tests/
 3. Update docs in the same change:
    - `docs/USER_GUIDE.md`
    - `docs/API_REFERENCE.md`
-   - `docs/dev/<module>.md`
+   - `docs/developer/<module>.md`
    - `docs/api/openapi.yaml`
    - `CHANGELOG.md`
 4. Run `./scripts/gates.sh task`.
@@ -101,10 +107,11 @@ tests/
 
 ## Module documentation map
 
-- M00 scaffold: `docs/dev/scaffold.md`
-- M01 identity: `docs/dev/identity.md`
-- M02 token: `docs/dev/token.md`
-- M03 authorization: `docs/dev/authz.md`
+- M00 scaffold: `docs/developer/scaffold.md`
+- M01 identity: `docs/developer/identity.md`
+- M02 token: `docs/developer/token.md`
+- M03 authorization: `docs/developer/authz.md`
+- M04 revocation: `docs/developer/revoke.md`
 
 ## Documentation policy (done criteria)
 
@@ -113,7 +120,7 @@ Documentation is required for task/module completion:
 - User guidance:
   - runtime and troubleshooting in `docs/USER_GUIDE.md`
 - Developer guidance:
-  - architecture + extension notes in `docs/DEVELOPER_GUIDE.md` and `docs/dev/*.md`
+  - architecture + extension notes in `docs/DEVELOPER_GUIDE.md` and `docs/developer/*.md`
 - API guidance:
   - human reference in `docs/API_REFERENCE.md`
   - machine contract in `docs/api/openapi.yaml`

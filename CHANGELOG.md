@@ -7,6 +7,20 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ## [Unreleased]
 
 ### Added
+- Module M04 revocation service:
+  - 4-level token revocation (token/agent/task/delegation_chain)
+  - `RevChecker` interface for pluggable revocation backends
+  - `POST /v1/revoke` endpoint with RFC 7807 error responses
+  - Integration with `ValMw` authorization middleware
+  - In-memory revocation sets with `RWMutex` for read-heavy access
+- Documentation hardening:
+  - Renamed `docs/dev/` to `docs/developer/` per ADD-6.7
+  - Enriched scaffold.md with design rationale and extension points
+  - Added DelegRecord/DelegChain documentation to token.md
+  - Created `docs/developer/revoke.md` with decision record
+  - Added demo operation flow to README.md
+  - Added godoc comments to all exported symbols
+  - Hardened `doc_check.sh` with godoc and endpoint-OpenAPI parity checks
 - Module M00 scaffold with Go broker entrypoint and `/v1/health`.
 - Structured logging package (`internal/obs`) with stdout/stderr routing and tests.
 - Environment configuration loader (`internal/cfg`).
