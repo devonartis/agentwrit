@@ -1,0 +1,237 @@
+openapi: 3.1.0
+info:
+  title: AgentAuth Broker API
+  version: 0.1.0
+paths:
+  /v1/health:
+    get:
+      summary: Broker health check
+      responses:
+        "200":
+          description: Broker is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+  /v1/challenge:
+    get:
+      summary: Issue nonce challenge for registration proof-of-possession
+      responses:
+        "200":
+          description: Nonce challenge issued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [nonce, expires_at]
+                properties:
+                  nonce:
+                    type: string
+                    description: 32-byte random nonce encoded as 64 hex characters
+                    example: a548b028f64aec9ff7cdd7e50871490c552198a7df0bd01d9a148a5e6dba1e4e
+                  expires_at:
+                    type: string
+                    format: date-time
+                    example: 2026-02-07T19:07:40Z
+  /v1/register:
+    post:
+      summary: Register agent identity and issue first access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - launch_token
+                - nonce
+                - agent_public_key
+                - signature
+                - orchestration_id
+                - task_id
+                - requested_scope
+              properties:
+                launch_token:
+                  type: string
+                  example: 4af3a8f9...
+                nonce:
+                  type: string
+                agent_public_key:
+                  type: object
+                  properties:
+                    kty: { type: string, example: OKP }
+                    crv: { type: string, example: Ed25519 }
+                    x: { type: string, description: base64url public key }
+                signature:
+                  type: string
+                  description: base64url or hex encoded Ed25519 signature over nonce
+                orchestration_id:
+                  type: string
+                  example: orch-456
+                task_id:
+                  type: string
+                  example: task-789
+                requested_scope:
+                  type: array
+                  items:
+                    type: string
+                  example: [read:Customers:12345]
+      responses:
+        "201":
+          description: Registration success
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [agent_instance_id, access_token, expires_in, refresh_after]
+                properties:
+                  agent_instance_id:
+                    type: string
+                    example: spiffe://agentauth.local/agent/orch-456/task-789/cc07a7f4194cbe4bfecacb1d94a6bd2c
+                  access_token:
+                    type: string
+                  expires_in:
+                    type: integer
+                    example: 300
+                  refresh_after:
+                    type: integer
+                    example: 225
+        "400":
+          description: Malformed body
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Invalid or expired launch token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Signature or nonce validation failure
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/token/validate:
+    post:
+      summary: Validate access token and optional required scope
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                required_scope:
+                  type: string
+                  example: read:Customers:12345
+      responses:
+        "200":
+          description: Token valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid: { type: boolean, example: true }
+                  agent_id: { type: string }
+                  scope:
+                    type: array
+                    items: { type: string }
+                  expires_in: { type: integer }
+                  delegation_depth: { type: integer }
+        "401":
+          description: Token invalid
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Scope mismatch
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/token/renew:
+    post:
+      summary: Renew an existing access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        "200":
+          description: Token renewed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [access_token, expires_in, refresh_after]
+                properties:
+                  access_token: { type: string }
+                  expires_in: { type: integer, example: 300 }
+                  refresh_after: { type: integer, example: 225 }
+        "401":
+          description: Token invalid
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/protected/customers/12345:
+    get:
+      summary: Protected customer resource (authz middleware example)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Authorized access
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  customer_id: { type: string, example: "12345" }
+                  message: { type: string, example: protected customer data }
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Insufficient scope
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer

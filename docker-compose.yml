@@ -1,0 +1,7 @@
+services:
+  broker:
+    build: .
+    command: ["go", "run", "./cmd/broker"]
+    ports:
+      - "8080:8080"
+
