@@ -15,13 +15,19 @@ import (
 	"github.com/divineartis/agentauth/internal/cfg"
 )
 
+// Token verification errors.
 var (
+	// ErrTokenMalformed indicates the token string is not well-formed.
 	ErrTokenMalformed = errors.New("malformed token")
+	// ErrTokenSignature indicates the token signature verification failed.
 	ErrTokenSignature = errors.New("invalid token signature")
-	ErrTokenExpired   = errors.New("token expired")
-	ErrTokenNotYet    = errors.New("token not valid yet")
+	// ErrTokenExpired indicates the token has passed its expiration time.
+	ErrTokenExpired = errors.New("token expired")
+	// ErrTokenNotYet indicates the token is not yet valid per its nbf claim.
+	ErrTokenNotYet = errors.New("token not valid yet")
 )
 
+// IssueReq holds the parameters needed to issue a new agent token.
 type IssueReq struct {
 	AgentID   string
 	OrchID    string
@@ -30,12 +36,14 @@ type IssueReq struct {
 	TTLSecond int
 }
 
+// IssueResp contains the issued token and its timing metadata.
 type IssueResp struct {
 	AccessToken  string `json:"access_token"`
 	ExpiresIn    int    `json:"expires_in"`
 	RefreshAfter int    `json:"refresh_after"`
 }
 
+// TknSvc provides token issuance, verification, and renewal using EdDSA signatures.
 type TknSvc struct {
 	signingKey ed25519.PrivateKey
 	pubKey     ed25519.PublicKey
@@ -43,6 +51,7 @@ type TknSvc struct {
 	clockSkew  int64
 }
 
+// NewTknSvc creates a TknSvc with the given Ed25519 key pair and configuration.
 func NewTknSvc(signingKey ed25519.PrivateKey, pubKey ed25519.PublicKey, c cfg.Cfg) *TknSvc {
 	return &TknSvc{
 		signingKey: signingKey,
@@ -52,6 +61,7 @@ func NewTknSvc(signingKey ed25519.PrivateKey, pubKey ed25519.PublicKey, c cfg.Cf
 	}
 }
 
+// Issue creates and signs a new JWT token from the given request parameters.
 func (s *TknSvc) Issue(req IssueReq) (*IssueResp, error) {
 	ttl := req.TTLSecond
 	if ttl <= 0 {
@@ -88,6 +98,7 @@ func (s *TknSvc) Issue(req IssueReq) (*IssueResp, error) {
 	}, nil
 }
 
+// Verify validates the token signature and claims, returning the parsed claims on success.
 func (s *TknSvc) Verify(tokenStr string) (*TknClaims, error) {
 	parts := strings.Split(tokenStr, ".")
 	if len(parts) != 3 {
@@ -124,6 +135,7 @@ func (s *TknSvc) Verify(tokenStr string) (*TknClaims, error) {
 	return &claims, nil
 }
 
+// Renew verifies an existing token and issues a fresh token with the same claims.
 func (s *TknSvc) Renew(tokenStr string) (*IssueResp, error) {
 	claims, err := s.Verify(tokenStr)
 	if err != nil {

@@ -16,11 +16,15 @@ import (
 )
 
 var (
+	// ErrRegisterBadLaunchToken indicates the provided launch token is invalid or expired.
 	ErrRegisterBadLaunchToken = errors.New("invalid launch token")
-	ErrRegisterBadNonce       = errors.New("invalid nonce")
-	ErrRegisterBadSignature   = errors.New("invalid signature")
+	// ErrRegisterBadNonce indicates the provided nonce is invalid or already consumed.
+	ErrRegisterBadNonce = errors.New("invalid nonce")
+	// ErrRegisterBadSignature indicates the agent's Ed25519 signature verification failed.
+	ErrRegisterBadSignature = errors.New("invalid signature")
 )
 
+// RegisterReq holds the parameters required for agent registration.
 type RegisterReq struct {
 	LaunchToken    string
 	Nonce          string
@@ -31,6 +35,7 @@ type RegisterReq struct {
 	RequestedScope []string
 }
 
+// RegisterResp contains the result of a successful agent registration.
 type RegisterResp struct {
 	AgentInstanceID string
 	OrchId          string
@@ -38,12 +43,14 @@ type RegisterResp struct {
 	Scope           []string
 }
 
+// IdSvc is the identity service that handles agent registration and SPIFFE ID assignment.
 type IdSvc struct {
 	sqlStore    *store.SqlStore
 	signingKey  ed25519.PrivateKey
 	trustDomain string
 }
 
+// NewIdSvc creates a new identity service with the given store, signing key, and trust domain.
 func NewIdSvc(sqlStore *store.SqlStore, signingKey ed25519.PrivateKey, trustDomain string) *IdSvc {
 	return &IdSvc{
 		sqlStore:    sqlStore,
@@ -52,6 +59,7 @@ func NewIdSvc(sqlStore *store.SqlStore, signingKey ed25519.PrivateKey, trustDoma
 	}
 }
 
+// Register validates the agent's challenge-response proof and creates a new agent identity.
 func (s *IdSvc) Register(req RegisterReq) (*RegisterResp, error) {
 	if _, err := ValidateLaunchToken(s.sqlStore, req.LaunchToken); err != nil {
 		return nil, ErrRegisterBadLaunchToken

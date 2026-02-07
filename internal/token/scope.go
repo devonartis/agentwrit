@@ -5,17 +5,22 @@ import (
 	"strings"
 )
 
+// Scope parsing errors.
 var (
-	ErrScopeEmpty  = errors.New("scope is empty")
+	// ErrScopeEmpty indicates the scope string is empty or whitespace-only.
+	ErrScopeEmpty = errors.New("scope is empty")
+	// ErrScopeFormat indicates the scope string does not follow the action:resource:identifier format.
 	ErrScopeFormat = errors.New("scope format must be action:resource:identifier")
 )
 
+// ScopeParts represents the three components of a parsed scope string.
 type ScopeParts struct {
 	Action     string
 	Resource   string
 	Identifier string
 }
 
+// ParseScope splits a scope string into its action, resource, and identifier components.
 func ParseScope(s string) (*ScopeParts, error) {
 	raw := strings.TrimSpace(s)
 	if raw == "" {

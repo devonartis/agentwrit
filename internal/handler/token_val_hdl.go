@@ -8,10 +8,12 @@ import (
 	"github.com/divineartis/agentauth/internal/token"
 )
 
+// ValHdl handles POST /v1/validate requests for token validation.
 type ValHdl struct {
 	tknSvc *token.TknSvc
 }
 
+// NewValHdl creates a validation handler with the given token service.
 func NewValHdl(tknSvc *token.TknSvc) *ValHdl { return &ValHdl{tknSvc: tknSvc} }
 
 type valReq struct {
@@ -19,6 +21,7 @@ type valReq struct {
 	RequiredScope string `json:"required_scope"`
 }
 
+// ServeHTTP verifies a token and optionally checks that it carries a required scope.
 func (h *ValHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)

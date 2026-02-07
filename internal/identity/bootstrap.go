@@ -10,6 +10,7 @@ import (
 	"github.com/divineartis/agentauth/internal/store"
 )
 
+// CreateLaunchToken generates a cryptographically random launch token and persists it in the store.
 func CreateLaunchToken(sqlStore *store.SqlStore, orchId, taskId string, scope []string, ttl time.Duration) (string, error) {
 	if sqlStore == nil {
 		return "", fmt.Errorf("sql store is required")
@@ -38,6 +39,7 @@ func CreateLaunchToken(sqlStore *store.SqlStore, orchId, taskId string, scope []
 	return token, nil
 }
 
+// ValidateLaunchToken consumes and validates a launch token, returning its associated data.
 func ValidateLaunchToken(sqlStore *store.SqlStore, token string) (*store.LaunchTokenData, error) {
 	if sqlStore == nil {
 		return nil, fmt.Errorf("sql store is required")

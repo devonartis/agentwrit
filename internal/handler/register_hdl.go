@@ -11,12 +11,14 @@ import (
 	"github.com/divineartis/agentauth/internal/token"
 )
 
+// RegHdl handles POST /v1/register requests for agent registration.
 type RegHdl struct {
 	idSvc  *identity.IdSvc
 	tknSvc *token.TknSvc
 	cfg    cfg.Cfg
 }
 
+// NewRegHdl creates a registration handler with identity, token, and config dependencies.
 func NewRegHdl(idSvc *identity.IdSvc, tknSvc *token.TknSvc, c cfg.Cfg) *RegHdl {
 	return &RegHdl{idSvc: idSvc, tknSvc: tknSvc, cfg: c}
 }
@@ -38,6 +40,7 @@ type registerResp struct {
 	RefreshAfter    int    `json:"refresh_after"`
 }
 
+// ServeHTTP processes agent registration requests, verifying identity and issuing an initial token.
 func (h *RegHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)

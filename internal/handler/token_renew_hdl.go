@@ -7,16 +7,19 @@ import (
 	"github.com/divineartis/agentauth/internal/token"
 )
 
+// RenewHdl handles POST /v1/renew requests for token renewal.
 type RenewHdl struct {
 	tknSvc *token.TknSvc
 }
 
+// NewRenewHdl creates a renewal handler with the given token service.
 func NewRenewHdl(tknSvc *token.TknSvc) *RenewHdl { return &RenewHdl{tknSvc: tknSvc} }
 
 type renewReq struct {
 	Token string `json:"token"`
 }
 
+// ServeHTTP processes token renewal requests and returns a refreshed token.
 func (h *RenewHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)

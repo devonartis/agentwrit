@@ -5,13 +5,19 @@ import (
 	"time"
 )
 
+// Claims validation errors.
 var (
+	// ErrClaimsSubjectRequired indicates the sub claim is missing.
 	ErrClaimsSubjectRequired = errors.New("subject is required")
-	ErrClaimsScopeRequired   = errors.New("scope is required")
-	ErrClaimsTaskIDRequired  = errors.New("task_id is required")
-	ErrClaimsExpired         = errors.New("token is expired")
+	// ErrClaimsScopeRequired indicates the scope claim is empty.
+	ErrClaimsScopeRequired = errors.New("scope is required")
+	// ErrClaimsTaskIDRequired indicates the task_id claim is missing.
+	ErrClaimsTaskIDRequired = errors.New("task_id is required")
+	// ErrClaimsExpired indicates the token has expired based on its exp claim.
+	ErrClaimsExpired = errors.New("token is expired")
 )
 
+// DelegRecord represents a single entry in a token's delegation chain.
 type DelegRecord struct {
 	Agent       string   `json:"agent"`
 	Scope       []string `json:"scope"`
@@ -19,6 +25,7 @@ type DelegRecord struct {
 	Signature   string   `json:"signature"`
 }
 
+// TknClaims holds the JWT claims for an AgentAuth broker-issued token.
 type TknClaims struct {
 	Iss        string        `json:"iss"`
 	Sub        string        `json:"sub"`
