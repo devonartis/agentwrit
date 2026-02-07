@@ -73,10 +73,11 @@ for gofile in "$ROOT"/internal/*/*.go; do
   # Match lines like: func FooBar(, type FooBar , var FooBar, const FooBar
   prev=""
   while IFS= read -r line; do
-    if echo "$line" | grep -Eq '^(func|type|var|const) [A-Z]'; then
+    if echo "$line" | grep -Eq '^(func|type|var|const) [A-Z]' || \
+       echo "$line" | grep -Eq '^func \([^)]+\) [A-Z]'; then
       if ! echo "$prev" | grep -Eq '^\s*//'; then
         relpath="${gofile#"$ROOT"/}"
-        symbol=$(echo "$line" | sed -E 's/^(func|type|var|const) ([A-Za-z0-9_]+).*/\2/')
+        symbol=$(echo "$line" | sed -E 's/^(func (\([^)]+\) )?|type |var |const )([A-Za-z0-9_]+).*/\3/')
         echo "[DOC:WARN] missing godoc: $relpath -> $symbol"
         GODOC_MISSING=$((GODOC_MISSING + 1))
       fi
