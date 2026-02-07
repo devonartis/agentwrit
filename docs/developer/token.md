@@ -29,6 +29,19 @@ Rules:
 - wildcard identifier `*` grants all identifiers for same action/resource.
 - `ScopeIsSubset(child, parent)` enforces delegation attenuation.
 
+## Delegation chain
+
+The `delegation_chain` claim tracks the provenance of delegated tokens. Each entry is a `DelegRecord`:
+
+- `agent` — SPIFFE ID of the delegating agent
+- `scope` — scopes the delegator held at delegation time
+- `delegated_at` — ISO 8601 timestamp of the delegation
+- `signature` — Ed25519 signature by the delegating agent
+
+**Chain behavior**: When agent A delegates to agent B, B's token carries A's record in its chain. Scope attenuation is enforced — B cannot receive broader scope than A held. `ScopeIsSubset(requested, parent)` validates this.
+
+**Chain hash**: For revocation purposes (M04), the delegation chain is hashed by JSON-serializing the `[]DelegRecord` array and computing SHA-256. This hash enables revoking all tokens sharing a common delegation lineage. Empty chains produce an empty hash string and skip chain-level revocation checks.
+
 ## Renewal behavior
 
 `POST /v1/token/renew` verifies the current token first, then issues a new token with:
