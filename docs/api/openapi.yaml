@@ -261,6 +261,71 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /v1/delegate:
+    post:
+      summary: Delegate attenuated scope from one agent to another
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [delegator_token, target_agent_id, delegated_scope]
+              properties:
+                delegator_token:
+                  type: string
+                  description: Current agent's valid access token
+                target_agent_id:
+                  type: string
+                  description: SPIFFE ID of the agent receiving delegation
+                  example: spiffe://agentauth.local/agent/orch/task/agentB
+                delegated_scope:
+                  type: array
+                  items: { type: string }
+                  description: Scopes to delegate (must be subset of delegator's scope)
+                  example: ["read:Customers:12345"]
+                max_ttl:
+                  type: integer
+                  description: Maximum TTL for delegated token (must be <= delegator's remaining TTL)
+                  example: 60
+      responses:
+        "201":
+          description: Delegation created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [delegation_token, chain_hash, delegation_depth]
+                properties:
+                  delegation_token:
+                    type: string
+                    description: Signed JWT with attenuated scope for target agent
+                  chain_hash:
+                    type: string
+                    description: SHA-256 hash of the complete delegation chain
+                    example: a1b2c3d4e5f6...
+                  delegation_depth:
+                    type: integer
+                    description: Current depth in delegation chain
+                    example: 1
+        "400":
+          description: Malformed request or TTL exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Invalid delegator token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Scope escalation or depth exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   # M06: Mutual authentication is a programmatic (library) API, not an HTTP endpoint.
   # Agents use MutAuthHdl.InitiateHandshake / RespondToHandshake / CompleteHandshake
   # directly. Discovery binding and heartbeat are also library APIs.

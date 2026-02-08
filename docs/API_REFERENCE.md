@@ -10,7 +10,7 @@ OpenAPI document:
 Local development:
 - `http://127.0.0.1:8080`
 
-## Endpoints currently implemented (M01-M04)
+## Endpoints currently implemented (M01-M04, M07)
 
 ### GET /v1/health
 
@@ -165,6 +165,35 @@ Success response:
 Error responses:
 - `401` missing/invalid bearer token
 - `403` insufficient scope
+
+### POST /v1/delegate
+
+Purpose:
+- delegate attenuated scope from one agent to another with chain tracking
+
+Authentication:
+- delegator's valid access token (passed in request body)
+
+Request body:
+- `delegator_token` (required) — current agent's valid access token
+- `target_agent_id` (required) — SPIFFE ID of the agent receiving delegation
+- `delegated_scope` (required) — scopes to delegate (must be subset of delegator's scope)
+- `max_ttl` (optional) — maximum TTL for delegated token (must be <= delegator's remaining TTL)
+
+Success response:
+- status: `201`
+- body fields:
+  - `delegation_token` — signed JWT with attenuated scope for target agent
+  - `chain_hash` — SHA-256 hash of the complete delegation chain
+  - `delegation_depth` — current depth in delegation chain
+
+Error responses:
+- `400` malformed body or TTL exceeds remaining
+- `401` invalid delegator token (`urn:agentauth:error:invalid-token`)
+- `403` scope escalation (`urn:agentauth:error:scope-escalation`)
+- `403` depth exceeded (`urn:agentauth:error:delegation-depth-exceeded`)
+
+Errors are returned as RFC 7807 `application/problem+json`.
 
 ## Versioning
 

@@ -16,6 +16,14 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - P2: reverted premature `NewDiscoveryRegistry()` wiring in `main.go` — non-nil empty registry activates binding checks that reject all agents. Discovery enforcement deferred until binding lifecycle (bind on register, unbind on revoke) is implemented.
 
 ### Added
+- Module M07 delegation chain verification:
+  - Scope attenuation (`Attenuate`) with actionable error detail on escalation attempts
+  - `DelegSvc` for delegation token creation with TTL enforcement and depth limits (max 3)
+  - Chain verification (`VerifyChain`) with Ed25519 signature validation per hop and revocation checks
+  - SHA-256 chain hash for tamper detection and chain-level revocation
+  - `POST /v1/delegate` endpoint with RFC 7807 errors (401, 403 scope-escalation, 403 depth-exceeded)
+  - Live smoke test extended with delegation steps (delegate, scope escalation blocked, delegation token validated)
+  - Integration tests: happy path, scope escalation blocked, re-delegation blocked, depth limits
 - Module M06 mutual authentication:
   - 3-step agent-to-agent handshake protocol (`MutAuthHdl`)
   - Discovery binding registry for agent-to-endpoint mapping and MITM prevention

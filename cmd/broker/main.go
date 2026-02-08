@@ -13,6 +13,7 @@ import (
 
 	"github.com/divineartis/agentauth/internal/authz"
 	"github.com/divineartis/agentauth/internal/cfg"
+	"github.com/divineartis/agentauth/internal/deleg"
 	"github.com/divineartis/agentauth/internal/handler"
 	"github.com/divineartis/agentauth/internal/identity"
 	"github.com/divineartis/agentauth/internal/mutauth"
@@ -43,6 +44,10 @@ func main() {
 	revokeHdl := handler.NewRevokeHdl(revSvc)
 	valMw := authz.NewValMw(tknSvc, revSvc)
 
+	// M07: Delegation chain verification.
+	delegSvc := deleg.NewDelegSvc(tknSvc, signingKey, 3)
+	delegHdl := handler.NewDelegHdl(delegSvc)
+
 	// M06: Mutual authentication components.
 	// DiscoveryRegistry is nil until binding lifecycle is implemented (bind on
 	// registration, unbind on revoke/expiry). A non-nil empty registry would
@@ -55,6 +60,7 @@ func main() {
 	mux.Handle("/v1/token/validate", valHdl)
 	mux.Handle("/v1/token/renew", renewHdl)
 	mux.Handle("/v1/revoke", revokeHdl)
+	mux.Handle("/v1/delegate", delegHdl)
 	mux.Handle("/v1/protected/customers/12345", authz.WithRequiredScope("read:Customers:12345", valMw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{

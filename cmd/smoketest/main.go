@@ -161,7 +161,67 @@ func main() {
 	}
 	pass("reused launch token rejected")
 
-	fmt.Println("[AA:SMOKE:PASS] all smoke tests passed")
+	// ── M07 Delegation Chain Tests ──────────────────────────────────
+
+	// Step 11: Delegate scope from Agent A to Agent B.
+	// Use the original accessToken (pre-revocation, still valid).
+	delegReq, _ := json.Marshal(map[string]any{
+		"delegator_token":  accessToken,
+		"target_agent_id":  "spiffe://agentauth.local/agent/seed-orch/seed-task/agentB",
+		"delegated_scope":  []string{"read:Customers:12345"},
+		"max_ttl":          60,
+	})
+	delegStatus, delegBody := httpPost(baseURL+"/v1/delegate", delegReq)
+	if delegStatus != 201 {
+		fail(fmt.Sprintf("delegate: expected 201, got %d body=%s", delegStatus, delegBody))
+	}
+	var delegResp map[string]any
+	mustUnmarshal(delegBody, &delegResp)
+	delegToken, _ := delegResp["delegation_token"].(string)
+	chainHash, _ := delegResp["chain_hash"].(string)
+	delegDepth, _ := delegResp["delegation_depth"].(float64)
+	if delegToken == "" {
+		fail("delegate: missing delegation_token")
+	}
+	if chainHash == "" {
+		fail("delegate: missing chain_hash")
+	}
+	if int(delegDepth) != 1 {
+		fail(fmt.Sprintf("delegate: expected depth=1, got %d", int(delegDepth)))
+	}
+	pass("delegation created", "depth=1", "chain_hash="+chainHash[:16]+"...")
+
+	// Step 12: Scope escalation blocked.
+	// Agent A (scope read:Customers:12345) tries to delegate read:Customers:* (broader).
+	escalateReq, _ := json.Marshal(map[string]any{
+		"delegator_token":  accessToken,
+		"target_agent_id":  "spiffe://agentauth.local/agent/seed-orch/seed-task/agentC",
+		"delegated_scope":  []string{"read:Customers:*"},
+		"max_ttl":          60,
+	})
+	escalateStatus, escalateBody := httpPost(baseURL+"/v1/delegate", escalateReq)
+	if escalateStatus != 403 {
+		fail(fmt.Sprintf("scope escalation: expected 403, got %d body=%s", escalateStatus, escalateBody))
+	}
+	var escalateResp map[string]any
+	mustUnmarshal(escalateBody, &escalateResp)
+	if escalateResp["type"] != "urn:agentauth:error:scope-escalation" {
+		fail(fmt.Sprintf("scope escalation: expected scope-escalation error type, got %v", escalateResp["type"]))
+	}
+	pass("scope escalation blocked (403)")
+
+	// Step 13: Validate delegation token is a valid JWT.
+	valDelegReq, _ := json.Marshal(map[string]any{
+		"token":          delegToken,
+		"required_scope": "read:Customers:12345",
+	})
+	valDelegStatus, _ := httpPost(baseURL+"/v1/token/validate", valDelegReq)
+	if valDelegStatus != 200 {
+		fail(fmt.Sprintf("validate delegation token: expected 200, got %d", valDelegStatus))
+	}
+	pass("delegation token validated with correct scope")
+
+	fmt.Println("[AA:SMOKE:PASS] all smoke tests passed (core + delegation)")
 }
 
 func pass(msg string, ctx ...string) {
