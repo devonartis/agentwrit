@@ -10,7 +10,7 @@ OpenAPI document:
 Local development:
 - `http://127.0.0.1:8080`
 
-## Endpoints currently implemented (M01-M04, M07)
+## Endpoints currently implemented (M01-M04, M07-M08)
 
 ### GET /v1/health
 
@@ -22,13 +22,36 @@ Authentication:
 
 Success response:
 - status: `200`
-- body:
+- body fields:
+  - `status`: `healthy|degraded|unhealthy`
+  - `version`: broker version string
+  - `uptime_seconds`: process uptime in seconds
+  - `components`: object with component health (currently `sqlite`, `redis`)
 
 ```json
 {
-  "status": "healthy"
+  "status": "healthy",
+  "version": "0.1.0",
+  "uptime_seconds": 42,
+  "components": {
+    "sqlite": "healthy",
+    "redis": "healthy"
+  }
 }
 ```
+
+### GET /v1/metrics
+
+Purpose:
+- expose Prometheus metrics for operational monitoring
+
+Authentication:
+- none
+
+Success response:
+- status: `200`
+- content type: `text/plain; version=0.0.4`
+- body: Prometheus exposition with `aa_*` metrics
 
 ## Error model (current)
 

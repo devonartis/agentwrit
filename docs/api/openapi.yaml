@@ -13,10 +13,40 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [status, version, uptime_seconds, components]
                 properties:
                   status:
                     type: string
+                    enum: [healthy, degraded, unhealthy]
                     example: healthy
+                  version:
+                    type: string
+                    example: "0.1.0"
+                  uptime_seconds:
+                    type: integer
+                    example: 42
+                  components:
+                    type: object
+                    required: [sqlite, redis]
+                    properties:
+                      sqlite:
+                        type: string
+                        enum: [healthy, unhealthy]
+                        example: healthy
+                      redis:
+                        type: string
+                        enum: [healthy, unhealthy]
+                        example: healthy
+  /v1/metrics:
+    get:
+      summary: Prometheus metrics endpoint
+      responses:
+        "200":
+          description: Prometheus metrics exposition
+          content:
+            text/plain:
+              schema:
+                type: string
   /v1/challenge:
     get:
       summary: Issue nonce challenge for registration proof-of-possession

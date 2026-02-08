@@ -31,7 +31,21 @@ curl -i http://127.0.0.1:8080/v1/health
 
 Expected:
 - HTTP status `200`
-- JSON body `{"status":"healthy"}`
+- JSON body with:
+  - `status` (`healthy|degraded|unhealthy`)
+  - `version`
+  - `uptime_seconds`
+  - `components` (`sqlite`, `redis`)
+
+## Inspect Prometheus metrics
+
+```bash
+curl -sS http://127.0.0.1:8080/v1/metrics | head -40
+```
+
+Expected:
+- HTTP status `200`
+- text exposition containing `aa_` prefixed metrics (for example `aa_validation_decision_total`)
 
 ## End-to-end identity and token workflow
 

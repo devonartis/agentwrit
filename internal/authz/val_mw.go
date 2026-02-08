@@ -39,6 +39,7 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 		authz := strings.TrimSpace(r.Header.Get("Authorization"))
 		if !strings.HasPrefix(strings.ToLower(authz), "bearer ") {
 			deny(w, http.StatusUnauthorized, "urn:agentauth:error:missing-token", "missing bearer token")
+			obs.RecordValidation(false)
 			obs.Fail("AUTHZ", "ValMw.Wrap", "authorization denied", "reason=missing_bearer")
 			return
 		}
@@ -46,6 +47,7 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 		claims, err := m.tknSvc.Verify(tokenStr)
 		if err != nil {
 			deny(w, http.StatusUnauthorized, "urn:agentauth:error:invalid-token", "invalid token")
+			obs.RecordValidation(false)
 			obs.Fail("AUTHZ", "ValMw.Wrap", "authorization denied", "reason=invalid_token")
 			return
 		}
@@ -54,6 +56,7 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 		if len(claims.DelegChain) > 0 {
 			if ok, cerr := deleg.VerifyChain(claims.DelegChain, claims.Scope, m.revChecker, m.tknSvc.PublicKey()); !ok {
 				deny(w, http.StatusUnauthorized, "urn:agentauth:error:invalid-delegation-chain", "invalid delegation chain")
+				obs.RecordValidation(false)
 				obs.Fail("AUTHZ", "ValMw.Wrap", "authorization denied",
 					"reason=invalid_delegation_chain",
 					"hop="+strconv.Itoa(cerr.Hop),
@@ -67,6 +70,7 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 		if m.revChecker != nil {
 			if revoked, level := m.revChecker.IsRevoked(claims.Jti, claims.Sub, claims.TaskId, chainHash); revoked {
 				deny(w, http.StatusUnauthorized, "urn:agentauth:error:token-revoked", "token has been revoked")
+				obs.RecordValidation(false)
 				obs.Fail("AUTHZ", "ValMw.Wrap", "authorization denied", "reason=revoked", "level="+level)
 				return
 			}
@@ -82,12 +86,14 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 			}
 			if !ok {
 				deny(w, http.StatusForbidden, "urn:agentauth:error:scope-mismatch", "insufficient scope")
+				obs.RecordValidation(false)
 				obs.Fail("AUTHZ", "ValMw.Wrap", "authorization denied", "reason=scope_mismatch", "required="+required)
 				return
 			}
 		}
 
 		ctx := context.WithValue(r.Context(), ctxAgentID, claims.Sub)
+		obs.RecordValidation(true)
 		obs.Ok("AUTHZ", "ValMw.Wrap", "authorization granted", "agent_id="+claims.Sub)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

@@ -1,6 +1,6 @@
 # AgentAuth Developer Guide
 
-## Architecture snapshot (M00-M07)
+## Architecture snapshot (M00-M08)
 
 Implemented packages and responsibilities:
 
@@ -45,6 +45,10 @@ Implemented packages and responsibilities:
   - scope attenuation (`Attenuate`)
   - delegation token issuance with depth/TTL constraints (`DelegSvc`)
   - delegation-chain integrity checks (`VerifyChain`, `VerifyChainHash`)
+- `internal/obs` + `internal/handler` (M08)
+  - centralized RFC 7807 problem factory (`WriteProblem`)
+  - Prometheus collectors and recorder helpers
+  - health and metrics HTTP handlers (`HealthHdl`, `MetricsHdl`)
 
 ## Repository layout (current)
 
@@ -76,6 +80,7 @@ docs/
     revoke.md
     mutauth.md
     deleg.md
+    obs.md
 scripts/
   gates.sh
   doc_check.sh
@@ -127,6 +132,7 @@ tests/
 - M04 revocation: `docs/developer/revoke.md`
 - M06 mutual auth: `docs/developer/mutauth.md`
 - M07 delegation: `docs/developer/deleg.md`
+- M08 observability: `docs/developer/obs.md`
 
 ## Seed tokens (dev/test bootstrap)
 

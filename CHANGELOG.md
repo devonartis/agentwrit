@@ -24,6 +24,15 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
   - Shared RFC 7807 problem factory in `internal/obs` (`WriteProblem`)
   - Handler and authz paths now emit centralized `application/problem+json` payloads
   - Factory unit test coverage in `internal/obs/rfc7807_factory_test.go`
+- Module M08-T02/T03 observability expansion:
+  - Prometheus collectors and recorder helpers in `internal/obs/metrics.go`
+  - `GET /v1/metrics` endpoint via `MetricsHdl`
+  - Enhanced `GET /v1/health` payload via `HealthHdl` (status/version/uptime/components)
+  - Unit tests for metrics primitives and health/metrics handlers
+- Module M08-T04 integration/docs coverage:
+  - integration test for issuance metric + validation decision metric + health components
+  - new developer doc `docs/developer/obs.md`
+  - OpenAPI + API reference updates for health and metrics endpoints
 - Module M07 delegation chain verification:
   - Scope attenuation (`Attenuate`) with actionable error detail on escalation attempts
   - `DelegSvc` for delegation token creation with TTL enforcement and depth limits (max 3)

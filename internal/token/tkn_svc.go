@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/divineartis/agentauth/internal/cfg"
+	"github.com/divineartis/agentauth/internal/obs"
 )
 
 // Token verification errors.
@@ -65,6 +66,11 @@ func NewTknSvc(signingKey ed25519.PrivateKey, pubKey ed25519.PublicKey, c cfg.Cf
 
 // Issue creates and signs a new JWT token from the given request parameters.
 func (s *TknSvc) Issue(req IssueReq) (*IssueResp, error) {
+	start := time.Now()
+	defer func() {
+		obs.RecordIssuance(float64(time.Since(start).Milliseconds()))
+	}()
+
 	ttl := req.TTLSecond
 	if ttl <= 0 {
 		ttl = s.cfg.DefaultTTL

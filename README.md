@@ -14,7 +14,7 @@ AgentAuth is an ephemeral agent credentialing system with a Go broker and Python
 
 ## Current module status
 
-Module M00 + M01 + M02 + M03 + M04 + M06 + M07 baseline implemented:
+Module M00 + M01 + M02 + M03 + M04 + M06 + M07 + M08 baseline implemented:
 - broker entrypoint and health endpoint
 - identity challenge endpoint (`GET /v1/challenge`)
 - identity register endpoint (`POST /v1/register`)
@@ -22,6 +22,7 @@ Module M00 + M01 + M02 + M03 + M04 + M06 + M07 baseline implemented:
 - token renew endpoint (`POST /v1/token/renew`)
 - token revocation endpoint (`POST /v1/revoke`)
 - delegation endpoint (`POST /v1/delegate`)
+- metrics endpoint (`GET /v1/metrics`)
 - protected customer endpoint (`GET /v1/protected/customers/12345`)
 - structured logging framework (`internal/obs`)
 - environment configuration loader (`internal/cfg`)
@@ -30,6 +31,7 @@ Module M00 + M01 + M02 + M03 + M04 + M06 + M07 baseline implemented:
 - 4-level token revocation service (`internal/revoke`)
 - mutual authentication handshake, discovery binding, and heartbeat monitoring (`internal/mutauth`)
 - delegation service, chain verification, and attenuation (`internal/deleg`)
+- observability metrics and health/metrics handlers (`internal/obs`, `internal/handler`)
 - quality gate runner (`scripts/gates.sh`)
 
 ## Local development
