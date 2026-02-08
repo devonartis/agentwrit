@@ -241,3 +241,24 @@ func TestHandshakePeerMismatch(t *testing.T) {
 		t.Fatalf("expected ErrPeerMismatch, got %v", err)
 	}
 }
+
+func TestCompleteHandshakeResponderIDTampering(t *testing.T) {
+	hdl, _, tokA, tokB, _, privB, agentAID, agentBID, _ := testSetup(t)
+
+	req, err := hdl.InitiateHandshake(tokA, agentBID)
+	if err != nil {
+		t.Fatalf("initiate: %v", err)
+	}
+	resp, err := hdl.RespondToHandshake(req, tokB, privB)
+	if err != nil {
+		t.Fatalf("respond: %v", err)
+	}
+
+	// Simulate crafted response metadata that claims a different responder identity.
+	resp.ResponderID = agentAID
+
+	ok, err := hdl.CompleteHandshake(resp, req.Nonce)
+	if !errors.Is(err, ErrResponderMismatch) {
+		t.Fatalf("expected ErrResponderMismatch, got ok=%v err=%v", ok, err)
+	}
+}

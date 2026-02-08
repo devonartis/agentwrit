@@ -23,6 +23,8 @@ var (
 	ErrPeerMismatch = errors.New("handshake: peer mismatch - responder is not the intended target")
 	// ErrInitiatorMismatch indicates the initiator's token subject does not match the declared InitiatorID.
 	ErrInitiatorMismatch = errors.New("handshake: initiator mismatch - token subject does not match declared ID")
+	// ErrResponderMismatch indicates the responder's token subject does not match the declared ResponderID.
+	ErrResponderMismatch = errors.New("handshake: responder mismatch - token subject does not match declared ID")
 )
 
 // HandshakeReq is the initiator's opening message in the mutual authentication protocol.
@@ -162,14 +164,20 @@ func (h *MutAuthHdl) RespondToHandshake(req *HandshakeReq, responderToken string
 // CompleteHandshake is step 3: the initiator verifies the responder's token, looks up the
 // responder's registered public key, and verifies the nonce signature to confirm identity.
 func (h *MutAuthHdl) CompleteHandshake(resp *HandshakeResp, originalNonce string) (bool, error) {
-	if _, err := h.tknSvc.Verify(resp.ResponderToken); err != nil {
+	claims, err := h.tknSvc.Verify(resp.ResponderToken)
+	if err != nil {
 		obs.Fail("MUTAUTH", "MutAuthHdl.Complete", "responder token invalid", "error="+err.Error())
 		return false, ErrHandshakeInvalidToken
 	}
+	if claims.Sub != resp.ResponderID {
+		obs.Fail("MUTAUTH", "MutAuthHdl.Complete", "responder ID mismatch",
+			"declared="+resp.ResponderID, "token_sub="+claims.Sub)
+		return false, ErrResponderMismatch
+	}
 
-	rec, err := h.store.GetAgent(resp.ResponderID)
+	rec, err := h.store.GetAgent(claims.Sub)
 	if err != nil {
-		obs.Fail("MUTAUTH", "MutAuthHdl.Complete", "responder not registered", "agent_id="+resp.ResponderID)
+		obs.Fail("MUTAUTH", "MutAuthHdl.Complete", "responder not registered", "agent_id="+claims.Sub)
 		return false, ErrHandshakeUnknownAgent
 	}
 
