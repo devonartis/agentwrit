@@ -12,6 +12,8 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - P2: pass `nil` `DiscoveryRegistry` in `main.go` instead of empty non-nil instance — an unpopulated registry would reject all handshakes via `ErrAgentNotBound` if the handler were ever exposed.
 - P1 documentation: ADR-001 "What the smoke test does" section overstated coverage — claimed admin auth, audit trail, scope mismatch, and hash chain testing that the actual smoketest does not implement. Corrected to match actual 10-step coverage and documented deferred items.
 - P2: live gate pass text in `live_test.sh` was outdated ("error-paths validated") — updated to reflect actual 10-step end-to-end lifecycle coverage.
+- P2 security: responder identity spoofing in `MutAuthHdl.CompleteHandshake` — responder token subject was not cross-checked against declared `ResponderID`, same vulnerability class as the initiator check. Added `ErrResponderMismatch` and changed `GetAgent` to use verified `claims.Sub`.
+- P2: reverted premature `NewDiscoveryRegistry()` wiring in `main.go` — non-nil empty registry activates binding checks that reject all agents. Discovery enforcement deferred until binding lifecycle (bind on register, unbind on revoke) is implemented.
 
 ### Added
 - Module M06 mutual authentication:
