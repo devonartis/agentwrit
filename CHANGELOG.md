@@ -9,6 +9,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ### Fixed
 - P0 security: peer substitution vulnerability in `MutAuthHdl.RespondToHandshake` — any registered agent could respond to a handshake meant for a different peer. Added mandatory peer identity check (`ErrPeerMismatch`) and optional `DiscoveryRegistry` binding verification.
 - P1 security: initiator identity spoofing in `MutAuthHdl.RespondToHandshake` — initiator token subject was not cross-checked against declared `InitiatorID`, allowing tampered handshake requests to impersonate a different agent. Added `ErrInitiatorMismatch` check.
+- P2: pass `nil` `DiscoveryRegistry` in `main.go` instead of empty non-nil instance — an unpopulated registry would reject all handshakes via `ErrAgentNotBound` if the handler were ever exposed.
 
 ### Added
 - Module M06 mutual authentication:

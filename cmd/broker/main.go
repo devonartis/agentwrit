@@ -44,8 +44,9 @@ func main() {
 	valMw := authz.NewValMw(tknSvc, revSvc)
 
 	// M06: Mutual authentication components.
-	_ = mutauth.NewMutAuthHdl(tknSvc, sqlStore)
-	_ = mutauth.NewDiscoveryRegistry()
+	// DiscoveryRegistry is nil until agent registration populates bindings;
+	// a non-nil empty registry would reject all handshakes via ErrAgentNotBound.
+	_ = mutauth.NewMutAuthHdl(tknSvc, sqlStore, nil)
 	heartbeatMgr := mutauth.NewHeartbeatMgr(revSvc)
 
 	mux.Handle("/v1/challenge", challengeHdl)
