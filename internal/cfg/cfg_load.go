@@ -8,6 +8,7 @@ type Cfg struct {
 	LogLevel    string
 	TrustDomain string
 	DefaultTTL  int
+	SeedTokens  bool
 }
 
 // Load reads AA_* environment variables and returns a Cfg with defaults applied for any missing values.
@@ -43,10 +44,13 @@ func Load() Cfg {
 		}
 	}
 
+	seedTokens := os.Getenv("AA_SEED_TOKENS") == "true"
+
 	return Cfg{
 		Port:        port,
 		LogLevel:    logLevel,
 		TrustDomain: trustDomain,
 		DefaultTTL:  defaultTTL,
+		SeedTokens:  seedTokens,
 	}
 }

@@ -20,6 +20,8 @@ var (
 	ErrNonceNotFound       = errors.New("nonce not found")
 	ErrNonceExpired        = errors.New("nonce expired")
 	ErrAgentExists         = errors.New("agent already exists")
+	// ErrAgentNotFound indicates no agent exists with the given ID.
+	ErrAgentNotFound = errors.New("agent not found")
 )
 
 // LaunchTokenData holds the metadata and state of an issued launch token.
@@ -109,6 +111,17 @@ func (s *SqlStore) SaveAgent(rec AgentRecord) error {
 	}
 	s.agents[rec.AgentID] = rec
 	return nil
+}
+
+// GetAgent retrieves an agent record by its SPIFFE-compatible ID.
+func (s *SqlStore) GetAgent(agentID string) (*AgentRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rec, ok := s.agents[agentID]
+	if !ok {
+		return nil, ErrAgentNotFound
+	}
+	return &rec, nil
 }
 
 // PutNonce stores a challenge nonce with the given expiration time.

@@ -261,6 +261,10 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  # M06: Mutual authentication is a programmatic (library) API, not an HTTP endpoint.
+  # Agents use MutAuthHdl.InitiateHandshake / RespondToHandshake / CompleteHandshake
+  # directly. Discovery binding and heartbeat are also library APIs.
+  # See docs/developer/mutauth.md for protocol documentation.
 components:
   securitySchemes:
     bearerAuth:

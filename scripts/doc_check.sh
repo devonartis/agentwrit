@@ -126,7 +126,7 @@ echo "[DOC:PASS] all endpoints documented in openapi.yaml"
 # ── Module doc check ─────────────────────────────────────────────────
 # Verify docs/developer/<module>.md exists for known completed modules.
 echo "[DOC] checking module documentation..."
-MODULE_DOCS=("scaffold" "identity" "token" "authz" "revoke")
+MODULE_DOCS=("scaffold" "identity" "token" "authz" "revoke" "mutauth")
 for mod in "${MODULE_DOCS[@]}"; do
   check_file "docs/developer/${mod}.md"
 done

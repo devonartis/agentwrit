@@ -7,6 +7,18 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ## [Unreleased]
 
 ### Added
+- Module M06 mutual authentication:
+  - 3-step agent-to-agent handshake protocol (`MutAuthHdl`)
+  - Discovery binding registry for agent-to-endpoint mapping and MITM prevention
+  - Heartbeat/liveness monitoring with optional auto-revocation via `RevSvc`
+  - `GetAgent` store method for agent identity lookup
+  - Mutauth components wired into `cmd/broker/main.go` with graceful shutdown
+  - Integration tests for handshake and discovery flows
+- ADR-001 live testing infrastructure:
+  - `AA_SEED_TOKENS=true` bootstrap flag for dev/test launch and admin token seeding
+  - `cmd/smoketest/main.go` — full workflow smoke test against real compiled binary
+  - Updated `scripts/live_test.sh` to build and run smoke test (replaces error-path-only test)
+  - Covers: health, challenge, register, validate, protected access, renew, revoke, revocation check
 - Module M04 revocation service:
   - 4-level token revocation (token/agent/task/delegation_chain)
   - `RevChecker` interface for pluggable revocation backends

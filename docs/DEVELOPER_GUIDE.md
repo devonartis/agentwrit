@@ -1,6 +1,6 @@
 # AgentAuth Developer Guide
 
-## Architecture snapshot (M00-M04)
+## Architecture snapshot (M00-M06)
 
 Implemented packages and responsibilities:
 
@@ -37,6 +37,10 @@ Implemented packages and responsibilities:
   - 4-level revocation service (token/agent/task/delegation_chain)
   - `RevChecker` interface for pluggable backends
   - integrated into `ValMw` for real-time revocation enforcement
+- `internal/mutauth` (M06)
+  - 3-step mutual authentication handshake (`MutAuthHdl`)
+  - discovery binding registry (`DiscoveryRegistry`)
+  - heartbeat/liveness monitoring with optional auto-revocation (`HeartbeatMgr`)
 
 ## Repository layout (current)
 
@@ -48,6 +52,7 @@ internal/
   cfg/
   handler/
   identity/
+  mutauth/
   obs/
   revoke/
   store/
@@ -64,6 +69,7 @@ docs/
     token.md
     authz.md
     revoke.md
+    mutauth.md
 scripts/
   gates.sh
   doc_check.sh
@@ -112,6 +118,20 @@ tests/
 - M02 token: `docs/developer/token.md`
 - M03 authorization: `docs/developer/authz.md`
 - M04 revocation: `docs/developer/revoke.md`
+- M06 mutual auth: `docs/developer/mutauth.md`
+
+## Seed tokens (dev/test bootstrap)
+
+Set `AA_SEED_TOKENS=true` to have the broker print a launch token and admin token to stdout on startup:
+
+```bash
+AA_SEED_TOKENS=true go run ./cmd/broker
+# Output includes:
+# SEED_LAUNCH_TOKEN=<hex>
+# SEED_ADMIN_TOKEN=<jwt>
+```
+
+The smoke test (`cmd/smoketest/main.go`) uses these tokens to exercise the full broker workflow against the real binary. This is the live test (Tier 3) per ADR-001.
 
 ## Documentation policy (done criteria)
 

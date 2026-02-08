@@ -166,6 +166,37 @@ Quick unauthorized check:
 curl -i http://127.0.0.1:8080/v1/protected/customers/12345
 ```
 
+## Mutual authentication (M06)
+
+M06 adds agent-to-agent authentication. Unlike the HTTP endpoints in M01-M04, mutual auth operates as a programmatic API between agents sharing the same broker trust domain.
+
+### Components
+
+- **MutAuthHdl**: 3-step handshake — both agents prove identity via broker-issued tokens and Ed25519 nonce signatures
+- **DiscoveryRegistry**: Bind agent SPIFFE IDs to network endpoints; verify bindings to prevent MITM
+- **HeartbeatMgr**: Track agent liveness; optionally auto-revoke unresponsive agents
+
+### Usage pattern
+
+Agents use the handshake programmatically (no HTTP endpoint — it's a library API):
+
+1. Agent A calls `InitiateHandshake(myToken, targetAgentID)` → gets `HandshakeReq` with nonce
+2. Agent B calls `RespondToHandshake(req, myToken, myPrivKey)` → signs nonce, returns `HandshakeResp`
+3. Agent A calls `CompleteHandshake(resp, originalNonce)` → verifies signature against registered public key
+
+### Discovery binding
+
+```go
+dr := mutauth.NewDiscoveryRegistry()
+dr.Bind(agentID, "https://agent-a.internal:8443")
+endpoint, _ := dr.Resolve(agentID)
+ok, _ := dr.VerifyBinding(agentID, presentedID) // MITM check
+```
+
+### Heartbeat monitoring
+
+When wired with `RevSvc`, agents missing 3+ heartbeats are automatically revoked. Without `RevSvc`, missed heartbeats are logged as warnings.
+
 ## Run quality gates
 
 Run these before declaring any task/module complete:

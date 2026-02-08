@@ -1,6 +1,7 @@
 package token
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 	"time"
@@ -49,7 +50,12 @@ func TestVerifyBadSignature(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issue token: %v", err)
 	}
-	tampered := issued.AccessToken[:len(issued.AccessToken)-1] + "A"
+	// Tamper the signature by decoding, flipping a byte, and re-encoding.
+	// Avoid tampering the last base64url character which may hit non-significant tail bits.
+	parts := strings.SplitN(issued.AccessToken, ".", 3)
+	sigBytes, _ := base64.RawURLEncoding.DecodeString(parts[2])
+	sigBytes[0] ^= 0xFF
+	tampered := parts[0] + "." + parts[1] + "." + base64.RawURLEncoding.EncodeToString(sigBytes)
 	if _, err := svc.Verify(tampered); err == nil {
 		t.Fatalf("expected signature verification failure")
 	}
