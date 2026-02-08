@@ -108,13 +108,7 @@ func AgentIDFromContext(ctx context.Context) string {
 }
 
 func deny(w http.ResponseWriter, status int, typ, title string) {
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"type":   typ,
-		"title":  title,
-		"status": status,
-	})
+	obs.WriteProblem(w, status, typ, title)
 }
 
 // computeChainHash returns the SHA-256 hex digest of the JSON-serialized

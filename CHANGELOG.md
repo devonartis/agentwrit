@@ -20,6 +20,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - P2: reverted premature `NewDiscoveryRegistry()` wiring in `main.go` — non-nil empty registry activates binding checks that reject all agents. Discovery enforcement deferred until binding lifecycle (bind on register, unbind on revoke) is implemented.
 
 ### Added
+- Module M08-T01 observability baseline:
+  - Shared RFC 7807 problem factory in `internal/obs` (`WriteProblem`)
+  - Handler and authz paths now emit centralized `application/problem+json` payloads
+  - Factory unit test coverage in `internal/obs/rfc7807_factory_test.go`
 - Module M07 delegation chain verification:
   - Scope attenuation (`Attenuate`) with actionable error detail on escalation attempts
   - `DelegSvc` for delegation token creation with TTL enforcement and depth limits (max 3)

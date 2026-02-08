@@ -41,12 +41,12 @@ func (h *RevokeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var req revokeReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeProblem(w, http.StatusBadRequest, "urn:agentauth:error:bad-request", "Malformed JSON body")
+		obs.WriteProblem(w, http.StatusBadRequest, "urn:agentauth:error:bad-request", "Malformed JSON body")
 		return
 	}
 
 	if req.TargetID == "" {
-		writeProblem(w, http.StatusBadRequest, "urn:agentauth:error:bad-request", "target_id is required")
+		obs.WriteProblem(w, http.StatusBadRequest, "urn:agentauth:error:bad-request", "target_id is required")
 		return
 	}
 
@@ -61,14 +61,14 @@ func (h *RevokeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "delegation_chain":
 		err = h.revSvc.RevokeDelegChain(req.TargetID, req.Reason)
 	default:
-		writeProblem(w, http.StatusBadRequest, "urn:agentauth:error:invalid-revocation-level",
+		obs.WriteProblem(w, http.StatusBadRequest, "urn:agentauth:error:invalid-revocation-level",
 			"level must be one of: token, agent, task, delegation_chain")
 		obs.Fail("REVOKE", "RevokeHdl.ServeHTTP", "invalid revocation level", "level="+req.Level)
 		return
 	}
 
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "urn:agentauth:error:internal", "Revocation failed")
+		obs.WriteProblem(w, http.StatusInternalServerError, "urn:agentauth:error:internal", "Revocation failed")
 		obs.Fail("REVOKE", "RevokeHdl.ServeHTTP", "revocation failed", "error="+err.Error())
 		return
 	}
