@@ -100,7 +100,7 @@ func TestMutualAuthHandshakeIntegration(t *testing.T) {
 	agentBID, tokenB, privB := registerAgent(t, srv, sqlStore, "orch-int", "task-b", []string{"write:Data:*"})
 
 	_ = privA // initiator private key not needed in the handshake
-	hdl := mutauth.NewMutAuthHdl(tknSvc, sqlStore)
+	hdl := mutauth.NewMutAuthHdl(tknSvc, sqlStore, nil)
 
 	// Step 1: Agent A initiates handshake with Agent B.
 	req, err := hdl.InitiateHandshake(tokenA, agentBID)
@@ -154,12 +154,106 @@ func TestMutualAuthHandshakeInvalidTokenIntegration(t *testing.T) {
 	_, _, _ = registerAgent(t, srv, sqlStore, "orch-int", "task-a", []string{"read:Data:*"})
 	agentBID, _, _ := registerAgent(t, srv, sqlStore, "orch-int", "task-b", []string{"write:Data:*"})
 
-	hdl := mutauth.NewMutAuthHdl(tknSvc, sqlStore)
+	hdl := mutauth.NewMutAuthHdl(tknSvc, sqlStore, nil)
 
 	// Try to initiate with a bogus token.
 	_, err := hdl.InitiateHandshake("invalid.token.xyz", agentBID)
 	if err == nil {
 		t.Fatal("expected handshake to fail with invalid token")
+	}
+}
+
+func TestPeerSubstitutionAttackIntegration(t *testing.T) {
+	sqlStore := store.NewSqlStore()
+	brokerPub, brokerPriv, _ := identity.GenerateSigningKeyPair()
+	c := cfg.Cfg{TrustDomain: "agentauth.local", DefaultTTL: 300}
+	idSvc := identity.NewIdSvc(sqlStore, brokerPriv, c.TrustDomain)
+	tknSvc := token.NewTknSvc(brokerPriv, brokerPub, c)
+	revSvc := revoke.NewRevSvc()
+	valMw := authz.NewValMw(tknSvc, revSvc)
+
+	mux := http.NewServeMux()
+	mux.Handle("/v1/challenge", handler.NewChallengeHdl(sqlStore))
+	mux.Handle("/v1/register", handler.NewRegHdl(idSvc, tknSvc, c))
+	mux.Handle("/v1/token/validate", handler.NewValHdl(tknSvc))
+	mux.Handle("/v1/token/renew", handler.NewRenewHdl(tknSvc))
+	mux.Handle("/v1/revoke", handler.NewRevokeHdl(revSvc))
+	mux.Handle("/v1/protected/customers/12345", authz.WithRequiredScope("read:Customers:12345", valMw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))))
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	// Register three agents through the full challenge/register flow.
+	_, tokenA, _ := registerAgent(t, srv, sqlStore, "orch-int", "task-a", []string{"read:Data:*"})
+	agentBID, _, _ := registerAgent(t, srv, sqlStore, "orch-int", "task-b", []string{"write:Data:*"})
+	_, tokenC, privC := registerAgent(t, srv, sqlStore, "orch-int", "task-c", []string{"read:Data:*"})
+
+	hdl := mutauth.NewMutAuthHdl(tknSvc, sqlStore, nil)
+
+	// A initiates handshake targeting B.
+	req, err := hdl.InitiateHandshake(tokenA, agentBID)
+	if err != nil {
+		t.Fatalf("initiate handshake: %v", err)
+	}
+
+	// C (valid, registered, but NOT agent B) tries to respond — peer substitution attack.
+	_, err = hdl.RespondToHandshake(req, tokenC, privC)
+	if err == nil {
+		t.Fatal("expected peer substitution to be rejected")
+	}
+	if err != mutauth.ErrPeerMismatch {
+		t.Fatalf("expected ErrPeerMismatch, got %v", err)
+	}
+}
+
+func TestInitiatorSpoofingAttackIntegration(t *testing.T) {
+	sqlStore := store.NewSqlStore()
+	brokerPub, brokerPriv, _ := identity.GenerateSigningKeyPair()
+	c := cfg.Cfg{TrustDomain: "agentauth.local", DefaultTTL: 300}
+	idSvc := identity.NewIdSvc(sqlStore, brokerPriv, c.TrustDomain)
+	tknSvc := token.NewTknSvc(brokerPriv, brokerPub, c)
+	revSvc := revoke.NewRevSvc()
+	valMw := authz.NewValMw(tknSvc, revSvc)
+
+	mux := http.NewServeMux()
+	mux.Handle("/v1/challenge", handler.NewChallengeHdl(sqlStore))
+	mux.Handle("/v1/register", handler.NewRegHdl(idSvc, tknSvc, c))
+	mux.Handle("/v1/token/validate", handler.NewValHdl(tknSvc))
+	mux.Handle("/v1/token/renew", handler.NewRenewHdl(tknSvc))
+	mux.Handle("/v1/revoke", handler.NewRevokeHdl(revSvc))
+	mux.Handle("/v1/protected/customers/12345", authz.WithRequiredScope("read:Customers:12345", valMw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))))
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	// Register two agents through the full challenge/register flow.
+	agentAID, tokenA, _ := registerAgent(t, srv, sqlStore, "orch-int", "task-a", []string{"read:Data:*"})
+	agentBID, tokenB, privB := registerAgent(t, srv, sqlStore, "orch-int", "task-b", []string{"write:Data:*"})
+
+	hdl := mutauth.NewMutAuthHdl(tknSvc, sqlStore, nil)
+
+	// A initiates handshake targeting B.
+	req, err := hdl.InitiateHandshake(tokenA, agentBID)
+	if err != nil {
+		t.Fatalf("initiate handshake: %v", err)
+	}
+
+	// Simulate tampering: attacker modifies InitiatorID to claim to be B
+	// while the token is actually A's.
+	if req.InitiatorID != agentAID {
+		t.Fatalf("sanity: expected initiator %s, got %s", agentAID, req.InitiatorID)
+	}
+	req.InitiatorID = agentBID // tamper
+
+	// B responds — should detect initiator ID mismatch.
+	_, err = hdl.RespondToHandshake(req, tokenB, privB)
+	if err == nil {
+		t.Fatal("expected initiator spoofing to be rejected")
+	}
+	if err != mutauth.ErrInitiatorMismatch {
+		t.Fatalf("expected ErrInitiatorMismatch, got %v", err)
 	}
 }
 

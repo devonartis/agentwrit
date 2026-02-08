@@ -58,6 +58,7 @@ internal/mutauth/
 |-----------|-----------|---------|
 | `MutAuthHdl` | `token.TknSvc` | Verify agent tokens |
 | `MutAuthHdl` | `store.SqlStore` | Look up registered agents |
+| `MutAuthHdl` | `*DiscoveryRegistry` (optional) | Verify discovery bindings during handshake |
 | `HeartbeatMgr` | `revoke.RevSvc` (optional) | Auto-revoke unresponsive agents |
 | `DiscoveryRegistry` | (standalone) | In-memory agent-endpoint map |
 
@@ -82,6 +83,16 @@ Agent A                         Broker                          Agent B
    │   (resp, originalNonce)      │                                │
    │◄── (true, nil) ─────────────│                                │
 ```
+
+### Security: Peer identity verification
+
+`RespondToHandshake` enforces two-level peer binding to prevent peer substitution (MITM) attacks:
+
+**Level 1a — Initiator identity check:** The initiator's token subject (`initClaims.Sub`) must match the declared `InitiatorID` in the `HandshakeReq`. This prevents an attacker from tamper-modifying the `InitiatorID` field to impersonate a different agent while carrying their own valid token. Mismatch produces `ErrInitiatorMismatch`.
+
+**Level 1b — Responder identity check:** The responder's token subject (`respClaims.Sub`) must match the `TargetAgentID` set during initiation. If Agent A initiates a handshake targeting Agent B, only Agent B's token is accepted in the response step. Any other registered agent presenting a valid token is rejected with `ErrPeerMismatch`.
+
+**Level 2 — Optional discovery binding:** When a `*DiscoveryRegistry` is wired into `MutAuthHdl` (non-nil), the handler also verifies that the target agent is bound in the discovery registry via `VerifyBinding`. This adds defense-in-depth by ensuring the agent's identity is consistent with the trusted directory. When `DiscoveryRegistry` is nil, this check is skipped (following the same nilable-optional pattern as `HeartbeatMgr` with `RevSvc`).
 
 ## Running tests
 

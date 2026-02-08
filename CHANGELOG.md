@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Fixed
+- P0 security: peer substitution vulnerability in `MutAuthHdl.RespondToHandshake` — any registered agent could respond to a handshake meant for a different peer. Added mandatory peer identity check (`ErrPeerMismatch`) and optional `DiscoveryRegistry` binding verification.
+- P1 security: initiator identity spoofing in `MutAuthHdl.RespondToHandshake` — initiator token subject was not cross-checked against declared `InitiatorID`, allowing tampered handshake requests to impersonate a different agent. Added `ErrInitiatorMismatch` check.
+
 ### Added
 - Module M06 mutual authentication:
   - 3-step agent-to-agent handshake protocol (`MutAuthHdl`)

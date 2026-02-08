@@ -22,6 +22,7 @@ func testSetup(t *testing.T) (
 	ed25519.PrivateKey, // agentB private key
 	string, // agentA ID
 	string, // agentB ID
+	*token.TknSvc,
 ) {
 	t.Helper()
 
@@ -70,12 +71,12 @@ func testSetup(t *testing.T) (
 		t.Fatal(err)
 	}
 
-	hdl := NewMutAuthHdl(tknSvc, st)
-	return hdl, st, tokA.AccessToken, tokB.AccessToken, privA, privB, agentAID, agentBID
+	hdl := NewMutAuthHdl(tknSvc, st, nil)
+	return hdl, st, tokA.AccessToken, tokB.AccessToken, privA, privB, agentAID, agentBID, tknSvc
 }
 
 func TestHandshakeSuccess(t *testing.T) {
-	hdl, _, tokA, tokB, _, privB, _, agentBID := testSetup(t)
+	hdl, _, tokA, tokB, _, privB, _, agentBID, _ := testSetup(t)
 
 	req, err := hdl.InitiateHandshake(tokA, agentBID)
 	if err != nil {
@@ -103,7 +104,7 @@ func TestHandshakeSuccess(t *testing.T) {
 }
 
 func TestHandshakeInvalidInitiatorToken(t *testing.T) {
-	hdl, _, _, _, _, _, _, agentBID := testSetup(t)
+	hdl, _, _, _, _, _, _, agentBID, _ := testSetup(t)
 
 	_, err := hdl.InitiateHandshake("invalid.token.here", agentBID)
 	if !errors.Is(err, ErrHandshakeInvalidToken) {
@@ -112,7 +113,7 @@ func TestHandshakeInvalidInitiatorToken(t *testing.T) {
 }
 
 func TestHandshakeUnknownTargetAgent(t *testing.T) {
-	hdl, _, tokA, _, _, _, _, _ := testSetup(t)
+	hdl, _, tokA, _, _, _, _, _, _ := testSetup(t)
 
 	_, err := hdl.InitiateHandshake(tokA, "spiffe://agentauth.local/agent/orch-1/task-99/unknown")
 	if !errors.Is(err, ErrHandshakeUnknownAgent) {
@@ -139,7 +140,7 @@ func TestHandshakeUnregisteredInitiator(t *testing.T) {
 		AgentID: ghostID, OrchID: "orch-1", TaskID: "task-1", Scope: []string{"read:Data:*"},
 	})
 
-	hdl := NewMutAuthHdl(tknSvc, st)
+	hdl := NewMutAuthHdl(tknSvc, st, nil)
 	_, err := hdl.InitiateHandshake(tok.AccessToken, targetID)
 	if !errors.Is(err, ErrHandshakeUnknownAgent) {
 		t.Fatalf("expected ErrHandshakeUnknownAgent for unregistered initiator, got %v", err)
@@ -147,7 +148,7 @@ func TestHandshakeUnregisteredInitiator(t *testing.T) {
 }
 
 func TestHandshakeWrongSigningKey(t *testing.T) {
-	hdl, _, tokA, tokB, _, _, _, agentBID := testSetup(t)
+	hdl, _, tokA, tokB, _, _, _, agentBID, _ := testSetup(t)
 
 	req, err := hdl.InitiateHandshake(tokA, agentBID)
 	if err != nil {
@@ -169,7 +170,7 @@ func TestHandshakeWrongSigningKey(t *testing.T) {
 }
 
 func TestHandshakeInvalidResponderToken(t *testing.T) {
-	hdl, _, tokA, _, _, privB, _, agentBID := testSetup(t)
+	hdl, _, tokA, _, _, privB, _, agentBID, _ := testSetup(t)
 
 	req, err := hdl.InitiateHandshake(tokA, agentBID)
 	if err != nil {
@@ -179,5 +180,64 @@ func TestHandshakeInvalidResponderToken(t *testing.T) {
 	_, err = hdl.RespondToHandshake(req, "bad.responder.token", privB)
 	if !errors.Is(err, ErrHandshakeInvalidToken) {
 		t.Fatalf("expected ErrHandshakeInvalidToken, got %v", err)
+	}
+}
+
+func TestHandshakeInitiatorIDTampering(t *testing.T) {
+	hdl, _, tokA, tokB, _, privB, agentAID, agentBID, _ := testSetup(t)
+
+	// A initiates handshake targeting B — produces a valid HandshakeReq.
+	req, err := hdl.InitiateHandshake(tokA, agentBID)
+	if err != nil {
+		t.Fatalf("initiate: %v", err)
+	}
+	if req.InitiatorID != agentAID {
+		t.Fatalf("expected initiator ID %s, got %s", agentAID, req.InitiatorID)
+	}
+
+	// Simulate tampering: attacker modifies InitiatorID to claim to be Agent B
+	// while carrying Agent A's valid token.
+	req.InitiatorID = agentBID
+
+	// B responds — should detect that token subject (A) != declared ID (B).
+	_, err = hdl.RespondToHandshake(req, tokB, privB)
+	if !errors.Is(err, ErrInitiatorMismatch) {
+		t.Fatalf("expected ErrInitiatorMismatch, got %v", err)
+	}
+}
+
+func TestHandshakePeerMismatch(t *testing.T) {
+	hdl, st, tokA, _, _, _, _, agentBID, tknSvc := testSetup(t)
+
+	// Register a third agent (C) — valid but not the intended handshake target.
+	pubC, privC, _ := ed25519.GenerateKey(nil)
+	agentCID := "spiffe://agentauth.local/agent/orch-1/task-3/inst-c"
+	if err := st.SaveAgent(store.AgentRecord{
+		AgentID:   agentCID,
+		OrchId:    "orch-1",
+		TaskId:    "task-3",
+		Scope:     []string{"read:Data:*"},
+		CreatedAt: time.Now().UTC(),
+		PublicKey: pubC,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	tokC, err := tknSvc.Issue(token.IssueReq{
+		AgentID: agentCID, OrchID: "orch-1", TaskID: "task-3", Scope: []string{"read:Data:*"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A initiates handshake targeting B.
+	req, err := hdl.InitiateHandshake(tokA, agentBID)
+	if err != nil {
+		t.Fatalf("initiate: %v", err)
+	}
+
+	// C (not B) attempts to respond — should be rejected.
+	_, err = hdl.RespondToHandshake(req, tokC.AccessToken, privC)
+	if !errors.Is(err, ErrPeerMismatch) {
+		t.Fatalf("expected ErrPeerMismatch, got %v", err)
 	}
 }

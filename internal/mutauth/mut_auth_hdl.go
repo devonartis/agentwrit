@@ -19,6 +19,10 @@ var (
 	ErrHandshakeUnknownAgent = errors.New("handshake: unknown agent")
 	// ErrHandshakeNonceMismatch indicates the signed nonce does not match the expected nonce.
 	ErrHandshakeNonceMismatch = errors.New("handshake: nonce verification failed")
+	// ErrPeerMismatch indicates the responder is not the intended target of the handshake.
+	ErrPeerMismatch = errors.New("handshake: peer mismatch - responder is not the intended target")
+	// ErrInitiatorMismatch indicates the initiator's token subject does not match the declared InitiatorID.
+	ErrInitiatorMismatch = errors.New("handshake: initiator mismatch - token subject does not match declared ID")
 )
 
 // HandshakeReq is the initiator's opening message in the mutual authentication protocol.
@@ -39,15 +43,18 @@ type HandshakeResp struct {
 
 // MutAuthHdl orchestrates the 3-step mutual authentication handshake between agents.
 type MutAuthHdl struct {
-	tknSvc *token.TknSvc
-	store  *store.SqlStore
+	tknSvc       *token.TknSvc
+	store        *store.SqlStore
+	discoveryReg *DiscoveryRegistry // nil = skip discovery binding checks
 }
 
 // NewMutAuthHdl creates a MutAuthHdl with the required token service and agent store.
-func NewMutAuthHdl(tknSvc *token.TknSvc, st *store.SqlStore) *MutAuthHdl {
+// The DiscoveryRegistry is optional; when non-nil it adds discovery binding verification.
+func NewMutAuthHdl(tknSvc *token.TknSvc, st *store.SqlStore, dr *DiscoveryRegistry) *MutAuthHdl {
 	return &MutAuthHdl{
-		tknSvc: tknSvc,
-		store:  st,
+		tknSvc:       tknSvc,
+		store:        st,
+		discoveryReg: dr,
 	}
 }
 
@@ -89,13 +96,21 @@ func (h *MutAuthHdl) InitiateHandshake(initiatorToken, targetAgentID string) (*H
 // RespondToHandshake is step 2: the target agent verifies the initiator's token and identity,
 // signs the initiator's nonce with its own private key, and includes a counter-nonce.
 func (h *MutAuthHdl) RespondToHandshake(req *HandshakeReq, responderToken string, responderKey ed25519.PrivateKey) (*HandshakeResp, error) {
-	if _, err := h.tknSvc.Verify(req.InitiatorToken); err != nil {
+	initClaims, err := h.tknSvc.Verify(req.InitiatorToken)
+	if err != nil {
 		obs.Fail("MUTAUTH", "MutAuthHdl.Respond", "initiator token invalid", "error="+err.Error())
 		return nil, ErrHandshakeInvalidToken
 	}
 
-	if _, err := h.store.GetAgent(req.InitiatorID); err != nil {
-		obs.Fail("MUTAUTH", "MutAuthHdl.Respond", "initiator not registered", "agent_id="+req.InitiatorID)
+	// Verify initiator's declared identity matches their token (prevents initiator spoofing).
+	if initClaims.Sub != req.InitiatorID {
+		obs.Fail("MUTAUTH", "MutAuthHdl.Respond", "initiator ID mismatch",
+			"declared="+req.InitiatorID, "token_sub="+initClaims.Sub)
+		return nil, ErrInitiatorMismatch
+	}
+
+	if _, err := h.store.GetAgent(initClaims.Sub); err != nil {
+		obs.Fail("MUTAUTH", "MutAuthHdl.Respond", "initiator not registered", "agent_id="+initClaims.Sub)
 		return nil, ErrHandshakeUnknownAgent
 	}
 
@@ -108,6 +123,22 @@ func (h *MutAuthHdl) RespondToHandshake(req *HandshakeReq, responderToken string
 	if _, err := h.store.GetAgent(respClaims.Sub); err != nil {
 		obs.Fail("MUTAUTH", "MutAuthHdl.Respond", "responder not registered", "agent_id="+respClaims.Sub)
 		return nil, ErrHandshakeUnknownAgent
+	}
+
+	// Verify responder is the intended target (prevents peer substitution).
+	if respClaims.Sub != req.TargetAgentID {
+		obs.Fail("MUTAUTH", "MutAuthHdl.Respond", "peer mismatch",
+			"expected="+req.TargetAgentID, "presented="+respClaims.Sub)
+		return nil, ErrPeerMismatch
+	}
+
+	// Optional: verify target is bound in discovery registry.
+	if h.discoveryReg != nil {
+		if _, err := h.discoveryReg.VerifyBinding(req.TargetAgentID, respClaims.Sub); err != nil {
+			obs.Fail("MUTAUTH", "MutAuthHdl.Respond", "discovery binding failed",
+				"target="+req.TargetAgentID, "error="+err.Error())
+			return nil, ErrBindingMismatch
+		}
 	}
 
 	signed := ed25519.Sign(responderKey, []byte(req.Nonce))
