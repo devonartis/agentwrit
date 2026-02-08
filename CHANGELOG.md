@@ -7,6 +7,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ## [Unreleased]
 
 ### Fixed
+- P0 security: delegated JWT issuance dropped `delegation_chain` data because `TknSvc.Issue` always reset the claim to empty. `IssueReq` now accepts `DelegChain`, delegated token issuance passes the chain through, and renewal preserves the chain.
+- P1 security: runtime auth middleware did not enforce delegation-chain signature/scope checks. `ValMw` now validates non-empty chains via `deleg.VerifyChain` and denies malformed chains.
+- P1 policy: delegation depth checks were bypassable on re-delegation because chain depth was not carried in tokens. With chain propagation fixed, second-hop depth is now enforced correctly.
+- P1 gate hardening: `scripts/gates.sh task` now includes `SECURITY` (`gosec` + `govulncheck`) and fails with actionable install messages when tools are missing.
 - P0 security: peer substitution vulnerability in `MutAuthHdl.RespondToHandshake` — any registered agent could respond to a handshake meant for a different peer. Added mandatory peer identity check (`ErrPeerMismatch`) and optional `DiscoveryRegistry` binding verification.
 - P1 security: initiator identity spoofing in `MutAuthHdl.RespondToHandshake` — initiator token subject was not cross-checked against declared `InitiatorID`, allowing tampered handshake requests to impersonate a different agent. Added `ErrInitiatorMismatch` check.
 - P2: pass `nil` `DiscoveryRegistry` in `main.go` instead of empty non-nil instance — an unpopulated registry would reject all handshakes via `ErrAgentNotBound` if the handler were ever exposed.

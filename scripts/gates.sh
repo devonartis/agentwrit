@@ -37,6 +37,19 @@ lint_gate() {
   fi
 }
 
+security_gate() {
+  if ! command -v gosec >/dev/null 2>&1; then
+    echo "[GATE:FAIL] gosec not installed; install with: go install github.com/securego/gosec/v2/cmd/gosec@latest"
+    return 1
+  fi
+  if ! command -v govulncheck >/dev/null 2>&1; then
+    echo "[GATE:FAIL] govulncheck not installed; install with: go install golang.org/x/vuln/cmd/govulncheck@latest"
+    return 1
+  fi
+  (cd "$ROOT" && gosec ./...)
+  (cd "$ROOT" && govulncheck ./...)
+}
+
 unit_gate() {
   (cd "$ROOT" && go test ./... -short)
 }
@@ -61,6 +74,7 @@ task_level() {
   run_gate GITFLOW gitflow_gate
   run_gate BUILD build_gate
   run_gate LINT lint_gate
+  run_gate SECURITY security_gate
   run_gate UNIT unit_gate
   run_gate DOC doc_gate
 }

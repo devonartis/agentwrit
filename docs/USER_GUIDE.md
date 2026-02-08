@@ -35,7 +35,7 @@ Expected:
 
 ## End-to-end identity and token workflow
 
-This sequence covers the M01-M03 identity, token, and authorization workflow.
+This sequence covers the M01-M04 identity, token, authorization, and revocation workflow.
 
 ### Step 1: Request challenge nonce
 
@@ -165,6 +165,32 @@ Quick unauthorized check:
 ```bash
 curl -i http://127.0.0.1:8080/v1/protected/customers/12345
 ```
+
+## Delegation workflow (M07)
+
+Use `POST /v1/delegate` to create a narrowed token for another agent.
+
+```bash
+curl -sS -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "delegator_token": "<agent_a_token>",
+    "target_agent_id": "spiffe://agentauth.local/agent/orch-1/task-1/agent-b",
+    "delegated_scope": ["read:Customers:12345"],
+    "max_ttl": 60
+  }' \
+  http://127.0.0.1:8080/v1/delegate | jq .
+```
+
+Expected success (`201`) includes:
+- `delegation_token`
+- `chain_hash`
+- `delegation_depth`
+
+Expected failure behavior:
+- `401` invalid delegator token
+- `403` scope escalation (requested scope broader than delegator scope)
+- `403` depth exceeded (MVP max depth is 3)
 
 ## Mutual authentication (M06)
 

@@ -1,6 +1,6 @@
 # AgentAuth Developer Guide
 
-## Architecture snapshot (M00-M06)
+## Architecture snapshot (M00-M07)
 
 Implemented packages and responsibilities:
 
@@ -41,6 +41,10 @@ Implemented packages and responsibilities:
   - 3-step mutual authentication handshake (`MutAuthHdl`)
   - discovery binding registry (`DiscoveryRegistry`)
   - heartbeat/liveness monitoring with optional auto-revocation (`HeartbeatMgr`)
+- `internal/deleg` (M07)
+  - scope attenuation (`Attenuate`)
+  - delegation token issuance with depth/TTL constraints (`DelegSvc`)
+  - delegation-chain integrity checks (`VerifyChain`, `VerifyChainHash`)
 
 ## Repository layout (current)
 
@@ -50,6 +54,7 @@ cmd/
 internal/
   authz/
   cfg/
+  deleg/
   handler/
   identity/
   mutauth/
@@ -70,6 +75,7 @@ docs/
     authz.md
     revoke.md
     mutauth.md
+    deleg.md
 scripts/
   gates.sh
   doc_check.sh
@@ -96,6 +102,7 @@ tests/
    - `docs/api/openapi.yaml`
    - `CHANGELOG.md`
 4. Run `./scripts/gates.sh task`.
+   - includes `SECURITY` (`gosec` + `govulncheck`) and fails if either tool is missing.
 5. At module boundary, run `./scripts/gates.sh module` (includes integration + live).
 6. Fix failures before any new module work.
 
@@ -119,6 +126,7 @@ tests/
 - M03 authorization: `docs/developer/authz.md`
 - M04 revocation: `docs/developer/revoke.md`
 - M06 mutual auth: `docs/developer/mutauth.md`
+- M07 delegation: `docs/developer/deleg.md`
 
 ## Seed tokens (dev/test bootstrap)
 

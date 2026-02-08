@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -62,10 +63,10 @@ func TestDelegationHappyPathIntegration(t *testing.T) {
 
 	// Agent A delegates narrowed scope to Agent B via HTTP.
 	delegReq, _ := json.Marshal(map[string]any{
-		"delegator_token":  tokenA,
-		"target_agent_id":  "spiffe://agentauth.local/agent/orch-deleg/task-b/instanceB",
-		"delegated_scope":  []string{"read:Customers:12345"},
-		"max_ttl":          60,
+		"delegator_token": tokenA,
+		"target_agent_id": "spiffe://agentauth.local/agent/orch-deleg/task-b/instanceB",
+		"delegated_scope": []string{"read:Customers:12345"},
+		"max_ttl":         60,
 	})
 	delegRes, err := http.Post(srv.URL+"/v1/delegate", "application/json", bytes.NewReader(delegReq))
 	if err != nil {
@@ -104,6 +105,11 @@ func TestDelegationHappyPathIntegration(t *testing.T) {
 	if valRes.StatusCode != http.StatusOK {
 		t.Fatalf("validate delegation token: expected 200, got %d", valRes.StatusCode)
 	}
+	var vr map[string]any
+	_ = json.NewDecoder(valRes.Body).Decode(&vr)
+	if gotDepth, _ := vr["delegation_depth"].(float64); int(gotDepth) != 1 {
+		t.Fatalf("validate delegation token: expected delegation_depth=1, got %v", vr["delegation_depth"])
+	}
 
 	// Agent B uses delegation token on protected resource.
 	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/protected/customers/12345", nil)
@@ -127,10 +133,10 @@ func TestDelegationScopeEscalationBlockedIntegration(t *testing.T) {
 
 	// Agent A tries to delegate broader wildcard scope — must fail.
 	delegReq, _ := json.Marshal(map[string]any{
-		"delegator_token":  tokenA,
-		"target_agent_id":  "spiffe://agentauth.local/agent/orch-deleg/task-b/instanceB",
-		"delegated_scope":  []string{"read:Customers:*"},
-		"max_ttl":          60,
+		"delegator_token": tokenA,
+		"target_agent_id": "spiffe://agentauth.local/agent/orch-deleg/task-b/instanceB",
+		"delegated_scope": []string{"read:Customers:*"},
+		"max_ttl":         60,
 	})
 	delegRes, err := http.Post(srv.URL+"/v1/delegate", "application/json", bytes.NewReader(delegReq))
 	if err != nil {
@@ -176,9 +182,7 @@ func TestDelegationDepthLimitIntegration(t *testing.T) {
 		t.Fatal("expected depth exceeded error at maxDepth=0")
 	}
 
-	// With maxDepth=1, first delegation succeeds, second is blocked
-	// (but only if the chain is carried in the JWT — since TknSvc.Issue
-	// creates empty chains, we verify the first delegation passes).
+	// With maxDepth=1, first delegation succeeds and second is blocked.
 	delegSvc1 := deleg.NewDelegSvc(tknSvc, priv, 1)
 	resp, err := delegSvc1.Delegate(deleg.DelegReq{
 		DelegatorToken: issResp.AccessToken,
@@ -192,6 +196,19 @@ func TestDelegationDepthLimitIntegration(t *testing.T) {
 	if resp.DelegationDepth != 1 {
 		t.Fatalf("expected depth=1, got %d", resp.DelegationDepth)
 	}
+
+	_, err = delegSvc1.Delegate(deleg.DelegReq{
+		DelegatorToken: resp.DelegationToken,
+		TargetAgentId:  "spiffe://agentauth.local/agent/orch/task/agentC",
+		DelegatedScope: []string{"read:Customers:12345"},
+		MaxTTL:         30,
+	})
+	if err == nil {
+		t.Fatal("expected second delegation to fail at maxDepth=1")
+	}
+	if !errors.Is(err, deleg.ErrDepthExceeded) {
+		t.Fatalf("expected depth exceeded, got: %v", err)
+	}
 }
 
 func TestDelegationReDelegateBroaderScopeBlockedIntegration(t *testing.T) {
@@ -203,10 +220,10 @@ func TestDelegationReDelegateBroaderScopeBlockedIntegration(t *testing.T) {
 
 	// A delegates to B with narrowed scope.
 	delegReq, _ := json.Marshal(map[string]any{
-		"delegator_token":  tokenA,
-		"target_agent_id":  "spiffe://agentauth.local/agent/orch-deleg/task-b/instanceB",
-		"delegated_scope":  []string{"read:Customers:12345"},
-		"max_ttl":          60,
+		"delegator_token": tokenA,
+		"target_agent_id": "spiffe://agentauth.local/agent/orch-deleg/task-b/instanceB",
+		"delegated_scope": []string{"read:Customers:12345"},
+		"max_ttl":         60,
 	})
 	delegRes, err := http.Post(srv.URL+"/v1/delegate", "application/json", bytes.NewReader(delegReq))
 	if err != nil {
@@ -222,10 +239,10 @@ func TestDelegationReDelegateBroaderScopeBlockedIntegration(t *testing.T) {
 
 	// B tries to re-delegate with broader scope (read:Customers:*) — must fail.
 	reDelegReq, _ := json.Marshal(map[string]any{
-		"delegator_token":  delegTokenB,
-		"target_agent_id":  "spiffe://agentauth.local/agent/orch-deleg/task-c/instanceC",
-		"delegated_scope":  []string{"read:Customers:*"},
-		"max_ttl":          30,
+		"delegator_token": delegTokenB,
+		"target_agent_id": "spiffe://agentauth.local/agent/orch-deleg/task-c/instanceC",
+		"delegated_scope": []string{"read:Customers:*"},
+		"max_ttl":         30,
 	})
 	reDelegRes, err := http.Post(srv.URL+"/v1/delegate", "application/json", bytes.NewReader(reDelegReq))
 	if err != nil {

@@ -82,6 +82,9 @@ func TestDelegSvc_ValidOneDelegation(t *testing.T) {
 	if len(claims.Scope) != 1 || claims.Scope[0] != "read:Customers:12345" {
 		t.Errorf("scope = %v, want [read:Customers:12345]", claims.Scope)
 	}
+	if len(claims.DelegChain) != 1 {
+		t.Fatalf("expected delegated token to carry 1 chain record, got %d", len(claims.DelegChain))
+	}
 }
 
 func TestDelegSvc_ScopeExpansionBlocked(t *testing.T) {
@@ -118,13 +121,9 @@ func TestDelegSvc_DepthExceeded(t *testing.T) {
 	}
 
 	// Second delegation should fail (depth already 1, max is 1).
-	// The delegation token doesn't carry chain in claims (Issue creates empty chain),
-	// so we test with max=0 to ensure the logic triggers.
-	k2 := newTestKit(0)
-	tkn2 := k2.issueToken("spiffe://test.local/agent/orch/task/agentA", []string{"read:Customers:*"}, 300)
-	_, err = k2.delegSvc.Delegate(DelegReq{
-		DelegatorToken: tkn2,
-		TargetAgentId:  "spiffe://test.local/agent/orch/task/agentB",
+	_, err = k.delegSvc.Delegate(DelegReq{
+		DelegatorToken: resp.DelegationToken,
+		TargetAgentId:  "spiffe://test.local/agent/orch/task/agentC",
 		DelegatedScope: []string{"read:Customers:12345"},
 		MaxTTL:         60,
 	})
@@ -134,7 +133,6 @@ func TestDelegSvc_DepthExceeded(t *testing.T) {
 	if !errors.Is(err, ErrDepthExceeded) {
 		t.Errorf("expected ErrDepthExceeded, got: %v", err)
 	}
-	_ = resp // used above
 }
 
 func TestDelegSvc_ExpiredDelegatorBlocked(t *testing.T) {

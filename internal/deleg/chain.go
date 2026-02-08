@@ -2,7 +2,6 @@ package deleg
 
 import (
 	"crypto/ed25519"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -27,7 +26,7 @@ func (e *ChainError) Error() string {
 // It checks that every DelegRecord has a valid Ed25519 signature, that scope narrows or stays
 // equal at each hop, and that no agent in the chain is revoked. The pubKey is the broker's
 // signing key used when creating delegation records.
-func VerifyChain(chain []token.DelegRecord, finalScope []string, revSvc *revoke.RevSvc, pubKey ed25519.PublicKey) (bool, *ChainError) {
+func VerifyChain(chain []token.DelegRecord, finalScope []string, revChecker revoke.RevChecker, pubKey ed25519.PublicKey) (bool, *ChainError) {
 	if len(chain) == 0 {
 		return true, nil
 	}
@@ -44,7 +43,7 @@ func VerifyChain(chain []token.DelegRecord, finalScope []string, revSvc *revoke.
 		}
 
 		// Check revocation status via RevSvc.
-		if revSvc != nil && revSvc.IsAgentRevoked(rec.Agent) {
+		if revChecker != nil && revChecker.IsAgentRevoked(rec.Agent) {
 			return false, &ChainError{
 				Hop:    i,
 				Reason: "agent_revoked",
@@ -119,14 +118,4 @@ func verifyRecordSig(rec token.DelegRecord, pubKey ed25519.PublicKey) error {
 		return fmt.Errorf("Ed25519 signature verification failed")
 	}
 	return nil
-}
-
-// computeChainHashFromChain is an alias exported for chain hash verification.
-func computeChainHashFromChain(chain []token.DelegRecord) (string, error) {
-	data, err := json.Marshal(chain)
-	if err != nil {
-		return "", err
-	}
-	h := sha256.Sum256(data)
-	return hex.EncodeToString(h[:]), nil
 }

@@ -34,6 +34,8 @@ type IssueReq struct {
 	TaskID    string
 	Scope     []string
 	TTLSecond int
+	// DelegChain carries delegation lineage for delegated tokens.
+	DelegChain []DelegRecord
 }
 
 // IssueResp contains the issued token and its timing metadata.
@@ -71,6 +73,8 @@ func (s *TknSvc) Issue(req IssueReq) (*IssueResp, error) {
 		}
 	}
 	now := time.Now().UTC()
+	delegChain := make([]DelegRecord, len(req.DelegChain))
+	copy(delegChain, req.DelegChain)
 	claims := TknClaims{
 		Iss:        "agentauth://" + s.cfg.TrustDomain,
 		Sub:        req.AgentID,
@@ -82,7 +86,7 @@ func (s *TknSvc) Issue(req IssueReq) (*IssueResp, error) {
 		Scope:      append([]string{}, req.Scope...),
 		TaskId:     req.TaskID,
 		OrchId:     req.OrchID,
-		DelegChain: []DelegRecord{},
+		DelegChain: delegChain,
 	}
 	if err := claims.Validate(now); err != nil {
 		return nil, err
@@ -142,11 +146,19 @@ func (s *TknSvc) Renew(tokenStr string) (*IssueResp, error) {
 		return nil, err
 	}
 	return s.Issue(IssueReq{
-		AgentID: claims.Sub,
-		OrchID:  claims.OrchId,
-		TaskID:  claims.TaskId,
-		Scope:   claims.Scope,
+		AgentID:    claims.Sub,
+		OrchID:     claims.OrchId,
+		TaskID:     claims.TaskId,
+		Scope:      claims.Scope,
+		DelegChain: claims.DelegChain,
 	})
+}
+
+// PublicKey returns a defensive copy of the configured Ed25519 verification key.
+func (s *TknSvc) PublicKey() ed25519.PublicKey {
+	key := make(ed25519.PublicKey, len(s.pubKey))
+	copy(key, s.pubKey)
+	return key
 }
 
 func (s *TknSvc) signClaims(claims TknClaims) (string, error) {

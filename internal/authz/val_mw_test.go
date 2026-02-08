@@ -3,9 +3,11 @@ package authz
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/divineartis/agentauth/internal/cfg"
 	"github.com/divineartis/agentauth/internal/revoke"
@@ -31,6 +33,21 @@ func issueToken(t *testing.T, svc *token.TknSvc, scopes []string) string {
 	})
 	if err != nil {
 		t.Fatalf("issue token: %v", err)
+	}
+	return resp.AccessToken
+}
+
+func issueTokenWithChain(t *testing.T, svc *token.TknSvc, scopes []string, chain []token.DelegRecord) string {
+	t.Helper()
+	resp, err := svc.Issue(token.IssueReq{
+		AgentID:    "spiffe://agentauth.local/agent/orch/task/inst",
+		OrchID:     "orch-1",
+		TaskID:     "task-1",
+		Scope:      scopes,
+		DelegChain: chain,
+	})
+	if err != nil {
+		t.Fatalf("issue token with chain: %v", err)
 	}
 	return resp.AccessToken
 }
@@ -120,3 +137,33 @@ func TestWrapRevokedTokenDenied(t *testing.T) {
 	}
 }
 
+func TestValMwDeniesInvalidDelegationChain(t *testing.T) {
+	svc := testSvc(t)
+	mw := NewValMw(svc, revoke.NewRevSvc())
+	protected := WithRequiredScope("read:Customers:12345", mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})))
+
+	// Signature is intentionally invalid to simulate chain tampering.
+	tok := issueTokenWithChain(t, svc, []string{"read:Customers:12345"}, []token.DelegRecord{
+		{
+			Agent:       "spiffe://agentauth.local/agent/orch/task/delegator",
+			Scope:       []string{"read:Customers:12345"},
+			DelegatedAt: time.Now().UTC().Format(time.RFC3339),
+			Signature:   "deadbeef",
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/protected/customers/12345", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rec := httptest.NewRecorder()
+	protected.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401 for invalid delegation chain, got %d", rec.Code)
+	}
+	var problem map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &problem)
+	if problem["type"] != "urn:agentauth:error:invalid-delegation-chain" {
+		t.Fatalf("unexpected problem type: %v", problem["type"])
+	}
+}
