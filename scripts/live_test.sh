@@ -41,4 +41,4 @@ if [ "$SMOKE_EXIT" -ne 0 ]; then
   exit 1
 fi
 
-echo "[LIVE:PASS] health/challenge/token/authz/revoke error-paths validated"
+echo "[LIVE:PASS] full agent lifecycle validated: health, register, token ops, authz, revoke, single-use launch"

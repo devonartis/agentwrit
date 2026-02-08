@@ -11,6 +11,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - P1 security: initiator identity spoofing in `MutAuthHdl.RespondToHandshake` — initiator token subject was not cross-checked against declared `InitiatorID`, allowing tampered handshake requests to impersonate a different agent. Added `ErrInitiatorMismatch` check.
 - P2: pass `nil` `DiscoveryRegistry` in `main.go` instead of empty non-nil instance — an unpopulated registry would reject all handshakes via `ErrAgentNotBound` if the handler were ever exposed.
 - P1 documentation: ADR-001 "What the smoke test does" section overstated coverage — claimed admin auth, audit trail, scope mismatch, and hash chain testing that the actual smoketest does not implement. Corrected to match actual 10-step coverage and documented deferred items.
+- P2: live gate pass text in `live_test.sh` was outdated ("error-paths validated") — updated to reflect actual 10-step end-to-end lifecycle coverage.
 
 ### Added
 - Module M06 mutual authentication:
