@@ -17,6 +17,15 @@ func histogramCount(t *testing.T, collector interface{ Write(*dto.Metric) error 
 	return m.GetHistogram().GetSampleCount()
 }
 
+func histogramSum(t *testing.T, collector interface{ Write(*dto.Metric) error }) float64 {
+	t.Helper()
+	m := &dto.Metric{}
+	if err := collector.Write(m); err != nil {
+		t.Fatalf("read histogram metric: %v", err)
+	}
+	return m.GetHistogram().GetSampleSum()
+}
+
 func almostEqual(a, b float64) bool {
 	const eps = 1e-9
 	return math.Abs(a-b) < eps
@@ -29,6 +38,23 @@ func TestRecordIssuance(t *testing.T) {
 	after := histogramCount(t, tokenIssuanceDurationMs)
 	if after != before+1 {
 		t.Fatalf("expected issuance histogram count %d, got %d", before+1, after)
+	}
+}
+
+func TestRecordIssuanceClampsNegativeToZero(t *testing.T) {
+	ensureMetricsRegistered()
+	beforeCount := histogramCount(t, tokenIssuanceDurationMs)
+	beforeSum := histogramSum(t, tokenIssuanceDurationMs)
+
+	RecordIssuance(-10)
+
+	afterCount := histogramCount(t, tokenIssuanceDurationMs)
+	afterSum := histogramSum(t, tokenIssuanceDurationMs)
+	if afterCount != beforeCount+1 {
+		t.Fatalf("expected issuance histogram count %d, got %d", beforeCount+1, afterCount)
+	}
+	if !almostEqual(afterSum, beforeSum) {
+		t.Fatalf("expected negative issuance to clamp to 0 (sum unchanged), before=%f after=%f", beforeSum, afterSum)
 	}
 }
 
@@ -80,6 +106,23 @@ func TestRecordDelegationDepth(t *testing.T) {
 	after := histogramCount(t, delegationChainDepth)
 	if after != before+1 {
 		t.Fatalf("expected delegation depth histogram count %d, got %d", before+1, after)
+	}
+}
+
+func TestRecordDelegationDepthClampsNegativeToZero(t *testing.T) {
+	ensureMetricsRegistered()
+	beforeCount := histogramCount(t, delegationChainDepth)
+	beforeSum := histogramSum(t, delegationChainDepth)
+
+	RecordDelegationDepth(-5)
+
+	afterCount := histogramCount(t, delegationChainDepth)
+	afterSum := histogramSum(t, delegationChainDepth)
+	if afterCount != beforeCount+1 {
+		t.Fatalf("expected delegation depth histogram count %d, got %d", beforeCount+1, afterCount)
+	}
+	if !almostEqual(afterSum, beforeSum) {
+		t.Fatalf("expected negative depth to clamp to 0 (sum unchanged), before=%f after=%f", beforeSum, afterSum)
 	}
 }
 

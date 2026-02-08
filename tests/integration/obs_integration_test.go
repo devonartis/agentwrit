@@ -107,6 +107,21 @@ func TestObservabilityMetricsAndHealthIntegration(t *testing.T) {
 	}
 	metricsBody := string(rawMetrics)
 
+	expectedMetrics := []string{
+		"aa_token_issuance_duration_ms",
+		"aa_validation_decision_total",
+		"aa_revocation_cache_hit_ratio",
+		"aa_clock_skew_detected_total",
+		"aa_delegation_chain_depth",
+		"aa_anomaly_revocation_triggered_total",
+		"aa_heartbeat_miss_rate",
+	}
+	for _, name := range expectedMetrics {
+		if !strings.Contains(metricsBody, name) {
+			t.Fatalf("expected metrics payload to include %s", name)
+		}
+	}
+
 	issuanceCount, ok := metricValue(metricsBody, "aa_token_issuance_duration_ms_count")
 	if !ok || issuanceCount <= 0 {
 		t.Fatalf("expected issuance metric count > 0, got %v", issuanceCount)

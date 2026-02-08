@@ -31,13 +31,13 @@ func (h *ValHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var req valReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		obs.RecordValidation(false)
-		obs.WriteProblem(w, http.StatusBadRequest, "urn:agentauth:error:bad-request", "Malformed JSON body")
+		obs.WriteProblemForRequest(w, r, http.StatusBadRequest, "urn:agentauth:error:bad-request", "Malformed JSON body", "Malformed JSON body")
 		return
 	}
 	claims, err := h.tknSvc.Verify(req.Token)
 	if err != nil {
 		obs.RecordValidation(false)
-		obs.WriteProblem(w, http.StatusUnauthorized, "urn:agentauth:error:invalid-token", "Token validation failed")
+		obs.WriteProblemForRequest(w, r, http.StatusUnauthorized, "urn:agentauth:error:invalid-token", "Token validation failed", err.Error())
 		return
 	}
 	if req.RequiredScope != "" {
@@ -50,7 +50,14 @@ func (h *ValHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if !matched {
 			obs.RecordValidation(false)
-			obs.WriteProblem(w, http.StatusForbidden, "urn:agentauth:error:scope-mismatch", "Required scope not granted")
+			obs.WriteProblemForRequest(
+				w,
+				r,
+				http.StatusForbidden,
+				"urn:agentauth:error:scope-mismatch",
+				"Required scope not granted",
+				"Required scope "+req.RequiredScope+" not granted",
+			)
 			return
 		}
 	}

@@ -145,7 +145,7 @@ AA_SEED_TOKENS=true go run ./cmd/broker
 # SEED_ADMIN_TOKEN=<jwt>
 ```
 
-The smoke test (`cmd/smoketest/main.go`) uses these tokens to exercise the full broker workflow against the real binary. This is the live test (Tier 3) per ADR-001.
+The smoke test (`cmd/smoketest/main.go`) uses these tokens to exercise the full broker workflow against the real binary, including admin-scoped revoke authorization. This is the live test (Tier 3) per ADR-001.
 
 ## Documentation policy (done criteria)
 

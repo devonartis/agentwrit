@@ -31,9 +31,17 @@ if [ -z "$SEED_LAUNCH" ]; then
   echo "[LIVE:FAIL] seed launch token not found in broker output"
   exit 1
 fi
+SEED_ADMIN=$(grep 'SEED_ADMIN_TOKEN=' "$OUT_LOG" | head -1 | sed 's/SEED_ADMIN_TOKEN=//')
+if [ -z "$SEED_ADMIN" ]; then
+  echo "[LIVE:FAIL] seed admin token not found in broker output"
+  exit 1
+fi
 
 # Run smoke test against the real broker.
-SEED_LAUNCH_TOKEN="$SEED_LAUNCH" AA_BROKER_URL="http://127.0.0.1:${PORT}" "$SMOKE_BIN"
+SEED_LAUNCH_TOKEN="$SEED_LAUNCH" \
+SEED_ADMIN_TOKEN="$SEED_ADMIN" \
+AA_BROKER_URL="http://127.0.0.1:${PORT}" \
+"$SMOKE_BIN"
 SMOKE_EXIT=$?
 
 if [ "$SMOKE_EXIT" -ne 0 ]; then
@@ -41,4 +49,4 @@ if [ "$SMOKE_EXIT" -ne 0 ]; then
   exit 1
 fi
 
-echo "[LIVE:PASS] full agent lifecycle validated: health, register, token ops, authz, revoke, single-use launch, delegation"
+echo "[LIVE:PASS] full lifecycle validated: health, metrics, register, token ops, authz, admin-gated revoke, single-use launch, delegation"

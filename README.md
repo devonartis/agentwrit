@@ -88,7 +88,9 @@ curl -sS http://127.0.0.1:8080/v1/protected/customers/12345 \
 # Returns: {"customer_id":"12345","message":"protected customer data"}
 
 # 5. Revoke the token
+#    Requires an admin-scoped bearer token (scope: admin:Broker:*)
 curl -sS -X POST http://127.0.0.1:8080/v1/revoke \
+  -H 'Authorization: Bearer <admin_token>' \
   -H 'Content-Type: application/json' \
   -d '{"level":"token","target_id":"<jti>","reason":"demo revocation"}'
 # Returns: {"revoked":true,...}

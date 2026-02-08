@@ -7,6 +7,13 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ## [Unreleased]
 
 ### Fixed
+- P1 security hardening: `LoadSigningKey` now validates path safety (no symlink), enforces regular-file usage, rejects group/other-readable key files, and caps read size before Ed25519 key decoding.
+- P1 security gate stability: module now pins patched Go toolchain `go1.25.7` to clear known stdlib `govulncheck` findings (crypto/tls and crypto/x509 advisories seen on go1.25.4).
+- P0 security: `POST /v1/revoke` is now protected by zero-trust middleware with required scope `admin:Broker:*` in broker and integration router wiring; revoke flows now require authenticated admin bearer tokens.
+- P1 operations: `GET /v1/health` now returns `503` for degraded/unhealthy states (and `200` only when healthy), preventing false-ready probes.
+- P1 observability integrity: previously declared metrics with no runtime updates are now wired to production paths (`RecordClockSkew`, `RecordDelegationDepth`, `SetRevocationCacheHitRatio`, `RecordAnomalyRevocation`, `SetHeartbeatMissRate`).
+- P2 contract consistency: RFC 7807 payload now includes `detail` and `instance` fields; handler/middleware responses now attach request-path instance metadata.
+- P2 live-gate realism: smoke test now verifies `/v1/metrics` and enforces admin-authenticated revoke path; live gate output updated accordingly.
 - P0 security: delegated JWT issuance dropped `delegation_chain` data because `TknSvc.Issue` always reset the claim to empty. `IssueReq` now accepts `DelegChain`, delegated token issuance passes the chain through, and renewal preserves the chain.
 - P1 security: runtime auth middleware did not enforce delegation-chain signature/scope checks. `ValMw` now validates non-empty chains via `deleg.VerifyChain` and denies malformed chains.
 - P1 policy: delegation depth checks were bypassable on re-delegation because chain depth was not carried in tokens. With chain propagation fixed, second-hop depth is now enforced correctly.

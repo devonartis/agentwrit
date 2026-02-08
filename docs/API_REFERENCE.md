@@ -23,10 +23,18 @@ Authentication:
 Success response:
 - status: `200`
 - body fields:
-  - `status`: `healthy|degraded|unhealthy`
+  - `status`: `healthy`
   - `version`: broker version string
   - `uptime_seconds`: process uptime in seconds
   - `components`: object with component health (currently `sqlite`, `redis`)
+
+Non-healthy response:
+- status: `503`
+- body fields:
+  - `status`: `degraded|unhealthy`
+  - `version`
+  - `uptime_seconds`
+  - `components`
 
 ```json
 {
@@ -60,6 +68,8 @@ Common fields:
 - `type`
 - `title`
 - `status`
+- `detail`
+- `instance` (request path when available)
 
 Common categories currently used:
 - bad request (`400`)
@@ -150,7 +160,7 @@ Purpose:
 - revoke tokens at 4 levels: token, agent, task, delegation_chain
 
 Authentication:
-- none (admin endpoint)
+- bearer token with `admin:Broker:*` scope
 
 Request body:
 - `level` (required) — one of: `token`, `agent`, `task`, `delegation_chain`
@@ -167,6 +177,8 @@ Success response:
 
 Error responses:
 - `400` invalid level or missing target_id
+- `401` missing/invalid bearer token
+- `403` insufficient admin scope
 
 Errors are returned as RFC 7807 `application/problem+json`.
 

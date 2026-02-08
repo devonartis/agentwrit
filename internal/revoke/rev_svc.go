@@ -29,21 +29,25 @@ type RevRecord struct {
 
 // RevSvc manages in-memory revocation state.
 type RevSvc struct {
-	mu     sync.RWMutex
-	tokens map[string]RevRecord // jti → record
-	agents map[string]RevRecord // agentID → record
-	tasks  map[string]RevRecord // taskID → record
-	chains map[string]RevRecord // chainHash → record
+	mu         sync.RWMutex
+	tokens     map[string]RevRecord // jti → record
+	agents     map[string]RevRecord // agentID → record
+	tasks      map[string]RevRecord // taskID → record
+	chains     map[string]RevRecord // chainHash → record
+	checkCount uint64
+	hitCount   uint64
 }
 
 // NewRevSvc creates a new revocation service with empty revocation sets.
 func NewRevSvc() *RevSvc {
-	return &RevSvc{
+	svc := &RevSvc{
 		tokens: make(map[string]RevRecord),
 		agents: make(map[string]RevRecord),
 		tasks:  make(map[string]RevRecord),
 		chains: make(map[string]RevRecord),
 	}
+	obs.SetRevocationCacheHitRatio(0)
+	return svc
 }
 
 // RevokeToken revokes a specific token by its JTI.
@@ -137,27 +141,42 @@ func (r *RevSvc) IsChainRevoked(chainHash string) bool {
 // IsRevoked checks all 4 revocation levels given full claims context.
 // Returns (revoked bool, level string) where level indicates which check matched.
 func (r *RevSvc) IsRevoked(jti, agentID, taskID, chainHash string) (bool, string) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	r.mu.Lock()
+	revoked := false
+	level := ""
 	if jti != "" {
 		if _, ok := r.tokens[jti]; ok {
-			return true, "token"
+			revoked = true
+			level = "token"
 		}
 	}
-	if agentID != "" {
+	if !revoked && agentID != "" {
 		if _, ok := r.agents[agentID]; ok {
-			return true, "agent"
+			revoked = true
+			level = "agent"
 		}
 	}
-	if taskID != "" {
+	if !revoked && taskID != "" {
 		if _, ok := r.tasks[taskID]; ok {
-			return true, "task"
+			revoked = true
+			level = "task"
 		}
 	}
-	if chainHash != "" {
+	if !revoked && chainHash != "" {
 		if _, ok := r.chains[chainHash]; ok {
-			return true, "delegation_chain"
+			revoked = true
+			level = "delegation_chain"
 		}
 	}
-	return false, ""
+	r.checkCount++
+	if revoked {
+		r.hitCount++
+	}
+	ratio := 0.0
+	if r.checkCount > 0 {
+		ratio = float64(r.hitCount) / float64(r.checkCount)
+	}
+	r.mu.Unlock()
+	obs.SetRevocationCacheHitRatio(ratio)
+	return revoked, level
 }

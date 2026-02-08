@@ -60,16 +60,19 @@ func (h *HealthHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	status := "healthy"
+	httpStatus := http.StatusOK
 	if components["sqlite"] != "healthy" {
 		status = "unhealthy"
+		httpStatus = http.StatusServiceUnavailable
 	} else if components["redis"] != "healthy" {
 		status = "degraded"
+		httpStatus = http.StatusServiceUnavailable
 	}
 
 	obs.Ok("OBS", "HealthHdl.ServeHTTP", "health check", "status="+status)
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(httpStatus)
 	_ = json.NewEncoder(w).Encode(healthResp{
 		Status:        status,
 		Version:       h.version,

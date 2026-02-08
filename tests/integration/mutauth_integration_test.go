@@ -87,7 +87,7 @@ func TestMutualAuthHandshakeIntegration(t *testing.T) {
 	mux.Handle("/v1/register", handler.NewRegHdl(idSvc, tknSvc, c))
 	mux.Handle("/v1/token/validate", handler.NewValHdl(tknSvc))
 	mux.Handle("/v1/token/renew", handler.NewRenewHdl(tknSvc))
-	mux.Handle("/v1/revoke", handler.NewRevokeHdl(revSvc))
+	mux.Handle("/v1/revoke", authz.WithRequiredScope("admin:Broker:*", valMw.Wrap(handler.NewRevokeHdl(revSvc))))
 	mux.Handle("/v1/protected/customers/12345", authz.WithRequiredScope("read:Customers:12345", valMw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"customer_id":"12345"}`))
@@ -144,7 +144,7 @@ func TestMutualAuthHandshakeInvalidTokenIntegration(t *testing.T) {
 	mux.Handle("/v1/register", handler.NewRegHdl(idSvc, tknSvc, c))
 	mux.Handle("/v1/token/validate", handler.NewValHdl(tknSvc))
 	mux.Handle("/v1/token/renew", handler.NewRenewHdl(tknSvc))
-	mux.Handle("/v1/revoke", handler.NewRevokeHdl(revSvc))
+	mux.Handle("/v1/revoke", authz.WithRequiredScope("admin:Broker:*", valMw.Wrap(handler.NewRevokeHdl(revSvc))))
 	mux.Handle("/v1/protected/customers/12345", authz.WithRequiredScope("read:Customers:12345", valMw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))))
@@ -177,7 +177,7 @@ func TestPeerSubstitutionAttackIntegration(t *testing.T) {
 	mux.Handle("/v1/register", handler.NewRegHdl(idSvc, tknSvc, c))
 	mux.Handle("/v1/token/validate", handler.NewValHdl(tknSvc))
 	mux.Handle("/v1/token/renew", handler.NewRenewHdl(tknSvc))
-	mux.Handle("/v1/revoke", handler.NewRevokeHdl(revSvc))
+	mux.Handle("/v1/revoke", authz.WithRequiredScope("admin:Broker:*", valMw.Wrap(handler.NewRevokeHdl(revSvc))))
 	mux.Handle("/v1/protected/customers/12345", authz.WithRequiredScope("read:Customers:12345", valMw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))))
@@ -221,7 +221,7 @@ func TestInitiatorSpoofingAttackIntegration(t *testing.T) {
 	mux.Handle("/v1/register", handler.NewRegHdl(idSvc, tknSvc, c))
 	mux.Handle("/v1/token/validate", handler.NewValHdl(tknSvc))
 	mux.Handle("/v1/token/renew", handler.NewRenewHdl(tknSvc))
-	mux.Handle("/v1/revoke", handler.NewRevokeHdl(revSvc))
+	mux.Handle("/v1/revoke", authz.WithRequiredScope("admin:Broker:*", valMw.Wrap(handler.NewRevokeHdl(revSvc))))
 	mux.Handle("/v1/protected/customers/12345", authz.WithRequiredScope("read:Customers:12345", valMw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))))

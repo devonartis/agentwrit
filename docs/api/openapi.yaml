@@ -17,7 +17,7 @@ paths:
                 properties:
                   status:
                     type: string
-                    enum: [healthy, degraded, unhealthy]
+                    enum: [healthy]
                     example: healthy
                   version:
                     type: string
@@ -37,6 +37,36 @@ paths:
                         type: string
                         enum: [healthy, unhealthy]
                         example: healthy
+        "503":
+          description: Broker is degraded or unhealthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, version, uptime_seconds, components]
+                properties:
+                  status:
+                    type: string
+                    enum: [degraded, unhealthy]
+                    example: degraded
+                  version:
+                    type: string
+                    example: "0.1.0"
+                  uptime_seconds:
+                    type: integer
+                    example: 42
+                  components:
+                    type: object
+                    required: [sqlite, redis]
+                    properties:
+                      sqlite:
+                        type: string
+                        enum: [healthy, unhealthy]
+                        example: healthy
+                      redis:
+                        type: string
+                        enum: [healthy, unhealthy]
+                        example: unhealthy
   /v1/metrics:
     get:
       summary: Prometheus metrics endpoint
@@ -225,6 +255,8 @@ paths:
   /v1/revoke:
     post:
       summary: Revoke tokens at 4 levels (token, agent, task, delegation_chain)
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -260,6 +292,18 @@ paths:
                   revoked_at: { type: string, format: date-time }
         "400":
           description: Invalid level or missing target_id
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Caller does not have required admin scope
           content:
             application/problem+json:
               schema:
@@ -376,3 +420,7 @@ components:
           type: string
         status:
           type: integer
+        detail:
+          type: string
+        instance:
+          type: string

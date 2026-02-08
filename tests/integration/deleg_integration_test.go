@@ -42,7 +42,7 @@ func setupDelegServer(t *testing.T) (*httptest.Server, *store.SqlStore, *token.T
 	mux.Handle("/v1/register", handler.NewRegHdl(idSvc, tknSvc, c))
 	mux.Handle("/v1/token/validate", handler.NewValHdl(tknSvc))
 	mux.Handle("/v1/token/renew", handler.NewRenewHdl(tknSvc))
-	mux.Handle("/v1/revoke", handler.NewRevokeHdl(revSvc))
+	mux.Handle("/v1/revoke", authz.WithRequiredScope("admin:Broker:*", valMw.Wrap(handler.NewRevokeHdl(revSvc))))
 	mux.Handle("/v1/delegate", delegHdl)
 	mux.Handle("/v1/protected/customers/12345", authz.WithRequiredScope("read:Customers:12345", valMw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

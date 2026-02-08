@@ -27,6 +27,15 @@ Metrics are registered once via `RegisterMetrics()` and reused through helper fu
 
 The one-time registration model avoids duplicate collector panics and keeps handler wiring simple.
 
+Current production call sites:
+- `RecordIssuance` in `TknSvc.Issue`
+- `RecordValidation` in `ValHdl` and `ValMw`
+- `SetRevocationCacheHitRatio` in `RevSvc.IsRevoked` (rolling hit ratio)
+- `RecordClockSkew` in `TknSvc.Verify` when skew tolerance is used
+- `RecordDelegationDepth` in `DelegSvc.Delegate`
+- `RecordAnomalyRevocation` in `HeartbeatMgr.sweep` on auto-revocation
+- `SetHeartbeatMissRate` in `HeartbeatMgr.sweep`
+
 ### Health status classification
 
 `HealthHdl` reports:
@@ -34,6 +43,10 @@ The one-time registration model avoids duplicate collector panics and keeps hand
 - version
 - uptime seconds
 - component map (`sqlite`, `redis`)
+
+HTTP status behavior:
+- `200` when broker status is `healthy`
+- `503` when broker status is `degraded` or `unhealthy`
 
 Current behavior:
 - sqlite is required (`nil` store => `unhealthy`)

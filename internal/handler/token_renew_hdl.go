@@ -28,12 +28,12 @@ func (h *RenewHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	var req renewReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		obs.WriteProblem(w, http.StatusBadRequest, "urn:agentauth:error:bad-request", "Malformed JSON body")
+		obs.WriteProblemForRequest(w, r, http.StatusBadRequest, "urn:agentauth:error:bad-request", "Malformed JSON body", "Malformed JSON body")
 		return
 	}
 	renewed, err := h.tknSvc.Renew(req.Token)
 	if err != nil {
-		obs.WriteProblem(w, http.StatusUnauthorized, "urn:agentauth:error:invalid-token", "Token renewal failed")
+		obs.WriteProblemForRequest(w, r, http.StatusUnauthorized, "urn:agentauth:error:invalid-token", "Token renewal failed", err.Error())
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

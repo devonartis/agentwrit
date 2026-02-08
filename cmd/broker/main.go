@@ -61,7 +61,7 @@ func main() {
 	mux.Handle("/v1/register", regHdl)
 	mux.Handle("/v1/token/validate", valHdl)
 	mux.Handle("/v1/token/renew", renewHdl)
-	mux.Handle("/v1/revoke", revokeHdl)
+	mux.Handle("/v1/revoke", authz.WithRequiredScope("admin:Broker:*", valMw.Wrap(revokeHdl)))
 	mux.Handle("/v1/delegate", delegHdl)
 	mux.Handle("/v1/metrics", metricsHdl)
 	mux.Handle("/v1/health", healthHdl)
