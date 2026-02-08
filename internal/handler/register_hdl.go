@@ -49,7 +49,7 @@ func (h *RegHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var body registerBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeProblem(w, http.StatusBadRequest, "urn:agentauth:error:bad-request", "Malformed JSON body")
+		obs.WriteProblemForRequest(w, r, http.StatusBadRequest, "urn:agentauth:error:bad-request", "Malformed JSON body", "Malformed JSON body")
 		return
 	}
 
@@ -65,11 +65,25 @@ func (h *RegHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, identity.ErrRegisterBadLaunchToken):
-			writeProblem(w, http.StatusUnauthorized, "urn:agentauth:error:bad-launch-token", "Launch token is invalid or expired")
+			obs.WriteProblemForRequest(
+				w,
+				r,
+				http.StatusUnauthorized,
+				"urn:agentauth:error:bad-launch-token",
+				"Launch token is invalid or expired",
+				"Launch token is invalid or expired",
+			)
 		case errors.Is(err, identity.ErrRegisterBadSignature), errors.Is(err, identity.ErrRegisterBadNonce):
-			writeProblem(w, http.StatusForbidden, "urn:agentauth:error:register-forbidden", "Agent proof verification failed")
+			obs.WriteProblemForRequest(
+				w,
+				r,
+				http.StatusForbidden,
+				"urn:agentauth:error:register-forbidden",
+				"Agent proof verification failed",
+				"Agent proof verification failed",
+			)
 		default:
-			writeProblem(w, http.StatusInternalServerError, "urn:agentauth:error:internal", "Registration failed")
+			obs.WriteProblemForRequest(w, r, http.StatusInternalServerError, "urn:agentauth:error:internal", "Registration failed", err.Error())
 		}
 		obs.Fail("IDENTITY", "RegHdl.ServeHTTP", "register failed", "error="+err.Error())
 		return
@@ -83,7 +97,7 @@ func (h *RegHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		TTLSecond: h.cfg.DefaultTTL,
 	})
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "urn:agentauth:error:token-issue-failed", "Token issuance failed")
+		obs.WriteProblemForRequest(w, r, http.StatusInternalServerError, "urn:agentauth:error:token-issue-failed", "Token issuance failed", err.Error())
 		obs.Fail("TOKEN", "RegHdl.ServeHTTP", "initial token issue failed", "error="+err.Error())
 		return
 	}
@@ -98,14 +112,3 @@ func (h *RegHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 	obs.Ok("IDENTITY", "RegHdl.ServeHTTP", "register success", "agent_id="+idResp.AgentInstanceID)
 }
-
-func writeProblem(w http.ResponseWriter, status int, typ, title string) {
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"type":   typ,
-		"title":  title,
-		"status": status,
-	})
-}
-

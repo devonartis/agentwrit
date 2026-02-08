@@ -7,7 +7,7 @@ It explains how to run the service, execute the identity/token flow, validate pr
 
 ## Prerequisites
 
-- Go 1.22+
+- Go 1.23+ (module pins secure toolchain `go1.25.7` for gate runs)
 - curl
 - jq (recommended for response inspection)
 
@@ -30,8 +30,23 @@ curl -i http://127.0.0.1:8080/v1/health
 ```
 
 Expected:
+- HTTP status `200` when healthy
+- HTTP status `503` when degraded or unhealthy
+- JSON body with:
+  - `status` (`healthy|degraded|unhealthy`)
+  - `version`
+  - `uptime_seconds`
+  - `components` (`sqlite`, `redis`)
+
+## Inspect Prometheus metrics
+
+```bash
+curl -sS http://127.0.0.1:8080/v1/metrics | head -40
+```
+
+Expected:
 - HTTP status `200`
-- JSON body `{"status":"healthy"}`
+- text exposition containing `aa_` prefixed metrics (for example `aa_validation_decision_total`)
 
 ## End-to-end identity and token workflow
 
@@ -107,10 +122,15 @@ Use `POST /v1/revoke` to revoke tokens at one of four levels:
 | `task` | Task by `task_id` | Revokes all tokens issued for that task |
 | `delegation_chain` | Chain by SHA-256 hash | Revokes all tokens sharing a delegation chain |
 
+Authorization requirement:
+- bearer token with `admin:Broker:*` scope
+- for local runs, start broker with `AA_SEED_TOKENS=true` and use `SEED_ADMIN_TOKEN` from startup output
+
 ### Revoke a single token
 
 ```bash
 curl -sS -X POST \
+  -H "Authorization: Bearer <admin_token>" \
   -H 'Content-Type: application/json' \
   -d '{"level":"token","target_id":"<jti>","reason":"compromised"}' \
   http://127.0.0.1:8080/v1/revoke | jq .
@@ -130,6 +150,7 @@ Expected success (`200`):
 
 ```bash
 curl -sS -X POST \
+  -H "Authorization: Bearer <admin_token>" \
   -H 'Content-Type: application/json' \
   -d '{"level":"agent","target_id":"spiffe://agentauth.local/agent/orch-1/task-1/abc123","reason":"agent decommissioned"}' \
   http://127.0.0.1:8080/v1/revoke | jq .
@@ -148,6 +169,8 @@ curl -i -H "Authorization: Bearer <revoked_token>" \
 ### Error responses
 
 - `400` — invalid `level` value or missing required fields
+- `401` — missing/invalid admin bearer token
+- `403` — bearer token lacks `admin:Broker:*` scope
 - `405` — non-POST method
 
 ## Protected resource authorization workflow (M03)

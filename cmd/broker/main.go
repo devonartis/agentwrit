@@ -40,6 +40,8 @@ func main() {
 	regHdl := handler.NewRegHdl(idSvc, tknSvc, c)
 	valHdl := handler.NewValHdl(tknSvc)
 	renewHdl := handler.NewRenewHdl(tknSvc)
+	healthHdl := handler.NewHealthHdl(sqlStore, nil, "0.1.0")
+	metricsHdl := handler.NewMetricsHdl()
 	revSvc := revoke.NewRevSvc()
 	revokeHdl := handler.NewRevokeHdl(revSvc)
 	valMw := authz.NewValMw(tknSvc, revSvc)
@@ -59,8 +61,10 @@ func main() {
 	mux.Handle("/v1/register", regHdl)
 	mux.Handle("/v1/token/validate", valHdl)
 	mux.Handle("/v1/token/renew", renewHdl)
-	mux.Handle("/v1/revoke", revokeHdl)
+	mux.Handle("/v1/revoke", authz.WithRequiredScope("admin:Broker:*", valMw.Wrap(revokeHdl)))
 	mux.Handle("/v1/delegate", delegHdl)
+	mux.Handle("/v1/metrics", metricsHdl)
+	mux.Handle("/v1/health", healthHdl)
 	mux.Handle("/v1/protected/customers/12345", authz.WithRequiredScope("read:Customers:12345", valMw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -68,12 +72,6 @@ func main() {
 			"message":     "protected customer data",
 		})
 	}))))
-	mux.HandleFunc("/v1/health", func(w http.ResponseWriter, _ *http.Request) {
-		obs.Ok("OBS", "HealthHdl.ServeHTTP", "health check", "status=healthy")
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"healthy"}`))
-	})
 
 	// ADR-001: Seed tokens for dev/test bootstrap.
 	// When AA_SEED_TOKENS=true, print a launch token and admin token to stdout
@@ -89,10 +87,10 @@ func main() {
 			os.Exit(1)
 		}
 		adminResp, adminErr := tknSvc.Issue(token.IssueReq{
-			AgentID: "spiffe://" + c.TrustDomain + "/agent/seed-orch/seed-task/admin",
-			OrchID:  "seed-orch",
-			TaskID:  "seed-task",
-			Scope:   []string{"admin:Broker:*"},
+			AgentID:   "spiffe://" + c.TrustDomain + "/agent/seed-orch/seed-task/admin",
+			OrchID:    "seed-orch",
+			TaskID:    "seed-task",
+			Scope:     []string{"admin:Broker:*"},
 			TTLSecond: 600,
 		})
 		if adminErr != nil {

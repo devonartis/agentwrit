@@ -22,17 +22,34 @@ func main() {
 	if launchToken == "" {
 		fail("SEED_LAUNCH_TOKEN not set")
 	}
+	adminToken := os.Getenv("SEED_ADMIN_TOKEN")
+	if adminToken == "" {
+		fail("SEED_ADMIN_TOKEN not set")
+	}
 
 	pass("config", "broker_url="+baseURL)
 
 	// Step 1: Health check.
-	healthBody := httpGet(baseURL + "/v1/health")
+	healthStatus, healthBody := httpGetNoAuth(baseURL + "/v1/health")
+	if healthStatus != 200 {
+		fail(fmt.Sprintf("health check: expected 200, got %d body=%s", healthStatus, healthBody))
+	}
 	if !strings.Contains(healthBody, `"status":"healthy"`) {
 		fail("health check: unexpected body: " + healthBody)
 	}
 	pass("health check")
 
-	// Step 2: Get challenge nonce.
+	// Step 2: Metrics endpoint is live.
+	metricsStatus, metricsBody := httpGetNoAuth(baseURL + "/v1/metrics")
+	if metricsStatus != 200 {
+		fail(fmt.Sprintf("metrics: expected 200, got %d", metricsStatus))
+	}
+	if !strings.Contains(metricsBody, "aa_token_issuance_duration_ms") {
+		fail("metrics: expected aa_token_issuance_duration_ms")
+	}
+	pass("metrics endpoint exposed")
+
+	// Step 3: Get challenge nonce.
 	challengeBody := httpGet(baseURL + "/v1/challenge")
 	var ch map[string]string
 	mustUnmarshal(challengeBody, &ch)
@@ -45,7 +62,7 @@ func main() {
 	}
 	pass("challenge nonce received", "nonce_len="+itoa(len(nonce)))
 
-	// Step 3: Register agent with Ed25519 proof-of-possession.
+	// Step 4: Register agent with Ed25519 proof-of-possession.
 	agentPub, agentPriv, _ := ed25519.GenerateKey(nil)
 	sig := ed25519.Sign(agentPriv, []byte(nonce))
 	pubJWK, _ := json.Marshal(map[string]string{
@@ -80,7 +97,7 @@ func main() {
 	}
 	pass("agent registered", "agent_id="+agentID)
 
-	// Step 4: Validate token.
+	// Step 5: Validate token.
 	valReq, _ := json.Marshal(map[string]any{
 		"token":          accessToken,
 		"required_scope": "read:Customers:12345",
@@ -91,7 +108,7 @@ func main() {
 	}
 	pass("token validated with matching scope")
 
-	// Step 5: Access protected resource.
+	// Step 6: Access protected resource.
 	protStatus, protBody := httpGetAuth(baseURL+"/v1/protected/customers/12345", accessToken)
 	if protStatus != 200 {
 		fail(fmt.Sprintf("protected: expected 200, got %d", protStatus))
@@ -101,14 +118,14 @@ func main() {
 	}
 	pass("protected resource accessed with valid token")
 
-	// Step 6: No-auth access denied.
+	// Step 7: No-auth access denied.
 	denyStatus, _ := httpGetNoAuth(baseURL + "/v1/protected/customers/12345")
 	if denyStatus != 401 {
 		fail(fmt.Sprintf("protected no-auth: expected 401, got %d", denyStatus))
 	}
 	pass("protected resource denied without token")
 
-	// Step 7: Renew token.
+	// Step 8: Renew token.
 	renewReq, _ := json.Marshal(map[string]any{
 		"token": accessToken,
 	})
@@ -124,28 +141,35 @@ func main() {
 	}
 	pass("token renewed")
 
-	// Step 8: Revoke the renewed token.
-	// Extract JTI by decoding the payload.
+	// Step 9: Revoke without admin token should fail.
 	jti := extractJTI(renewedToken)
 	revokeReq, _ := json.Marshal(map[string]string{
 		"level":     "token",
 		"target_id": jti,
 		"reason":    "smoke test revocation",
 	})
-	revokeStatus, _ := httpPost(baseURL+"/v1/revoke", revokeReq)
+	revokeNoAuthStatus, _ := httpPost(baseURL+"/v1/revoke", revokeReq)
+	if revokeNoAuthStatus != 401 {
+		fail(fmt.Sprintf("revoke without admin auth: expected 401, got %d", revokeNoAuthStatus))
+	}
+	pass("revoke denied without admin token")
+
+	// Step 10: Revoke the renewed token with admin auth.
+	// Extract JTI by decoding the payload.
+	revokeStatus, _ := httpPostAuth(baseURL+"/v1/revoke", adminToken, revokeReq)
 	if revokeStatus != 200 {
 		fail(fmt.Sprintf("revoke: expected 200, got %d", revokeStatus))
 	}
 	pass("token revoked", "jti="+jti)
 
-	// Step 9: Verify revoked token is denied.
+	// Step 11: Verify revoked token is denied.
 	revokedStatus, _ := httpGetAuth(baseURL+"/v1/protected/customers/12345", renewedToken)
 	if revokedStatus != 401 {
 		fail(fmt.Sprintf("revoked access: expected 401, got %d", revokedStatus))
 	}
 	pass("revoked token denied on protected resource")
 
-	// Step 10: Reused launch token rejected.
+	// Step 12: Reused launch token rejected.
 	regReq2, _ := json.Marshal(map[string]any{
 		"launch_token":     launchToken,
 		"nonce":            nonce,
@@ -163,13 +187,13 @@ func main() {
 
 	// ── M07 Delegation Chain Tests ──────────────────────────────────
 
-	// Step 11: Delegate scope from Agent A to Agent B.
+	// Step 13: Delegate scope from Agent A to Agent B.
 	// Use the original accessToken (pre-revocation, still valid).
 	delegReq, _ := json.Marshal(map[string]any{
-		"delegator_token":  accessToken,
-		"target_agent_id":  "spiffe://agentauth.local/agent/seed-orch/seed-task/agentB",
-		"delegated_scope":  []string{"read:Customers:12345"},
-		"max_ttl":          60,
+		"delegator_token": accessToken,
+		"target_agent_id": "spiffe://agentauth.local/agent/seed-orch/seed-task/agentB",
+		"delegated_scope": []string{"read:Customers:12345"},
+		"max_ttl":         60,
 	})
 	delegStatus, delegBody := httpPost(baseURL+"/v1/delegate", delegReq)
 	if delegStatus != 201 {
@@ -191,13 +215,13 @@ func main() {
 	}
 	pass("delegation created", "depth=1", "chain_hash="+chainHash[:16]+"...")
 
-	// Step 12: Scope escalation blocked.
+	// Step 14: Scope escalation blocked.
 	// Agent A (scope read:Customers:12345) tries to delegate read:Customers:* (broader).
 	escalateReq, _ := json.Marshal(map[string]any{
-		"delegator_token":  accessToken,
-		"target_agent_id":  "spiffe://agentauth.local/agent/seed-orch/seed-task/agentC",
-		"delegated_scope":  []string{"read:Customers:*"},
-		"max_ttl":          60,
+		"delegator_token": accessToken,
+		"target_agent_id": "spiffe://agentauth.local/agent/seed-orch/seed-task/agentC",
+		"delegated_scope": []string{"read:Customers:*"},
+		"max_ttl":         60,
 	})
 	escalateStatus, escalateBody := httpPost(baseURL+"/v1/delegate", escalateReq)
 	if escalateStatus != 403 {
@@ -210,7 +234,7 @@ func main() {
 	}
 	pass("scope escalation blocked (403)")
 
-	// Step 13: Validate delegation token is a valid JWT.
+	// Step 15: Validate delegation token is a valid JWT.
 	valDelegReq, _ := json.Marshal(map[string]any{
 		"token":          delegToken,
 		"required_scope": "read:Customers:12345",
@@ -238,13 +262,11 @@ func fail(msg string) {
 }
 
 func httpGet(url string) string {
-	resp, err := http.Get(url)
-	if err != nil {
-		fail("GET " + url + ": " + err.Error())
+	status, body := httpRequest(http.MethodGet, url, "", nil, "")
+	if status != http.StatusOK {
+		fail(fmt.Sprintf("GET %s: expected 200, got %d body=%s", url, status, body))
 	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
-	return string(b)
+	return body
 }
 
 func httpGetAuth(url, token string) (int, string) {
@@ -260,19 +282,31 @@ func httpGetAuth(url, token string) (int, string) {
 }
 
 func httpGetNoAuth(url string) (int, string) {
-	resp, err := http.Get(url)
-	if err != nil {
-		fail("GET " + url + ": " + err.Error())
-	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
-	return resp.StatusCode, string(b)
+	return httpRequest(http.MethodGet, url, "", nil, "")
 }
 
 func httpPost(url string, body []byte) (int, string) {
-	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
+	return httpRequest(http.MethodPost, url, "", bytes.NewReader(body), "application/json")
+}
+
+func httpPostAuth(url, token string, body []byte) (int, string) {
+	return httpRequest(http.MethodPost, url, token, bytes.NewReader(body), "application/json")
+}
+
+func httpRequest(method, url, token string, body io.Reader, contentType string) (int, string) {
+	req, err := http.NewRequest(method, url, body)
 	if err != nil {
-		fail("POST " + url + ": " + err.Error())
+		fail(method + " " + url + ": " + err.Error())
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fail(method + " " + url + ": " + err.Error())
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)

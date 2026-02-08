@@ -139,6 +139,7 @@ func (s *DelegSvc) Delegate(req DelegReq) (*DelegResp, error) {
 		fmt.Sprintf("depth=%d", currentDepth+1),
 		"chain_hash="+chainHash,
 	)
+	obs.RecordDelegationDepth(float64(currentDepth + 1))
 
 	return &DelegResp{
 		DelegationToken: resp.AccessToken,

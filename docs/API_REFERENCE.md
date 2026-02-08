@@ -10,7 +10,7 @@ OpenAPI document:
 Local development:
 - `http://127.0.0.1:8080`
 
-## Endpoints currently implemented (M01-M04, M07)
+## Endpoints currently implemented (M01-M04, M07-M08)
 
 ### GET /v1/health
 
@@ -22,13 +22,44 @@ Authentication:
 
 Success response:
 - status: `200`
-- body:
+- body fields:
+  - `status`: `healthy`
+  - `version`: broker version string
+  - `uptime_seconds`: process uptime in seconds
+  - `components`: object with component health (currently `sqlite`, `redis`)
+
+Non-healthy response:
+- status: `503`
+- body fields:
+  - `status`: `degraded|unhealthy`
+  - `version`
+  - `uptime_seconds`
+  - `components`
 
 ```json
 {
-  "status": "healthy"
+  "status": "healthy",
+  "version": "0.1.0",
+  "uptime_seconds": 42,
+  "components": {
+    "sqlite": "healthy",
+    "redis": "healthy"
+  }
 }
 ```
+
+### GET /v1/metrics
+
+Purpose:
+- expose Prometheus metrics for operational monitoring
+
+Authentication:
+- none
+
+Success response:
+- status: `200`
+- content type: `text/plain; version=0.0.4`
+- body: Prometheus exposition with `aa_*` metrics
 
 ## Error model (current)
 
@@ -37,6 +68,8 @@ Common fields:
 - `type`
 - `title`
 - `status`
+- `detail`
+- `instance` (request path when available)
 
 Common categories currently used:
 - bad request (`400`)
@@ -127,7 +160,7 @@ Purpose:
 - revoke tokens at 4 levels: token, agent, task, delegation_chain
 
 Authentication:
-- none (admin endpoint)
+- bearer token with `admin:Broker:*` scope
 
 Request body:
 - `level` (required) — one of: `token`, `agent`, `task`, `delegation_chain`
@@ -144,6 +177,8 @@ Success response:
 
 Error responses:
 - `400` invalid level or missing target_id
+- `401` missing/invalid bearer token
+- `403` insufficient admin scope
 
 Errors are returned as RFC 7807 `application/problem+json`.
 

@@ -105,21 +105,28 @@ func (h *HeartbeatMgr) StartMonitor(ctx context.Context, interval time.Duration)
 
 func (h *HeartbeatMgr) sweep() {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-
 	now := time.Now().UTC()
+	totalAgents := len(h.agents)
+	missedAgents := 0
 	for id, s := range h.agents {
 		elapsed := now.Sub(s.lastSeen)
 		missed := int(elapsed / h.interval)
 		if missed <= 0 {
+			if s.missedCount > 0 {
+				missedAgents++
+			}
 			continue
 		}
 		s.missedCount += missed
 		s.lastSeen = now // reset to avoid double-counting on next sweep
+		if s.missedCount > 0 {
+			missedAgents++
+		}
 
 		if s.missedCount >= h.maxMiss {
 			if h.revSvc != nil {
 				_ = h.revSvc.RevokeAgent(id, "heartbeat: exceeded max missed heartbeats")
+				obs.RecordAnomalyRevocation()
 				obs.Warn("MUTAUTH", "Heartbeat.Sweep", "agent auto-revoked",
 					"agent_id="+id, "missed="+itoa(s.missedCount))
 			} else {
@@ -128,6 +135,12 @@ func (h *HeartbeatMgr) sweep() {
 			}
 		}
 	}
+	missRate := 0.0
+	if totalAgents > 0 {
+		missRate = float64(missedAgents) / float64(totalAgents)
+	}
+	h.mu.Unlock()
+	obs.SetHeartbeatMissRate(missRate)
 }
 
 func itoa(n int) string {

@@ -28,13 +28,13 @@ func (h *DelegHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var req deleg.DelegReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeProblem(w, http.StatusBadRequest, "urn:agentauth:error:bad-request", "Malformed JSON body")
+		obs.WriteProblemForRequest(w, r, http.StatusBadRequest, "urn:agentauth:error:bad-request", "Malformed JSON body", "Malformed JSON body")
 		return
 	}
 
 	resp, err := h.delegSvc.Delegate(req)
 	if err != nil {
-		h.handleDelegError(w, err)
+		h.handleDelegError(w, r, err)
 		return
 	}
 
@@ -47,32 +47,32 @@ func (h *DelegHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleDelegError maps DelegSvc errors to RFC 7807 responses.
-func (h *DelegHdl) handleDelegError(w http.ResponseWriter, err error) {
+func (h *DelegHdl) handleDelegError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, deleg.ErrDelegatorTokenInvalid):
-		writeProblem(w, http.StatusUnauthorized, "urn:agentauth:error:invalid-token", err.Error())
+		obs.WriteProblemForRequest(w, r, http.StatusUnauthorized, "urn:agentauth:error:invalid-token", "Delegator token invalid", err.Error())
 		obs.Fail("DELEG", "DelegHdl.ServeHTTP", "invalid delegator token", "error="+err.Error())
 
 	case errors.Is(err, deleg.ErrScopeEscalation):
-		writeProblem(w, http.StatusForbidden, "urn:agentauth:error:scope-escalation", err.Error())
+		obs.WriteProblemForRequest(w, r, http.StatusForbidden, "urn:agentauth:error:scope-escalation", "Scope escalation blocked", err.Error())
 		obs.Warn("DELEG", "DelegHdl.ServeHTTP", "scope escalation blocked", "error="+err.Error())
 
 	case errors.Is(err, deleg.ErrDepthExceeded):
-		writeProblem(w, http.StatusForbidden, "urn:agentauth:error:delegation-depth-exceeded", err.Error())
+		obs.WriteProblemForRequest(w, r, http.StatusForbidden, "urn:agentauth:error:delegation-depth-exceeded", "Delegation depth exceeded", err.Error())
 		obs.Warn("DELEG", "DelegHdl.ServeHTTP", "depth exceeded", "error="+err.Error())
 
 	case errors.Is(err, deleg.ErrTTLExceedsRemaining):
-		writeProblem(w, http.StatusBadRequest, "urn:agentauth:error:ttl-exceeded", err.Error())
+		obs.WriteProblemForRequest(w, r, http.StatusBadRequest, "urn:agentauth:error:ttl-exceeded", "Delegation TTL exceeds remaining", err.Error())
 		obs.Warn("DELEG", "DelegHdl.ServeHTTP", "TTL exceeds remaining", "error="+err.Error())
 
 	case errors.Is(err, deleg.ErrTargetAgentEmpty):
-		writeProblem(w, http.StatusBadRequest, "urn:agentauth:error:bad-request", err.Error())
+		obs.WriteProblemForRequest(w, r, http.StatusBadRequest, "urn:agentauth:error:bad-request", "Invalid delegation request", err.Error())
 
 	case errors.Is(err, deleg.ErrRequestedScopeEmpty):
-		writeProblem(w, http.StatusBadRequest, "urn:agentauth:error:bad-request", err.Error())
+		obs.WriteProblemForRequest(w, r, http.StatusBadRequest, "urn:agentauth:error:bad-request", "Invalid delegation request", err.Error())
 
 	default:
-		writeProblem(w, http.StatusInternalServerError, "urn:agentauth:error:internal", "Delegation failed")
+		obs.WriteProblemForRequest(w, r, http.StatusInternalServerError, "urn:agentauth:error:internal", "Delegation failed", err.Error())
 		obs.Fail("DELEG", "DelegHdl.ServeHTTP", "delegation failed", "error="+err.Error())
 	}
 }

@@ -34,7 +34,7 @@ func TestIdentityChallengeRegisterAndSingleUseLaunchToken(t *testing.T) {
 	mux.Handle("/v1/token/renew", handler.NewRenewHdl(tknSvc))
 	revSvc := revoke.NewRevSvc()
 	valMw := authz.NewValMw(tknSvc, revSvc)
-	mux.Handle("/v1/revoke", handler.NewRevokeHdl(revSvc))
+	mux.Handle("/v1/revoke", authz.WithRequiredScope("admin:Broker:*", valMw.Wrap(handler.NewRevokeHdl(revSvc))))
 	mux.Handle("/v1/protected/customers/12345", authz.WithRequiredScope("read:Customers:12345", valMw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"customer_id":"12345"}`))
@@ -183,7 +183,20 @@ func TestIdentityChallengeRegisterAndSingleUseLaunchToken(t *testing.T) {
 		"target_id": claims.Jti,
 		"reason":    "integration test revocation",
 	})
-	revokeRes, err := http.Post(srv.URL+"/v1/revoke", "application/json", bytes.NewReader(revokeBody))
+	adminResp, err := tknSvc.Issue(token.IssueReq{
+		AgentID:   "spiffe://agentauth.local/agent/orch-456/task-789/admin",
+		OrchID:    "orch-456",
+		TaskID:    "task-789",
+		Scope:     []string{"admin:Broker:*"},
+		TTLSecond: 300,
+	})
+	if err != nil {
+		t.Fatalf("issue admin token for revoke: %v", err)
+	}
+	revokeReq, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/revoke", bytes.NewReader(revokeBody))
+	revokeReq.Header.Set("Content-Type", "application/json")
+	revokeReq.Header.Set("Authorization", "Bearer "+adminResp.AccessToken)
+	revokeRes, err := http.DefaultClient.Do(revokeReq)
 	if err != nil {
 		t.Fatalf("revoke request failed: %v", err)
 	}

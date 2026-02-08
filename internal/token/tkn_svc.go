@@ -3,7 +3,6 @@ package token
 import (
 	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/divineartis/agentauth/internal/cfg"
+	"github.com/divineartis/agentauth/internal/obs"
 )
 
 // Token verification errors.
@@ -65,6 +65,11 @@ func NewTknSvc(signingKey ed25519.PrivateKey, pubKey ed25519.PublicKey, c cfg.Cf
 
 // Issue creates and signs a new JWT token from the given request parameters.
 func (s *TknSvc) Issue(req IssueReq) (*IssueResp, error) {
+	start := time.Now()
+	defer func() {
+		obs.RecordIssuance(float64(time.Since(start).Milliseconds()))
+	}()
+
 	ttl := req.TTLSecond
 	if ttl <= 0 {
 		ttl = s.cfg.DefaultTTL
@@ -130,8 +135,14 @@ func (s *TknSvc) Verify(tokenStr string) (*TknClaims, error) {
 	if claims.Exp == 0 || now > claims.Exp+s.clockSkew {
 		return nil, ErrTokenExpired
 	}
+	if now > claims.Exp {
+		obs.RecordClockSkew()
+	}
 	if claims.Nbf != 0 && now+s.clockSkew < claims.Nbf {
 		return nil, ErrTokenNotYet
+	}
+	if claims.Nbf != 0 && now < claims.Nbf {
+		obs.RecordClockSkew()
 	}
 	if err := claims.Validate(time.Now().UTC()); err != nil {
 		return nil, err
@@ -171,7 +182,7 @@ func (s *TknSvc) signClaims(claims TknClaims) (string, error) {
 	payloadB64 := base64.RawURLEncoding.EncodeToString(payload)
 	signingInput := headerB64 + "." + payloadB64
 	sig := ed25519.Sign(s.signingKey, []byte(signingInput))
-	if subtle.ConstantTimeEq(int32(len(sig)), int32(ed25519.SignatureSize)) != 1 {
+	if len(sig) != ed25519.SignatureSize {
 		return "", fmt.Errorf("signature size mismatch")
 	}
 	return signingInput + "." + base64.RawURLEncoding.EncodeToString(sig), nil
