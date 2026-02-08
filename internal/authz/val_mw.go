@@ -6,8 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
+	"github.com/divineartis/agentauth/internal/deleg"
 	"github.com/divineartis/agentauth/internal/obs"
 	"github.com/divineartis/agentauth/internal/revoke"
 	"github.com/divineartis/agentauth/internal/token"
@@ -48,11 +50,26 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 			return
 		}
 
+		// Enforce delegated-chain integrity if token carries delegation history.
+		if len(claims.DelegChain) > 0 {
+			if ok, cerr := deleg.VerifyChain(claims.DelegChain, claims.Scope, m.revChecker, m.tknSvc.PublicKey()); !ok {
+				deny(w, http.StatusUnauthorized, "urn:agentauth:error:invalid-delegation-chain", "invalid delegation chain")
+				obs.Fail("AUTHZ", "ValMw.Wrap", "authorization denied",
+					"reason=invalid_delegation_chain",
+					"hop="+strconv.Itoa(cerr.Hop),
+					"detail="+cerr.Reason,
+				)
+				return
+			}
+		}
+
 		chainHash := computeChainHash(claims.DelegChain)
-		if revoked, level := m.revChecker.IsRevoked(claims.Jti, claims.Sub, claims.TaskId, chainHash); revoked {
-			deny(w, http.StatusUnauthorized, "urn:agentauth:error:token-revoked", "token has been revoked")
-			obs.Fail("AUTHZ", "ValMw.Wrap", "authorization denied", "reason=revoked", "level="+level)
-			return
+		if m.revChecker != nil {
+			if revoked, level := m.revChecker.IsRevoked(claims.Jti, claims.Sub, claims.TaskId, chainHash); revoked {
+				deny(w, http.StatusUnauthorized, "urn:agentauth:error:token-revoked", "token has been revoked")
+				obs.Fail("AUTHZ", "ValMw.Wrap", "authorization denied", "reason=revoked", "level="+level)
+				return
+			}
 		}
 
 		if required, _ := r.Context().Value(ctxRequiredScope).(string); required != "" {
@@ -113,4 +130,3 @@ func computeChainHash(chain []token.DelegRecord) string {
 	h := sha256.Sum256(raw)
 	return hex.EncodeToString(h[:])
 }
-

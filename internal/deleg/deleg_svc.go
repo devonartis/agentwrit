@@ -122,11 +122,12 @@ func (s *DelegSvc) Delegate(req DelegReq) (*DelegResp, error) {
 
 	// Issue new JWT with delegation chain for the target agent.
 	resp, err := s.tknSvc.Issue(token.IssueReq{
-		AgentID:   req.TargetAgentId,
-		OrchID:    claims.OrchId,
-		TaskID:    claims.TaskId,
-		Scope:     attenuated,
-		TTLSecond: ttl,
+		AgentID:    req.TargetAgentId,
+		OrchID:     claims.OrchId,
+		TaskID:     claims.TaskId,
+		Scope:      attenuated,
+		TTLSecond:  ttl,
+		DelegChain: chain,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to issue delegation token: %w", err)
