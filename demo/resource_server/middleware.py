@@ -13,14 +13,13 @@ import os
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable
 
 import httpx
-
-logger = logging.getLogger(__name__)
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse
+
+logger = logging.getLogger(__name__)
 
 
 class ServerMode(str, Enum):

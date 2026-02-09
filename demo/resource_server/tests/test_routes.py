@@ -52,6 +52,10 @@ class TestGetCustomer:
     ) -> None:
         resp = insecure_client.get("/customers/99999", headers=api_key_headers)
         assert resp.status_code == 404
+        assert "application/problem+json" in resp.headers["content-type"]
+        body = resp.json()
+        assert body["type"].startswith("urn:agentauth:resource:")
+        assert body["status"] == 404
 
 
 class TestGetOrders:
