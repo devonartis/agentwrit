@@ -15,16 +15,23 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from resource_server.middleware import ServerMode
+from resource_server.middleware import AuthMiddleware, ServerMode
 from resource_server.routes import router
 
 
-def create_app(mode: ServerMode | None = None) -> FastAPI:
+def create_app(
+    mode: ServerMode | None = None,
+    broker_url: str | None = None,
+    http_client=None,
+) -> FastAPI:
     """Build and return the FastAPI application.
 
     Args:
         mode: Operating mode. If None, reads from RESOURCE_SERVER_MODE env var
               (default "secure").
+        broker_url: Override broker URL (default: BROKER_URL env var or
+                    http://localhost:8080).
+        http_client: Optional httpx.AsyncClient for testing broker calls.
     """
     if mode is None:
         raw = os.environ.get("RESOURCE_SERVER_MODE", "secure").lower()
@@ -37,6 +44,12 @@ def create_app(mode: ServerMode | None = None) -> FastAPI:
     )
     app.state.mode = mode
 
+    app.add_middleware(
+        AuthMiddleware,
+        mode=mode,
+        broker_url=broker_url,
+        http_client=http_client,
+    )
     app.include_router(router)
 
     @app.get("/health")

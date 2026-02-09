@@ -1,8 +1,8 @@
 """Unit tests for resource server route handlers.
 
 These tests exercise the four endpoints with the app in insecure mode
-(no auth middleware yet — that is M11-T02). They validate request/response
-contracts, seed data correctness, and error handling.
+(API-Key header required). They validate request/response contracts,
+seed data correctness, and error handling.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 
 class TestHealthEndpoint:
-    """GET /health."""
+    """GET /health — no auth required."""
 
     def test_returns_healthy(self, insecure_client: TestClient) -> None:
         resp = insecure_client.get("/health")
@@ -29,86 +29,117 @@ class TestHealthEndpoint:
 class TestGetCustomer:
     """GET /customers/{id}."""
 
-    def test_existing_customer(self, insecure_client: TestClient) -> None:
-        resp = insecure_client.get("/customers/12345")
+    def test_existing_customer(
+        self, insecure_client: TestClient, api_key_headers: dict
+    ) -> None:
+        resp = insecure_client.get("/customers/12345", headers=api_key_headers)
         assert resp.status_code == 200
         body = resp.json()
         assert body["id"] == 12345
         assert body["name"] == "Alice Johnson"
         assert body["tier"] == "premium"
 
-    def test_all_seed_customers(self, insecure_client: TestClient) -> None:
+    def test_all_seed_customers(
+        self, insecure_client: TestClient, api_key_headers: dict
+    ) -> None:
         for cid in [12345, 12346, 12347, 12348, 12349]:
-            resp = insecure_client.get(f"/customers/{cid}")
+            resp = insecure_client.get(f"/customers/{cid}", headers=api_key_headers)
             assert resp.status_code == 200
             assert resp.json()["id"] == cid
 
-    def test_nonexistent_customer_404(self, insecure_client: TestClient) -> None:
-        resp = insecure_client.get("/customers/99999")
+    def test_nonexistent_customer_404(
+        self, insecure_client: TestClient, api_key_headers: dict
+    ) -> None:
+        resp = insecure_client.get("/customers/99999", headers=api_key_headers)
         assert resp.status_code == 404
 
 
 class TestGetOrders:
     """GET /orders/{customer_id}."""
 
-    def test_customer_with_orders(self, insecure_client: TestClient) -> None:
-        resp = insecure_client.get("/orders/12345")
+    def test_customer_with_orders(
+        self, insecure_client: TestClient, api_key_headers: dict
+    ) -> None:
+        resp = insecure_client.get("/orders/12345", headers=api_key_headers)
         assert resp.status_code == 200
         orders = resp.json()
         assert len(orders) == 2
         assert all(o["customer_id"] == 12345 for o in orders)
 
-    def test_customer_without_orders(self, insecure_client: TestClient) -> None:
-        """Customer 12345 has orders, but edge case: if a customer had none,
-        the endpoint should return an empty list. We test via the endpoint's
-        seed data — all 5 customers have orders."""
-        # All seeded customers have at least 2 orders
+    def test_all_customers_have_orders(
+        self, insecure_client: TestClient, api_key_headers: dict
+    ) -> None:
         for cid in [12345, 12346, 12347, 12348, 12349]:
-            resp = insecure_client.get(f"/orders/{cid}")
+            resp = insecure_client.get(f"/orders/{cid}", headers=api_key_headers)
             assert resp.status_code == 200
             assert len(resp.json()) >= 2
 
-    def test_nonexistent_customer_404(self, insecure_client: TestClient) -> None:
-        resp = insecure_client.get("/orders/99999")
+    def test_nonexistent_customer_404(
+        self, insecure_client: TestClient, api_key_headers: dict
+    ) -> None:
+        resp = insecure_client.get("/orders/99999", headers=api_key_headers)
         assert resp.status_code == 404
 
 
 class TestUpdateTicket:
     """PUT /tickets/{id}."""
 
-    def test_update_status(self, insecure_client: TestClient) -> None:
-        resp = insecure_client.put("/tickets/789", json={"status": "closed"})
+    def test_update_status(
+        self, insecure_client: TestClient, api_key_headers: dict
+    ) -> None:
+        resp = insecure_client.put(
+            "/tickets/789", json={"status": "closed"}, headers=api_key_headers
+        )
         assert resp.status_code == 200
         body = resp.json()
         assert body["id"] == 789
         assert body["status"] == "closed"
 
-    def test_update_assignee(self, insecure_client: TestClient) -> None:
-        resp = insecure_client.put("/tickets/789", json={"assignee": "agent-c"})
+    def test_update_assignee(
+        self, insecure_client: TestClient, api_key_headers: dict
+    ) -> None:
+        resp = insecure_client.put(
+            "/tickets/789", json={"assignee": "agent-c"}, headers=api_key_headers
+        )
         assert resp.status_code == 200
         assert resp.json()["assignee"] == "agent-c"
 
-    def test_partial_update(self, insecure_client: TestClient) -> None:
+    def test_partial_update(
+        self, insecure_client: TestClient, api_key_headers: dict
+    ) -> None:
         """Updating only assignee should not change status."""
-        resp = insecure_client.put("/tickets/789", json={"assignee": "x"})
+        resp = insecure_client.put(
+            "/tickets/789", json={"assignee": "x"}, headers=api_key_headers
+        )
         assert resp.json()["status"] == "open"
 
-    def test_nonexistent_ticket_404(self, insecure_client: TestClient) -> None:
-        resp = insecure_client.put("/tickets/99999", json={"status": "closed"})
+    def test_nonexistent_ticket_404(
+        self, insecure_client: TestClient, api_key_headers: dict
+    ) -> None:
+        resp = insecure_client.put(
+            "/tickets/99999", json={"status": "closed"}, headers=api_key_headers
+        )
         assert resp.status_code == 404
 
-    def test_invalid_status_422(self, insecure_client: TestClient) -> None:
-        resp = insecure_client.put("/tickets/789", json={"status": "invalid_status"})
+    def test_invalid_status_422(
+        self, insecure_client: TestClient, api_key_headers: dict
+    ) -> None:
+        resp = insecure_client.put(
+            "/tickets/789", json={"status": "invalid_status"}, headers=api_key_headers
+        )
         assert resp.status_code == 422
 
 
 class TestSendNotification:
     """POST /notifications/send."""
 
-    def test_send_success(self, insecure_client: TestClient) -> None:
+    def test_send_success(
+        self, insecure_client: TestClient, api_key_headers: dict
+    ) -> None:
         resp = insecure_client.post(
             "/notifications/send",
             json={"customer_id": 12345, "message": "Your ticket is resolved"},
+            headers=api_key_headers,
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -117,24 +148,33 @@ class TestSendNotification:
         assert body["channel"] == "email"
         assert "notification_id" in body
 
-    def test_custom_channel(self, insecure_client: TestClient) -> None:
+    def test_custom_channel(
+        self, insecure_client: TestClient, api_key_headers: dict
+    ) -> None:
         resp = insecure_client.post(
             "/notifications/send",
             json={"customer_id": 12345, "message": "Hello", "channel": "sms"},
+            headers=api_key_headers,
         )
         assert resp.json()["channel"] == "sms"
 
-    def test_nonexistent_customer_404(self, insecure_client: TestClient) -> None:
+    def test_nonexistent_customer_404(
+        self, insecure_client: TestClient, api_key_headers: dict
+    ) -> None:
         resp = insecure_client.post(
             "/notifications/send",
             json={"customer_id": 99999, "message": "Hello"},
+            headers=api_key_headers,
         )
         assert resp.status_code == 404
 
-    def test_missing_required_field_422(self, insecure_client: TestClient) -> None:
+    def test_missing_required_field_422(
+        self, insecure_client: TestClient, api_key_headers: dict
+    ) -> None:
         resp = insecure_client.post(
             "/notifications/send",
             json={"customer_id": 12345},
+            headers=api_key_headers,
         )
         assert resp.status_code == 422
 

@@ -7,13 +7,11 @@ from fastapi.testclient import TestClient
 
 from resource_server.main import create_app
 from resource_server.middleware import ServerMode
-from resource_server.seed_data import TICKETS
-from resource_server.models import TicketStatus
 
 
 @pytest.fixture
 def secure_client() -> TestClient:
-    """TestClient running in secure mode."""
+    """TestClient running in secure mode (no broker — use test_middleware for broker tests)."""
     app = create_app(mode=ServerMode.secure)
     return TestClient(app)
 
@@ -23,6 +21,12 @@ def insecure_client() -> TestClient:
     """TestClient running in insecure mode."""
     app = create_app(mode=ServerMode.insecure)
     return TestClient(app)
+
+
+@pytest.fixture
+def api_key_headers() -> dict[str, str]:
+    """Default API-Key headers for insecure mode tests."""
+    return {"API-Key": "test-key-12345"}
 
 
 @pytest.fixture(autouse=True)
