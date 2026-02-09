@@ -20,10 +20,13 @@
 - [Admin Bootstrap](#admin-bootstrap)
   - [POST /v1/admin/auth](#post-v1adminauth)
   - [POST /v1/admin/launch-tokens](#post-v1adminlaunch-tokens)
+  - [POST /v1/admin/sidecar-activations](#post-v1adminsidecar-activations)
+  - [POST /v1/sidecar/activate](#post-v1sidecaractivate)
 - [Agent Identity](#agent-identity)
   - [POST /v1/register](#post-v1register)
 - [Token Management](#token-management)
   - [POST /v1/token/renew](#post-v1tokenrenew)
+  - [POST /v1/token/exchange](#post-v1tokenexchange)
   - [POST /v1/revoke](#post-v1revoke)
 - [Delegation](#delegation)
   - [POST /v1/delegate](#post-v1delegate)
@@ -79,8 +82,11 @@ If any check fails, the middleware returns an RFC 7807 error and the request nev
 | `POST` | `/v1/token/validate` | None | Validate a token and return claims |
 | `POST` | `/v1/admin/auth` | Secret in body | Exchange admin secret for JWT |
 | `POST` | `/v1/admin/launch-tokens` | Bearer + `admin:launch-tokens:*` | Create a launch token |
+| `POST` | `/v1/admin/sidecar-activations` | Bearer + `admin:launch-tokens:*` | Create a sidecar activation token |
+| `POST` | `/v1/sidecar/activate` | Token in body | Exchange activation token for sidecar Bearer token |
 | `POST` | `/v1/register` | Launch token in body | Register an agent |
 | `POST` | `/v1/token/renew` | Bearer | Renew a token |
+| `POST` | `/v1/token/exchange` | Bearer + `sidecar:manage:*` | Sidecar-mediated token issuance |
 | `POST` | `/v1/revoke` | Bearer + `admin:revoke:*` | Revoke tokens |
 | `POST` | `/v1/delegate` | Bearer | Create delegation token |
 | `GET` | `/v1/audit/events` | Bearer + `admin:audit:*` | Query audit trail |
@@ -375,6 +381,96 @@ curl -X POST http://localhost:8080/v1/admin/launch-tokens \
 
 ---
 
+### POST /v1/admin/sidecar-activations
+
+Create a short-lived single-use sidecar activation token. This token is used to initialize a sidecar instance.
+
+**Auth:** Bearer JWT with `admin:launch-tokens:*` scope
+
+**Request:**
+
+```json
+{
+  "allowed_scope_prefix": "read:data:*",
+  "ttl": 900
+}
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `allowed_scope_prefix` | string | Yes | -- | Scope prefix the sidecar is allowed to manage |
+| `ttl` | int | No | `900` | Activation token TTL in seconds |
+
+**Response `201 Created`:**
+
+```json
+{
+  "activation_token": "eyJhbG...",
+  "expires_at": "2026-02-09T13:45:00Z",
+  "scope": "sidecar:activate:read:data:*"
+}
+```
+
+**Example:**
+
+```bash
+curl -X POST http://localhost:8080/v1/admin/sidecar-activations \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"allowed_scope_prefix":"read:data:*","ttl":900}'
+```
+
+---
+
+### POST /v1/sidecar/activate
+
+Exchange a Sidecar-Activation token for a functional sidecar Bearer token. Enforces single-use replay protection.
+
+**Auth:** None (activation token in body)
+
+**Request:**
+
+```json
+{
+  "sidecar_activation_token": "eyJhbG..."
+}
+```
+
+**Response `200 OK`:**
+
+```json
+{
+  "access_token": "eyJhbG...",
+  "expires_in": 900,
+  "token_type": "Bearer",
+  "sidecar_id": "e2b7777781a064686237079634888b11"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `access_token` | string | Functional sidecar Bearer token |
+| `expires_in` | int | Token TTL in seconds |
+| `token_type` | string | Always `"Bearer"` |
+| `sidecar_id` | string | Stable sidecar identifier |
+
+**Error responses:**
+
+| Status | error_code | Condition |
+|--------|------------|-----------|
+| `401` | `activation_token_replayed` | Token already used |
+| `401` | `invalid_activation_token` | Token invalid or expired |
+
+**Example:**
+
+```bash
+curl -X POST http://localhost:8080/v1/sidecar/activate \
+  -H "Content-Type: application/json" \
+  -d "{\"sidecar_activation_token\":\"$ACTIVATION_TOKEN\"}"
+```
+
+---
+
 ## Agent Identity
 
 ### POST /v1/register
@@ -536,6 +632,76 @@ Renew an existing token. Issues a new token with the same claims (`sub`, `sid`, 
 ```bash
 curl -X POST http://localhost:8080/v1/token/renew \
   -H "Authorization: Bearer $AGENT_TOKEN"
+```
+
+---
+
+### POST /v1/token/exchange
+
+Exchange sidecar authority for an agent token. This endpoint is used by a sidecar to mint an agent token within the sidecar's permitted scope ceiling.
+
+**Auth:** Bearer JWT with `sidecar:manage:*` scope and one or more scope-ceiling entries in claims like `sidecar:scope:read:data:*`.
+
+**Request:**
+
+```json
+{
+  "agent_id": "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+  "scope": ["read:data:*"],
+  "ttl": 90,
+  "sidecar_id": "client-supplied-value-ignored"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `agent_id` | string | Yes | SPIFFE agent ID receiving the token |
+| `scope` | string[] | Yes | Requested scopes; must be subset of sidecar scope ceiling |
+| `ttl` | int | No | Token TTL seconds (`<=0` or omitted uses broker default) |
+| `sidecar_id` | string | No | Ignored by broker; lineage comes from caller token `sid` |
+
+**Response `200 OK`:**
+
+```json
+{
+  "access_token": "eyJhbGciOiJFZERTQSIs...",
+  "expires_in": 90,
+  "token_type": "Bearer",
+  "agent_id": "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+  "sidecar_id": "abc123"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `access_token` | string | EdDSA-signed JWT for the target agent |
+| `expires_in` | int | Token TTL in seconds |
+| `token_type` | string | Always `"Bearer"` |
+| `agent_id` | string | Target SPIFFE ID |
+| `sidecar_id` | string | Broker-derived sidecar lineage identifier |
+
+**Security semantics:**
+
+1. Requested scopes must be a subset of the sidecar scope ceiling (`scope_escalation_denied` on failure).
+2. Client-provided `sidecar_id` is ignored; broker injects lineage from authenticated sidecar token (`sid`).
+3. If no sidecar scope ceiling exists in the token, request is denied.
+
+**Error responses:**
+
+| Status | Condition |
+|--------|-----------|
+| `400` | Malformed JSON body or missing `agent_id`/`scope` |
+| `401` | Missing/invalid Bearer token |
+| `403` | Scope escalation denied or sidecar scope ceiling missing |
+| `404` | Target `agent_id` not found |
+
+**Example:**
+
+```bash
+curl -X POST http://localhost:8080/v1/token/exchange \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $SIDECAR_TOKEN" \
+  -d '{"agent_id":"spiffe://agentauth.local/agent/orch-1/task-1/abc123","scope":["read:data:*"],"ttl":90}'
 ```
 
 ---
@@ -782,6 +948,9 @@ Query the audit trail. Returns events with hash-chain integrity verification. Ev
 | `admin_auth_failed` | Admin authentication attempt failed |
 | `launch_token_issued` | Launch token created via `POST /v1/admin/launch-tokens` |
 | `launch_token_denied` | Launch token request denied |
+| `sidecar_activation_issued` | Sidecar activation token issued via `POST /v1/admin/sidecar-activations` |
+| `sidecar_activated` | Sidecar activation token exchanged via `POST /v1/sidecar/activate` |
+| `sidecar_activation_failed` | Sidecar activation failed (invalid/replayed token) |
 | `agent_registered` | Agent registration succeeded via `POST /v1/register` |
 | `registration_policy_violation` | Registration rejected due to scope violation |
 | `token_issued` | Agent token issued (during registration) |
@@ -836,7 +1005,10 @@ All error responses use `Content-Type: application/problem+json` per [RFC 7807](
   "title": "Unauthorized",
   "status": 401,
   "detail": "token verification failed: signature verification failed",
-  "instance": "/v1/admin/launch-tokens"
+  "instance": "/v1/admin/launch-tokens",
+  "error_code": "unauthorized",
+  "request_id": "c3b53ae48e64af95",
+  "hint": "Ensure the Bearer token is valid and not expired"
 }
 ```
 
@@ -847,6 +1019,9 @@ All error responses use `Content-Type: application/problem+json` per [RFC 7807](
 | `status` | int | HTTP status code |
 | `detail` | string | Specific error description |
 | `instance` | string | The request path that triggered the error |
+| `error_code` | string | Standardized internal error code for programmatic handling |
+| `request_id` | string | Unique request identifier for log correlation |
+| `hint` | string | Optional diagnostic hint for developers |
 
 **Error type URNs:**
 

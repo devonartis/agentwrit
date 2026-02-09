@@ -131,6 +131,45 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /v1/token/exchange:
+    post:
+      tags: [Token]
+      summary: Exchange sidecar authority for an agent token
+      description: >
+        Sidecar-mediated token issuance. Requires a Bearer sidecar token with
+        `sidecar:manage:*` and at least one sidecar scope ceiling claim of the
+        form `sidecar:scope:<action:resource:identifier>`. Requested scopes
+        must be a subset of the sidecar ceiling. Client-supplied sidecar_id is
+        ignored and the broker injects lineage into the issued token's `sid`.
+      operationId: exchangeToken
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenExchangeRequest"
+      responses:
+        "200":
+          description: Token exchanged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenExchangeResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Agent not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+
   /v1/delegate:
     post:
       tags: [Delegation]
@@ -229,6 +268,9 @@ paths:
               - admin_auth_failed
               - launch_token_issued
               - launch_token_denied
+              - sidecar_activation_issued
+              - sidecar_activated
+              - sidecar_activation_failed
               - agent_registered
               - registration_policy_violation
               - token_issued
@@ -344,6 +386,64 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /v1/admin/sidecar-activations:
+    post:
+      tags: [Admin]
+      summary: Create a sidecar activation token
+      description: >
+        Issues a short-lived single-use JWT that allows a sidecar to initialize
+        its functional identity. Requires the `admin:launch-tokens:*` scope.
+      operationId: createSidecarActivation
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSidecarActivationRequest"
+      responses:
+        "201":
+          description: Activation token created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateSidecarActivationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/sidecar/activate:
+    post:
+      tags: [Admin]
+      summary: Activate a sidecar
+      description: >
+        Exchanges a Sidecar-Activation token for a functional sidecar Bearer
+        token. Enforces single-use JTI replay protection.
+      operationId: activateSidecar
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivateSidecarRequest"
+      responses:
+        "200":
+          description: Sidecar activated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivateSidecarResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Unauthorized (invalid or replayed token)
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+
   /v1/health:
     get:
       tags: [Observability]
@@ -433,6 +533,18 @@ components:
           type: string
           description: Request path
           example: "/v1/register"
+        error_code:
+          type: string
+          description: Standardized internal error code for programmatic handling
+          example: "invalid_request"
+        request_id:
+          type: string
+          description: Unique request identifier for log correlation
+          example: "c3b53ae48e64af95"
+        hint:
+          type: string
+          description: Optional diagnostic hint for developers
+          example: "Check the 'token' field in your JSON body"
 
     ChallengeResponse:
       type: object
@@ -535,6 +647,52 @@ components:
           type: integer
           description: Token TTL in seconds
           example: 300
+
+    TokenExchangeRequest:
+      type: object
+      required: [agent_id, scope]
+      properties:
+        agent_id:
+          type: string
+          description: SPIFFE agent ID receiving the exchanged token
+          example: "spiffe://agentauth.local/agent/orch-1/task-1/abc123"
+        scope:
+          type: array
+          items:
+            type: string
+          description: Requested scopes; must be a subset of sidecar scope ceiling
+          example: ["read:data:*"]
+        ttl:
+          type: integer
+          description: Optional token TTL seconds (defaults when <=0 or omitted)
+          example: 90
+        sidecar_id:
+          type: string
+          description: Optional client hint ignored by broker; broker-derived lineage is authoritative
+          example: "spoofed-client-value"
+
+    TokenExchangeResponse:
+      type: object
+      required: [access_token, expires_in, token_type, agent_id, sidecar_id]
+      properties:
+        access_token:
+          type: string
+          description: EdDSA-signed JWT for the target agent
+        expires_in:
+          type: integer
+          description: Token TTL in seconds
+          example: 90
+        token_type:
+          type: string
+          example: "Bearer"
+        agent_id:
+          type: string
+          description: Target SPIFFE agent ID
+          example: "spiffe://agentauth.local/agent/orch-1/task-1/abc123"
+        sidecar_id:
+          type: string
+          description: Broker-derived sidecar lineage identifier
+          example: "abc123"
 
     DelegateRequest:
       type: object
@@ -685,6 +843,60 @@ components:
         token_type:
           type: string
           enum: [Bearer]
+
+    CreateSidecarActivationRequest:
+      type: object
+      required: [allowed_scope_prefix]
+      properties:
+        allowed_scope_prefix:
+          type: string
+          description: Scope prefix the sidecar is allowed to grant to agents
+          example: "read:data:*"
+        ttl:
+          type: integer
+          description: Activation token validity in seconds
+          example: 900
+
+    CreateSidecarActivationResponse:
+      type: object
+      required: [activation_token, expires_at, scope]
+      properties:
+        activation_token:
+          type: string
+          description: Short-lived single-use activation JWT
+        expires_at:
+          type: string
+          format: date-time
+          description: Expiry timestamp
+        scope:
+          type: string
+          description: The activation scope assigned to the token
+
+    ActivateSidecarRequest:
+      type: object
+      required: [sidecar_activation_token]
+      properties:
+        sidecar_activation_token:
+          type: string
+          description: The JWT from POST /v1/admin/sidecar-activations
+
+    ActivateSidecarResponse:
+      type: object
+      required: [access_token, expires_in, token_type, sidecar_id]
+      properties:
+        access_token:
+          type: string
+          description: Functional sidecar Bearer token
+        expires_in:
+          type: integer
+          example: 900
+        token_type:
+          type: string
+          example: "Bearer"
+        sidecar_id:
+          type: string
+          description: Stable sidecar identifier derived from activation event
+          example: "e2b7777781a064686237079634888b11"
 
     CreateLaunchTokenRequest:
       type: object

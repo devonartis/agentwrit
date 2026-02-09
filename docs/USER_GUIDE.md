@@ -12,7 +12,8 @@
 3. [Installation](#installation)
 4. [Configuration](#configuration)
 5. [Bootstrap Walkthrough](#bootstrap-walkthrough)
-6. [Monitoring](#monitoring)
+6. [Sidecar Bootstrap flow](#sidecar-bootstrap-flow)
+7. [Monitoring](#monitoring)
 7. [Security Hardening](#security-hardening)
 8. [Troubleshooting](#troubleshooting)
 9. [Operational Runbook](#operational-runbook)
@@ -395,6 +396,27 @@ Response:
 }
 ```
 
+### Step 7b: Sidecar Token Exchange (Optional)
+
+If you run a sidecar, it can mint an agent token on behalf of a registered agent using `POST /v1/token/exchange`.
+
+```bash
+curl -s -X POST $BROKER/v1/token/exchange \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $SIDECAR_TOKEN" \
+  -d "{
+    \"agent_id\": \"$AGENT_ID\",
+    \"scope\": [\"read:Customers:12345\"],
+    \"ttl\": 90,
+    \"sidecar_id\": \"ignored-client-value\"
+  }" | jq .
+```
+
+Notes:
+- Client-supplied `sidecar_id` is ignored; broker injects lineage from authenticated sidecar token.
+- Requested scope must be subset of sidecar scope ceiling (`403 scope_escalation_denied` otherwise).
+- `agent_id` must already exist in broker store (`404 not_found` otherwise).
+
 ### Step 8: Delegate to Another Agent
 
 An agent can delegate a subset of its scope to another registered agent. Scope can only narrow, never expand. Maximum delegation depth is 5 hops.
@@ -547,6 +569,9 @@ curl -s "$BROKER/v1/audit/events?since=2026-02-09T00:00:00Z&until=2026-02-09T23:
 | `admin_auth_failed` | Failed admin authentication attempt |
 | `launch_token_issued` | Launch token created |
 | `launch_token_denied` | Launch token creation rejected |
+| `sidecar_activation_issued` | Sidecar activation token issued |
+| `sidecar_activated` | Sidecar activation token exchanged |
+| `sidecar_activation_failed` | Sidecar activation failed (invalid/replayed token) |
 | `agent_registered` | Agent registered successfully |
 | `registration_policy_violation` | Agent registration denied (scope violation) |
 | `token_issued` | Token issued (at registration) |
@@ -555,6 +580,35 @@ curl -s "$BROKER/v1/audit/events?since=2026-02-09T00:00:00Z&until=2026-02-09T23:
 | `token_revoked` | Credential revoked |
 | `delegation_created` | Delegation token created |
 | `resource_accessed` | Resource access logged (emitted by resource server) |
+
+---
+
+## Sidecar Bootstrap flow
+
+For scenarios where multiple agents run on a single host (e.g., a developer laptop), you can use the Sidecar-First bootstrap flow.
+
+### 1. Admin generates activation token
+
+```bash
+curl -s -X POST http://localhost:8080/v1/admin/sidecar-activations \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"allowed_scope_prefix":"read:data:*","ttl":900}'
+```
+
+### 2. Sidecar activates its identity
+
+The sidecar swaps the activation token for a functional sidecar management token. This is a one-time exchange.
+
+```bash
+curl -s -X POST http://localhost:8080/v1/sidecar/activate \
+  -H "Content-Type: application/json" \
+  -d "{\"sidecar_activation_token\":\"$ACTIVATION_TOKEN\"}"
+```
+
+### 3. Sidecar requests agent tokens
+
+The sidecar can now mint tokens for local agents using `POST /v1/token/exchange`. All agent tokens issued this way will have a `sidecar_id` claim for audit traceability.
 
 ---
 
@@ -887,12 +941,12 @@ The broker uses structured logging via the `obs` package. All log lines follow t
 
 | Field | Description | Example |
 |-------|-------------|---------|
-| `MODULE` | Subsystem that produced the log | `BROKER`, `IDENTITY`, `ADMIN`, `TOKEN`, `DELEG` |
+| `MODULE` | Subsystem that produced the log | `BROKER`, `IDENTITY`, `ADMIN`, `TOKEN`, `DELEG`, `HTTP` |
 | `LEVEL` | Severity: `OK`, `WARN`, `FAIL`, `TRACE` | `OK` |
 | `TIMESTAMP` | UTC RFC3339 timestamp | `2026-02-09T12:00:00Z` |
-| `COMPONENT` | Specific component within the module | `main`, `Register`, `AdminSvc`, `DelegSvc` |
-| `MESSAGE` | Human-readable description | `agent registered` |
-| `CONTEXT` | Key-value pairs with additional data | `agent_id=spiffe://..., scope=[read:Customers:*]` |
+| `COMPONENT` | Specific component within the module | `main`, `Register`, `handler`, `AdminSvc` |
+| `MESSAGE` | Human-readable description | `agent registered`, `request completed` |
+| `CONTEXT` | Key-value pairs with additional data | `method=GET, path=/v1/health, status=200, latency=50ms, request_id=...` |
 
 ### Destinations
 

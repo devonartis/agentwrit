@@ -75,15 +75,16 @@ cmd/broker/main.go
     |
     +---> cfg           (config: reads AA_* env vars)
     +---> obs           (logging + Prometheus metrics)
+    +---> problemdetails (RFC 7807 compliance, Request-ID middleware)
     +---> store         (in-memory storage, mutex-protected maps)
     +---> audit         (hash-chain audit trail)
     +---> token         (JWT issue/verify/renew, uses cfg)
     +---> revoke        (4-level revocation, uses token for claims type)
     +---> identity      (registration, SPIFFE IDs; uses store, token, authz, obs, audit)
-    +---> authz         (scope parsing + ValMw middleware; uses token, revoke)
+    +---> authz         (scope parsing + ValMw middleware; uses token, revoke, problemdetails)
     +---> deleg         (delegation; uses token, store, audit, authz)
-    +---> admin         (admin auth + launch tokens; uses token, store, audit, authz, obs)
-    +---> handler       (HTTP handlers; uses identity, token, authz, revoke, audit, deleg, obs)
+    +---> admin         (admin auth + launch tokens; uses token, store, audit, authz, obs, problemdetails)
+    +---> handler       (HTTP handlers; uses identity, token, authz, revoke, audit, deleg, obs, problemdetails)
 ```
 
 Foundation packages (`cfg`, `obs`, `store`) have no internal dependencies. Everything else builds upward from them.
@@ -267,10 +268,14 @@ Twelve event type constants are defined (see [Section 9](#9-audit-system)).
 `AdminSvc` has two operations:
 - `Authenticate(clientID, clientSecret)` -- constant-time comparison against `AA_ADMIN_SECRET`, issues admin JWT with scope `["admin:launch-tokens:*", "admin:revoke:*", "admin:audit:*"]` and 300s TTL
 - `CreateLaunchToken(req, createdBy)` -- generates 32 random bytes (hex-encoded) as the opaque token, stores with policy binding (allowed scope, max TTL, single-use, expiry)
+- `CreateSidecarActivationToken(req, createdBy)` -- issues short-lived single-use sidecar activation JWT (`aud=sidecar_activation`, scope `sidecar:activate:<prefix>`)
+- `ActivateSidecar(req)` -- exchanges activation token once, enforces replay protection, and issues sidecar token with `sidecar:manage:*` + `sidecar:scope:<...>` and broker-derived `sid`
 
 `AdminHdl` registers two routes via `RegisterRoutes(mux)`:
 - `POST /v1/admin/auth` -- no auth required (this IS the auth endpoint)
 - `POST /v1/admin/launch-tokens` -- wrapped with `valMw.Wrap` + `WithRequiredScope("admin:launch-tokens:*")`
+- `POST /v1/admin/sidecar-activations` -- wrapped with `valMw.Wrap` + `WithRequiredScope("admin:launch-tokens:*")`
+- `POST /v1/sidecar/activate` -- public exchange endpoint (rate-limited, single-use activation token enforcement)
 
 ### `handler` -- HTTP Handlers
 **Files:** `internal/handler/*.go`
@@ -283,6 +288,7 @@ Each handler is a struct implementing `http.Handler`. Pattern: decode JSON, call
 | `RegHdl` | `POST /v1/register` | Launch token |
 | `ValHdl` | `POST /v1/token/validate` | None |
 | `RenewHdl` | `POST /v1/token/renew` | Bearer (via ValMw) |
+| `TokenExchangeHdl` | `POST /v1/token/exchange` | Bearer + `sidecar:manage:*` scope |
 | `RevokeHdl` | `POST /v1/revoke` | Bearer + admin scope |
 | `DelegHdl` | `POST /v1/delegate` | Bearer (via ValMw) |
 | `AuditHdl` | `GET /v1/audit/events` | Bearer + admin scope |
@@ -623,6 +629,13 @@ Revoking at level `"chain"` with the root delegator's agent ID (SPIFFE ID) as ta
 
 ## 11. Middleware Pipeline
 
+### Global Middlewares
+
+In `cmd/broker/main.go`, the entire `ServeMux` is wrapped with two infrastructure middlewares:
+
+1. **RequestIDMiddleware** (`internal/problemdetails`): Generates a unique 16-character hex ID for every request. Injects it into the context and the `X-Request-ID` response header.
+2. **LoggingMiddleware** (`internal/handler`): Captures method, path, status code, latency, and request ID. Logs to stdout via `obs.Ok`.
+
 ### ValMw.Wrap
 
 `ValMw.Wrap(next)` (`internal/authz/val_mw.go`, `Wrap` method) creates a handler that:
@@ -653,6 +666,10 @@ mux.Handle("GET /v1/challenge", challengeHdl)
 // Bearer auth only
 mux.Handle("POST /v1/token/renew", valMw.Wrap(renewHdl))
 
+// Bearer + sidecar scope
+mux.Handle("POST /v1/token/exchange",
+    valMw.Wrap(authz.WithRequiredScope("sidecar:manage:*", tokenExchangeHdl)))
+
 // Bearer + specific scope
 mux.Handle("POST /v1/revoke",
     valMw.Wrap(authz.WithRequiredScope("admin:revoke:*", revokeHdl)))
@@ -667,6 +684,11 @@ mux.HandleFunc("POST /v1/admin/auth", h.handleAuth)          // no auth (IS the 
 mux.Handle("POST /v1/admin/launch-tokens",
     h.valMw.Wrap(authz.WithRequiredScope("admin:launch-tokens:*",
         http.HandlerFunc(h.handleCreateLaunchToken))))
+mux.Handle("POST /v1/admin/sidecar-activations",
+    h.valMw.Wrap(authz.WithRequiredScope("admin:launch-tokens:*",
+        http.HandlerFunc(h.handleCreateSidecarActivation))))
+mux.Handle("POST /v1/sidecar/activate",
+    h.rateLimiter.Wrap(http.HandlerFunc(h.handleActivateSidecar)))
 ```
 
 ### Context Propagation
@@ -685,27 +707,34 @@ if claims == nil {
 
 ## 12. Error Handling
 
-All errors use RFC 7807 `application/problem+json`.
+All errors use RFC 7807 `application/problem+json` and are centralized in the `internal/problemdetails` package to prevent import cycles.
 
 ### WriteProblem Helper
 
-**File:** `internal/handler/problem.go`
+**File:** `internal/problemdetails/problemdetails.go`
 
 ```go
-func WriteProblem(w http.ResponseWriter, status int, errType, detail, instance string) {
-    w.Header().Set("Content-Type", "application/problem+json")
-    w.WriteHeader(status)
-    json.NewEncoder(w).Encode(ProblemDetail{
-        Type:     "urn:agentauth:error:" + errType,
-        Title:    http.StatusText(status),
-        Status:   status,
-        Detail:   detail,
-        Instance: instance,
-    })
+func WriteProblem(ctx context.Context, w http.ResponseWriter, status int, errType, detail, instance string) {
+    WriteProblemExtended(ctx, w, status, errType, detail, instance, errType, "")
 }
 ```
 
-### Error Type Mapping
+The helper automatically retrieves the `request_id` from the context and populates the `error_code` with the `errType`. For more control, use `WriteProblemExtended`.
+
+### ProblemDetail Struct
+
+```go
+type ProblemDetail struct {
+    Type      string `json:"type"`
+    Title     string `json:"title"`
+    Status    int    `json:"status"`
+    Detail    string `json:"detail"`
+    Instance  string `json:"instance"`
+    ErrorCode string `json:"error_code,omitempty"`
+    RequestID string `json:"request_id,omitempty"`
+    Hint      string `json:"hint,omitempty"`
+}
+```
 
 Handlers map domain errors to HTTP status codes and error types:
 
