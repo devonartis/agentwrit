@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/divineartis/agentauth/internal/audit"
+	"github.com/divineartis/agentauth/internal/authz"
 	"github.com/divineartis/agentauth/internal/deleg"
 	"github.com/divineartis/agentauth/internal/obs"
 )
@@ -49,12 +50,13 @@ func (h *DelegHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if h.auditLog != nil {
 		_ = h.auditLog.LogEvent(&audit.AuditEvt{
-			EventType:      audit.EvtDelegationCreated,
-			Resource:       req.TargetAgentId,
-			Action:         "delegate",
-			Outcome:        "created",
-			DelegDepth:     resp.DelegationDepth,
-			DelegChainHash: resp.ChainHash,
+			EventType:       audit.EvtDelegationCreated,
+			AgentInstanceId: authz.AgentIDFromContext(r.Context()),
+			Resource:        req.TargetAgentId,
+			Action:          "delegate",
+			Outcome:         "created",
+			DelegDepth:      resp.DelegationDepth,
+			DelegChainHash:  resp.ChainHash,
 		})
 	}
 }
