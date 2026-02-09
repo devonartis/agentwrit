@@ -1,0 +1,1082 @@
+package handler_test
+
+import (
+	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/divineartis/agentauth/internal/admin"
+	"github.com/divineartis/agentauth/internal/audit"
+	"github.com/divineartis/agentauth/internal/authz"
+	"github.com/divineartis/agentauth/internal/cfg"
+	"github.com/divineartis/agentauth/internal/deleg"
+	"github.com/divineartis/agentauth/internal/handler"
+	"github.com/divineartis/agentauth/internal/identity"
+	"github.com/divineartis/agentauth/internal/revoke"
+	"github.com/divineartis/agentauth/internal/store"
+	"github.com/divineartis/agentauth/internal/token"
+)
+
+const testAdminSecret = "integration-test-secret-32bytes!"
+
+// testBroker sets up a full HTTP mux identical to cmd/broker/main.go.
+type testBroker struct {
+	mux      *http.ServeMux
+	tknSvc   *token.TknSvc
+	store    *store.SqlStore
+	auditLog *audit.AuditLog
+	adminSvc *admin.AdminSvc
+}
+
+func newTestBroker(t *testing.T) *testBroker {
+	t.Helper()
+
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+
+	c := cfg.Cfg{
+		DefaultTTL:  300,
+		TrustDomain: "test.local",
+		AdminSecret: testAdminSecret,
+	}
+
+	sqlStore := store.NewSqlStore()
+	auditLog := audit.NewAuditLog()
+	tknSvc := token.NewTknSvc(priv, pub, c)
+	revSvc := revoke.NewRevSvc()
+	idSvc := identity.NewIdSvc(sqlStore, tknSvc, c.TrustDomain, auditLog)
+	delegSvc := deleg.NewDelegSvc(tknSvc, sqlStore, auditLog)
+	adminSvc := admin.NewAdminSvc(c.AdminSecret, tknSvc, sqlStore, auditLog)
+
+	valMw := authz.NewValMw(tknSvc, revSvc, auditLog)
+
+	challengeHdl := handler.NewChallengeHdl(sqlStore)
+	regHdl := handler.NewRegHdl(idSvc)
+	valHdl := handler.NewValHdl(tknSvc, revSvc)
+	renewHdl := handler.NewRenewHdl(tknSvc, auditLog)
+	revokeHdl := handler.NewRevokeHdl(revSvc, auditLog)
+	delegHdl := handler.NewDelegHdl(delegSvc)
+	auditHdl := handler.NewAuditHdl(auditLog)
+	healthHdl := handler.NewHealthHdl("test")
+	metricsHdl := handler.NewMetricsHdl()
+	adminHdl := admin.NewAdminHdl(adminSvc, valMw, auditLog)
+
+	mux := http.NewServeMux()
+	mux.Handle("GET /v1/challenge", challengeHdl)
+	mux.Handle("GET /v1/health", healthHdl)
+	mux.Handle("GET /v1/metrics", metricsHdl)
+	mux.Handle("POST /v1/token/validate", handler.MaxBytesBody(valHdl))
+	mux.Handle("POST /v1/register", handler.MaxBytesBody(regHdl))
+	mux.Handle("POST /v1/token/renew", handler.MaxBytesBody(valMw.Wrap(renewHdl)))
+	mux.Handle("POST /v1/delegate", handler.MaxBytesBody(valMw.Wrap(delegHdl)))
+	mux.Handle("POST /v1/revoke",
+		handler.MaxBytesBody(valMw.Wrap(authz.WithRequiredScope("admin:revoke:*", revokeHdl))))
+	mux.Handle("GET /v1/audit/events",
+		valMw.Wrap(authz.WithRequiredScope("admin:audit:*", auditHdl)))
+	adminHdl.RegisterRoutes(mux)
+
+	return &testBroker{
+		mux:      mux,
+		tknSvc:   tknSvc,
+		store:    sqlStore,
+		auditLog: auditLog,
+		adminSvc: adminSvc,
+	}
+}
+
+func (b *testBroker) do(req *http.Request) *httptest.ResponseRecorder {
+	rr := httptest.NewRecorder()
+	b.mux.ServeHTTP(rr, req)
+	return rr
+}
+
+func jsonBody(t *testing.T, v any) *bytes.Buffer {
+	t.Helper()
+	buf := &bytes.Buffer{}
+	if err := json.NewEncoder(buf).Encode(v); err != nil {
+		t.Fatalf("marshal JSON: %v", err)
+	}
+	return buf
+}
+
+// --- Health ---
+
+func TestHealth(t *testing.T) {
+	b := newTestBroker(t)
+
+	req := httptest.NewRequest("GET", "/v1/health", nil)
+	rr := b.do(req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var resp map[string]any
+	json.NewDecoder(rr.Body).Decode(&resp)
+	if resp["status"] != "ok" {
+		t.Errorf("expected status=ok, got %v", resp["status"])
+	}
+}
+
+// --- Challenge ---
+
+func TestChallenge(t *testing.T) {
+	b := newTestBroker(t)
+
+	req := httptest.NewRequest("GET", "/v1/challenge", nil)
+	rr := b.do(req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var resp map[string]any
+	json.NewDecoder(rr.Body).Decode(&resp)
+	nonce, ok := resp["nonce"].(string)
+	if !ok || nonce == "" {
+		t.Error("expected non-empty nonce in challenge response")
+	}
+	if resp["expires_in"] != float64(30) {
+		t.Errorf("expected expires_in=30, got %v", resp["expires_in"])
+	}
+}
+
+// --- Admin Auth ---
+
+func TestAdminAuth_Success(t *testing.T) {
+	b := newTestBroker(t)
+
+	body := jsonBody(t, map[string]string{
+		"client_id":     "admin",
+		"client_secret": testAdminSecret,
+	})
+	req := httptest.NewRequest("POST", "/v1/admin/auth", body)
+	rr := b.do(req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp map[string]any
+	json.NewDecoder(rr.Body).Decode(&resp)
+	if resp["access_token"] == nil || resp["access_token"] == "" {
+		t.Error("expected non-empty access_token")
+	}
+}
+
+func TestAdminAuth_WrongSecret(t *testing.T) {
+	b := newTestBroker(t)
+
+	body := jsonBody(t, map[string]string{
+		"client_id":     "admin",
+		"client_secret": "wrong",
+	})
+	req := httptest.NewRequest("POST", "/v1/admin/auth", body)
+	rr := b.do(req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rr.Code)
+	}
+}
+
+// --- Full registration flow ---
+
+func getAdminToken(t *testing.T, b *testBroker) string {
+	t.Helper()
+	body := jsonBody(t, map[string]string{
+		"client_id":     "admin",
+		"client_secret": testAdminSecret,
+	})
+	req := httptest.NewRequest("POST", "/v1/admin/auth", body)
+	rr := b.do(req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("admin auth failed: %d %s", rr.Code, rr.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rr.Body).Decode(&resp)
+	return resp["access_token"].(string)
+}
+
+func createLaunchToken(t *testing.T, b *testBroker, adminToken string) string {
+	t.Helper()
+	body := jsonBody(t, map[string]any{
+		"agent_name":    "test-agent",
+		"allowed_scope": []string{"read:data:*", "write:data:*"},
+		"max_ttl":       300,
+		"ttl":           60,
+	})
+	req := httptest.NewRequest("POST", "/v1/admin/launch-tokens", body)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rr := b.do(req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create launch token failed: %d %s", rr.Code, rr.Body.String())
+	}
+	var resp map[string]any
+	json.NewDecoder(rr.Body).Decode(&resp)
+	return resp["launch_token"].(string)
+}
+
+func getNonce(t *testing.T, b *testBroker) string {
+	t.Helper()
+	req := httptest.NewRequest("GET", "/v1/challenge", nil)
+	rr := b.do(req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("challenge failed: %d", rr.Code)
+	}
+	var resp map[string]any
+	json.NewDecoder(rr.Body).Decode(&resp)
+	return resp["nonce"].(string)
+}
+
+func TestFullRegistrationFlow(t *testing.T) {
+	b := newTestBroker(t)
+
+	// Step 1: Admin auth.
+	adminToken := getAdminToken(t, b)
+
+	// Step 2: Create launch token.
+	launchToken := createLaunchToken(t, b, adminToken)
+
+	// Step 3: Challenge.
+	nonce := getNonce(t, b)
+
+	// Step 4: Agent generates Ed25519 key pair and signs the nonce.
+	agentPub, agentPriv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate agent key: %v", err)
+	}
+	nonceBytes, err := hex.DecodeString(nonce)
+	if err != nil {
+		t.Fatalf("decode nonce hex: %v", err)
+	}
+	sig := ed25519.Sign(agentPriv, nonceBytes)
+
+	// Step 5: Register.
+	regBody := jsonBody(t, map[string]any{
+		"launch_token":   launchToken,
+		"nonce":          nonce,
+		"public_key":     base64.StdEncoding.EncodeToString(agentPub),
+		"signature":      base64.StdEncoding.EncodeToString(sig),
+		"orch_id":        "orch-1",
+		"task_id":        "task-1",
+		"requested_scope": []string{"read:data:*"},
+	})
+	regReq := httptest.NewRequest("POST", "/v1/register", regBody)
+	regRR := b.do(regReq)
+	if regRR.Code != http.StatusOK {
+		t.Fatalf("register failed: %d %s", regRR.Code, regRR.Body.String())
+	}
+
+	var regResp map[string]any
+	json.NewDecoder(regRR.Body).Decode(&regResp)
+	agentToken := regResp["access_token"].(string)
+	agentID := regResp["agent_id"].(string)
+	if agentToken == "" {
+		t.Fatal("expected non-empty agent access_token")
+	}
+	if agentID == "" {
+		t.Fatal("expected non-empty agent_id")
+	}
+
+	// Step 6: Validate the agent token.
+	valBody := jsonBody(t, map[string]string{"token": agentToken})
+	valReq := httptest.NewRequest("POST", "/v1/token/validate", valBody)
+	valRR := b.do(valReq)
+	if valRR.Code != http.StatusOK {
+		t.Fatalf("validate failed: %d %s", valRR.Code, valRR.Body.String())
+	}
+	var valResp map[string]any
+	json.NewDecoder(valRR.Body).Decode(&valResp)
+	if valResp["valid"] != true {
+		t.Errorf("expected valid=true, got %v", valResp["valid"])
+	}
+
+	// Step 7: Renew the agent token (requires Bearer auth).
+	renewReq := httptest.NewRequest("POST", "/v1/token/renew", nil)
+	renewReq.Header.Set("Authorization", "Bearer "+agentToken)
+	renewRR := b.do(renewReq)
+	if renewRR.Code != http.StatusOK {
+		t.Fatalf("renew failed: %d %s", renewRR.Code, renewRR.Body.String())
+	}
+	var renewResp map[string]any
+	json.NewDecoder(renewRR.Body).Decode(&renewResp)
+	if renewResp["access_token"] == nil || renewResp["access_token"] == "" {
+		t.Error("expected non-empty renewed access_token")
+	}
+
+	// Step 8: Revoke (requires admin scope).
+	revokeBody := jsonBody(t, map[string]string{
+		"level":  "token",
+		"target": "some-jti",
+	})
+	revokeReq := httptest.NewRequest("POST", "/v1/revoke", revokeBody)
+	revokeReq.Header.Set("Authorization", "Bearer "+adminToken)
+	revokeRR := b.do(revokeReq)
+	if revokeRR.Code != http.StatusOK {
+		t.Fatalf("revoke failed: %d %s", revokeRR.Code, revokeRR.Body.String())
+	}
+	var revokeResp map[string]any
+	json.NewDecoder(revokeRR.Body).Decode(&revokeResp)
+	if revokeResp["revoked"] != true {
+		t.Errorf("expected revoked=true, got %v", revokeResp["revoked"])
+	}
+
+	// Step 9: Audit (requires admin scope).
+	auditReq := httptest.NewRequest("GET", "/v1/audit/events", nil)
+	auditReq.Header.Set("Authorization", "Bearer "+adminToken)
+	auditRR := b.do(auditReq)
+	if auditRR.Code != http.StatusOK {
+		t.Fatalf("audit failed: %d %s", auditRR.Code, auditRR.Body.String())
+	}
+	var auditResp map[string]any
+	json.NewDecoder(auditRR.Body).Decode(&auditResp)
+	total, _ := auditResp["total"].(float64)
+	if total == 0 {
+		t.Error("expected audit events after registration flow")
+	}
+}
+
+// --- Token validate: invalid token ---
+
+func TestValidate_InvalidToken(t *testing.T) {
+	b := newTestBroker(t)
+
+	body := jsonBody(t, map[string]string{"token": "not-a-valid-token"})
+	req := httptest.NewRequest("POST", "/v1/token/validate", body)
+	rr := b.do(req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 (with valid=false), got %d", rr.Code)
+	}
+	var resp map[string]any
+	json.NewDecoder(rr.Body).Decode(&resp)
+	if resp["valid"] != false {
+		t.Errorf("expected valid=false for invalid token, got %v", resp["valid"])
+	}
+}
+
+func TestValidate_MissingToken(t *testing.T) {
+	b := newTestBroker(t)
+
+	body := jsonBody(t, map[string]string{"token": ""})
+	req := httptest.NewRequest("POST", "/v1/token/validate", body)
+	rr := b.do(req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
+// --- Renew without auth ---
+
+func TestRenew_NoAuth(t *testing.T) {
+	b := newTestBroker(t)
+
+	req := httptest.NewRequest("POST", "/v1/token/renew", nil)
+	rr := b.do(req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rr.Code)
+	}
+}
+
+// --- Revoke without admin scope ---
+
+func TestRevoke_InsufficientScope(t *testing.T) {
+	b := newTestBroker(t)
+
+	// Issue a token with non-admin scope.
+	issResp, _ := b.tknSvc.Issue(token.IssueReq{
+		Sub:   "spiffe://test/agent/o/t/i",
+		Scope: []string{"read:data:*"},
+		TTL:   300,
+	})
+
+	body := jsonBody(t, map[string]string{"level": "token", "target": "jti"})
+	req := httptest.NewRequest("POST", "/v1/revoke", body)
+	req.Header.Set("Authorization", "Bearer "+issResp.AccessToken)
+	rr := b.do(req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// --- Audit without admin scope ---
+
+func TestAudit_InsufficientScope(t *testing.T) {
+	b := newTestBroker(t)
+
+	issResp, _ := b.tknSvc.Issue(token.IssueReq{
+		Sub:   "spiffe://test/agent/o/t/i",
+		Scope: []string{"read:data:*"},
+		TTL:   300,
+	})
+
+	req := httptest.NewRequest("GET", "/v1/audit/events", nil)
+	req.Header.Set("Authorization", "Bearer "+issResp.AccessToken)
+	rr := b.do(req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// --- Delegation via HTTP ---
+
+func TestDelegateHTTP_Success(t *testing.T) {
+	b := newTestBroker(t)
+
+	// Register two agents via the full flow.
+	adminToken := getAdminToken(t, b)
+
+	// Register agent 1 (delegator).
+	lt1 := createLaunchToken(t, b, adminToken)
+	nonce1 := getNonce(t, b)
+	pub1, priv1, _ := ed25519.GenerateKey(rand.Reader)
+	nonceBytes1, _ := hex.DecodeString(nonce1)
+	sig1 := ed25519.Sign(priv1, nonceBytes1)
+	regBody1 := jsonBody(t, map[string]any{
+		"launch_token":   lt1,
+		"nonce":          nonce1,
+		"public_key":     base64.StdEncoding.EncodeToString(pub1),
+		"signature":      base64.StdEncoding.EncodeToString(sig1),
+		"orch_id":        "orch-1",
+		"task_id":        "task-1",
+		"requested_scope": []string{"read:data:*", "write:data:*"},
+	})
+	regReq1 := httptest.NewRequest("POST", "/v1/register", regBody1)
+	regRR1 := b.do(regReq1)
+	if regRR1.Code != http.StatusOK {
+		t.Fatalf("register agent 1: %d %s", regRR1.Code, regRR1.Body.String())
+	}
+	var regResp1 map[string]any
+	json.NewDecoder(regRR1.Body).Decode(&regResp1)
+	agent1Token := regResp1["access_token"].(string)
+
+	// Register agent 2 (delegate).
+	lt2 := createLaunchToken(t, b, adminToken)
+	nonce2 := getNonce(t, b)
+	pub2, priv2, _ := ed25519.GenerateKey(rand.Reader)
+	nonceBytes2, _ := hex.DecodeString(nonce2)
+	sig2 := ed25519.Sign(priv2, nonceBytes2)
+	regBody2 := jsonBody(t, map[string]any{
+		"launch_token":   lt2,
+		"nonce":          nonce2,
+		"public_key":     base64.StdEncoding.EncodeToString(pub2),
+		"signature":      base64.StdEncoding.EncodeToString(sig2),
+		"orch_id":        "orch-1",
+		"task_id":        "task-1",
+		"requested_scope": []string{"read:data:*"},
+	})
+	regReq2 := httptest.NewRequest("POST", "/v1/register", regBody2)
+	regRR2 := b.do(regReq2)
+	if regRR2.Code != http.StatusOK {
+		t.Fatalf("register agent 2: %d %s", regRR2.Code, regRR2.Body.String())
+	}
+	var regResp2 map[string]any
+	json.NewDecoder(regRR2.Body).Decode(&regResp2)
+	agent2ID := regResp2["agent_id"].(string)
+
+	// Agent 1 delegates to agent 2.
+	delegBody := jsonBody(t, map[string]any{
+		"delegate_to": agent2ID,
+		"scope":       []string{"read:data:*"},
+		"ttl":         60,
+	})
+	delegReq := httptest.NewRequest("POST", "/v1/delegate", delegBody)
+	delegReq.Header.Set("Authorization", "Bearer "+agent1Token)
+	delegRR := b.do(delegReq)
+	if delegRR.Code != http.StatusOK {
+		t.Fatalf("delegate: %d %s", delegRR.Code, delegRR.Body.String())
+	}
+
+	var delegResp map[string]any
+	json.NewDecoder(delegRR.Body).Decode(&delegResp)
+	if delegResp["access_token"] == nil || delegResp["access_token"] == "" {
+		t.Error("expected non-empty delegated access_token")
+	}
+	chain, ok := delegResp["delegation_chain"].([]any)
+	if !ok || len(chain) == 0 {
+		t.Error("expected non-empty delegation_chain")
+	}
+}
+
+// --- Metrics endpoint ---
+
+func TestMetrics(t *testing.T) {
+	b := newTestBroker(t)
+
+	req := httptest.NewRequest("GET", "/v1/metrics", nil)
+	rr := b.do(req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	ct := rr.Header().Get("Content-Type")
+	if ct == "" {
+		t.Error("expected Content-Type header on metrics response")
+	}
+}
+
+// --- Register with bad nonce ---
+
+func TestRegister_BadNonce(t *testing.T) {
+	b := newTestBroker(t)
+
+	adminToken := getAdminToken(t, b)
+	lt := createLaunchToken(t, b, adminToken)
+
+	pub, _, _ := ed25519.GenerateKey(rand.Reader)
+	regBody := jsonBody(t, map[string]any{
+		"launch_token":   lt,
+		"nonce":          "bad-nonce-not-in-store",
+		"public_key":     base64.StdEncoding.EncodeToString(pub),
+		"signature":      base64.StdEncoding.EncodeToString([]byte("fake-sig")),
+		"orch_id":        "orch-1",
+		"task_id":        "task-1",
+		"requested_scope": []string{"read:data:*"},
+	})
+	req := httptest.NewRequest("POST", "/v1/register", regBody)
+	rr := b.do(req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// --- Audit query params ---
+
+func TestAudit_QueryParams(t *testing.T) {
+	b := newTestBroker(t)
+
+	// Record some events directly.
+	b.auditLog.Record(audit.EventTokenIssued, "agent-x", "task-1", "orch-1", "issued")
+	b.auditLog.Record(audit.EventTokenRevoked, "agent-y", "task-2", "orch-2", "revoked")
+
+	adminToken := getAdminToken(t, b)
+
+	// Query by event_type.
+	req := httptest.NewRequest("GET", "/v1/audit/events?event_type=token_issued", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rr := b.do(req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var resp map[string]any
+	json.NewDecoder(rr.Body).Decode(&resp)
+	events, _ := resp["events"].([]any)
+	// Should include the token_issued event and possibly events from admin auth.
+	found := false
+	for _, e := range events {
+		evt := e.(map[string]any)
+		if evt["event_type"] == "token_issued" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected to find token_issued event in filtered results")
+	}
+
+	// Query by agent_id.
+	req2 := httptest.NewRequest("GET", "/v1/audit/events?agent_id=agent-x", nil)
+	req2.Header.Set("Authorization", "Bearer "+adminToken)
+	rr2 := b.do(req2)
+	if rr2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr2.Code)
+	}
+	var resp2 map[string]any
+	json.NewDecoder(rr2.Body).Decode(&resp2)
+	total2, _ := resp2["total"].(float64)
+	if total2 < 1 {
+		t.Errorf("expected at least 1 event for agent-x, got %.0f", total2)
+	}
+
+	// Query with time range (since far future should return 0 matching events).
+	future := time.Now().Add(24 * time.Hour).Format(time.RFC3339)
+	req3 := httptest.NewRequest("GET", "/v1/audit/events?since="+future, nil)
+	req3.Header.Set("Authorization", "Bearer "+adminToken)
+	rr3 := b.do(req3)
+	if rr3.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr3.Code)
+	}
+	var resp3 map[string]any
+	json.NewDecoder(rr3.Body).Decode(&resp3)
+	total3, _ := resp3["total"].(float64)
+	if total3 != 0 {
+		t.Errorf("expected 0 events in far future, got %.0f", total3)
+	}
+}
+
+// --- Layer 1 Security: Nonce replay rejected (HTTP level) ---
+
+func TestRegister_NonceReplay(t *testing.T) {
+	b := newTestBroker(t)
+	adminToken := getAdminToken(t, b)
+
+	// Get a nonce and register an agent successfully.
+	lt1 := createLaunchToken(t, b, adminToken)
+	nonce := getNonce(t, b)
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	nonceBytes, _ := hex.DecodeString(nonce)
+	sig := ed25519.Sign(priv, nonceBytes)
+
+	regBody := jsonBody(t, map[string]any{
+		"launch_token":    lt1,
+		"nonce":           nonce,
+		"public_key":      base64.StdEncoding.EncodeToString(pub),
+		"signature":       base64.StdEncoding.EncodeToString(sig),
+		"orch_id":         "orch-1",
+		"task_id":         "task-1",
+		"requested_scope": []string{"read:data:*"},
+	})
+	regReq := httptest.NewRequest("POST", "/v1/register", regBody)
+	regRR := b.do(regReq)
+	if regRR.Code != http.StatusOK {
+		t.Fatalf("first register: %d %s", regRR.Code, regRR.Body.String())
+	}
+
+	// Replay the same nonce with a new launch token.
+	lt2 := createLaunchToken(t, b, adminToken)
+	pub2, priv2, _ := ed25519.GenerateKey(rand.Reader)
+	sig2 := ed25519.Sign(priv2, nonceBytes)
+	regBody2 := jsonBody(t, map[string]any{
+		"launch_token":    lt2,
+		"nonce":           nonce,
+		"public_key":      base64.StdEncoding.EncodeToString(pub2),
+		"signature":       base64.StdEncoding.EncodeToString(sig2),
+		"orch_id":         "orch-1",
+		"task_id":         "task-2",
+		"requested_scope": []string{"read:data:*"},
+	})
+	replayReq := httptest.NewRequest("POST", "/v1/register", regBody2)
+	replayRR := b.do(replayReq)
+
+	if replayRR.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for nonce replay, got %d: %s", replayRR.Code, replayRR.Body.String())
+	}
+}
+
+// --- Layer 1 Security: Launch token replay rejected (HTTP level) ---
+
+func TestRegister_LaunchTokenReplay(t *testing.T) {
+	b := newTestBroker(t)
+	adminToken := getAdminToken(t, b)
+
+	// Create a single-use launch token and register with it.
+	lt := createLaunchToken(t, b, adminToken)
+	nonce1 := getNonce(t, b)
+	pub1, priv1, _ := ed25519.GenerateKey(rand.Reader)
+	nonceBytes1, _ := hex.DecodeString(nonce1)
+	sig1 := ed25519.Sign(priv1, nonceBytes1)
+	regBody1 := jsonBody(t, map[string]any{
+		"launch_token":    lt,
+		"nonce":           nonce1,
+		"public_key":      base64.StdEncoding.EncodeToString(pub1),
+		"signature":       base64.StdEncoding.EncodeToString(sig1),
+		"orch_id":         "orch-1",
+		"task_id":         "task-1",
+		"requested_scope": []string{"read:data:*"},
+	})
+	regReq1 := httptest.NewRequest("POST", "/v1/register", regBody1)
+	regRR1 := b.do(regReq1)
+	if regRR1.Code != http.StatusOK {
+		t.Fatalf("first register: %d %s", regRR1.Code, regRR1.Body.String())
+	}
+
+	// Try to reuse the same launch token with a new nonce.
+	nonce2 := getNonce(t, b)
+	pub2, priv2, _ := ed25519.GenerateKey(rand.Reader)
+	nonceBytes2, _ := hex.DecodeString(nonce2)
+	sig2 := ed25519.Sign(priv2, nonceBytes2)
+	regBody2 := jsonBody(t, map[string]any{
+		"launch_token":    lt,
+		"nonce":           nonce2,
+		"public_key":      base64.StdEncoding.EncodeToString(pub2),
+		"signature":       base64.StdEncoding.EncodeToString(sig2),
+		"orch_id":         "orch-1",
+		"task_id":         "task-2",
+		"requested_scope": []string{"read:data:*"},
+	})
+	replayReq := httptest.NewRequest("POST", "/v1/register", regBody2)
+	replayRR := b.do(replayReq)
+
+	if replayRR.Code == http.StatusOK {
+		t.Fatal("expected non-200 for launch token replay, but got 200")
+	}
+}
+
+// --- Layer 1 Security: RFC 7807 problem response format ---
+
+func TestProblemResponseFormat(t *testing.T) {
+	b := newTestBroker(t)
+
+	// Trigger a 400 by sending an empty token to validate.
+	body := jsonBody(t, map[string]string{"token": ""})
+	req := httptest.NewRequest("POST", "/v1/token/validate", body)
+	rr := b.do(req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+
+	ct := rr.Header().Get("Content-Type")
+	if ct != "application/problem+json" {
+		t.Errorf("expected Content-Type=application/problem+json, got %s", ct)
+	}
+
+	var problem map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&problem); err != nil {
+		t.Fatalf("decode problem response: %v", err)
+	}
+
+	// Verify required RFC 7807 fields.
+	for _, field := range []string{"type", "title", "status", "detail", "instance"} {
+		if problem[field] == nil {
+			t.Errorf("RFC 7807: missing required field %q", field)
+		}
+	}
+	if status, ok := problem["status"].(float64); !ok || int(status) != http.StatusBadRequest {
+		t.Errorf("expected status=400 in body, got %v", problem["status"])
+	}
+}
+
+// --- Layer 2: Delegation rejected for over-scope (HTTP) ---
+
+func TestDelegateHTTP_OverScope(t *testing.T) {
+	b := newTestBroker(t)
+	adminToken := getAdminToken(t, b)
+
+	// Register agent 1 with read:data:* scope only.
+	agent1Token, _ := registerAgentHTTP(t, b, adminToken, []string{"read:data:*"})
+
+	// Register agent 2.
+	_, agent2ID := registerAgentHTTP(t, b, adminToken, []string{"read:data:*"})
+
+	// Try to delegate write:data:* (agent 1 only has read:data:*).
+	delegBody := jsonBody(t, map[string]any{
+		"delegate_to": agent2ID,
+		"scope":       []string{"write:data:*"},
+		"ttl":         60,
+	})
+	delegReq := httptest.NewRequest("POST", "/v1/delegate", delegBody)
+	delegReq.Header.Set("Authorization", "Bearer "+agent1Token)
+	delegRR := b.do(delegReq)
+
+	if delegRR.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for over-scope delegation, got %d: %s", delegRR.Code, delegRR.Body.String())
+	}
+}
+
+// --- Layer 2: Delegation rejected for over-depth (HTTP) ---
+
+func TestDelegateHTTP_OverDepth(t *testing.T) {
+	b := newTestBroker(t)
+	adminToken := getAdminToken(t, b)
+
+	// Register 7 agents (we need initial + 5 delegates to hit depth 5, then one more).
+	agents := make([]struct {
+		token string
+		id    string
+	}, 7)
+
+	for i := range agents {
+		token, id := registerAgentHTTP(t, b, adminToken, []string{"read:data:*"})
+		agents[i].token = token
+		agents[i].id = id
+	}
+
+	// Chain: agent0 -> agent1 -> agent2 -> agent3 -> agent4 -> agent5
+	// Max depth is 5, so delegation from agent4 to agent5 should succeed
+	// but agent5 to agent6 should fail.
+	currentToken := agents[0].token
+	for i := 0; i < 5; i++ {
+		delegBody := jsonBody(t, map[string]any{
+			"delegate_to": agents[i+1].id,
+			"scope":       []string{"read:data:*"},
+			"ttl":         60,
+		})
+		delegReq := httptest.NewRequest("POST", "/v1/delegate", delegBody)
+		delegReq.Header.Set("Authorization", "Bearer "+currentToken)
+		delegRR := b.do(delegReq)
+		if delegRR.Code != http.StatusOK {
+			t.Fatalf("delegation %d->%d failed: %d %s", i, i+1, delegRR.Code, delegRR.Body.String())
+		}
+		var delegResp map[string]any
+		json.NewDecoder(delegRR.Body).Decode(&delegResp)
+		currentToken = delegResp["access_token"].(string)
+	}
+
+	// This delegation (depth=6) should fail.
+	delegBody := jsonBody(t, map[string]any{
+		"delegate_to": agents[6].id,
+		"scope":       []string{"read:data:*"},
+		"ttl":         60,
+	})
+	delegReq := httptest.NewRequest("POST", "/v1/delegate", delegBody)
+	delegReq.Header.Set("Authorization", "Bearer "+currentToken)
+	delegRR := b.do(delegReq)
+
+	if delegRR.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for over-depth delegation, got %d: %s", delegRR.Code, delegRR.Body.String())
+	}
+}
+
+// --- Layer 2: Revocation at all 4 levels + denial on protected endpoints ---
+
+func TestRevocation_TokenLevel_DeniesAccess(t *testing.T) {
+	b := newTestBroker(t)
+	adminToken := getAdminToken(t, b)
+
+	// Register an agent.
+	agentToken, _ := registerAgentHTTP(t, b, adminToken, []string{"read:data:*"})
+
+	// Get the agent's JTI by validating the token.
+	valBody := jsonBody(t, map[string]string{"token": agentToken})
+	valReq := httptest.NewRequest("POST", "/v1/token/validate", valBody)
+	valRR := b.do(valReq)
+	var valResp map[string]any
+	json.NewDecoder(valRR.Body).Decode(&valResp)
+	claims := valResp["claims"].(map[string]any)
+	jti := claims["jti"].(string)
+
+	// Revoke the token by JTI.
+	revokeBody := jsonBody(t, map[string]string{"level": "token", "target": jti})
+	revokeReq := httptest.NewRequest("POST", "/v1/revoke", revokeBody)
+	revokeReq.Header.Set("Authorization", "Bearer "+adminToken)
+	revokeRR := b.do(revokeReq)
+	if revokeRR.Code != http.StatusOK {
+		t.Fatalf("revoke failed: %d %s", revokeRR.Code, revokeRR.Body.String())
+	}
+
+	// Revoked token should be denied on protected endpoint (renew).
+	renewReq := httptest.NewRequest("POST", "/v1/token/renew", nil)
+	renewReq.Header.Set("Authorization", "Bearer "+agentToken)
+	renewRR := b.do(renewReq)
+	if renewRR.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 after token revocation, got %d", renewRR.Code)
+	}
+
+	// Validate endpoint should also report revoked token as invalid.
+	valBody2 := jsonBody(t, map[string]string{"token": agentToken})
+	valReq2 := httptest.NewRequest("POST", "/v1/token/validate", valBody2)
+	valRR2 := b.do(valReq2)
+	var valResp2 map[string]any
+	json.NewDecoder(valRR2.Body).Decode(&valResp2)
+	if valResp2["valid"] != false {
+		t.Errorf("expected valid=false after revocation, got %v", valResp2["valid"])
+	}
+}
+
+func TestRevocation_AgentLevel_DeniesAccess(t *testing.T) {
+	b := newTestBroker(t)
+	adminToken := getAdminToken(t, b)
+
+	agentToken, agentID := registerAgentHTTP(t, b, adminToken, []string{"read:data:*"})
+
+	// Revoke at agent level.
+	revokeBody := jsonBody(t, map[string]string{"level": "agent", "target": agentID})
+	revokeReq := httptest.NewRequest("POST", "/v1/revoke", revokeBody)
+	revokeReq.Header.Set("Authorization", "Bearer "+adminToken)
+	b.do(revokeReq)
+
+	// Agent's token should now be denied.
+	renewReq := httptest.NewRequest("POST", "/v1/token/renew", nil)
+	renewReq.Header.Set("Authorization", "Bearer "+agentToken)
+	renewRR := b.do(renewReq)
+	if renewRR.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 after agent-level revocation, got %d", renewRR.Code)
+	}
+}
+
+func TestRevocation_TaskLevel_DeniesAccess(t *testing.T) {
+	b := newTestBroker(t)
+	adminToken := getAdminToken(t, b)
+
+	agentToken, _ := registerAgentHTTP(t, b, adminToken, []string{"read:data:*"})
+
+	// Get the task_id from the token claims.
+	valBody := jsonBody(t, map[string]string{"token": agentToken})
+	valReq := httptest.NewRequest("POST", "/v1/token/validate", valBody)
+	valRR := b.do(valReq)
+	var valResp map[string]any
+	json.NewDecoder(valRR.Body).Decode(&valResp)
+	claims := valResp["claims"].(map[string]any)
+	taskID := claims["task_id"].(string)
+
+	// Revoke at task level.
+	revokeBody := jsonBody(t, map[string]string{"level": "task", "target": taskID})
+	revokeReq := httptest.NewRequest("POST", "/v1/revoke", revokeBody)
+	revokeReq.Header.Set("Authorization", "Bearer "+adminToken)
+	b.do(revokeReq)
+
+	renewReq := httptest.NewRequest("POST", "/v1/token/renew", nil)
+	renewReq.Header.Set("Authorization", "Bearer "+agentToken)
+	renewRR := b.do(renewReq)
+	if renewRR.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 after task-level revocation, got %d", renewRR.Code)
+	}
+}
+
+func TestRevocation_ChainLevel_DeniesAccess(t *testing.T) {
+	b := newTestBroker(t)
+	adminToken := getAdminToken(t, b)
+
+	// Register two agents, delegate from agent1 to agent2.
+	agent1Token, agent1ID := registerAgentHTTP(t, b, adminToken, []string{"read:data:*"})
+	_, agent2ID := registerAgentHTTP(t, b, adminToken, []string{"read:data:*"})
+
+	delegBody := jsonBody(t, map[string]any{
+		"delegate_to": agent2ID,
+		"scope":       []string{"read:data:*"},
+		"ttl":         60,
+	})
+	delegReq := httptest.NewRequest("POST", "/v1/delegate", delegBody)
+	delegReq.Header.Set("Authorization", "Bearer "+agent1Token)
+	delegRR := b.do(delegReq)
+	if delegRR.Code != http.StatusOK {
+		t.Fatalf("delegate: %d %s", delegRR.Code, delegRR.Body.String())
+	}
+	var delegResp map[string]any
+	json.NewDecoder(delegRR.Body).Decode(&delegResp)
+	delegatedToken := delegResp["access_token"].(string)
+
+	// Revoke the chain by root delegator (agent1ID).
+	revokeBody := jsonBody(t, map[string]string{"level": "chain", "target": agent1ID})
+	revokeReq := httptest.NewRequest("POST", "/v1/revoke", revokeBody)
+	revokeReq.Header.Set("Authorization", "Bearer "+adminToken)
+	b.do(revokeReq)
+
+	// The delegated token should be denied.
+	renewReq := httptest.NewRequest("POST", "/v1/token/renew", nil)
+	renewReq.Header.Set("Authorization", "Bearer "+delegatedToken)
+	renewRR := b.do(renewReq)
+	if renewRR.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 after chain-level revocation, got %d", renewRR.Code)
+	}
+}
+
+// --- Layer 2: Metrics endpoint exposes counters after flows ---
+
+func TestMetrics_AfterExercisedFlows(t *testing.T) {
+	b := newTestBroker(t)
+	adminToken := getAdminToken(t, b)
+
+	// Exercise: registration flow.
+	registerAgentHTTP(t, b, adminToken, []string{"read:data:*"})
+
+	// Exercise: revocation.
+	revokeBody := jsonBody(t, map[string]string{"level": "token", "target": "test-jti-metrics"})
+	revokeReq := httptest.NewRequest("POST", "/v1/revoke", revokeBody)
+	revokeReq.Header.Set("Authorization", "Bearer "+adminToken)
+	b.do(revokeReq)
+
+	// Fetch metrics.
+	metricsReq := httptest.NewRequest("GET", "/v1/metrics", nil)
+	metricsRR := b.do(metricsReq)
+	if metricsRR.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", metricsRR.Code)
+	}
+
+	body := metricsRR.Body.String()
+
+	// Check for expected Prometheus metric names.
+	expectedMetrics := []string{
+		"agentauth_tokens_issued_total",
+		"agentauth_tokens_revoked_total",
+		"agentauth_registrations_total",
+		"agentauth_admin_auth_total",
+	}
+	for _, metric := range expectedMetrics {
+		if !strings.Contains(body, metric) {
+			t.Errorf("expected metric %q in metrics output", metric)
+		}
+	}
+}
+
+// --- Layer 2: Scope escalation rejected at registration HTTP level ---
+
+func TestRegister_ScopeEscalation(t *testing.T) {
+	b := newTestBroker(t)
+	adminToken := getAdminToken(t, b)
+
+	// Create a launch token that only allows read:data:*
+	body := jsonBody(t, map[string]any{
+		"agent_name":    "limited-agent",
+		"allowed_scope": []string{"read:data:*"},
+		"max_ttl":       300,
+		"ttl":           60,
+	})
+	req := httptest.NewRequest("POST", "/v1/admin/launch-tokens", body)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rr := b.do(req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create launch token: %d %s", rr.Code, rr.Body.String())
+	}
+	var ltResp map[string]any
+	json.NewDecoder(rr.Body).Decode(&ltResp)
+	lt := ltResp["launch_token"].(string)
+
+	// Try to register requesting write:data:* (escalation).
+	nonce := getNonce(t, b)
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	nonceBytes, _ := hex.DecodeString(nonce)
+	sig := ed25519.Sign(priv, nonceBytes)
+
+	regBody := jsonBody(t, map[string]any{
+		"launch_token":    lt,
+		"nonce":           nonce,
+		"public_key":      base64.StdEncoding.EncodeToString(pub),
+		"signature":       base64.StdEncoding.EncodeToString(sig),
+		"orch_id":         "orch-1",
+		"task_id":         "task-1",
+		"requested_scope": []string{"write:data:*"},
+	})
+	regReq := httptest.NewRequest("POST", "/v1/register", regBody)
+	regRR := b.do(regReq)
+
+	if regRR.Code == http.StatusOK {
+		t.Fatal("expected non-200 for scope escalation, but got 200")
+	}
+}
+
+// --- Helper: register an agent through the full HTTP flow ---
+
+func registerAgentHTTP(t *testing.T, b *testBroker, adminToken string, scope []string) (agentToken, agentID string) {
+	t.Helper()
+
+	lt := createLaunchToken(t, b, adminToken)
+	nonce := getNonce(t, b)
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	nonceBytes, _ := hex.DecodeString(nonce)
+	sig := ed25519.Sign(priv, nonceBytes)
+
+	regBody := jsonBody(t, map[string]any{
+		"launch_token":    lt,
+		"nonce":           nonce,
+		"public_key":      base64.StdEncoding.EncodeToString(pub),
+		"signature":       base64.StdEncoding.EncodeToString(sig),
+		"orch_id":         "orch-1",
+		"task_id":         "task-1",
+		"requested_scope": scope,
+	})
+	regReq := httptest.NewRequest("POST", "/v1/register", regBody)
+	regRR := b.do(regReq)
+	if regRR.Code != http.StatusOK {
+		t.Fatalf("register agent: %d %s", regRR.Code, regRR.Body.String())
+	}
+	var regResp map[string]any
+	json.NewDecoder(regRR.Body).Decode(&regResp)
+	return regResp["access_token"].(string), regResp["agent_id"].(string)
+}

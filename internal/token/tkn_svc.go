@@ -15,183 +15,197 @@ import (
 	"github.com/divineartis/agentauth/internal/obs"
 )
 
-// Token verification errors.
+// Sentinel errors returned by [TknSvc.Verify].
 var (
-	// ErrTokenMalformed indicates the token string is not well-formed.
-	ErrTokenMalformed = errors.New("malformed token")
-	// ErrTokenSignature indicates the token signature verification failed.
-	ErrTokenSignature = errors.New("invalid token signature")
-	// ErrTokenExpired indicates the token has passed its expiration time.
-	ErrTokenExpired = errors.New("token expired")
-	// ErrTokenNotYet indicates the token is not yet valid per its nbf claim.
-	ErrTokenNotYet = errors.New("token not valid yet")
+	ErrInvalidToken     = errors.New("invalid token format")
+	ErrSignatureInvalid = errors.New("signature verification failed")
 )
 
-// IssueReq holds the parameters needed to issue a new agent token.
+// IssueReq contains the parameters for issuing a new token via
+// [TknSvc.Issue]. At minimum Sub and Scope must be set. If TTL is zero
+// the broker's configured DefaultTTL is used.
 type IssueReq struct {
-	AgentID   string
-	OrchID    string
-	TaskID    string
-	Scope     []string
-	TTLSecond int
-	// DelegChain carries delegation lineage for delegated tokens.
+	Sub        string
+	Scope      []string
+	TaskId     string
+	OrchId     string
+	TTL        int // seconds; 0 means use DefaultTTL
 	DelegChain []DelegRecord
 }
 
-// IssueResp contains the issued token and its timing metadata.
+// IssueResp is returned by [TknSvc.Issue] and contains the compact JWT
+// string, the effective TTL, the token type ("Bearer"), and a pointer to
+// the embedded [TknClaims] for convenience.
 type IssueResp struct {
-	AccessToken  string `json:"access_token"`
-	ExpiresIn    int    `json:"expires_in"`
-	RefreshAfter int    `json:"refresh_after"`
+	AccessToken string `json:"access_token"`
+	ExpiresIn   int    `json:"expires_in"`
+	TokenType   string `json:"token_type"`
+	Claims      *TknClaims
 }
 
-// TknSvc provides token issuance, verification, and renewal using EdDSA signatures.
+// jwtHeader is the fixed EdDSA JWT header.
+type jwtHeader struct {
+	Alg string `json:"alg"`
+	Typ string `json:"typ"`
+}
+
+// TknSvc is the core token service. It holds an Ed25519 key pair and
+// the broker configuration, and provides [Issue], [Verify], and [Renew]
+// operations. A single TknSvc instance is shared across all services
+// and handlers.
 type TknSvc struct {
 	signingKey ed25519.PrivateKey
 	pubKey     ed25519.PublicKey
 	cfg        cfg.Cfg
-	clockSkew  int64
 }
 
-// NewTknSvc creates a TknSvc with the given Ed25519 key pair and configuration.
+// NewTknSvc creates a new token service with the given Ed25519 key pair
+// and broker configuration. The key pair is used for signing (Issue) and
+// verification (Verify) of all tokens.
 func NewTknSvc(signingKey ed25519.PrivateKey, pubKey ed25519.PublicKey, c cfg.Cfg) *TknSvc {
 	return &TknSvc{
 		signingKey: signingKey,
 		pubKey:     pubKey,
 		cfg:        c,
-		clockSkew:  30,
 	}
 }
 
-// Issue creates and signs a new JWT token from the given request parameters.
+// Issue creates a new EdDSA-signed JWT from the given [IssueReq]. It
+// generates a fresh JTI, sets iat/nbf/exp based on the current time and
+// TTL, and returns an [IssueResp] containing the compact token string.
 func (s *TknSvc) Issue(req IssueReq) (*IssueResp, error) {
-	start := time.Now()
-	defer func() {
-		obs.RecordIssuance(float64(time.Since(start).Milliseconds()))
-	}()
-
-	ttl := req.TTLSecond
+	ttl := req.TTL
 	if ttl <= 0 {
 		ttl = s.cfg.DefaultTTL
-		if ttl <= 0 {
-			ttl = 300
-		}
 	}
-	now := time.Now().UTC()
-	delegChain := make([]DelegRecord, len(req.DelegChain))
-	copy(delegChain, req.DelegChain)
-	claims := TknClaims{
-		Iss:        "agentauth://" + s.cfg.TrustDomain,
-		Sub:        req.AgentID,
-		Aud:        []string{"resource-server"},
-		Exp:        now.Add(time.Duration(ttl) * time.Second).Unix(),
-		Nbf:        now.Add(-1 * time.Second).Unix(),
-		Iat:        now.Unix(),
-		Jti:        randomJTI(),
-		Scope:      append([]string{}, req.Scope...),
-		TaskId:     req.TaskID,
-		OrchId:     req.OrchID,
-		DelegChain: delegChain,
+
+	now := time.Now().Unix()
+	jti := randomJTI()
+
+	claims := &TknClaims{
+		Iss:        "agentauth",
+		Sub:        req.Sub,
+		Exp:        now + int64(ttl),
+		Nbf:        now,
+		Iat:        now,
+		Jti:        jti,
+		Scope:      req.Scope,
+		TaskId:     req.TaskId,
+		OrchId:     req.OrchId,
+		DelegChain: req.DelegChain,
 	}
-	if err := claims.Validate(now); err != nil {
-		return nil, err
-	}
-	token, err := s.signClaims(claims)
+
+	tokenStr, err := s.sign(claims)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("sign token: %w", err)
 	}
+
+	// Metric: count issued tokens by primary scope.
+	scopeLabel := "none"
+	if len(req.Scope) > 0 {
+		scopeLabel = req.Scope[0]
+	}
+	obs.TokensIssuedTotal.WithLabelValues(scopeLabel).Inc()
+
 	return &IssueResp{
-		AccessToken:  token,
-		ExpiresIn:    ttl,
-		RefreshAfter: int(float64(ttl) * 0.75),
+		AccessToken: tokenStr,
+		ExpiresIn:   ttl,
+		TokenType:   "Bearer",
+		Claims:      claims,
 	}, nil
 }
 
-// Verify validates the token signature and claims, returning the parsed claims on success.
+// Verify parses a compact JWT string, verifies the Ed25519 signature, and
+// validates the claims (issuer, subject, JTI, expiry, nbf). On success it
+// returns the decoded [TknClaims]. On failure it returns one of
+// [ErrInvalidToken], [ErrSignatureInvalid], or a claims validation error.
 func (s *TknSvc) Verify(tokenStr string) (*TknClaims, error) {
-	parts := strings.Split(tokenStr, ".")
+	parts := strings.SplitN(tokenStr, ".", 3)
 	if len(parts) != 3 {
-		return nil, ErrTokenMalformed
+		return nil, ErrInvalidToken
 	}
+
+	// Decode and verify signature
 	signingInput := parts[0] + "." + parts[1]
-	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
+	sigBytes, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil {
-		return nil, ErrTokenMalformed
-	}
-	if !ed25519.Verify(s.pubKey, []byte(signingInput), sig) {
-		return nil, ErrTokenSignature
+		return nil, ErrSignatureInvalid
 	}
 
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return nil, ErrTokenMalformed
+	if !ed25519.Verify(s.pubKey, []byte(signingInput), sigBytes) {
+		return nil, ErrSignatureInvalid
 	}
+
+	// Decode claims
+	claimsJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, ErrInvalidToken
+	}
+
 	var claims TknClaims
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		return nil, ErrTokenMalformed
+	if err := json.Unmarshal(claimsJSON, &claims); err != nil {
+		return nil, ErrInvalidToken
 	}
 
-	now := time.Now().UTC().Unix()
-	if claims.Exp == 0 || now > claims.Exp+s.clockSkew {
-		return nil, ErrTokenExpired
-	}
-	if now > claims.Exp {
-		obs.RecordClockSkew()
-	}
-	if claims.Nbf != 0 && now+s.clockSkew < claims.Nbf {
-		return nil, ErrTokenNotYet
-	}
-	if claims.Nbf != 0 && now < claims.Nbf {
-		obs.RecordClockSkew()
-	}
-	if err := claims.Validate(time.Now().UTC()); err != nil {
+	if err := claims.Validate(); err != nil {
 		return nil, err
 	}
+
 	return &claims, nil
 }
 
-// Renew verifies an existing token and issues a fresh token with the same claims.
+// Renew verifies an existing token and, if valid, issues a replacement
+// token with the same subject, scope, task, orchestration, and delegation
+// chain but fresh timestamps and a new JTI. The original token remains
+// valid until its own expiry (or revocation).
 func (s *TknSvc) Renew(tokenStr string) (*IssueResp, error) {
 	claims, err := s.Verify(tokenStr)
 	if err != nil {
 		return nil, err
 	}
+
 	return s.Issue(IssueReq{
-		AgentID:    claims.Sub,
-		OrchID:     claims.OrchId,
-		TaskID:     claims.TaskId,
+		Sub:        claims.Sub,
 		Scope:      claims.Scope,
+		TaskId:     claims.TaskId,
+		OrchId:     claims.OrchId,
 		DelegChain: claims.DelegChain,
 	})
 }
 
-// PublicKey returns a defensive copy of the configured Ed25519 verification key.
+// PublicKey returns the Ed25519 public key used for token signature
+// verification. This can be shared with external services that need to
+// verify tokens independently.
 func (s *TknSvc) PublicKey() ed25519.PublicKey {
-	key := make(ed25519.PublicKey, len(s.pubKey))
-	copy(key, s.pubKey)
-	return key
+	return s.pubKey
 }
 
-func (s *TknSvc) signClaims(claims TknClaims) (string, error) {
-	header := `{"alg":"EdDSA","typ":"JWT"}`
-	headerB64 := base64.RawURLEncoding.EncodeToString([]byte(header))
-	payload, err := json.Marshal(claims)
+func (s *TknSvc) sign(claims *TknClaims) (string, error) {
+	hdr := jwtHeader{Alg: "EdDSA", Typ: "JWT"}
+	hdrJSON, err := json.Marshal(hdr)
 	if err != nil {
 		return "", err
 	}
-	payloadB64 := base64.RawURLEncoding.EncodeToString(payload)
-	signingInput := headerB64 + "." + payloadB64
-	sig := ed25519.Sign(s.signingKey, []byte(signingInput))
-	if len(sig) != ed25519.SignatureSize {
-		return "", fmt.Errorf("signature size mismatch")
+
+	claimsJSON, err := json.Marshal(claims)
+	if err != nil {
+		return "", err
 	}
-	return signingInput + "." + base64.RawURLEncoding.EncodeToString(sig), nil
+
+	hdrB64 := base64.RawURLEncoding.EncodeToString(hdrJSON)
+	claimsB64 := base64.RawURLEncoding.EncodeToString(claimsJSON)
+	signingInput := hdrB64 + "." + claimsB64
+
+	sig := ed25519.Sign(s.signingKey, []byte(signingInput))
+	sigB64 := base64.RawURLEncoding.EncodeToString(sig)
+
+	return signingInput + "." + sigB64, nil
 }
 
 func randomJTI() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		return "jti-fallback"
+		panic("crypto/rand failed: " + err.Error())
 	}
 	return hex.EncodeToString(b)
 }

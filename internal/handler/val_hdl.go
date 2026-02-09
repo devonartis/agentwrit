@@ -1,0 +1,76 @@
+package handler
+
+import (
+	"encoding/json"
+	"net/http"
+
+	"github.com/divineartis/agentauth/internal/revoke"
+	"github.com/divineartis/agentauth/internal/token"
+)
+
+// ValHdl handles POST /v1/token/validate. It accepts a token in the
+// request body and returns a JSON response indicating whether the token
+// is valid, along with the decoded claims on success. If a [revoke.RevSvc]
+// is provided, revoked tokens are reported as invalid.
+type ValHdl struct {
+	tknSvc *token.TknSvc
+	revSvc *revoke.RevSvc
+}
+
+// NewValHdl creates a new token validation handler. The revSvc parameter
+// may be nil to disable revocation checking.
+func NewValHdl(tknSvc *token.TknSvc, revSvc *revoke.RevSvc) *ValHdl {
+	return &ValHdl{tknSvc: tknSvc, revSvc: revSvc}
+}
+
+type validateReq struct {
+	Token string `json:"token"`
+}
+
+type validateRespValid struct {
+	Valid  bool            `json:"valid"`
+	Claims *token.TknClaims `json:"claims"`
+}
+
+type validateRespInvalid struct {
+	Valid bool   `json:"valid"`
+	Error string `json:"error"`
+}
+
+func (h *ValHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	var req validateReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteProblem(w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
+		return
+	}
+	if req.Token == "" {
+		WriteProblem(w, http.StatusBadRequest, "invalid_request", "token field is required", r.URL.Path)
+		return
+	}
+
+	claims, err := h.tknSvc.Verify(req.Token)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	if err != nil {
+		json.NewEncoder(w).Encode(validateRespInvalid{
+			Valid: false,
+			Error: err.Error(),
+		})
+		return
+	}
+
+	// Check revocation status after signature verification
+	if h.revSvc != nil && h.revSvc.IsRevoked(claims) {
+		json.NewEncoder(w).Encode(validateRespInvalid{
+			Valid: false,
+			Error: "token has been revoked",
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(validateRespValid{
+		Valid:  true,
+		Claims: claims,
+	})
+}

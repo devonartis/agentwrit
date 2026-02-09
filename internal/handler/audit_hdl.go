@@ -7,89 +7,81 @@ import (
 	"time"
 
 	"github.com/divineartis/agentauth/internal/audit"
-	"github.com/divineartis/agentauth/internal/obs"
+	"github.com/divineartis/agentauth/internal/authz"
 )
 
-// AuditHdl handles GET /v1/audit/events requests for querying the audit trail.
+// AuditHdl handles GET /v1/audit/events. It accepts optional query
+// parameters for filtering (agent_id, task_id, event_type, since, until)
+// and pagination (limit, offset). Requires the "admin:audit:*" scope.
 type AuditHdl struct {
 	auditLog *audit.AuditLog
 }
 
-// NewAuditHdl creates an audit handler with the given audit log.
+// NewAuditHdl creates a new audit event query handler.
 func NewAuditHdl(auditLog *audit.AuditLog) *AuditHdl {
 	return &AuditHdl{auditLog: auditLog}
 }
 
 type auditResp struct {
-	Events     []audit.AuditEvt `json:"events"`
-	Total      int              `json:"total"`
-	NextOffset int              `json:"next_offset"`
+	Events []audit.AuditEvent `json:"events"`
+	Total  int                `json:"total"`
+	Offset int                `json:"offset"`
+	Limit  int                `json:"limit"`
 }
 
-// ServeHTTP parses query params, calls QueryEvents, and returns paginated JSON.
 func (h *AuditHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+	claims := authz.ClaimsFromContext(r.Context())
+	if claims == nil {
+		WriteProblem(w, http.StatusUnauthorized, "unauthorized", "missing authentication", r.URL.Path)
 		return
 	}
 
 	q := r.URL.Query()
-	limit, _ := strconv.Atoi(q.Get("limit"))
-	offset, _ := strconv.Atoi(q.Get("offset"))
-
-	if limit < 0 || offset < 0 {
-		obs.WriteProblemForRequest(w, r, http.StatusBadRequest, "urn:agentauth:error:bad-request", "limit and offset must be non-negative", "limit and offset must be non-negative")
-		return
-	}
-
-	from := q.Get("from")
-	to := q.Get("to")
-	if from != "" {
-		if _, err := time.Parse(time.RFC3339, from); err != nil {
-			obs.WriteProblemForRequest(w, r, http.StatusBadRequest, "urn:agentauth:error:bad-request", "from must be a valid RFC 3339 timestamp", "from must be a valid RFC 3339 timestamp")
-			return
-		}
-	}
-	if to != "" {
-		if _, err := time.Parse(time.RFC3339, to); err != nil {
-			obs.WriteProblemForRequest(w, r, http.StatusBadRequest, "urn:agentauth:error:bad-request", "to must be a valid RFC 3339 timestamp", "to must be a valid RFC 3339 timestamp")
-			return
-		}
-	}
-
-	filter := audit.AuditFilter{
-		AgentId:   q.Get("agent_id"),
-		TaskId:    q.Get("task_id"),
-		OrchId:    q.Get("orchestration_id"),
+	filters := audit.QueryFilters{
+		AgentID:   q.Get("agent_id"),
+		TaskID:    q.Get("task_id"),
 		EventType: q.Get("event_type"),
-		From:      from,
-		To:        to,
-		Limit:     limit,
-		Offset:    offset,
 	}
 
-	events, total, err := h.auditLog.QueryEvents(filter)
-	if err != nil {
-		obs.WriteProblemForRequest(w, r, http.StatusInternalServerError, "urn:agentauth:error:internal", "Audit query failed", "Audit query failed")
-		obs.Fail("AUDIT", "AuditHdl.ServeHTTP", "query failed", "error="+err.Error())
-		return
+	if since := q.Get("since"); since != "" {
+		t, err := time.Parse(time.RFC3339, since)
+		if err == nil {
+			filters.Since = &t
+		}
+	}
+	if until := q.Get("until"); until != "" {
+		t, err := time.Parse(time.RFC3339, until)
+		if err == nil {
+			filters.Until = &t
+		}
+	}
+	if limitStr := q.Get("limit"); limitStr != "" {
+		if n, err := strconv.Atoi(limitStr); err == nil {
+			filters.Limit = n
+		}
+	}
+	if offsetStr := q.Get("offset"); offsetStr != "" {
+		if n, err := strconv.Atoi(offsetStr); err == nil {
+			filters.Offset = n
+		}
 	}
 
+	events, total := h.auditLog.Query(filters)
 	if events == nil {
-		events = []audit.AuditEvt{}
+		events = []audit.AuditEvent{}
 	}
 
-	nextOffset := offset + len(events)
+	limit := filters.Limit
+	if limit <= 0 {
+		limit = 100
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(auditResp{
-		Events:     events,
-		Total:      total,
-		NextOffset: nextOffset,
+	json.NewEncoder(w).Encode(auditResp{
+		Events: events,
+		Total:  total,
+		Offset: filters.Offset,
+		Limit:  limit,
 	})
-	obs.Ok("AUDIT", "AuditHdl.ServeHTTP", "query served",
-		"total="+strconv.Itoa(total),
-		"returned="+strconv.Itoa(len(events)),
-	)
 }
