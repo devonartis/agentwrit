@@ -13,6 +13,6 @@
 - [x] Task: Validate container build and startup (verified)
     - [ ] Build the image locally: `docker build -t agentauth:latest .`
     - [ ] Run via compose: `docker-compose up -d`
-- [ ] Task: Execute live smoke tests against the container
+- [x] Task: Execute live smoke tests against the container (21401e6)
     - [ ] Run `./scripts/live_test.sh` targeting the containerized endpoint
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: Verification' (Protocol in workflow.md)
