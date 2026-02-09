@@ -49,4 +49,20 @@ if [ "$SMOKE_EXIT" -ne 0 ]; then
   exit 1
 fi
 
-echo "[LIVE:PASS] full lifecycle validated: health, metrics, register, token ops, authz, admin-gated revoke, single-use launch, delegation"
+# Audit events endpoint (admin-gated).
+AUDIT_RES=$(curl -sS -w "\n%{http_code}" -H "Authorization: Bearer $SEED_ADMIN" \
+  "http://127.0.0.1:${PORT}/v1/audit/events")
+AUDIT_CODE=$(echo "$AUDIT_RES" | tail -1)
+AUDIT_BODY=$(echo "$AUDIT_RES" | sed '$d')
+if [ "$AUDIT_CODE" != "200" ]; then
+  echo "[LIVE:FAIL] /v1/audit/events returned $AUDIT_CODE"
+  exit 1
+fi
+AUDIT_TOTAL=$(echo "$AUDIT_BODY" | grep -o '"total":[0-9]*' | head -1 | cut -d: -f2)
+if [ -z "$AUDIT_TOTAL" ] || [ "$AUDIT_TOTAL" -lt 1 ]; then
+  echo "[LIVE:FAIL] expected at least 1 audit event, got $AUDIT_TOTAL"
+  exit 1
+fi
+echo "[LIVE:OK] /v1/audit/events returned $AUDIT_TOTAL events"
+
+echo "[LIVE:PASS] full lifecycle validated: health, metrics, register, token ops, authz, admin-gated revoke, single-use launch, delegation, audit"
