@@ -2,36 +2,67 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BIN="$ROOT/agentauth-broker"
+BROKER_BIN="$ROOT/agentauth-broker"
+SMOKE_BIN="$ROOT/agentauth-smoke"
 OUT_LOG="/tmp/aa_live_out.log"
 ERR_LOG="/tmp/aa_live_err.log"
+PORT=18080
 
 cd "$ROOT"
-go build -o "$BIN" ./cmd/broker
+go build -o "$BROKER_BIN" ./cmd/broker
+go build -o "$SMOKE_BIN" ./cmd/smoketest
 
-"$BIN" >"$OUT_LOG" 2>"$ERR_LOG" &
+# Start broker with seed tokens on a test port.
+AA_SEED_TOKENS=true AA_PORT="$PORT" "$BROKER_BIN" >"$OUT_LOG" 2>"$ERR_LOG" &
 PID=$!
-trap 'kill $PID 2>/dev/null || true; wait $PID 2>/dev/null || true; rm -f "$BIN"' EXIT
+trap 'kill $PID 2>/dev/null || true; wait $PID 2>/dev/null || true; rm -f "$BROKER_BIN" "$SMOKE_BIN"' EXIT
 
 # Wait for health endpoint readiness.
-for _ in $(seq 1 20); do
-  if curl -sS http://127.0.0.1:8080/v1/health >/dev/null 2>&1; then
+for _ in $(seq 1 30); do
+  if curl -sS "http://127.0.0.1:${PORT}/v1/health" >/dev/null 2>&1; then
     break
   fi
   sleep 0.2
 done
 
-HEALTH="$(curl -sS --max-time 5 http://127.0.0.1:8080/v1/health)"
-CHALLENGE="$(curl -sS --max-time 5 http://127.0.0.1:8080/v1/challenge)"
-VALIDATE_CODE="$(curl -sS -o /tmp/aa_validate_body.json -w "%{http_code}" -H 'Content-Type: application/json' -d '{"token":"invalid","required_scope":"read:Customers:12345"}' http://127.0.0.1:8080/v1/token/validate)"
-RENEW_CODE="$(curl -sS -o /tmp/aa_renew_body.json -w "%{http_code}" -H 'Content-Type: application/json' -d '{"token":"invalid"}' http://127.0.0.1:8080/v1/token/renew)"
-PROTECTED_NOAUTH_CODE="$(curl -sS -o /tmp/aa_protected_noauth_body.json -w "%{http_code}" http://127.0.0.1:8080/v1/protected/customers/12345)"
+# Extract seed tokens from broker stdout.
+SEED_LAUNCH=$(grep 'SEED_LAUNCH_TOKEN=' "$OUT_LOG" | head -1 | sed 's/SEED_LAUNCH_TOKEN=//')
+if [ -z "$SEED_LAUNCH" ]; then
+  echo "[LIVE:FAIL] seed launch token not found in broker output"
+  exit 1
+fi
+SEED_ADMIN=$(grep 'SEED_ADMIN_TOKEN=' "$OUT_LOG" | head -1 | sed 's/SEED_ADMIN_TOKEN=//')
+if [ -z "$SEED_ADMIN" ]; then
+  echo "[LIVE:FAIL] seed admin token not found in broker output"
+  exit 1
+fi
 
-echo "$HEALTH" | grep -q '"status":"healthy"'
-echo "$CHALLENGE" | grep -q '"nonce":"'
-echo "$CHALLENGE" | grep -q '"expires_at":"'
-test "$VALIDATE_CODE" = "401"
-test "$RENEW_CODE" = "401"
-test "$PROTECTED_NOAUTH_CODE" = "401"
+# Run smoke test against the real broker.
+SEED_LAUNCH_TOKEN="$SEED_LAUNCH" \
+SEED_ADMIN_TOKEN="$SEED_ADMIN" \
+AA_BROKER_URL="http://127.0.0.1:${PORT}" \
+"$SMOKE_BIN"
+SMOKE_EXIT=$?
 
-echo "[LIVE:PASS] health/challenge/token/authz error-paths validated"
+if [ "$SMOKE_EXIT" -ne 0 ]; then
+  echo "[LIVE:FAIL] smoke test exited with code $SMOKE_EXIT"
+  exit 1
+fi
+
+# Audit events endpoint (admin-gated).
+AUDIT_RES=$(curl -sS -w "\n%{http_code}" -H "Authorization: Bearer $SEED_ADMIN" \
+  "http://127.0.0.1:${PORT}/v1/audit/events")
+AUDIT_CODE=$(echo "$AUDIT_RES" | tail -1)
+AUDIT_BODY=$(echo "$AUDIT_RES" | sed '$d')
+if [ "$AUDIT_CODE" != "200" ]; then
+  echo "[LIVE:FAIL] /v1/audit/events returned $AUDIT_CODE"
+  exit 1
+fi
+AUDIT_TOTAL=$(echo "$AUDIT_BODY" | grep -o '"total":[0-9]*' | head -1 | cut -d: -f2)
+if [ -z "$AUDIT_TOTAL" ] || [ "$AUDIT_TOTAL" -lt 1 ]; then
+  echo "[LIVE:FAIL] expected at least 1 audit event, got $AUDIT_TOTAL"
+  exit 1
+fi
+echo "[LIVE:OK] /v1/audit/events returned $AUDIT_TOTAL events"
+
+echo "[LIVE:PASS] full lifecycle validated: health, metrics, register, token ops, authz, admin-gated revoke, single-use launch, delegation, audit"

@@ -9,12 +9,18 @@ import (
 	"time"
 )
 
+// LogLevel represents the verbosity level for structured logging output.
 type LogLevel int
 
+// Log level constants control which messages are emitted.
 const (
+	// LvlQuiet suppresses all output except FAIL messages.
 	LvlQuiet LogLevel = iota
+	// LvlStandard emits FAIL, WARN, and OK messages.
 	LvlStandard
+	// LvlVerbose emits FAIL, WARN, and OK messages (default level).
 	LvlVerbose
+	// LvlTrace emits all messages including trace-level diagnostics.
 	LvlTrace
 )
 
@@ -25,6 +31,7 @@ var (
 	stderr io.Writer = os.Stderr
 )
 
+// Configure sets the global log level from a string value (quiet, standard, verbose, or trace).
 func Configure(level string) {
 	switch strings.ToLower(strings.TrimSpace(level)) {
 	case "quiet":
@@ -40,6 +47,7 @@ func Configure(level string) {
 	}
 }
 
+// SetWriters overrides the default stdout and stderr writers used for log output.
 func SetWriters(out, err io.Writer) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -47,18 +55,22 @@ func SetWriters(out, err io.Writer) {
 	stderr = err
 }
 
+// Ok emits a structured log message at OK level.
 func Ok(module, component, msg string, ctx ...string) {
 	log("OK", module, component, msg, ctx...)
 }
 
+// Warn emits a structured log message at WARN level.
 func Warn(module, component, msg string, ctx ...string) {
 	log("WARN", module, component, msg, ctx...)
 }
 
+// Trace emits a structured log message at TRACE level.
 func Trace(module, component, msg string, ctx ...string) {
 	log("TRACE", module, component, msg, ctx...)
 }
 
+// Fail emits a structured log message at FAIL level, written to stderr.
 func Fail(module, component, msg string, ctx ...string) {
 	log("FAIL", module, component, msg, ctx...)
 }

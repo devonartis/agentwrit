@@ -13,10 +13,70 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [status, version, uptime_seconds, components]
                 properties:
                   status:
                     type: string
+                    enum: [healthy]
                     example: healthy
+                  version:
+                    type: string
+                    example: "0.1.0"
+                  uptime_seconds:
+                    type: integer
+                    example: 42
+                  components:
+                    type: object
+                    required: [sqlite, redis]
+                    properties:
+                      sqlite:
+                        type: string
+                        enum: [healthy, unhealthy]
+                        example: healthy
+                      redis:
+                        type: string
+                        enum: [healthy, unhealthy]
+                        example: healthy
+        "503":
+          description: Broker is degraded or unhealthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, version, uptime_seconds, components]
+                properties:
+                  status:
+                    type: string
+                    enum: [degraded, unhealthy]
+                    example: degraded
+                  version:
+                    type: string
+                    example: "0.1.0"
+                  uptime_seconds:
+                    type: integer
+                    example: 42
+                  components:
+                    type: object
+                    required: [sqlite, redis]
+                    properties:
+                      sqlite:
+                        type: string
+                        enum: [healthy, unhealthy]
+                        example: healthy
+                      redis:
+                        type: string
+                        enum: [healthy, unhealthy]
+                        example: unhealthy
+  /v1/metrics:
+    get:
+      summary: Prometheus metrics endpoint
+      responses:
+        "200":
+          description: Prometheus metrics exposition
+          content:
+            text/plain:
+              schema:
+                type: string
   /v1/challenge:
     get:
       summary: Issue nonce challenge for registration proof-of-possession
@@ -192,6 +252,62 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /v1/revoke:
+    post:
+      summary: Revoke tokens at 4 levels (token, agent, task, delegation_chain)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [level, target_id]
+              properties:
+                level:
+                  type: string
+                  enum: [token, agent, task, delegation_chain]
+                  description: Revocation level
+                target_id:
+                  type: string
+                  description: Identifier to revoke (JTI, agent ID, task ID, or chain hash)
+                  example: jti-abc123
+                reason:
+                  type: string
+                  description: Human-readable reason for revocation
+                  example: compromised credentials
+      responses:
+        "200":
+          description: Revocation successful
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked, level, target_id, revoked_at]
+                properties:
+                  revoked: { type: boolean, example: true }
+                  level: { type: string, example: token }
+                  target_id: { type: string, example: jti-abc123 }
+                  revoked_at: { type: string, format: date-time }
+        "400":
+          description: Invalid level or missing target_id
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Caller does not have required admin scope
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /v1/protected/customers/12345:
     get:
       summary: Protected customer resource (authz middleware example)
@@ -219,12 +335,178 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /v1/delegate:
+    post:
+      summary: Delegate attenuated scope from one agent to another
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [delegator_token, target_agent_id, delegated_scope]
+              properties:
+                delegator_token:
+                  type: string
+                  description: Current agent's valid access token
+                target_agent_id:
+                  type: string
+                  description: SPIFFE ID of the agent receiving delegation
+                  example: spiffe://agentauth.local/agent/orch/task/agentB
+                delegated_scope:
+                  type: array
+                  items: { type: string }
+                  description: Scopes to delegate (must be subset of delegator's scope)
+                  example: ["read:Customers:12345"]
+                max_ttl:
+                  type: integer
+                  description: Maximum TTL for delegated token (must be <= delegator's remaining TTL)
+                  example: 60
+      responses:
+        "201":
+          description: Delegation created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [delegation_token, chain_hash, delegation_depth]
+                properties:
+                  delegation_token:
+                    type: string
+                    description: Signed JWT with attenuated scope for target agent
+                  chain_hash:
+                    type: string
+                    description: SHA-256 hash of the complete delegation chain
+                    example: a1b2c3d4e5f6...
+                  delegation_depth:
+                    type: integer
+                    description: Current depth in delegation chain
+                    example: 1
+        "400":
+          description: Malformed request or TTL exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Invalid delegator token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Scope escalation or depth exceeded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/audit/events:
+    get:
+      summary: Query audit trail events with filtering and pagination
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: agent_id
+          in: query
+          schema: { type: string }
+          description: Filter by agent SPIFFE ID
+        - name: task_id
+          in: query
+          schema: { type: string }
+          description: Filter by task identifier
+        - name: orchestration_id
+          in: query
+          schema: { type: string }
+          description: Filter by orchestration ID
+        - name: event_type
+          in: query
+          schema:
+            type: string
+            enum: [credential_issued, access_granted, access_denied, token_revoked, delegation_created, delegation_revoked, anomaly_detected]
+          description: Filter by event type
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+          description: ISO 8601 lower bound (inclusive)
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+          description: ISO 8601 upper bound (inclusive)
+        - name: limit
+          in: query
+          schema: { type: integer, default: 100, maximum: 1000 }
+          description: Page size
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+          description: Pagination offset
+      responses:
+        "200":
+          description: Audit events returned
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events, total, next_offset]
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AuditEvt"
+                  total:
+                    type: integer
+                    example: 42
+                  next_offset:
+                    type: integer
+                    example: 10
+        "400":
+          description: Invalid query parameters
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "403":
+          description: Caller does not have required admin scope
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  # M06: Mutual authentication is a programmatic (library) API, not an HTTP endpoint.
+  # Agents use MutAuthHdl.InitiateHandshake / RespondToHandshake / CompleteHandshake
+  # directly. Discovery binding and heartbeat are also library APIs.
+  # See docs/developer/mutauth.md for protocol documentation.
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
   schemas:
+    AuditEvt:
+      type: object
+      required: [event_id, event_type, timestamp, event_hash, prev_hash]
+      properties:
+        event_id: { type: string, example: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6 }
+        event_type:
+          type: string
+          enum: [credential_issued, access_granted, access_denied, token_revoked, delegation_created, delegation_revoked, anomaly_detected]
+        timestamp: { type: string, format: date-time }
+        agent_instance_id: { type: string }
+        task_id: { type: string }
+        orchestration_id: { type: string }
+        resource: { type: string }
+        action: { type: string }
+        outcome: { type: string }
+        denial_reason: { type: string }
+        delegation_depth: { type: integer }
+        delegation_chain_hash: { type: string }
+        prev_hash: { type: string }
+        event_hash: { type: string }
     Problem:
       type: object
       required: [type, title, status]
@@ -235,3 +517,7 @@ components:
           type: string
         status:
           type: integer
+        detail:
+          type: string
+        instance:
+          type: string

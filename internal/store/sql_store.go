@@ -7,6 +7,12 @@ import (
 	"time"
 )
 
+// ErrLaunchTokenNotFound indicates the requested launch token does not exist in the store.
+// ErrLaunchTokenExpired indicates the launch token has passed its expiration time.
+// ErrLaunchTokenConsumed indicates the launch token has already been used.
+// ErrNonceNotFound indicates the requested nonce does not exist in the store.
+// ErrNonceExpired indicates the nonce has passed its expiration time.
+// ErrAgentExists indicates an agent with the same ID is already registered.
 var (
 	ErrLaunchTokenNotFound = errors.New("launch token not found")
 	ErrLaunchTokenExpired  = errors.New("launch token expired")
@@ -14,8 +20,11 @@ var (
 	ErrNonceNotFound       = errors.New("nonce not found")
 	ErrNonceExpired        = errors.New("nonce expired")
 	ErrAgentExists         = errors.New("agent already exists")
+	// ErrAgentNotFound indicates no agent exists with the given ID.
+	ErrAgentNotFound = errors.New("agent not found")
 )
 
+// LaunchTokenData holds the metadata and state of an issued launch token.
 type LaunchTokenData struct {
 	Token      string
 	OrchId     string
@@ -26,6 +35,7 @@ type LaunchTokenData struct {
 	ConsumedAt time.Time
 }
 
+// AgentRecord represents a registered agent's identity and cryptographic material.
 type AgentRecord struct {
 	AgentID    string
 	OrchId     string
@@ -37,11 +47,13 @@ type AgentRecord struct {
 	LastSigRaw []byte
 }
 
+// NonceRecord represents a challenge nonce and its expiration time.
 type NonceRecord struct {
 	Nonce     string
 	ExpiresAt time.Time
 }
 
+// SqlStore provides in-memory storage for launch tokens, agents, and nonces behind a mutex.
 type SqlStore struct {
 	DB           *sql.DB
 	mu           sync.Mutex
@@ -50,6 +62,7 @@ type SqlStore struct {
 	nonces       map[string]NonceRecord
 }
 
+// NewSqlStore creates a new SqlStore with initialized in-memory maps.
 func NewSqlStore() *SqlStore {
 	return &SqlStore{
 		launchTokens: make(map[string]LaunchTokenData),
@@ -58,6 +71,7 @@ func NewSqlStore() *SqlStore {
 	}
 }
 
+// CreateLaunchToken stores a new launch token in the store.
 func (s *SqlStore) CreateLaunchToken(data LaunchTokenData) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -65,6 +79,7 @@ func (s *SqlStore) CreateLaunchToken(data LaunchTokenData) error {
 	return nil
 }
 
+// ConsumeLaunchToken marks a launch token as consumed and returns its data, or an error if the token is missing, expired, or already consumed.
 func (s *SqlStore) ConsumeLaunchToken(token string) (*LaunchTokenData, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -87,6 +102,7 @@ func (s *SqlStore) ConsumeLaunchToken(token string) (*LaunchTokenData, error) {
 	return &data, nil
 }
 
+// SaveAgent persists a new agent record, returning ErrAgentExists if the agent ID is already registered.
 func (s *SqlStore) SaveAgent(rec AgentRecord) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -97,12 +113,25 @@ func (s *SqlStore) SaveAgent(rec AgentRecord) error {
 	return nil
 }
 
+// GetAgent retrieves an agent record by its SPIFFE-compatible ID.
+func (s *SqlStore) GetAgent(agentID string) (*AgentRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rec, ok := s.agents[agentID]
+	if !ok {
+		return nil, ErrAgentNotFound
+	}
+	return &rec, nil
+}
+
+// PutNonce stores a challenge nonce with the given expiration time.
 func (s *SqlStore) PutNonce(nonce string, expiresAt time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.nonces[nonce] = NonceRecord{Nonce: nonce, ExpiresAt: expiresAt}
 }
 
+// ConsumeNonce validates and removes a nonce from the store, returning an error if it is missing or expired.
 func (s *SqlStore) ConsumeNonce(nonce string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

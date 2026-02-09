@@ -1,6 +1,7 @@
 package token
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 	"time"
@@ -49,7 +50,12 @@ func TestVerifyBadSignature(t *testing.T) {
 	if err != nil {
 		t.Fatalf("issue token: %v", err)
 	}
-	tampered := issued.AccessToken[:len(issued.AccessToken)-1] + "A"
+	// Tamper the signature by decoding, flipping a byte, and re-encoding.
+	// Avoid tampering the last base64url character which may hit non-significant tail bits.
+	parts := strings.SplitN(issued.AccessToken, ".", 3)
+	sigBytes, _ := base64.RawURLEncoding.DecodeString(parts[2])
+	sigBytes[0] ^= 0xFF
+	tampered := parts[0] + "." + parts[1] + "." + base64.RawURLEncoding.EncodeToString(sigBytes)
 	if _, err := svc.Verify(tampered); err == nil {
 		t.Fatalf("expected signature verification failure")
 	}
@@ -112,3 +118,66 @@ func TestRenew(t *testing.T) {
 	}
 }
 
+func TestIssuePreservesDelegationChain(t *testing.T) {
+	svc := newSvc(t)
+	chain := []DelegRecord{
+		{
+			Agent:       "spiffe://agentauth.local/agent/orch/task/delegator",
+			Scope:       []string{"read:Customers:12345"},
+			DelegatedAt: time.Now().UTC().Format(time.RFC3339),
+			Signature:   "cafebabe",
+		},
+	}
+	issued, err := svc.Issue(IssueReq{
+		AgentID:    "spiffe://agentauth.local/agent/orch/task/inst",
+		OrchID:     "orch-1",
+		TaskID:     "task-1",
+		Scope:      []string{"read:Customers:12345"},
+		DelegChain: chain,
+	})
+	if err != nil {
+		t.Fatalf("issue token: %v", err)
+	}
+	claims, err := svc.Verify(issued.AccessToken)
+	if err != nil {
+		t.Fatalf("verify token: %v", err)
+	}
+	if len(claims.DelegChain) != 1 {
+		t.Fatalf("expected 1 delegation record, got %d", len(claims.DelegChain))
+	}
+	if claims.DelegChain[0].Agent != chain[0].Agent {
+		t.Fatalf("delegation chain agent mismatch: got %s", claims.DelegChain[0].Agent)
+	}
+}
+
+func TestRenewPreservesDelegationChain(t *testing.T) {
+	svc := newSvc(t)
+	issued, err := svc.Issue(IssueReq{
+		AgentID: "spiffe://agentauth.local/agent/orch/task/inst",
+		OrchID:  "orch-1",
+		TaskID:  "task-1",
+		Scope:   []string{"read:Customers:12345"},
+		DelegChain: []DelegRecord{
+			{
+				Agent:       "spiffe://agentauth.local/agent/orch/task/delegator",
+				Scope:       []string{"read:Customers:12345"},
+				DelegatedAt: time.Now().UTC().Format(time.RFC3339),
+				Signature:   "feedface",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("issue token: %v", err)
+	}
+	renewed, err := svc.Renew(issued.AccessToken)
+	if err != nil {
+		t.Fatalf("renew token: %v", err)
+	}
+	claims, err := svc.Verify(renewed.AccessToken)
+	if err != nil {
+		t.Fatalf("verify renewed token: %v", err)
+	}
+	if len(claims.DelegChain) != 1 {
+		t.Fatalf("expected renewed token to preserve delegation chain, got %d entries", len(claims.DelegChain))
+	}
+}

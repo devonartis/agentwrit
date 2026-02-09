@@ -7,7 +7,7 @@ It explains how to run the service, execute the identity/token flow, validate pr
 
 ## Prerequisites
 
-- Go 1.22+
+- Go 1.23+ (module pins secure toolchain `go1.25.7` for gate runs)
 - curl
 - jq (recommended for response inspection)
 
@@ -30,12 +30,27 @@ curl -i http://127.0.0.1:8080/v1/health
 ```
 
 Expected:
+- HTTP status `200` when healthy
+- HTTP status `503` when degraded or unhealthy
+- JSON body with:
+  - `status` (`healthy|degraded|unhealthy`)
+  - `version`
+  - `uptime_seconds`
+  - `components` (`sqlite`, `redis`)
+
+## Inspect Prometheus metrics
+
+```bash
+curl -sS http://127.0.0.1:8080/v1/metrics | head -40
+```
+
+Expected:
 - HTTP status `200`
-- JSON body `{"status":"healthy"}`
+- text exposition containing `aa_` prefixed metrics (for example `aa_validation_decision_total`)
 
 ## End-to-end identity and token workflow
 
-This sequence covers the M01-M03 identity, token, and authorization workflow.
+This sequence covers the M01-M04 identity, token, authorization, and revocation workflow.
 
 ### Step 1: Request challenge nonce
 
@@ -96,6 +111,68 @@ Expected:
 - `200` with new `access_token`
 - `401` for invalid/expired token
 
+## Token revocation (M04)
+
+Use `POST /v1/revoke` to revoke tokens at one of four levels:
+
+| Level | Target | Effect |
+|---|---|---|
+| `token` | Single JWT by its `jti` claim | Revokes one specific token |
+| `agent` | Agent by SPIFFE ID | Revokes all tokens for that agent |
+| `task` | Task by `task_id` | Revokes all tokens issued for that task |
+| `delegation_chain` | Chain by SHA-256 hash | Revokes all tokens sharing a delegation chain |
+
+Authorization requirement:
+- bearer token with `admin:Broker:*` scope
+- for local runs, start broker with `AA_SEED_TOKENS=true` and use `SEED_ADMIN_TOKEN` from startup output
+
+### Revoke a single token
+
+```bash
+curl -sS -X POST \
+  -H "Authorization: Bearer <admin_token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"level":"token","target_id":"<jti>","reason":"compromised"}' \
+  http://127.0.0.1:8080/v1/revoke | jq .
+```
+
+Expected success (`200`):
+```json
+{
+  "revoked": true,
+  "level": "token",
+  "target_id": "<jti>",
+  "revoked_at": "2026-02-07T12:00:00Z"
+}
+```
+
+### Revoke all tokens for an agent
+
+```bash
+curl -sS -X POST \
+  -H "Authorization: Bearer <admin_token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"level":"agent","target_id":"spiffe://agentauth.local/agent/orch-1/task-1/abc123","reason":"agent decommissioned"}' \
+  http://127.0.0.1:8080/v1/revoke | jq .
+```
+
+### Verify revocation
+
+After revoking, any request using the revoked token (or any token matching the revoked agent/task/chain) receives `401`:
+
+```bash
+curl -i -H "Authorization: Bearer <revoked_token>" \
+  http://127.0.0.1:8080/v1/protected/customers/12345
+# → 401 with {"type":"urn:agentauth:error:token-revoked","title":"token has been revoked","status":401}
+```
+
+### Error responses
+
+- `400` — invalid `level` value or missing required fields
+- `401` — missing/invalid admin bearer token
+- `403` — bearer token lacks `admin:Broker:*` scope
+- `405` — non-POST method
+
 ## Protected resource authorization workflow (M03)
 
 Protected route:
@@ -111,6 +188,111 @@ Quick unauthorized check:
 ```bash
 curl -i http://127.0.0.1:8080/v1/protected/customers/12345
 ```
+
+## Delegation workflow (M07)
+
+Use `POST /v1/delegate` to create a narrowed token for another agent.
+
+```bash
+curl -sS -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "delegator_token": "<agent_a_token>",
+    "target_agent_id": "spiffe://agentauth.local/agent/orch-1/task-1/agent-b",
+    "delegated_scope": ["read:Customers:12345"],
+    "max_ttl": 60
+  }' \
+  http://127.0.0.1:8080/v1/delegate | jq .
+```
+
+Expected success (`201`) includes:
+- `delegation_token`
+- `chain_hash`
+- `delegation_depth`
+
+Expected failure behavior:
+- `401` invalid delegator token
+- `403` scope escalation (requested scope broader than delegator scope)
+- `403` depth exceeded (MVP max depth is 3)
+
+## Audit trail (M05)
+
+The broker records all security-relevant events in an immutable hash-chain audit log. Use `GET /v1/audit/events` to query the trail.
+
+Authorization requirement:
+- bearer token with `admin:Broker:*` scope
+
+### Query audit events
+
+```bash
+curl -sS -H "Authorization: Bearer <admin_token>" \
+  "http://127.0.0.1:8080/v1/audit/events" | jq .
+```
+
+### Filter by event type
+
+```bash
+curl -sS -H "Authorization: Bearer <admin_token>" \
+  "http://127.0.0.1:8080/v1/audit/events?event_type=access_denied" | jq .
+```
+
+### Filter by agent and time range
+
+```bash
+curl -sS -H "Authorization: Bearer <admin_token>" \
+  "http://127.0.0.1:8080/v1/audit/events?agent_id=spiffe://agentauth.local/agent/orch/task/inst&from=2026-02-07T00:00:00Z" | jq .
+```
+
+### Paginate results
+
+```bash
+curl -sS -H "Authorization: Bearer <admin_token>" \
+  "http://127.0.0.1:8080/v1/audit/events?limit=10&offset=0" | jq .
+```
+
+Response includes `next_offset` for cursor-based pagination.
+
+### Event types recorded
+
+| Event Type | Trigger |
+|---|---|
+| `credential_issued` | Agent registration completes |
+| `access_granted` | Authorization middleware allows request |
+| `access_denied` | Authorization middleware denies request |
+| `token_revoked` | Token revocation succeeds |
+
+Each event includes a SHA-256 hash chain (`prev_hash`, `event_hash`) for tamper detection. PII in `resource` and `action` fields is automatically sanitized.
+
+## Mutual authentication (M06)
+
+M06 adds agent-to-agent authentication. Unlike the HTTP endpoints in M01-M04, mutual auth operates as a programmatic API between agents sharing the same broker trust domain.
+
+### Components
+
+- **MutAuthHdl**: 3-step handshake — both agents prove identity via broker-issued tokens and Ed25519 nonce signatures
+- **DiscoveryRegistry**: Bind agent SPIFFE IDs to network endpoints; verify bindings to prevent MITM
+- **HeartbeatMgr**: Track agent liveness; optionally auto-revoke unresponsive agents
+
+### Usage pattern
+
+Agents use the handshake programmatically (no HTTP endpoint — it's a library API):
+
+1. Agent A calls `InitiateHandshake(myToken, targetAgentID)` → gets `HandshakeReq` with nonce
+2. Agent B calls `RespondToHandshake(req, myToken, myPrivKey)` → signs nonce, returns `HandshakeResp`
+3. Agent A calls `CompleteHandshake(resp, originalNonce)` → verifies signature against registered public key
+
+### Discovery binding
+
+```go
+dr := mutauth.NewDiscoveryRegistry()
+dr.Bind(agentID, "https://agent-a.internal:8443")
+endpoint, _ := dr.Resolve(agentID)
+ok, _ := dr.VerifyBinding(agentID, presentedID) // MITM check
+```
+
+### Heartbeat monitoring
+
+When wired with `RevSvc`, agents missing 3+ heartbeats are automatically revoked. Without `RevSvc`, missed heartbeats are logged as warnings.
 
 ## Run quality gates
 
@@ -160,6 +342,14 @@ Common issues and actions:
 - `403` on protected route
   - token scope does not match route requirement
   - validate token payload and requested scope
+
+- `401` with `token-revoked` on protected route
+  - token (or its agent/task/chain) was revoked via `/v1/revoke`
+  - issue a new token through the challenge/register flow
+
+- `400` on `/v1/revoke`
+  - `level` must be one of: `token`, `agent`, `task`, `delegation_chain`
+  - `target_id` is required; `reason` is optional
 
 - gate failures at `GITFLOW`
   - branch and `.active_module` mismatch

@@ -37,6 +37,30 @@ lint_gate() {
   fi
 }
 
+security_gate() {
+  local gosec_bin govuln_bin gopath_bin
+  gopath_bin="$(go env GOPATH)/bin"
+  gosec_bin="$(command -v gosec 2>/dev/null || true)"
+  govuln_bin="$(command -v govulncheck 2>/dev/null || true)"
+  if [ -z "$gosec_bin" ] && [ -x "$gopath_bin/gosec" ]; then
+    gosec_bin="$gopath_bin/gosec"
+  fi
+  if [ -z "$govuln_bin" ] && [ -x "$gopath_bin/govulncheck" ]; then
+    govuln_bin="$gopath_bin/govulncheck"
+  fi
+
+  if [ -z "$gosec_bin" ]; then
+    echo "[GATE:FAIL] gosec not installed; install with: go install github.com/securego/gosec/v2/cmd/gosec@latest"
+    return 1
+  fi
+  if [ -z "$govuln_bin" ]; then
+    echo "[GATE:FAIL] govulncheck not installed; install with: go install golang.org/x/vuln/cmd/govulncheck@latest"
+    return 1
+  fi
+  (cd "$ROOT" && "$gosec_bin" ./...)
+  (cd "$ROOT" && "$govuln_bin" ./...)
+}
+
 unit_gate() {
   (cd "$ROOT" && go test ./... -short)
 }
@@ -61,6 +85,7 @@ task_level() {
   run_gate GITFLOW gitflow_gate
   run_gate BUILD build_gate
   run_gate LINT lint_gate
+  run_gate SECURITY security_gate
   run_gate UNIT unit_gate
   run_gate DOC doc_gate
 }

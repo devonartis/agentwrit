@@ -3,7 +3,6 @@ package token
 import (
 	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -13,29 +12,40 @@ import (
 	"time"
 
 	"github.com/divineartis/agentauth/internal/cfg"
+	"github.com/divineartis/agentauth/internal/obs"
 )
 
+// Token verification errors.
 var (
+	// ErrTokenMalformed indicates the token string is not well-formed.
 	ErrTokenMalformed = errors.New("malformed token")
+	// ErrTokenSignature indicates the token signature verification failed.
 	ErrTokenSignature = errors.New("invalid token signature")
-	ErrTokenExpired   = errors.New("token expired")
-	ErrTokenNotYet    = errors.New("token not valid yet")
+	// ErrTokenExpired indicates the token has passed its expiration time.
+	ErrTokenExpired = errors.New("token expired")
+	// ErrTokenNotYet indicates the token is not yet valid per its nbf claim.
+	ErrTokenNotYet = errors.New("token not valid yet")
 )
 
+// IssueReq holds the parameters needed to issue a new agent token.
 type IssueReq struct {
 	AgentID   string
 	OrchID    string
 	TaskID    string
 	Scope     []string
 	TTLSecond int
+	// DelegChain carries delegation lineage for delegated tokens.
+	DelegChain []DelegRecord
 }
 
+// IssueResp contains the issued token and its timing metadata.
 type IssueResp struct {
 	AccessToken  string `json:"access_token"`
 	ExpiresIn    int    `json:"expires_in"`
 	RefreshAfter int    `json:"refresh_after"`
 }
 
+// TknSvc provides token issuance, verification, and renewal using EdDSA signatures.
 type TknSvc struct {
 	signingKey ed25519.PrivateKey
 	pubKey     ed25519.PublicKey
@@ -43,6 +53,7 @@ type TknSvc struct {
 	clockSkew  int64
 }
 
+// NewTknSvc creates a TknSvc with the given Ed25519 key pair and configuration.
 func NewTknSvc(signingKey ed25519.PrivateKey, pubKey ed25519.PublicKey, c cfg.Cfg) *TknSvc {
 	return &TknSvc{
 		signingKey: signingKey,
@@ -52,7 +63,13 @@ func NewTknSvc(signingKey ed25519.PrivateKey, pubKey ed25519.PublicKey, c cfg.Cf
 	}
 }
 
+// Issue creates and signs a new JWT token from the given request parameters.
 func (s *TknSvc) Issue(req IssueReq) (*IssueResp, error) {
+	start := time.Now()
+	defer func() {
+		obs.RecordIssuance(float64(time.Since(start).Milliseconds()))
+	}()
+
 	ttl := req.TTLSecond
 	if ttl <= 0 {
 		ttl = s.cfg.DefaultTTL
@@ -61,6 +78,8 @@ func (s *TknSvc) Issue(req IssueReq) (*IssueResp, error) {
 		}
 	}
 	now := time.Now().UTC()
+	delegChain := make([]DelegRecord, len(req.DelegChain))
+	copy(delegChain, req.DelegChain)
 	claims := TknClaims{
 		Iss:        "agentauth://" + s.cfg.TrustDomain,
 		Sub:        req.AgentID,
@@ -72,7 +91,7 @@ func (s *TknSvc) Issue(req IssueReq) (*IssueResp, error) {
 		Scope:      append([]string{}, req.Scope...),
 		TaskId:     req.TaskID,
 		OrchId:     req.OrchID,
-		DelegChain: []DelegRecord{},
+		DelegChain: delegChain,
 	}
 	if err := claims.Validate(now); err != nil {
 		return nil, err
@@ -88,6 +107,7 @@ func (s *TknSvc) Issue(req IssueReq) (*IssueResp, error) {
 	}, nil
 }
 
+// Verify validates the token signature and claims, returning the parsed claims on success.
 func (s *TknSvc) Verify(tokenStr string) (*TknClaims, error) {
 	parts := strings.Split(tokenStr, ".")
 	if len(parts) != 3 {
@@ -115,8 +135,14 @@ func (s *TknSvc) Verify(tokenStr string) (*TknClaims, error) {
 	if claims.Exp == 0 || now > claims.Exp+s.clockSkew {
 		return nil, ErrTokenExpired
 	}
+	if now > claims.Exp {
+		obs.RecordClockSkew()
+	}
 	if claims.Nbf != 0 && now+s.clockSkew < claims.Nbf {
 		return nil, ErrTokenNotYet
+	}
+	if claims.Nbf != 0 && now < claims.Nbf {
+		obs.RecordClockSkew()
 	}
 	if err := claims.Validate(time.Now().UTC()); err != nil {
 		return nil, err
@@ -124,17 +150,26 @@ func (s *TknSvc) Verify(tokenStr string) (*TknClaims, error) {
 	return &claims, nil
 }
 
+// Renew verifies an existing token and issues a fresh token with the same claims.
 func (s *TknSvc) Renew(tokenStr string) (*IssueResp, error) {
 	claims, err := s.Verify(tokenStr)
 	if err != nil {
 		return nil, err
 	}
 	return s.Issue(IssueReq{
-		AgentID: claims.Sub,
-		OrchID:  claims.OrchId,
-		TaskID:  claims.TaskId,
-		Scope:   claims.Scope,
+		AgentID:    claims.Sub,
+		OrchID:     claims.OrchId,
+		TaskID:     claims.TaskId,
+		Scope:      claims.Scope,
+		DelegChain: claims.DelegChain,
 	})
+}
+
+// PublicKey returns a defensive copy of the configured Ed25519 verification key.
+func (s *TknSvc) PublicKey() ed25519.PublicKey {
+	key := make(ed25519.PublicKey, len(s.pubKey))
+	copy(key, s.pubKey)
+	return key
 }
 
 func (s *TknSvc) signClaims(claims TknClaims) (string, error) {
@@ -147,7 +182,7 @@ func (s *TknSvc) signClaims(claims TknClaims) (string, error) {
 	payloadB64 := base64.RawURLEncoding.EncodeToString(payload)
 	signingInput := headerB64 + "." + payloadB64
 	sig := ed25519.Sign(s.signingKey, []byte(signingInput))
-	if subtle.ConstantTimeEq(int32(len(sig)), int32(ed25519.SignatureSize)) != 1 {
+	if len(sig) != ed25519.SignatureSize {
 		return "", fmt.Errorf("signature size mismatch")
 	}
 	return signingInput + "." + base64.RawURLEncoding.EncodeToString(sig), nil

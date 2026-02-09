@@ -2,13 +2,16 @@ package cfg
 
 import "os"
 
+// Cfg holds the broker configuration values loaded from AA_* environment variables.
 type Cfg struct {
 	Port        string
 	LogLevel    string
 	TrustDomain string
 	DefaultTTL  int
+	SeedTokens  bool
 }
 
+// Load reads AA_* environment variables and returns a Cfg with defaults applied for any missing values.
 func Load() Cfg {
 	port := os.Getenv("AA_PORT")
 	if port == "" {
@@ -41,10 +44,13 @@ func Load() Cfg {
 		}
 	}
 
+	seedTokens := os.Getenv("AA_SEED_TOKENS") == "true"
+
 	return Cfg{
 		Port:        port,
 		LogLevel:    logLevel,
 		TrustDomain: trustDomain,
 		DefaultTTL:  defaultTTL,
+		SeedTokens:  seedTokens,
 	}
 }

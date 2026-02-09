@@ -5,13 +5,16 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/divineartis/agentauth/internal/obs"
 	"github.com/divineartis/agentauth/internal/token"
 )
 
+// ValHdl handles POST /v1/validate requests for token validation.
 type ValHdl struct {
 	tknSvc *token.TknSvc
 }
 
+// NewValHdl creates a validation handler with the given token service.
 func NewValHdl(tknSvc *token.TknSvc) *ValHdl { return &ValHdl{tknSvc: tknSvc} }
 
 type valReq struct {
@@ -19,6 +22,7 @@ type valReq struct {
 	RequiredScope string `json:"required_scope"`
 }
 
+// ServeHTTP verifies a token and optionally checks that it carries a required scope.
 func (h *ValHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -26,12 +30,14 @@ func (h *ValHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	var req valReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeProblem(w, http.StatusBadRequest, "urn:agentauth:error:bad-request", "Malformed JSON body")
+		obs.RecordValidation(false)
+		obs.WriteProblemForRequest(w, r, http.StatusBadRequest, "urn:agentauth:error:bad-request", "Malformed JSON body", "Malformed JSON body")
 		return
 	}
 	claims, err := h.tknSvc.Verify(req.Token)
 	if err != nil {
-		writeProblem(w, http.StatusUnauthorized, "urn:agentauth:error:invalid-token", "Token validation failed")
+		obs.RecordValidation(false)
+		obs.WriteProblemForRequest(w, r, http.StatusUnauthorized, "urn:agentauth:error:invalid-token", "Token validation failed", err.Error())
 		return
 	}
 	if req.RequiredScope != "" {
@@ -43,10 +49,19 @@ func (h *ValHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !matched {
-			writeProblem(w, http.StatusForbidden, "urn:agentauth:error:scope-mismatch", "Required scope not granted")
+			obs.RecordValidation(false)
+			obs.WriteProblemForRequest(
+				w,
+				r,
+				http.StatusForbidden,
+				"urn:agentauth:error:scope-mismatch",
+				"Required scope not granted",
+				"Required scope "+req.RequiredScope+" not granted",
+			)
 			return
 		}
 	}
+	obs.RecordValidation(true)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]any{
@@ -57,4 +72,3 @@ func (h *ValHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"delegation_depth": len(claims.DelegChain),
 	})
 }
-

@@ -5,20 +5,24 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/cfg"
 	"github.com/divineartis/agentauth/internal/identity"
 	"github.com/divineartis/agentauth/internal/obs"
 	"github.com/divineartis/agentauth/internal/token"
 )
 
+// RegHdl handles POST /v1/register requests for agent registration.
 type RegHdl struct {
-	idSvc  *identity.IdSvc
-	tknSvc *token.TknSvc
-	cfg    cfg.Cfg
+	idSvc    *identity.IdSvc
+	tknSvc   *token.TknSvc
+	cfg      cfg.Cfg
+	auditLog *audit.AuditLog
 }
 
-func NewRegHdl(idSvc *identity.IdSvc, tknSvc *token.TknSvc, c cfg.Cfg) *RegHdl {
-	return &RegHdl{idSvc: idSvc, tknSvc: tknSvc, cfg: c}
+// NewRegHdl creates a registration handler with identity, token, config, and optional audit dependencies.
+func NewRegHdl(idSvc *identity.IdSvc, tknSvc *token.TknSvc, c cfg.Cfg, auditLog *audit.AuditLog) *RegHdl {
+	return &RegHdl{idSvc: idSvc, tknSvc: tknSvc, cfg: c, auditLog: auditLog}
 }
 
 type registerBody struct {
@@ -38,6 +42,7 @@ type registerResp struct {
 	RefreshAfter    int    `json:"refresh_after"`
 }
 
+// ServeHTTP processes agent registration requests, verifying identity and issuing an initial token.
 func (h *RegHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -46,7 +51,7 @@ func (h *RegHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var body registerBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeProblem(w, http.StatusBadRequest, "urn:agentauth:error:bad-request", "Malformed JSON body")
+		obs.WriteProblemForRequest(w, r, http.StatusBadRequest, "urn:agentauth:error:bad-request", "Malformed JSON body", "Malformed JSON body")
 		return
 	}
 
@@ -62,11 +67,25 @@ func (h *RegHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, identity.ErrRegisterBadLaunchToken):
-			writeProblem(w, http.StatusUnauthorized, "urn:agentauth:error:bad-launch-token", "Launch token is invalid or expired")
+			obs.WriteProblemForRequest(
+				w,
+				r,
+				http.StatusUnauthorized,
+				"urn:agentauth:error:bad-launch-token",
+				"Launch token is invalid or expired",
+				"Launch token is invalid or expired",
+			)
 		case errors.Is(err, identity.ErrRegisterBadSignature), errors.Is(err, identity.ErrRegisterBadNonce):
-			writeProblem(w, http.StatusForbidden, "urn:agentauth:error:register-forbidden", "Agent proof verification failed")
+			obs.WriteProblemForRequest(
+				w,
+				r,
+				http.StatusForbidden,
+				"urn:agentauth:error:register-forbidden",
+				"Agent proof verification failed",
+				"Agent proof verification failed",
+			)
 		default:
-			writeProblem(w, http.StatusInternalServerError, "urn:agentauth:error:internal", "Registration failed")
+			obs.WriteProblemForRequest(w, r, http.StatusInternalServerError, "urn:agentauth:error:internal", "Registration failed", err.Error())
 		}
 		obs.Fail("IDENTITY", "RegHdl.ServeHTTP", "register failed", "error="+err.Error())
 		return
@@ -80,7 +99,7 @@ func (h *RegHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		TTLSecond: h.cfg.DefaultTTL,
 	})
 	if err != nil {
-		writeProblem(w, http.StatusInternalServerError, "urn:agentauth:error:token-issue-failed", "Token issuance failed")
+		obs.WriteProblemForRequest(w, r, http.StatusInternalServerError, "urn:agentauth:error:token-issue-failed", "Token issuance failed", err.Error())
 		obs.Fail("TOKEN", "RegHdl.ServeHTTP", "initial token issue failed", "error="+err.Error())
 		return
 	}
@@ -94,15 +113,16 @@ func (h *RegHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		RefreshAfter:    tknResp.RefreshAfter,
 	})
 	obs.Ok("IDENTITY", "RegHdl.ServeHTTP", "register success", "agent_id="+idResp.AgentInstanceID)
-}
 
-func writeProblem(w http.ResponseWriter, status int, typ, title string) {
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"type":   typ,
-		"title":  title,
-		"status": status,
-	})
+	if h.auditLog != nil {
+		_ = h.auditLog.LogEvent(&audit.AuditEvt{
+			EventType:       audit.EvtCredentialIssued,
+			AgentInstanceId: idResp.AgentInstanceID,
+			TaskId:          idResp.TaskId,
+			OrchId:          idResp.OrchId,
+			Resource:        "credential",
+			Action:          "issue",
+			Outcome:         "issued",
+		})
+	}
 }
-

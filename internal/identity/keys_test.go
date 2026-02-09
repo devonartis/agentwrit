@@ -50,6 +50,53 @@ func TestSaveLoadSigningKeyRoundTrip(t *testing.T) {
 	}
 }
 
+func TestLoadSigningKeyRejectsInsecurePermissions(t *testing.T) {
+	_, priv, err := GenerateSigningKeyPair()
+	if err != nil {
+		t.Fatalf("generate keypair: %v", err)
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "insecure.key")
+	if err := os.WriteFile(path, priv, 0o644); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+	if _, err := LoadSigningKey(path); err == nil {
+		t.Fatal("expected insecure permission error")
+	}
+}
+
+func TestLoadSigningKeyRejectsShortKey(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "short.key")
+	if err := os.WriteFile(path, []byte("short"), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+	if _, err := LoadSigningKey(path); err == nil {
+		t.Fatal("expected invalid length error")
+	}
+}
+
+func TestLoadSigningKeyRejectsSymlink(t *testing.T) {
+	_, priv, err := GenerateSigningKeyPair()
+	if err != nil {
+		t.Fatalf("generate keypair: %v", err)
+	}
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target.key")
+	link := filepath.Join(dir, "link.key")
+	if err := os.WriteFile(target, priv, 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+	if _, err := LoadSigningKey(link); err == nil {
+		t.Fatal("expected symlink rejection error")
+	}
+}
+
 func TestParseAgentPubKey(t *testing.T) {
 	pub, _, err := GenerateSigningKeyPair()
 	if err != nil {
@@ -93,4 +140,3 @@ func TestParseAgentPubKeyInvalid(t *testing.T) {
 		})
 	}
 }
-

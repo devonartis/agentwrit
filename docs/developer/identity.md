@@ -9,6 +9,14 @@ The identity module performs ephemeral agent registration with proof-of-possessi
 3. Broker validates launch token, nonce freshness, and signature in `POST /v1/register`.
 4. Broker returns a SPIFFE ID and initial access token.
 
+## Design decisions
+
+**Challenge-response over mutual TLS**: Agents prove identity by signing a broker-issued nonce with their Ed25519 private key. This avoids the complexity of certificate infrastructure and works in ephemeral container environments where mTLS setup is impractical.
+
+**Single-use launch tokens**: Launch tokens are consumed on first registration to prevent token reuse attacks. An attacker who intercepts a launch token cannot register a second agent with it.
+
+**SPIFFE ID format**: AgentAuth uses SPIFFE-compatible identifiers to enable future federation with SPIFFE-aware service meshes. The hierarchical format (`/agent/{orch}/{task}/{instance}`) supports granular revocation at any level.
+
 ## SPIFFE ID format
 
 AgentAuth uses:

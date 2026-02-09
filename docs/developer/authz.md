@@ -16,6 +16,14 @@ M03 adds zero-trust request authorization middleware (`ValMw`) that:
 5. On success, inject `agent_id` into request context and continue
 6. On failure, return RFC 7807 error (`401` or `403`)
 
+## Design decisions
+
+**Middleware over per-handler checks**: Authorization is enforced in a single `ValMw` middleware rather than duplicated in each handler. This ensures fail-closed behavior — new endpoints are protected by default when wrapped, and there is no risk of a handler forgetting to check the token.
+
+**Context-injected scopes**: Required scopes are injected via `WithRequiredScope` rather than hard-coded in the middleware. This keeps the middleware generic and lets each route declare its own access requirements at the mux wiring level.
+
+**Why-denied logging**: Every denial emits a structured `obs.Fail` with a machine-parseable `reason=` key. This supports zero-trust audit requirements without leaking sensitive claim data to the HTTP response.
+
 ## Protected endpoint example
 
 `GET /v1/protected/customers/12345`
