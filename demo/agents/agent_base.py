@@ -47,7 +47,7 @@ class AgentBase:
 
     # -- state filled by register() -----------------------------------------
     agent_instance_id: str = field(default="", init=False)
-    access_token: str = field(default="", init=False)
+    access_token: str = field(default="", init=False, repr=False)
     _private_key: Ed25519PrivateKey | None = field(default=None, init=False, repr=False)
 
     # -- registration --------------------------------------------------------

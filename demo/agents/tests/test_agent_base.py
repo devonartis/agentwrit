@@ -163,7 +163,7 @@ class TestAgentBaseResourceCalls:
     """Test call_resource sends correct method/headers."""
 
     @pytest.mark.asyncio
-    async def test_call_resource_secure(self, mock_agent: AgentBase) -> None:
+    async def test_call_resource_secure(self, mock_agent: AgentBase, monkeypatch) -> None:
         mock_agent.access_token = "tok-xyz"
 
         captured: dict = {}
@@ -175,49 +175,35 @@ class TestAgentBaseResourceCalls:
             return httpx.Response(200, json={"ok": True})
 
         mock_agent.resource_url = "http://test-resource"
-        # Monkey-patch call_resource to use our transport
-        import httpx as _httpx
 
-        orig = _httpx.AsyncClient
-
-        class PatchedClient(_httpx.AsyncClient):
+        class PatchedClient(httpx.AsyncClient):
             def __init__(self, **kw):
-                kw["transport"] = _httpx.MockTransport(handler)
+                kw["transport"] = httpx.MockTransport(handler)
                 kw["base_url"] = "http://test-resource"
                 super().__init__(**kw)
 
-        _httpx.AsyncClient = PatchedClient
-        try:
-            data = await mock_agent.call_resource("GET", "/customers/123")
-        finally:
-            _httpx.AsyncClient = orig
+        monkeypatch.setattr(httpx, "AsyncClient", PatchedClient)
+        data = await mock_agent.call_resource("GET", "/customers/123")
 
         assert data == {"ok": True}
         assert captured["method"] == "GET"
         assert captured["auth"] == "Bearer tok-xyz"
 
     @pytest.mark.asyncio
-    async def test_call_resource_insecure(self, insecure_agent: AgentBase) -> None:
+    async def test_call_resource_insecure(self, insecure_agent: AgentBase, monkeypatch) -> None:
         captured: dict = {}
 
         def handler(request: httpx.Request) -> httpx.Response:
             captured["api_key"] = request.headers.get("api-key", "")
             return httpx.Response(200, json={"ok": True})
 
-        import httpx as _httpx
-
-        orig = _httpx.AsyncClient
-
-        class PatchedClient(_httpx.AsyncClient):
+        class PatchedClient(httpx.AsyncClient):
             def __init__(self, **kw):
-                kw["transport"] = _httpx.MockTransport(handler)
+                kw["transport"] = httpx.MockTransport(handler)
                 kw["base_url"] = "http://test-resource"
                 super().__init__(**kw)
 
-        _httpx.AsyncClient = PatchedClient
-        try:
-            await insecure_agent.call_resource("PUT", "/tickets/789")
-        finally:
-            _httpx.AsyncClient = orig
+        monkeypatch.setattr(httpx, "AsyncClient", PatchedClient)
+        await insecure_agent.call_resource("PUT", "/tickets/789")
 
         assert captured["api_key"] == "test-key"

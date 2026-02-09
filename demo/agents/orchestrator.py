@@ -8,11 +8,20 @@ import logging
 import time
 from dataclasses import dataclass, field
 
+import httpx
+
 from agents.agent_action import ActionTaker
 from agents.agent_analyzer import Analyzer
 from agents.agent_retriever import DataRetriever
 from agents.broker_client import BrokerClient
 from resource_server.middleware import ServerMode
+
+
+def _sanitize_error(exc: Exception) -> str:
+    """Return a safe error string that never leaks URLs or tokens."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP {exc.response.status_code} from {exc.request.url.path}"
+    return type(exc).__name__
 
 logger = logging.getLogger(__name__)
 
@@ -92,11 +101,11 @@ async def run_demo(
             elapsed_ms=(time.monotonic() - t0) * 1000,
             detail=f"Retrieved customer #{customer_id}",
         ))
-    except Exception as exc:
+    except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException, ValueError, RuntimeError) as exc:
         result.agents.append(AgentResult(
             agent_name="Agent-A", success=False,
             elapsed_ms=(time.monotonic() - t0) * 1000,
-            detail=str(exc),
+            detail=_sanitize_error(exc),
         ))
         result.total_time_ms = (time.monotonic() - t_start) * 1000
         return result
@@ -132,11 +141,11 @@ async def run_demo(
             elapsed_ms=(time.monotonic() - t0) * 1000,
             detail=analysis.resolution_text[:120],
         ))
-    except Exception as exc:
+    except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException, ValueError, RuntimeError) as exc:
         result.agents.append(AgentResult(
             agent_name="Agent-B", success=False,
             elapsed_ms=(time.monotonic() - t0) * 1000,
-            detail=str(exc),
+            detail=_sanitize_error(exc),
         ))
         result.total_time_ms = (time.monotonic() - t_start) * 1000
         return result
@@ -168,11 +177,11 @@ async def run_demo(
                 f"notification_sent={action_result.notification_sent}"
             ),
         ))
-    except Exception as exc:
+    except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException, ValueError, RuntimeError) as exc:
         result.agents.append(AgentResult(
             agent_name="Agent-C", success=False,
             elapsed_ms=(time.monotonic() - t0) * 1000,
-            detail=str(exc),
+            detail=_sanitize_error(exc),
         ))
         result.total_time_ms = (time.monotonic() - t_start) * 1000
         return result

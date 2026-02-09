@@ -77,20 +77,16 @@ def _routing_transport(resource_transport, broker_transport) -> httpx.MockTransp
     return httpx.MockTransport(handler)
 
 
-def _patch_httpx_client(resource_transport, broker_transport):
-    """Patch httpx.AsyncClient to use a routing mock transport."""
-    import httpx as _httpx
-
-    orig = _httpx.AsyncClient
+def _make_patched_client(resource_transport, broker_transport):
+    """Create a patched AsyncClient class that routes by URL."""
     transport = _routing_transport(resource_transport, broker_transport)
 
-    class Patched(_httpx.AsyncClient):
+    class Patched(httpx.AsyncClient):
         def __init__(self, **kw):
             kw["transport"] = transport
             super().__init__(**kw)
 
-    _httpx.AsyncClient = Patched
-    return orig
+    return Patched
 
 
 # ── tests ──────────────────────────────────────────────────────────────────
@@ -100,20 +96,15 @@ class TestOrchestratorInsecure:
     """Test the full A -> B -> C pipeline in insecure mode."""
 
     @pytest.mark.asyncio
-    async def test_run_demo_insecure_success(self) -> None:
-        resource_t = _resource_transport()
-        broker_t = _broker_transport()
-        orig = _patch_httpx_client(resource_t, broker_t)
-        try:
-            result = await run_demo(
-                mode=ServerMode.insecure,
-                ticket_id=789,
-                customer_id=12345,
-                insecure_api_key="test-key",
-            )
-        finally:
-            import httpx as _httpx
-            _httpx.AsyncClient = orig
+    async def test_run_demo_insecure_success(self, monkeypatch) -> None:
+        patched = _make_patched_client(_resource_transport(), _broker_transport())
+        monkeypatch.setattr(httpx, "AsyncClient", patched)
+        result = await run_demo(
+            mode=ServerMode.insecure,
+            ticket_id=789,
+            customer_id=12345,
+            insecure_api_key="test-key",
+        )
 
         assert isinstance(result, DemoResult)
         assert result.success is True
@@ -122,19 +113,14 @@ class TestOrchestratorInsecure:
         assert result.total_time_ms > 0
 
     @pytest.mark.asyncio
-    async def test_agent_sequence_abc(self) -> None:
+    async def test_agent_sequence_abc(self, monkeypatch) -> None:
         """Verify agents run in A, B, C order."""
-        resource_t = _resource_transport()
-        broker_t = _broker_transport()
-        orig = _patch_httpx_client(resource_t, broker_t)
-        try:
-            result = await run_demo(
-                mode=ServerMode.insecure,
-                insecure_api_key="k",
-            )
-        finally:
-            import httpx as _httpx
-            _httpx.AsyncClient = orig
+        patched = _make_patched_client(_resource_transport(), _broker_transport())
+        monkeypatch.setattr(httpx, "AsyncClient", patched)
+        result = await run_demo(
+            mode=ServerMode.insecure,
+            insecure_api_key="k",
+        )
 
         names = [a.agent_name for a in result.agents]
         assert names == ["Agent-A", "Agent-B", "Agent-C"]
@@ -144,20 +130,15 @@ class TestOrchestratorSecure:
     """Test the full pipeline in secure mode with mocked broker."""
 
     @pytest.mark.asyncio
-    async def test_run_demo_secure_success(self) -> None:
-        resource_t = _resource_transport()
-        broker_t = _broker_transport()
-        orig = _patch_httpx_client(resource_t, broker_t)
-        try:
-            result = await run_demo(
-                mode=ServerMode.secure,
-                ticket_id=789,
-                customer_id=12345,
-                launch_token="seed-lt",
-            )
-        finally:
-            import httpx as _httpx
-            _httpx.AsyncClient = orig
+    async def test_run_demo_secure_success(self, monkeypatch) -> None:
+        patched = _make_patched_client(_resource_transport(), _broker_transport())
+        monkeypatch.setattr(httpx, "AsyncClient", patched)
+        result = await run_demo(
+            mode=ServerMode.secure,
+            ticket_id=789,
+            customer_id=12345,
+            launch_token="seed-lt",
+        )
 
         assert result.success is True
         assert result.mode == "secure"
@@ -168,18 +149,13 @@ class TestDemoResultCapture:
     """Verify DemoResult captures all agent outcomes."""
 
     @pytest.mark.asyncio
-    async def test_all_fields_populated(self) -> None:
-        resource_t = _resource_transport()
-        broker_t = _broker_transport()
-        orig = _patch_httpx_client(resource_t, broker_t)
-        try:
-            result = await run_demo(
-                mode=ServerMode.insecure,
-                insecure_api_key="k",
-            )
-        finally:
-            import httpx as _httpx
-            _httpx.AsyncClient = orig
+    async def test_all_fields_populated(self, monkeypatch) -> None:
+        patched = _make_patched_client(_resource_transport(), _broker_transport())
+        monkeypatch.setattr(httpx, "AsyncClient", patched)
+        result = await run_demo(
+            mode=ServerMode.insecure,
+            insecure_api_key="k",
+        )
 
         for agent in result.agents:
             assert agent.agent_name != ""

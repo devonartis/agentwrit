@@ -62,7 +62,6 @@ class Analyzer(AgentBase):
                 orch_id=orch_id,
                 task_id=task_id,
                 scopes=[
-                    f"read:Customers:{customer_id}",
                     f"read:Orders:{customer_id}",
                     f"write:Tickets:{ticket_id}",
                     "invoke:Notifications",

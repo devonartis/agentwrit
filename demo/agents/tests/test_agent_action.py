@@ -39,18 +39,15 @@ def _resource_transport(
     return transport
 
 
-def _patch_httpx_client(transport):
-    import httpx as _httpx
+def _make_patched_client(transport):
+    """Create a patched AsyncClient class that uses the given transport."""
 
-    orig = _httpx.AsyncClient
-
-    class Patched(_httpx.AsyncClient):
+    class Patched(httpx.AsyncClient):
         def __init__(self, **kw):
             kw["transport"] = transport
             super().__init__(**kw)
 
-    _httpx.AsyncClient = Patched
-    return orig
+    return Patched
 
 
 # ── secure mode ────────────────────────────────────────────────────────────
@@ -61,25 +58,20 @@ class TestActionTakerSecure:
 
     @pytest.mark.asyncio
     async def test_run_closes_ticket_and_notifies(
-        self, mock_broker_client: BrokerClient
+        self, mock_broker_client: BrokerClient, monkeypatch,
     ) -> None:
         agent = ActionTaker(
             name="Agent-C",
             broker=mock_broker_client,
             mode=ServerMode.secure,
         )
-        transport = _resource_transport()
-        orig = _patch_httpx_client(transport)
-        try:
-            result = await agent.run(
-                ticket_id=789,
-                customer_id=12345,
-                resolution="Issue resolved per analysis.",
-                delegation_token="deleg-tok-from-B",
-            )
-        finally:
-            import httpx as _httpx
-            _httpx.AsyncClient = orig
+        monkeypatch.setattr(httpx, "AsyncClient", _make_patched_client(_resource_transport()))
+        result = await agent.run(
+            ticket_id=789,
+            customer_id=12345,
+            resolution="Issue resolved per analysis.",
+            delegation_token="deleg-tok-from-B",
+        )
 
         assert isinstance(result, ActionResult)
         assert result.ticket_updated is True
@@ -92,7 +84,7 @@ class TestActionTakerSecure:
 
     @pytest.mark.asyncio
     async def test_bearer_header_uses_delegation_token(
-        self, mock_broker_client: BrokerClient
+        self, mock_broker_client: BrokerClient, monkeypatch,
     ) -> None:
         """Verify the actual HTTP header carries the delegated token."""
         captured_headers: list[str] = []
@@ -106,17 +98,13 @@ class TestActionTakerSecure:
             broker=mock_broker_client,
             mode=ServerMode.secure,
         )
-        orig = _patch_httpx_client(httpx.MockTransport(handler))
-        try:
-            await agent.run(
-                ticket_id=789,
-                customer_id=12345,
-                resolution="fixed",
-                delegation_token="my-deleg-token",
-            )
-        finally:
-            import httpx as _httpx
-            _httpx.AsyncClient = orig
+        monkeypatch.setattr(httpx, "AsyncClient", _make_patched_client(httpx.MockTransport(handler)))
+        await agent.run(
+            ticket_id=789,
+            customer_id=12345,
+            resolution="fixed",
+            delegation_token="my-deleg-token",
+        )
 
         assert all(h == "Bearer my-deleg-token" for h in captured_headers)
 
@@ -128,7 +116,7 @@ class TestActionTakerInsecure:
     """Insecure mode: uses API-Key header, same operations."""
 
     @pytest.mark.asyncio
-    async def test_run_with_api_key(self, mock_broker_client: BrokerClient) -> None:
+    async def test_run_with_api_key(self, mock_broker_client: BrokerClient, monkeypatch) -> None:
         captured_headers: list[str] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -141,16 +129,12 @@ class TestActionTakerInsecure:
             mode=ServerMode.insecure,
             insecure_api_key="dev-key",
         )
-        orig = _patch_httpx_client(httpx.MockTransport(handler))
-        try:
-            result = await agent.run(
-                ticket_id=789,
-                customer_id=12345,
-                resolution="fixed",
-            )
-        finally:
-            import httpx as _httpx
-            _httpx.AsyncClient = orig
+        monkeypatch.setattr(httpx, "AsyncClient", _make_patched_client(httpx.MockTransport(handler)))
+        result = await agent.run(
+            ticket_id=789,
+            customer_id=12345,
+            resolution="fixed",
+        )
 
         assert result.ticket_updated is True
         assert result.notification_sent is True
@@ -164,23 +148,18 @@ class TestActionTakerErrors:
     """Verify errors from resource server propagate correctly."""
 
     @pytest.mark.asyncio
-    async def test_ticket_not_found(self, mock_broker_client: BrokerClient) -> None:
+    async def test_ticket_not_found(self, mock_broker_client: BrokerClient, monkeypatch) -> None:
         agent = ActionTaker(
             name="Agent-C",
             broker=mock_broker_client,
             mode=ServerMode.insecure,
         )
-        transport = _resource_transport(ticket_status=404)
-        orig = _patch_httpx_client(transport)
-        try:
-            with pytest.raises(httpx.HTTPStatusError) as exc_info:
-                await agent.run(
-                    ticket_id=99999,
-                    customer_id=12345,
-                    resolution="fixed",
-                )
-        finally:
-            import httpx as _httpx
-            _httpx.AsyncClient = orig
+        monkeypatch.setattr(httpx, "AsyncClient", _make_patched_client(_resource_transport(ticket_status=404)))
+        with pytest.raises(httpx.HTTPStatusError) as exc_info:
+            await agent.run(
+                ticket_id=99999,
+                customer_id=12345,
+                resolution="fixed",
+            )
 
         assert exc_info.value.response.status_code == 404
