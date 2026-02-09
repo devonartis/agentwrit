@@ -215,6 +215,54 @@ Expected failure behavior:
 - `403` scope escalation (requested scope broader than delegator scope)
 - `403` depth exceeded (MVP max depth is 3)
 
+## Audit trail (M05)
+
+The broker records all security-relevant events in an immutable hash-chain audit log. Use `GET /v1/audit/events` to query the trail.
+
+Authorization requirement:
+- bearer token with `admin:Broker:*` scope
+
+### Query audit events
+
+```bash
+curl -sS -H "Authorization: Bearer <admin_token>" \
+  "http://127.0.0.1:8080/v1/audit/events" | jq .
+```
+
+### Filter by event type
+
+```bash
+curl -sS -H "Authorization: Bearer <admin_token>" \
+  "http://127.0.0.1:8080/v1/audit/events?event_type=access_denied" | jq .
+```
+
+### Filter by agent and time range
+
+```bash
+curl -sS -H "Authorization: Bearer <admin_token>" \
+  "http://127.0.0.1:8080/v1/audit/events?agent_id=spiffe://agentauth.local/agent/orch/task/inst&from=2026-02-07T00:00:00Z" | jq .
+```
+
+### Paginate results
+
+```bash
+curl -sS -H "Authorization: Bearer <admin_token>" \
+  "http://127.0.0.1:8080/v1/audit/events?limit=10&offset=0" | jq .
+```
+
+Response includes `next_offset` for cursor-based pagination.
+
+### Event types recorded
+
+| Event Type | Trigger |
+|---|---|
+| `credential_issued` | Agent registration completes |
+| `access_granted` | Authorization middleware allows request |
+| `access_denied` | Authorization middleware denies request |
+| `token_revoked` | Token revocation succeeds |
+
+Each event includes a SHA-256 hash chain (`prev_hash`, `event_hash`) for tamper detection. PII in `resource` and `action` fields is automatically sanitized.
+
 ## Mutual authentication (M06)
 
 M06 adds agent-to-agent authentication. Unlike the HTTP endpoints in M01-M04, mutual auth operates as a programmatic API between agents sharing the same broker trust domain.

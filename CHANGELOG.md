@@ -27,6 +27,16 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - P2: reverted premature `NewDiscoveryRegistry()` wiring in `main.go` — non-nil empty registry activates binding checks that reject all agents. Discovery enforcement deferred until binding lifecycle (bind on register, unbind on revoke) is implemented.
 
 ### Added
+- Module M05 audit trail:
+  - Immutable hash-chain audit event storage (`AuditLog`) with SHA-256 integrity
+  - PII sanitization (email, phone, customer ID hashing) in event fields
+  - Read aggregation for repeated access events
+  - `AuditHdl` handler for `GET /v1/audit/events` with filtering and pagination
+  - Audit event emission from `RegHdl` (credential_issued), `ValMw` (access_granted/denied), `RevokeHdl` (token_revoked)
+  - Admin-scoped auth protection on audit endpoint
+  - Integration test for audit trail with chain integrity verification
+  - Live test step for audit events endpoint
+  - Module documentation in `docs/developer/audit.md`
 - Module M08-T01 observability baseline:
   - Shared RFC 7807 problem factory in `internal/obs` (`WriteProblem`)
   - Handler and authz paths now emit centralized `application/problem+json` payloads
