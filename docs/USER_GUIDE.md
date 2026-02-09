@@ -24,6 +24,8 @@
 
 AgentAuth is an ephemeral agent credentialing system that issues short-lived, scope-restricted tokens to AI agents through a cryptographic challenge-response identity flow. Traditional IAM systems (OAuth, AWS IAM, service accounts) were designed for long-lived services with persistent identities. AI agents break those assumptions: they are ephemeral (lifetimes measured in minutes), non-deterministic (LLM-driven decisions), and require task-specific permissions at runtime. AgentAuth solves this by giving each agent instance a unique SPIFFE-format identity, scoped credentials that expire with the task, and a tamper-evident audit trail that logs every credential operation. Agents prove their identity with Ed25519 signatures and receive EdDSA-signed JWT tokens that can only narrow in scope through delegation, never expand.
 
+If you are building a new Python or TypeScript agent integration, use the dedicated hands-on guide: [Agent Integration Guide](AGENT_INTEGRATION_GUIDE.md).
+
 ---
 
 ## Quick Start
@@ -130,8 +132,8 @@ All configuration is via environment variables prefixed with `AA_`. The broker r
 | `AA_LOG_LEVEL` | string | `verbose` | Logging verbosity: `quiet`, `standard`, `verbose`, `trace` |
 | `AA_TRUST_DOMAIN` | string | `agentauth.local` | SPIFFE trust domain for agent identity URIs |
 | `AA_DEFAULT_TTL` | int | `300` | Default token time-to-live in seconds |
-| `AA_ADMIN_SECRET` | string | (none) | Pre-shared secret for admin authentication. **Required for admin operations.** |
-| `AA_SEED_TOKENS` | bool | `false` | **Deprecated.** Dev-only flag from v1.x. Use `POST /v1/admin/auth` instead. |
+| `AA_ADMIN_SECRET` | string | **(required)** | Pre-shared secret for admin authentication. The broker exits on startup if this is not set. |
+| `AA_SEED_TOKENS` | bool | `false` | Dev-only: print seed launch and admin tokens to stdout on startup. Not for production use. |
 
 ### Configuration Details
 
@@ -150,7 +152,7 @@ All configuration is via environment variables prefixed with `AA_`. The broker r
 
 **AA_DEFAULT_TTL** -- Tokens issued without an explicit TTL use this value. Applies to agent tokens issued at registration. Admin tokens always use a fixed 300-second TTL.
 
-**AA_ADMIN_SECRET** -- The broker compares this against the `client_secret` field in `POST /v1/admin/auth` using constant-time comparison (`crypto/subtle.ConstantTimeCompare`) to prevent timing attacks. If unset, admin authentication will always fail.
+**AA_ADMIN_SECRET** -- **Required.** The broker exits on startup if this variable is not set (`FATAL: AA_ADMIN_SECRET must be set (non-empty)`). It is compared against the `client_secret` field in `POST /v1/admin/auth` using constant-time comparison (`crypto/subtle.ConstantTimeCompare`) to prevent timing attacks.
 
 ### Example: Production Configuration
 
@@ -544,7 +546,9 @@ curl -s "$BROKER/v1/audit/events?since=2026-02-09T00:00:00Z&until=2026-02-09T23:
 | `launch_token_denied` | Launch token creation rejected |
 | `agent_registered` | Agent registered successfully |
 | `registration_policy_violation` | Agent registration denied (scope violation) |
-| `token_issued` | Token issued (at registration or renewal) |
+| `token_issued` | Token issued (at registration) |
+| `token_renewed` | Token renewed successfully via `POST /v1/token/renew` |
+| `token_renewal_failed` | Token renewal attempt failed |
 | `token_revoked` | Credential revoked |
 | `delegation_created` | Delegation token created |
 | `resource_accessed` | Resource access logged (emitted by resource server) |
@@ -608,6 +612,12 @@ scrape_configs:
 
 ## Security Hardening
 
+### TLS Requirement
+
+The broker listens on plain HTTP by default. Production deployments MUST use a TLS-terminating reverse proxy (e.g., nginx, envoy, Caddy) or configure a load balancer with TLS termination. Native TLS support (`AA_TLS_CERT`, `AA_TLS_KEY`) is planned for a future release.
+
+Without TLS, all traffic -- including admin secrets, Bearer tokens, and Ed25519 signatures -- travels in cleartext. This is acceptable only for local development and testing.
+
 ### Production Checklist
 
 1. **Use a strong admin secret.** Generate with `openssl rand -hex 32`. Never use default or weak values.
@@ -650,6 +660,7 @@ scrape_configs:
 
 The broker provides these security guarantees:
 
+- **Rate limiting** on `POST /v1/admin/auth` (5 requests/second per IP, burst 10) mitigates brute-force attacks. Exceeding the limit returns `429 Too Many Requests`. Rate limiting uses `X-Forwarded-For` for client IP identification when the header is present. Deploy the broker behind a trusted reverse proxy that sets this header correctly. If the broker is exposed directly to the internet without a proxy, clients can spoof the header to bypass rate limits.
 - **Constant-time secret comparison** prevents timing attacks on `POST /v1/admin/auth`.
 - **Ed25519 signature verification** at registration prevents identity forgery.
 - **Scope attenuation** ensures permissions can only narrow through delegation, never expand.

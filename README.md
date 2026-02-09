@@ -2,13 +2,23 @@
 
 AgentAuth is an ephemeral agent credentialing broker that issues short-lived, scope-attenuated tokens to AI agents. It implements the [Ephemeral Agent Credentialing](plans/Security-Pattern-That-Is-Why-We-Built-AgentAuth.md) security pattern: each agent proves identity via Ed25519 challenge-response, receives a SPIFFE-format identifier, and operates with only the permissions its task requires. Tokens expire in minutes, not hours, eliminating the credential exposure window that plagues traditional IAM approaches to AI agent security.
 
+## Release Status
+
+**Current release:** MVP Prototype (pattern validation release)
+
+This release validates that AgentAuth is a working implementation of the target security pattern and is ready for controlled demos, integration testing, and senior-engineering productionization.
+
+This is intentionally **not** a production-hardening release. Production controls (transport hardening, deployment architecture, and operations posture) are handled in a follow-on build-out phase.
+
+For full release framing and handoff scope, see [plans/AgentAuth-MVP-Release-Writeup-v1.0.md](plans/AgentAuth-MVP-Release-Writeup-v1.0.md).
+
 ## Quick Start
 
 ```bash
 # 1. Build
 go build ./...
 
-# 2. Configure (optional -- defaults are safe for local dev)
+# 2. Configure (required -- AA_ADMIN_SECRET must be set)
 export AA_ADMIN_SECRET="change-me-in-production"
 
 # 3. Run
@@ -85,7 +95,7 @@ All environment variables are prefixed with `AA_`:
 | `AA_LOG_LEVEL` | `verbose` | Logging level: `quiet`, `standard`, `verbose`, `trace` |
 | `AA_TRUST_DOMAIN` | `agentauth.local` | SPIFFE trust domain for agent IDs |
 | `AA_DEFAULT_TTL` | `300` | Default token TTL in seconds (5 minutes) |
-| `AA_ADMIN_SECRET` | *(empty)* | Shared secret for admin authentication (required in production) |
+| `AA_ADMIN_SECRET` | **(required)** | Shared secret for admin authentication. Broker exits on startup if unset. |
 | `AA_SEED_TOKENS` | `false` | Print seed launch/admin tokens on startup (dev only) |
 
 ## Running Tests
@@ -96,17 +106,34 @@ go test ./... -short              # unit tests only (skip integration)
 go test ./internal/token/...      # single package
 ```
 
-## Docker
+## Production Deployment
 
-```bash
-docker compose up --build         # starts broker on :8080
+The broker listens on plain HTTP by default. **Production deployments MUST use a TLS-terminating reverse proxy** (e.g., nginx, envoy, Caddy) or configure a load balancer with TLS termination. Native TLS support (`AA_TLS_CERT`, `AA_TLS_KEY`) is planned for a future release.
+
+Example with nginx:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name agentauth.example.com;
+    ssl_certificate     /etc/ssl/certs/agentauth.pem;
+    ssl_certificate_key /etc/ssl/private/agentauth-key.pem;
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
 ```
 
-The image uses a multi-stage build (golang:1.23-alpine builder, alpine:3.19 runtime) producing a static binary.
+## Docker
+
+Docker support (Dockerfile and docker-compose.yml) is planned but not yet available on this branch. Run the broker directly with `go run ./cmd/broker` for now.
 
 ## Documentation
 
 - [API Reference](docs/API_REFERENCE.md) -- endpoint details and examples
+- [Agent Integration Guide](docs/AGENT_INTEGRATION_GUIDE.md) -- step-by-step Python/TypeScript agent integration
 - [Developer Guide](docs/DEVELOPER_GUIDE.md) -- architecture, conventions, contributing
 - [User Guide](docs/USER_GUIDE.md) -- workflows and integration patterns
 - [OpenAPI Spec](docs/api/openapi.yaml) -- machine-readable API contract

@@ -2,6 +2,8 @@
 
 This guide covers the internals of the AgentAuth broker. After reading it you should be able to navigate the codebase, trace any request end-to-end, write new endpoints, and extend the system with confidence.
 
+If you need a step-by-step app integration walkthrough (Python/TypeScript), start with [Agent Integration Guide](AGENT_INTEGRATION_GUIDE.md) first, then return here for internals.
+
 ---
 
 ## Table of Contents
@@ -62,6 +64,8 @@ AgentAuth is a broker-based credential issuance service. Four components interac
 
 The broker exposes a single HTTP port (default `:8080`). All tokens are EdDSA-signed JWTs. All errors use RFC 7807. All state transitions are audit-logged.
 
+**Note on TLS:** The broker listens on plain HTTP by default. Production deployments MUST use a TLS-terminating reverse proxy (e.g., nginx, envoy, Caddy) or configure a load balancer with TLS termination. Native TLS support (`AA_TLS_CERT`, `AA_TLS_KEY`) is planned for a future release.
+
 ---
 
 ## 2. Package Dependency Graph
@@ -110,7 +114,7 @@ type Cfg struct {
     TrustDomain string // AA_TRUST_DOMAIN (default "agentauth.local")
     DefaultTTL  int    // AA_DEFAULT_TTL (default 300)
     AdminSecret string // AA_ADMIN_SECRET (required for admin auth)
-    SeedTokens  bool   // AA_SEED_TOKENS (deprecated)
+    SeedTokens  bool   // AA_SEED_TOKENS (dev-only convenience flag)
 }
 ```
 
@@ -211,6 +215,10 @@ Two distinct responsibilities in this package:
 - `ClaimsFromContext(ctx)` retrieves claims from the context (used by downstream handlers)
 - `TokenFromRequest(r)` extracts the raw bearer token string
 
+**Rate limiting** (`rate_mw.go`):
+- `RateLimiter.Wrap(next)` is a per-IP token-bucket rate limiter. Used on `POST /v1/admin/auth` (5 req/s, burst 10) to mitigate brute-force attacks. Exceeding the limit returns `429 Too Many Requests` in RFC 7807 format with a `Retry-After: 1` header.
+- `clientIP(r)` extracts the client IP, preferring `X-Forwarded-For` when present, falling back to `r.RemoteAddr`. **Trusted proxy assumption:** this function trusts `X-Forwarded-For` unconditionally. Production deployments must place the broker behind a reverse proxy that overwrites this header with the true client IP; direct internet exposure allows rate limit bypass via header spoofing.
+
 These are composable. In the route table, admin endpoints chain both: `valMw.Wrap(authz.WithRequiredScope("admin:revoke:*", revokeHdl))`.
 
 ### `revoke` -- Revocation
@@ -238,7 +246,7 @@ PII sanitization runs on the `detail` field before storage. It masks values afte
 
 `Query(filters)` supports filtering by agent_id, task_id, event_type, since/until timestamps, plus limit/offset pagination (default limit 100, max 1000).
 
-Ten event type constants are defined (see [Section 9](#9-audit-system)).
+Twelve event type constants are defined (see [Section 9](#9-audit-system)).
 
 ### `deleg` -- Delegation
 **File:** `internal/deleg/deleg_svc.go`
@@ -282,6 +290,14 @@ Each handler is a struct implementing `http.Handler`. Pattern: decode JSON, call
 | `MetricsHdl` | `GET /v1/metrics` | None (Prometheus) |
 
 The `WriteProblem` helper in `problem.go` produces RFC 7807 JSON with `Content-Type: application/problem+json`.
+
+The `admin` package defines its own unexported `writeProblem` variant in `internal/admin/admin_hdl.go` with an additional `title` parameter:
+
+```go
+func writeProblem(w http.ResponseWriter, status int, errType, title, detail, instance string)
+```
+
+Unlike the handler package's `WriteProblem` (which derives `title` from `http.StatusText(status)`), the admin variant accepts an explicit `title` string, allowing admin endpoints to provide custom error titles (e.g., `"Invalid Request"`, `"Unauthorized"`).
 
 ---
 
@@ -404,7 +420,7 @@ Key invariants:
 
 ### Issuance
 
-`TknSvc.Issue` (`internal/token/tkn_svc.go:63`):
+`TknSvc.Issue` (`internal/token/tkn_svc.go`, `Issue` method):
 
 1. Determine TTL: use `req.TTL` if positive, otherwise `cfg.DefaultTTL`
 2. Generate JTI: 16 random bytes from `crypto/rand`, hex-encoded
@@ -413,7 +429,7 @@ Key invariants:
 
 ### Verification
 
-`TknSvc.Verify` (`internal/token/tkn_svc.go:99`):
+`TknSvc.Verify` (`internal/token/tkn_svc.go`, `Verify` method):
 
 1. Split token on `.` into 3 parts (header, claims, signature)
 2. Base64url-decode the signature
@@ -423,7 +439,7 @@ Key invariants:
 
 ### Renewal
 
-`TknSvc.Renew` (`internal/token/tkn_svc.go:135`):
+`TknSvc.Renew` (`internal/token/tkn_svc.go`, `Renew` method):
 
 1. Verify the existing token (full pipeline)
 2. Issue a new token with same `sub`, `scope`, `task_id`, `orch_id`, `delegation_chain`
@@ -457,26 +473,26 @@ Three colon-separated segments. All three must be non-empty. Examples:
 
 ### Parsing
 
-`authz.ParseScope` (`internal/authz/scope.go:16`) splits on `:` using `strings.SplitN(s, ":", 3)`. Returns error if fewer than 3 parts or any part is empty.
+`authz.ParseScope` (`internal/authz/scope.go`, `ParseScope` function) splits on `:` using `strings.SplitN(s, ":", 3)`. Returns error if fewer than 3 parts or any part is empty.
 
 ### Subset Checking
 
-`scopeCovers(requested, allowed)` (`internal/authz/scope.go:30`):
+`scopeCovers(requested, allowed)` (`internal/authz/scope.go`, `scopeCovers` function):
 - `requested.action == allowed.action` AND
 - `requested.resource == allowed.resource` AND
 - (`requested.identifier == allowed.identifier` OR `allowed.identifier == "*"`)
 
 The wildcard `*` only applies to the identifier segment. There is no wildcard for action or resource.
 
-`ScopeIsSubset(requested, allowed)` (`internal/authz/scope.go:48`) checks that every element in `requested` is covered by at least one element in `allowed`. This is an O(n*m) check.
+`ScopeIsSubset(requested, allowed)` (`internal/authz/scope.go`, `ScopeIsSubset` function) checks that every element in `requested` is covered by at least one element in `allowed`. This is an O(n*m) check.
 
 ### Enforcement Points
 
 Scope is enforced at three points in the system:
 
-1. **Agent registration** (`internal/identity/id_svc.go:86`): `requested_scope` vs launch token's `allowed_scope`
-2. **Delegation** (`internal/deleg/deleg_svc.go:71`): delegated scope vs delegator's current scope
-3. **Admin endpoints** (`internal/authz/val_mw.go:82`): `WithRequiredScope` checks token scope on every request
+1. **Agent registration** (`internal/identity/id_svc.go`, `Register` method): `requested_scope` vs launch token's `allowed_scope`
+2. **Delegation** (`internal/deleg/deleg_svc.go`, `Delegate` method): delegated scope vs delegator's current scope
+3. **Admin endpoints** (`internal/authz/val_mw.go`, `WithRequiredScope` function): checks token scope on every request
 
 ---
 
@@ -529,6 +545,8 @@ Fields are pipe-delimited. The genesis `prevHash` is 64 hex zeros. This creates 
 | `EventRegistrationViolation` | `registration_policy_violation` | Scope violation at registration |
 | `EventTokenIssued` | `token_issued` | Token issued |
 | `EventTokenRevoked` | `token_revoked` | Token revoked |
+| `EventTokenRenewed` | `token_renewed` | Token successfully renewed |
+| `EventTokenRenewalFailed` | `token_renewal_failed` | Token renewal attempt failed |
 | `EventDelegationCreated` | `delegation_created` | Delegation created |
 | `EventResourceAccessed` | `resource_accessed` | Resource access logged |
 
@@ -587,7 +605,7 @@ type DelegRecord struct {
     Agent       string    `json:"agent"`        // SPIFFE ID of delegating agent
     Scope       []string  `json:"scope"`        // scope held by this agent at time of delegation
     DelegatedAt time.Time `json:"delegated_at"` // timestamp
-    Signature   string    `json:"signature"`    // (reserved for future use)
+    Signature   string    `json:"signature,omitempty"` // Ed25519 signature of "agent|scope_csv|delegated_at"
 }
 ```
 
@@ -607,7 +625,7 @@ Revoking at level `"chain"` with the root delegator's agent ID (SPIFFE ID) as ta
 
 ### ValMw.Wrap
 
-`ValMw.Wrap(next)` (`internal/authz/val_mw.go:51`) creates a handler that:
+`ValMw.Wrap(next)` (`internal/authz/val_mw.go`, `Wrap` method) creates a handler that:
 
 1. Reads `Authorization` header
 2. Rejects if missing or not `Bearer` scheme (401)
@@ -618,7 +636,7 @@ Revoking at level `"chain"` with the root delegator's agent ID (SPIFFE ID) as ta
 
 ### WithRequiredScope
 
-`WithRequiredScope(scope, next)` (`internal/authz/val_mw.go:82`) is a standalone handler wrapper:
+`WithRequiredScope(scope, next)` (`internal/authz/val_mw.go`, `WithRequiredScope` function) is a standalone handler wrapper:
 
 1. Pulls claims from context via `ClaimsFromContext`
 2. Checks `ScopeIsSubset([]string{scope}, claims.Scope)` (403 if insufficient)
@@ -731,7 +749,7 @@ All environment variables use the `AA_` prefix:
 | `AA_TRUST_DOMAIN` | string | `"agentauth.local"` | SPIFFE trust domain |
 | `AA_DEFAULT_TTL` | int | `300` | Default token TTL in seconds |
 | `AA_ADMIN_SECRET` | string | (required) | Pre-shared secret for admin authentication |
-| `AA_SEED_TOKENS` | bool | `false` | Deprecated. Dev-only: print seed tokens to stdout |
+| `AA_SEED_TOKENS` | bool | `false` | Dev-only: print seed launch and admin tokens to stdout on startup |
 
 Configuration is loaded once at startup by `cfg.Load()` and passed to services that need it (primarily `TknSvc` for `DefaultTTL` and `IdSvc` for `TrustDomain`).
 
@@ -990,3 +1008,27 @@ if !found {
 ### Step 5: Verify hash chain integrity
 
 The hash chain is automatic. Each new event's hash includes the previous event's hash. No manual work needed -- just verify the event appears in the log.
+
+---
+
+## 17. Known Limitations
+
+The following are known gaps relative to the full [Ephemeral Agent Credentialing](../plans/Security-Pattern-That-Is-Why-We-Built-AgentAuth.md) security pattern. They are documented here for transparency and are planned for future iterations.
+
+### No native TLS / mTLS
+
+The broker listens on plain HTTP (`http.ListenAndServe`). There is no TLS configuration, certificate loading, or `http.ListenAndServeTLS` call anywhere in the codebase. The security pattern's Component 3 specifies mTLS between agent and server as a transport-layer enforcement point.
+
+**Mitigation:** Production deployments MUST use a TLS-terminating reverse proxy (nginx, Caddy, envoy, or a cloud load balancer). See the [Security Hardening](../docs/USER_GUIDE.md#security-hardening) section of the User Guide. Native TLS support (`AA_TLS_CERT`, `AA_TLS_KEY`) is planned for a future release.
+
+### Delegation chain per-step signatures
+
+Each `DelegRecord` is signed by the broker's Ed25519 key at delegation time. The canonical signing input is `agent|scope_csv|delegated_at_rfc3339`, and the hex-encoded signature is stored in the `Signature` field. This provides cryptographic proof that each delegation step was authorized by the broker. External validators can verify individual chain links using the broker's public key.
+
+**Implementation:** `DelegSvc.signRecord()` in `internal/deleg/deleg_svc.go`.
+
+### Delegation chain hash
+
+Delegated tokens include a `chain_hash` claim (JSON key: `chain_hash`) containing the hex-encoded SHA-256 hash of the JSON-serialized delegation chain. This allows quick integrity verification without re-validating each individual signature in the chain.
+
+**Implementation:** `computeChainHash()` in `internal/deleg/deleg_svc.go`. The `ChainHash` field is defined in `TknClaims` (`internal/token/tkn_claims.go`).
