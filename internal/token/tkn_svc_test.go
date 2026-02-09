@@ -314,3 +314,27 @@ func TestCustomTTL(t *testing.T) {
 		t.Errorf("expires_in = %d, want 60", resp.ExpiresIn)
 	}
 }
+
+func TestSidClaim(t *testing.T) {
+	pub, priv := testKeyPair(t)
+	svc := NewTknSvc(priv, pub, testCfg())
+
+	testSid := "sidecar-123"
+	resp, err := svc.Issue(IssueReq{
+		Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+		Scope: []string{"read:Customers:*"},
+		Sid:   testSid,
+	})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	claims, err := svc.Verify(resp.AccessToken)
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+
+	if claims.Sid != testSid {
+		t.Errorf("sid = %q, want %q", claims.Sid, testSid)
+	}
+}

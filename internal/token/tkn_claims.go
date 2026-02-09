@@ -35,6 +35,7 @@ type TknClaims struct {
 	Nbf        int64         `json:"nbf"`
 	Iat        int64         `json:"iat"`
 	Jti        string        `json:"jti"`
+	Sid        string        `json:"sid,omitempty"`
 	Scope      []string      `json:"scope"`
 	TaskId     string        `json:"task_id,omitempty"`
 	OrchId     string        `json:"orch_id,omitempty"`

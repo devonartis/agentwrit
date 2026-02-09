@@ -29,6 +29,7 @@ type IssueReq struct {
 	Scope      []string
 	TaskId     string
 	OrchId     string
+	Sid        string
 	TTL        int // seconds; 0 means use DefaultTTL
 	DelegChain []DelegRecord
 	ChainHash  string
@@ -90,6 +91,7 @@ func (s *TknSvc) Issue(req IssueReq) (*IssueResp, error) {
 		Nbf:        now,
 		Iat:        now,
 		Jti:        jti,
+		Sid:        req.Sid,
 		Scope:      req.Scope,
 		TaskId:     req.TaskId,
 		OrchId:     req.OrchId,
@@ -171,6 +173,7 @@ func (s *TknSvc) Renew(tokenStr string) (*IssueResp, error) {
 		Scope:      claims.Scope,
 		TaskId:     claims.TaskId,
 		OrchId:     claims.OrchId,
+		Sid:        claims.Sid,
 		DelegChain: claims.DelegChain,
 		ChainHash:  claims.ChainHash,
 	})
