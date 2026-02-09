@@ -31,6 +31,7 @@ type IssueReq struct {
 	OrchId     string
 	TTL        int // seconds; 0 means use DefaultTTL
 	DelegChain []DelegRecord
+	ChainHash  string
 }
 
 // IssueResp is returned by [TknSvc.Issue] and contains the compact JWT
@@ -93,6 +94,7 @@ func (s *TknSvc) Issue(req IssueReq) (*IssueResp, error) {
 		TaskId:     req.TaskId,
 		OrchId:     req.OrchId,
 		DelegChain: req.DelegChain,
+		ChainHash:  req.ChainHash,
 	}
 
 	tokenStr, err := s.sign(claims)
@@ -170,6 +172,7 @@ func (s *TknSvc) Renew(tokenStr string) (*IssueResp, error) {
 		TaskId:     claims.TaskId,
 		OrchId:     claims.OrchId,
 		DelegChain: claims.DelegChain,
+		ChainHash:  claims.ChainHash,
 	})
 }
 

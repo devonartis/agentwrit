@@ -3,6 +3,9 @@ package deleg
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -20,7 +23,7 @@ func newTestDelegSvc(t *testing.T) (*DelegSvc, *token.TknSvc, *store.SqlStore) {
 	}
 	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
 	st := store.NewSqlStore()
-	delegSvc := NewDelegSvc(tknSvc, st, nil)
+	delegSvc := NewDelegSvc(tknSvc, st, nil, priv)
 	return delegSvc, tknSvc, st
 }
 
@@ -280,5 +283,152 @@ func TestDelegate_ChainGrows(t *testing.T) {
 	}
 	if resp2.DelegationChain[1].Agent != a2 {
 		t.Errorf("expected chain[1].Agent=%s, got %s", a2, resp2.DelegationChain[1].Agent)
+	}
+}
+
+func TestDelegate_SignaturePopulated(t *testing.T) {
+	delegSvc, tknSvc, st := newTestDelegSvc(t)
+
+	delegator := "spiffe://test/agent/o/t/sig-d1"
+	delegate := "spiffe://test/agent/o/t/sig-d2"
+	registerAgent(t, st, delegator)
+	registerAgent(t, st, delegate)
+
+	issResp, err := tknSvc.Issue(token.IssueReq{
+		Sub:   delegator,
+		Scope: []string{"read:data:*"},
+		TTL:   300,
+	})
+	if err != nil {
+		t.Fatalf("issue delegator token: %v", err)
+	}
+
+	resp, err := delegSvc.Delegate(issResp.Claims, DelegReq{
+		DelegateTo: delegate,
+		Scope:      []string{"read:data:*"},
+		TTL:        60,
+	})
+	if err != nil {
+		t.Fatalf("delegate: %v", err)
+	}
+
+	// Every delegation record MUST have a non-empty signature.
+	for i, rec := range resp.DelegationChain {
+		if rec.Signature == "" {
+			t.Errorf("chain[%d].Signature is empty", i)
+		}
+	}
+
+	// Verify the signature is valid Ed25519 over canonical content.
+	rec := resp.DelegationChain[0]
+	content := rec.Agent + "|" + scopeCSV(rec.Scope) + "|" + rec.DelegatedAt.Format(time.RFC3339Nano)
+	sigBytes, err := hex.DecodeString(rec.Signature)
+	if err != nil {
+		t.Fatalf("decode signature hex: %v", err)
+	}
+	pubKey := delegSvc.signingKey.Public().(ed25519.PublicKey)
+	if !ed25519.Verify(pubKey, []byte(content), sigBytes) {
+		t.Error("delegation record signature verification failed")
+	}
+}
+
+func TestDelegate_ChainHashPopulated(t *testing.T) {
+	delegSvc, tknSvc, st := newTestDelegSvc(t)
+
+	delegator := "spiffe://test/agent/o/t/hash-d1"
+	delegate := "spiffe://test/agent/o/t/hash-d2"
+	registerAgent(t, st, delegator)
+	registerAgent(t, st, delegate)
+
+	issResp, err := tknSvc.Issue(token.IssueReq{
+		Sub:   delegator,
+		Scope: []string{"read:data:*"},
+		TTL:   300,
+	})
+	if err != nil {
+		t.Fatalf("issue delegator token: %v", err)
+	}
+
+	resp, err := delegSvc.Delegate(issResp.Claims, DelegReq{
+		DelegateTo: delegate,
+		Scope:      []string{"read:data:*"},
+		TTL:        60,
+	})
+	if err != nil {
+		t.Fatalf("delegate: %v", err)
+	}
+
+	// Verify the delegated token contains a chain_hash claim.
+	claims, err := tknSvc.Verify(resp.AccessToken)
+	if err != nil {
+		t.Fatalf("verify delegated token: %v", err)
+	}
+	if claims.ChainHash == "" {
+		t.Fatal("expected non-empty chain_hash in delegated token claims")
+	}
+
+	// Recompute and verify the hash matches.
+	chainJSON, err := json.Marshal(resp.DelegationChain)
+	if err != nil {
+		t.Fatalf("marshal chain: %v", err)
+	}
+	h := sha256.Sum256(chainJSON)
+	expected := hex.EncodeToString(h[:])
+	if claims.ChainHash != expected {
+		t.Errorf("chain_hash mismatch: got %s, want %s", claims.ChainHash, expected)
+	}
+}
+
+func TestDelegate_ChainSignaturesGrowWithChain(t *testing.T) {
+	delegSvc, tknSvc, st := newTestDelegSvc(t)
+
+	a1 := "spiffe://test/agent/o/t/cs1"
+	a2 := "spiffe://test/agent/o/t/cs2"
+	a3 := "spiffe://test/agent/o/t/cs3"
+	registerAgent(t, st, a1)
+	registerAgent(t, st, a2)
+	registerAgent(t, st, a3)
+
+	// a1 -> a2
+	issResp1, _ := tknSvc.Issue(token.IssueReq{
+		Sub:   a1,
+		Scope: []string{"read:data:*"},
+		TTL:   300,
+	})
+	resp1, err := delegSvc.Delegate(issResp1.Claims, DelegReq{
+		DelegateTo: a2,
+		Scope:      []string{"read:data:*"},
+		TTL:        120,
+	})
+	if err != nil {
+		t.Fatalf("first delegation: %v", err)
+	}
+	if resp1.DelegationChain[0].Signature == "" {
+		t.Error("first chain entry missing signature")
+	}
+
+	// a2 -> a3
+	claims2, _ := tknSvc.Verify(resp1.AccessToken)
+	resp2, err := delegSvc.Delegate(claims2, DelegReq{
+		DelegateTo: a3,
+		Scope:      []string{"read:data:*"},
+		TTL:        60,
+	})
+	if err != nil {
+		t.Fatalf("second delegation: %v", err)
+	}
+
+	// Both entries should have signatures.
+	for i, rec := range resp2.DelegationChain {
+		if rec.Signature == "" {
+			t.Errorf("chain[%d].Signature is empty after second delegation", i)
+		}
+	}
+
+	// The chain_hash in the second token should differ from the first.
+	claims3, _ := tknSvc.Verify(resp2.AccessToken)
+	claims1, _ := tknSvc.Verify(resp1.AccessToken)
+	if claims3.ChainHash == claims1.ChainHash {
+		t.Error("chain_hash should differ between delegation depths")
 	}
 }

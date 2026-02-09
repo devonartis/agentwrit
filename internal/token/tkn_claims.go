@@ -39,6 +39,7 @@ type TknClaims struct {
 	TaskId     string        `json:"task_id,omitempty"`
 	OrchId     string        `json:"orch_id,omitempty"`
 	DelegChain []DelegRecord `json:"delegation_chain,omitempty"`
+	ChainHash  string        `json:"chain_hash,omitempty"`
 }
 
 // DelegRecord represents a single link in a delegation chain. Each entry

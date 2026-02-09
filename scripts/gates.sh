@@ -86,6 +86,14 @@ fi
 
 if [[ "$MODE" == "module" ]]; then
   run_gate "full tests" go test ./... -count=1
+
+  # Live/E2E: start the broker and run HTTP smoke tests
+  SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  if [[ -x "$SCRIPT_DIR/live_test.sh" ]]; then
+    run_gate "live tests" "$SCRIPT_DIR/live_test.sh"
+  else
+    skip_gate "live tests" "scripts/live_test.sh not found or not executable"
+  fi
 fi
 
 # --- Summary ---

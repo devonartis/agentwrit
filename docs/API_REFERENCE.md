@@ -4,6 +4,7 @@
 **Base URL:** `http://localhost:8080` (configurable via `AA_PORT`)
 **Content-Type:** All requests and responses use `application/json` unless noted otherwise
 **Errors:** All errors use [RFC 7807](https://tools.ietf.org/html/rfc7807) `application/problem+json`
+**Request body limit:** All endpoints enforce a maximum request body size of 1 MB (1,048,576 bytes) via `MaxBytesBody`. Requests exceeding this limit receive a `413 Request Entity Too Large` error.
 
 ---
 
@@ -255,6 +256,8 @@ Exchange the pre-shared admin secret for a short-lived admin JWT. This is the bo
 
 **Security note:** The secret comparison uses `crypto/subtle.ConstantTimeCompare` to prevent timing attacks.
 
+**Rate limiting:** This endpoint is rate-limited to 5 requests per second per IP with a burst capacity of 10. Exceeding the limit returns `429 Too Many Requests` with a `Retry-After: 1` header and an RFC 7807 error body (`urn:agentauth:error:rate_limited`).
+
 **Response `200 OK`:**
 
 ```json
@@ -285,6 +288,7 @@ The issued admin JWT has:
 | `400` | Missing `client_id` or `client_secret` |
 | `400` | Malformed JSON body |
 | `401` | Invalid credentials |
+| `429` | Rate limit exceeded (5 req/s per IP, burst 10) |
 
 **Example:**
 
@@ -654,7 +658,8 @@ Create a scope-attenuated delegation token. An agent can delegate a subset of it
     {
       "agent": "spiffe://agentauth.local/agent/orch-001/task-001/a1b2c3d4e5f6a7b8",
       "scope": ["read:Customers:*"],
-      "delegated_at": "2026-02-09T13:30:00Z"
+      "delegated_at": "2026-02-09T13:30:00Z",
+      "signature": "a1b2c3d4..."
     }
   ]
 }
@@ -668,6 +673,7 @@ Create a scope-attenuated delegation token. An agent can delegate a subset of it
 | `delegation_chain[].agent` | string | SPIFFE ID of the delegator |
 | `delegation_chain[].scope` | string[] | Scope the delegator held at delegation time |
 | `delegation_chain[].delegated_at` | string | RFC 3339 timestamp of when delegation occurred |
+| `delegation_chain[].signature` | string | Hex-encoded Ed25519 signature over canonical content (`agent|scope_csv|delegated_at`) |
 
 **Constraints:**
 
@@ -778,6 +784,8 @@ Query the audit trail. Returns events with hash-chain integrity verification. Ev
 | `agent_registered` | Agent registration succeeded via `POST /v1/register` |
 | `registration_policy_violation` | Registration rejected due to scope violation |
 | `token_issued` | Agent token issued (during registration) |
+| `token_renewed` | Token renewed successfully via `POST /v1/token/renew` |
+| `token_renewal_failed` | Token renewal attempt failed |
 | `token_revoked` | Token/agent/task/chain revoked via `POST /v1/revoke` |
 | `delegation_created` | Delegation token issued via `POST /v1/delegate` |
 | `resource_accessed` | Resource access logged by a resource server |
@@ -915,6 +923,7 @@ The payload contains these claims:
 | Task ID | `task_id` | string | Task identifier (omitted for admin tokens) |
 | Orchestration ID | `orch_id` | string | Orchestration identifier (omitted for admin tokens) |
 | Delegation Chain | `delegation_chain` | object[] | Delegation chain (omitted if empty); see [POST /v1/delegate](#post-v1delegate) |
+| Chain Hash | `chain_hash` | string | SHA-256 hex digest of the JSON-serialized delegation chain (present only on delegated tokens) |
 
 **Token format:** Standard three-part JWT: `base64url(header).base64url(payload).base64url(signature)`. The signature is computed over the ASCII bytes of `base64url(header).base64url(payload)` using the broker's Ed25519 private key. Uses raw base64url encoding (no padding).
 

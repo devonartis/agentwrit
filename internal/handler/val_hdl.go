@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/divineartis/agentauth/internal/problemdetails"
 	"github.com/divineartis/agentauth/internal/revoke"
 	"github.com/divineartis/agentauth/internal/token"
 )
@@ -40,11 +41,11 @@ type validateRespInvalid struct {
 func (h *ValHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var req validateReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
+		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
 		return
 	}
 	if req.Token == "" {
-		WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "token field is required", r.URL.Path)
+		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "token field is required", r.URL.Path)
 		return
 	}
 

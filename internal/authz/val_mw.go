@@ -2,10 +2,10 @@ package authz
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strings"
 
+	"github.com/divineartis/agentauth/internal/problemdetails"
 	"github.com/divineartis/agentauth/internal/token"
 )
 
@@ -64,24 +64,24 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			problemResponse(w, r, 401, "unauthorized", "missing authorization header")
+			problemdetails.WriteProblem(r.Context(), w, 401, "unauthorized", "missing authorization header", r.URL.Path)
 			return
 		}
 
 		if !strings.HasPrefix(authHeader, "Bearer ") {
-			problemResponse(w, r, 401, "unauthorized", "invalid authorization scheme")
+			problemdetails.WriteProblem(r.Context(), w, 401, "unauthorized", "invalid authorization scheme", r.URL.Path)
 			return
 		}
 
 		tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 		claims, err := m.tknSvc.Verify(tokenStr)
 		if err != nil {
-			problemResponse(w, r, 401, "unauthorized", "token verification failed: "+err.Error())
+			problemdetails.WriteProblem(r.Context(), w, 401, "unauthorized", "token verification failed: "+err.Error(), r.URL.Path)
 			return
 		}
 
 		if m.revSvc != nil && m.revSvc.IsRevoked(claims) {
-			problemResponse(w, r, 403, "insufficient_scope", "token has been revoked")
+			problemdetails.WriteProblem(r.Context(), w, 403, "insufficient_scope", "token has been revoked", r.URL.Path)
 			return
 		}
 
@@ -98,12 +98,12 @@ func WithRequiredScope(scope string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		claims := ClaimsFromContext(r.Context())
 		if claims == nil {
-			problemResponse(w, r, 401, "unauthorized", "no claims in context")
+			problemdetails.WriteProblem(r.Context(), w, 401, "unauthorized", "no claims in context", r.URL.Path)
 			return
 		}
 
 		if !ScopeIsSubset([]string{scope}, claims.Scope) {
-			problemResponse(w, r, 403, "insufficient_scope", "token lacks required scope: "+scope)
+			problemdetails.WriteProblem(r.Context(), w, 403, "insufficient_scope", "token lacks required scope: "+scope, r.URL.Path)
 			return
 		}
 
@@ -134,16 +134,4 @@ func TokenFromRequest(r *http.Request) string {
 		return ""
 	}
 	return strings.TrimPrefix(authHeader, "Bearer ")
-}
-
-func problemResponse(w http.ResponseWriter, r *http.Request, status int, errType, detail string) {
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]any{
-		"type":     "urn:agentauth:error:" + errType,
-		"title":    http.StatusText(status),
-		"status":   status,
-		"detail":   detail,
-		"instance": r.URL.Path,
-	})
 }

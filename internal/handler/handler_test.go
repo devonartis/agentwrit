@@ -20,6 +20,7 @@ import (
 	"github.com/divineartis/agentauth/internal/deleg"
 	"github.com/divineartis/agentauth/internal/handler"
 	"github.com/divineartis/agentauth/internal/identity"
+	"github.com/divineartis/agentauth/internal/problemdetails"
 	"github.com/divineartis/agentauth/internal/revoke"
 	"github.com/divineartis/agentauth/internal/store"
 	"github.com/divineartis/agentauth/internal/token"
@@ -55,7 +56,7 @@ func newTestBroker(t *testing.T) *testBroker {
 	tknSvc := token.NewTknSvc(priv, pub, c)
 	revSvc := revoke.NewRevSvc()
 	idSvc := identity.NewIdSvc(sqlStore, tknSvc, c.TrustDomain, auditLog)
-	delegSvc := deleg.NewDelegSvc(tknSvc, sqlStore, auditLog)
+	delegSvc := deleg.NewDelegSvc(tknSvc, sqlStore, auditLog, priv)
 	adminSvc := admin.NewAdminSvc(c.AdminSecret, tknSvc, sqlStore, auditLog)
 
 	valMw := authz.NewValMw(tknSvc, revSvc, auditLog)
@@ -75,12 +76,12 @@ func newTestBroker(t *testing.T) *testBroker {
 	mux.Handle("GET /v1/challenge", challengeHdl)
 	mux.Handle("GET /v1/health", healthHdl)
 	mux.Handle("GET /v1/metrics", metricsHdl)
-	mux.Handle("POST /v1/token/validate", handler.MaxBytesBody(valHdl))
-	mux.Handle("POST /v1/register", handler.MaxBytesBody(regHdl))
-	mux.Handle("POST /v1/token/renew", handler.MaxBytesBody(valMw.Wrap(renewHdl)))
-	mux.Handle("POST /v1/delegate", handler.MaxBytesBody(valMw.Wrap(delegHdl)))
+	mux.Handle("POST /v1/token/validate", problemdetails.MaxBytesBody(valHdl))
+	mux.Handle("POST /v1/register", problemdetails.MaxBytesBody(regHdl))
+	mux.Handle("POST /v1/token/renew", problemdetails.MaxBytesBody(valMw.Wrap(renewHdl)))
+	mux.Handle("POST /v1/delegate", problemdetails.MaxBytesBody(valMw.Wrap(delegHdl)))
 	mux.Handle("POST /v1/revoke",
-		handler.MaxBytesBody(valMw.Wrap(authz.WithRequiredScope("admin:revoke:*", revokeHdl))))
+		problemdetails.MaxBytesBody(valMw.Wrap(authz.WithRequiredScope("admin:revoke:*", revokeHdl))))
 	mux.Handle("GET /v1/audit/events",
 		valMw.Wrap(authz.WithRequiredScope("admin:audit:*", auditHdl)))
 	adminHdl.RegisterRoutes(mux)

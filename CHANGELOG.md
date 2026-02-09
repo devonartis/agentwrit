@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
 ## [2.0.0] - 2026-02-09
 
 Complete rewrite implementing the Ephemeral Agent Credentialing security pattern.
@@ -21,7 +23,7 @@ Complete rewrite implementing the Ephemeral Agent Credentialing security pattern
 - **Revocation**: 4-level token revocation (token/JTI, agent/SPIFFE ID, task, delegation chain)
 - **Audit**: Hash-chain tamper-evident audit trail with SHA-256 linking
 - **Audit**: Automatic PII sanitization (secrets, passwords, private keys, token values)
-- **Audit**: 10 event types covering admin auth, registration, token lifecycle, delegation, and resource access
+- **Audit**: 12 event types covering admin auth, registration, token lifecycle, delegation, and resource access
 - **Audit**: Query endpoint with filtering (agent, task, event type, time range) and pagination
 - **Delegation**: Scope-attenuated token delegation with chain verification
 - **Delegation**: Maximum delegation depth of 5 hops
@@ -35,6 +37,4 @@ Complete rewrite implementing the Ephemeral Agent Credentialing security pattern
 - **Health**: Health check endpoint reporting status, version, and uptime
 - **Metrics**: Prometheus exposition format at `/v1/metrics`
 - **Config**: `AA_*` environment variable configuration with sensible defaults
-- **Docker**: Multi-stage Dockerfile (golang:1.23-alpine builder, alpine:3.19 runtime)
-- **Docker**: docker-compose.yml for local development with health checks
 - **API**: OpenAPI 3.0 specification at `docs/api/openapi.yaml`

@@ -4,20 +4,22 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/divineartis/agentauth/internal/problemdetails"
 )
 
 func TestRequestIDMiddleware(t *testing.T) {
 	// Red Phase: This test will fail because the middleware is not yet implemented.
 	
 	innerHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := GetRequestID(r.Context())
+		id := problemdetails.GetRequestID(r.Context())
 		if id == "" {
 			t.Error("expected request ID in context, got empty string")
 		}
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := RequestIDMiddleware(innerHandler)
+	mw := problemdetails.RequestIDMiddleware(innerHandler)
 	req := httptest.NewRequest("GET", "/", nil)
 	rec := httptest.NewRecorder()
 

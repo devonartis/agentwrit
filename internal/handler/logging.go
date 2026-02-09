@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/divineartis/agentauth/internal/obs"
+	"github.com/divineartis/agentauth/internal/problemdetails"
 )
 
 // responseWriter is a wrapper around http.ResponseWriter that captures
@@ -43,7 +44,7 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(rw, r)
 		
 		latency := time.Since(start)
-		id := GetRequestID(r.Context())
+		id := problemdetails.GetRequestID(r.Context())
 		
 		obs.Ok("HTTP", "handler", "request completed",
 			fmt.Sprintf("method=%s", r.Method),

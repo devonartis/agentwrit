@@ -8,8 +8,8 @@ import (
 
 	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/authz"
-	"github.com/divineartis/agentauth/internal/handler"
 	"github.com/divineartis/agentauth/internal/obs"
+	"github.com/divineartis/agentauth/internal/problemdetails"
 )
 
 const hdlCmp = "AdminHdl"
@@ -69,19 +69,19 @@ func (h *AdminHdl) handleAuth(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	var req authReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		handler.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
+		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
 		return
 	}
 
 	if req.ClientID == "" || req.ClientSecret == "" {
-		handler.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "client_id and client_secret are required", r.URL.Path)
+		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "client_id and client_secret are required", r.URL.Path)
 		return
 	}
 
 	issueResp, err := h.adminSvc.Authenticate(req.ClientID, req.ClientSecret)
 	if err != nil {
 		obs.Warn(mod, hdlCmp, "auth failed", "client_id="+req.ClientID)
-		handler.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "invalid credentials", r.URL.Path)
+		problemdetails.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "invalid credentials", r.URL.Path)
 		return
 	}
 
@@ -97,14 +97,14 @@ func (h *AdminHdl) handleAuth(w http.ResponseWriter, r *http.Request) {
 func (h *AdminHdl) handleCreateLaunchToken(w http.ResponseWriter, r *http.Request) {
 	claims := authz.ClaimsFromContext(r.Context())
 	if claims == nil {
-		handler.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "missing authentication", r.URL.Path)
+		problemdetails.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "missing authentication", r.URL.Path)
 		return
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	var req CreateLaunchTokenReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		handler.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
+		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
 		return
 	}
 
@@ -117,12 +117,12 @@ func (h *AdminHdl) handleCreateLaunchToken(w http.ResponseWriter, r *http.Reques
 		}
 		switch {
 		case errors.Is(err, ErrAgentNameEmpty):
-			handler.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "agent_name is required", r.URL.Path)
+			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "agent_name is required", r.URL.Path)
 		case errors.Is(err, ErrScopeEmpty):
-			handler.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "allowed_scope must not be empty", r.URL.Path)
+			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "allowed_scope must not be empty", r.URL.Path)
 		default:
 			obs.Fail(mod, hdlCmp, "launch token creation failed", "err="+err.Error())
-			handler.WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "failed to create launch token", r.URL.Path)
+			problemdetails.WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "failed to create launch token", r.URL.Path)
 		}
 		return
 	}

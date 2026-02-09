@@ -7,6 +7,7 @@ import (
 
 	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/authz"
+	"github.com/divineartis/agentauth/internal/problemdetails"
 	"github.com/divineartis/agentauth/internal/token"
 )
 
@@ -32,7 +33,7 @@ type renewResp struct {
 func (h *RenewHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	tokenStr := authz.TokenFromRequest(r)
 	if tokenStr == "" {
-		WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "missing Bearer token", r.URL.Path)
+		problemdetails.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "missing Bearer token", r.URL.Path)
 		return
 	}
 
@@ -45,7 +46,7 @@ func (h *RenewHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.auditLog.Record(audit.EventTokenRenewalFailed, claims.Sub, claims.TaskId, claims.OrchId,
 				fmt.Sprintf("token renewal failed for agent=%s: %s", claims.Sub, err.Error()))
 		}
-		WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "token renewal failed: "+err.Error(), r.URL.Path)
+		problemdetails.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "token renewal failed: "+err.Error(), r.URL.Path)
 		return
 	}
 

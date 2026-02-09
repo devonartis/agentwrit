@@ -262,3 +262,21 @@ func TestCompleteHandshakeResponderIDTampering(t *testing.T) {
 		t.Fatalf("expected ErrResponderMismatch, got ok=%v err=%v", ok, err)
 	}
 }
+
+func TestHandshakeDiscoveryNotBoundPassthrough(t *testing.T) {
+	hdl, st, tokA, tokB, _, privB, _, agentBID, tknSvc := testSetup(t)
+
+	// Rebuild handler with discovery enabled but without binding target agent.
+	dr := NewDiscoveryRegistry()
+	hdl = NewMutAuthHdl(tknSvc, st, dr)
+
+	req, err := hdl.InitiateHandshake(tokA, agentBID)
+	if err != nil {
+		t.Fatalf("initiate: %v", err)
+	}
+
+	_, err = hdl.RespondToHandshake(req, tokB, privB)
+	if !errors.Is(err, ErrAgentNotBound) {
+		t.Fatalf("expected ErrAgentNotBound, got %v", err)
+	}
+}

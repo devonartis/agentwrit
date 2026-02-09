@@ -251,6 +251,45 @@ func TestRenew(t *testing.T) {
 	}
 }
 
+func TestRenew_PreservesChainHash(t *testing.T) {
+	pub, priv := testKeyPair(t)
+	svc := NewTknSvc(priv, pub, testCfg())
+
+	chainHash := "abc123def456"
+	chain := []DelegRecord{
+		{Agent: "spiffe://test/agent/o/t/a1", Scope: []string{"read:data:*"}, DelegatedAt: time.Now(), Signature: "sig1"},
+	}
+
+	resp1, err := svc.Issue(IssueReq{
+		Sub:        "spiffe://agentauth.local/agent/orch-1/task-1/delegated",
+		Scope:      []string{"read:data:*"},
+		TaskId:     "task-1",
+		OrchId:     "orch-1",
+		DelegChain: chain,
+		ChainHash:  chainHash,
+	})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	resp2, err := svc.Renew(resp1.AccessToken)
+	if err != nil {
+		t.Fatalf("Renew: %v", err)
+	}
+
+	claims2, err := svc.Verify(resp2.AccessToken)
+	if err != nil {
+		t.Fatalf("Verify renewed: %v", err)
+	}
+
+	if claims2.ChainHash != chainHash {
+		t.Errorf("renewed ChainHash = %q, want %q", claims2.ChainHash, chainHash)
+	}
+	if len(claims2.DelegChain) != 1 {
+		t.Errorf("renewed DelegChain length = %d, want 1", len(claims2.DelegChain))
+	}
+}
+
 func TestPublicKey(t *testing.T) {
 	pub, priv := testKeyPair(t)
 	svc := NewTknSvc(priv, pub, testCfg())

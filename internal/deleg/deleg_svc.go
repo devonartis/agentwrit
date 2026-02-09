@@ -12,6 +12,10 @@
 package deleg
 
 import (
+	"crypto/ed25519"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -54,20 +58,25 @@ type DelegResp struct {
 
 // DelegSvc is the delegation service. It verifies scope attenuation,
 // enforces depth limits, appends to the delegation chain, and issues
-// a new token for the delegate agent.
+// a new token for the delegate agent. Each delegation record is signed
+// with the broker's Ed25519 key, and the complete chain is hashed
+// (SHA-256) into the delegated token's chain_hash claim.
 type DelegSvc struct {
-	tknSvc   *token.TknSvc
-	store    *store.SqlStore
-	auditLog *audit.AuditLog
+	tknSvc     *token.TknSvc
+	store      *store.SqlStore
+	auditLog   *audit.AuditLog
+	signingKey ed25519.PrivateKey
 }
 
-// NewDelegSvc creates a new delegation service. The auditLog parameter may
-// be nil to disable audit recording.
-func NewDelegSvc(tknSvc *token.TknSvc, st *store.SqlStore, auditLog *audit.AuditLog) *DelegSvc {
+// NewDelegSvc creates a new delegation service. The signingKey is the
+// broker's Ed25519 private key used to sign delegation records. The
+// auditLog parameter may be nil to disable audit recording.
+func NewDelegSvc(tknSvc *token.TknSvc, st *store.SqlStore, auditLog *audit.AuditLog, signingKey ed25519.PrivateKey) *DelegSvc {
 	return &DelegSvc{
-		tknSvc:   tknSvc,
-		store:    st,
-		auditLog: auditLog,
+		tknSvc:     tknSvc,
+		store:      st,
+		auditLog:   auditLog,
+		signingKey: signingKey,
 	}
 }
 
@@ -109,11 +118,23 @@ func (s *DelegSvc) Delegate(delegatorClaims *token.TknClaims, req DelegReq) (*De
 	// Build delegation chain
 	chain := make([]token.DelegRecord, len(delegatorClaims.DelegChain))
 	copy(chain, delegatorClaims.DelegChain)
-	chain = append(chain, token.DelegRecord{
+
+	newRecord := token.DelegRecord{
 		Agent:       delegatorClaims.Sub,
 		Scope:       delegatorClaims.Scope,
 		DelegatedAt: time.Now().UTC(),
-	})
+	}
+
+	// Sign the delegation record: Agent + Scope + DelegatedAt
+	newRecord.Signature = s.signRecord(newRecord)
+
+	chain = append(chain, newRecord)
+
+	// Compute chain_hash: SHA-256 of JSON-serialized chain
+	chainHash, err := computeChainHash(chain)
+	if err != nil {
+		return nil, fmt.Errorf("compute chain hash: %w", err)
+	}
 
 	ttl := req.TTL
 	if ttl <= 0 {
@@ -128,6 +149,7 @@ func (s *DelegSvc) Delegate(delegatorClaims *token.TknClaims, req DelegReq) (*De
 		OrchId:     delegatorClaims.OrchId,
 		TTL:        ttl,
 		DelegChain: chain,
+		ChainHash:  chainHash,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("issue delegated token: %w", err)
@@ -147,4 +169,37 @@ func (s *DelegSvc) Delegate(delegatorClaims *token.TknClaims, req DelegReq) (*De
 		ExpiresIn:       issResp.ExpiresIn,
 		DelegationChain: chain,
 	}, nil
+}
+
+// signRecord signs the delegation record content (Agent + Scope +
+// DelegatedAt) with the broker's Ed25519 private key and returns
+// the hex-encoded signature.
+func (s *DelegSvc) signRecord(rec token.DelegRecord) string {
+	// Canonical content: agent|scope_csv|timestamp_rfc3339
+	content := rec.Agent + "|" + scopeCSV(rec.Scope) + "|" + rec.DelegatedAt.Format(time.RFC3339Nano)
+	sig := ed25519.Sign(s.signingKey, []byte(content))
+	return hex.EncodeToString(sig)
+}
+
+// scopeCSV joins scope strings with commas for canonical signing input.
+func scopeCSV(scopes []string) string {
+	result := ""
+	for i, s := range scopes {
+		if i > 0 {
+			result += ","
+		}
+		result += s
+	}
+	return result
+}
+
+// computeChainHash returns the hex-encoded SHA-256 hash of the
+// JSON-serialized delegation chain.
+func computeChainHash(chain []token.DelegRecord) (string, error) {
+	data, err := json.Marshal(chain)
+	if err != nil {
+		return "", err
+	}
+	h := sha256.Sum256(data)
+	return hex.EncodeToString(h[:]), nil
 }

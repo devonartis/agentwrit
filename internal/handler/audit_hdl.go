@@ -8,6 +8,7 @@ import (
 
 	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/authz"
+	"github.com/divineartis/agentauth/internal/problemdetails"
 )
 
 // AuditHdl handles GET /v1/audit/events. It accepts optional query
@@ -32,7 +33,7 @@ type auditResp struct {
 func (h *AuditHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	claims := authz.ClaimsFromContext(r.Context())
 	if claims == nil {
-		WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "missing authentication", r.URL.Path)
+		problemdetails.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "missing authentication", r.URL.Path)
 		return
 	}
 

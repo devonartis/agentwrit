@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/divineartis/agentauth/internal/identity"
+	"github.com/divineartis/agentauth/internal/problemdetails"
 	"github.com/divineartis/agentauth/internal/store"
 )
 
@@ -25,7 +26,7 @@ func NewRegHdl(idSvc *identity.IdSvc) *RegHdl {
 func (h *RegHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var req identity.RegisterReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
+		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
 		return
 	}
 
@@ -33,17 +34,17 @@ func (h *RegHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, identity.ErrMissingField):
-			WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", err.Error(), r.URL.Path)
+			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", err.Error(), r.URL.Path)
 		case errors.Is(err, identity.ErrScopeViolation):
-			WriteProblem(r.Context(), w, http.StatusForbidden, "scope_violation", err.Error(), r.URL.Path)
+			problemdetails.WriteProblem(r.Context(), w, http.StatusForbidden, "scope_violation", err.Error(), r.URL.Path)
 		case errors.Is(err, store.ErrTokenNotFound), errors.Is(err, store.ErrTokenExpired), errors.Is(err, store.ErrTokenConsumed):
-			WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", err.Error(), r.URL.Path)
+			problemdetails.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", err.Error(), r.URL.Path)
 		case errors.Is(err, store.ErrNonceNotFound), errors.Is(err, store.ErrNonceConsumed):
-			WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", err.Error(), r.URL.Path)
+			problemdetails.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", err.Error(), r.URL.Path)
 		case errors.Is(err, identity.ErrInvalidSignature), errors.Is(err, identity.ErrInvalidPublicKey):
-			WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", err.Error(), r.URL.Path)
+			problemdetails.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", err.Error(), r.URL.Path)
 		default:
-			WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "registration failed", r.URL.Path)
+			problemdetails.WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "registration failed", r.URL.Path)
 		}
 		return
 	}

@@ -34,6 +34,7 @@ import (
 	"github.com/divineartis/agentauth/internal/handler"
 	"github.com/divineartis/agentauth/internal/identity"
 	"github.com/divineartis/agentauth/internal/obs"
+	"github.com/divineartis/agentauth/internal/problemdetails"
 	"github.com/divineartis/agentauth/internal/revoke"
 	"github.com/divineartis/agentauth/internal/store"
 	"github.com/divineartis/agentauth/internal/token"
@@ -65,7 +66,7 @@ func main() {
 	tknSvc := token.NewTknSvc(privKey, pubKey, c)
 	revSvc := revoke.NewRevSvc()
 	idSvc := identity.NewIdSvc(sqlStore, tknSvc, c.TrustDomain, auditLog)
-	delegSvc := deleg.NewDelegSvc(tknSvc, sqlStore, auditLog)
+	delegSvc := deleg.NewDelegSvc(tknSvc, sqlStore, auditLog, privKey)
 	adminSvc := admin.NewAdminSvc(c.AdminSecret, tknSvc, sqlStore, auditLog)
 
 	// Seed tokens for development (AA_SEED_TOKENS=true)
@@ -98,29 +99,34 @@ func main() {
 	mux.Handle("GET /v1/metrics", metricsHdl)
 
 	// Token validation (no auth required per spec)
-	mux.Handle("POST /v1/token/validate", handler.MaxBytesBody(valHdl))
+	mux.Handle("POST /v1/token/validate", problemdetails.MaxBytesBody(valHdl))
 
 	// Agent registration (launch token auth, not Bearer)
-	mux.Handle("POST /v1/register", handler.MaxBytesBody(regHdl))
+	mux.Handle("POST /v1/register", problemdetails.MaxBytesBody(regHdl))
 
 	// Authenticated endpoints (Bearer token)
-	mux.Handle("POST /v1/token/renew", handler.MaxBytesBody(valMw.Wrap(renewHdl)))
-	mux.Handle("POST /v1/delegate", handler.MaxBytesBody(valMw.Wrap(delegHdl)))
+	mux.Handle("POST /v1/token/renew", problemdetails.MaxBytesBody(valMw.Wrap(renewHdl)))
+	mux.Handle("POST /v1/delegate", problemdetails.MaxBytesBody(valMw.Wrap(delegHdl)))
 
 	// Admin endpoints (Bearer + admin scope)
 	mux.Handle("POST /v1/revoke",
-		handler.MaxBytesBody(valMw.Wrap(authz.WithRequiredScope("admin:revoke:*", revokeHdl))))
+		problemdetails.MaxBytesBody(valMw.Wrap(authz.WithRequiredScope("admin:revoke:*", revokeHdl))))
 	mux.Handle("GET /v1/audit/events",
 		valMw.Wrap(authz.WithRequiredScope("admin:audit:*", auditHdl)))
 
 	// Admin auth and launch token routes (registered by AdminHdl)
 	adminHdl.RegisterRoutes(mux)
 
+	// Global Middleware
+	var rootHandler http.Handler = mux
+	rootHandler = handler.LoggingMiddleware(rootHandler)
+	rootHandler = problemdetails.RequestIDMiddleware(rootHandler)
+
 	addr := ":" + c.Port
 	obs.Ok("BROKER", "main", "starting broker", "addr="+addr, "version="+version)
 	fmt.Printf("AgentAuth broker v%s listening on %s\n", version, addr)
 
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := http.ListenAndServe(addr, rootHandler); err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
 		os.Exit(1)
 	}

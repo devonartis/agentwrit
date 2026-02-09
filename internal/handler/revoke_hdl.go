@@ -8,6 +8,7 @@ import (
 	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/authz"
 	"github.com/divineartis/agentauth/internal/obs"
+	"github.com/divineartis/agentauth/internal/problemdetails"
 	"github.com/divineartis/agentauth/internal/revoke"
 )
 
@@ -41,18 +42,18 @@ type revokeResp struct {
 func (h *RevokeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	claims := authz.ClaimsFromContext(r.Context())
 	if claims == nil {
-		WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "missing authentication", r.URL.Path)
+		problemdetails.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "missing authentication", r.URL.Path)
 		return
 	}
 
 	var req revokeReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
+		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
 		return
 	}
 
 	if req.Level == "" || req.Target == "" {
-		WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "level and target are required", r.URL.Path)
+		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "level and target are required", r.URL.Path)
 		return
 	}
 
@@ -60,11 +61,11 @@ func (h *RevokeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, revoke.ErrInvalidLevel):
-			WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "invalid revocation level: "+req.Level, r.URL.Path)
+			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "invalid revocation level: "+req.Level, r.URL.Path)
 		case errors.Is(err, revoke.ErrMissingTarget):
-			WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "missing target", r.URL.Path)
+			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "missing target", r.URL.Path)
 		default:
-			WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "revocation failed", r.URL.Path)
+			problemdetails.WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "revocation failed", r.URL.Path)
 		}
 		return
 	}

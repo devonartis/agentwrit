@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/divineartis/agentauth/internal/problemdetails"
 )
 
 func TestLoggingMiddleware(t *testing.T) {
@@ -15,7 +17,7 @@ func TestLoggingMiddleware(t *testing.T) {
 	})
 
 	// Wrap with RequestIDMiddleware so we have an ID to log.
-	mw := RequestIDMiddleware(LoggingMiddleware(innerHandler))
+	mw := problemdetails.RequestIDMiddleware(LoggingMiddleware(innerHandler))
 	req := httptest.NewRequest("POST", "/v1/test", nil)
 	rec := httptest.NewRecorder()
 
