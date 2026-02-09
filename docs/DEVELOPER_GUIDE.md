@@ -1,6 +1,6 @@
 # AgentAuth Developer Guide
 
-## Architecture snapshot (M00-M08, M05)
+## Architecture snapshot (M00-M08, M05, M11-M12)
 
 Implemented packages and responsibilities:
 
@@ -54,6 +54,11 @@ Implemented packages and responsibilities:
   - centralized RFC 7807 problem factory (`WriteProblem`)
   - Prometheus collectors and recorder helpers
   - health and metrics HTTP handlers (`HealthHdl`, `MetricsHdl`)
+- `demo/resource_server` (M11)
+  - FastAPI resource server with 4 endpoints and dual-mode auth middleware
+- `demo/agents` (M12)
+  - Python demo agents: BrokerClient, AgentBase, DataRetriever, Analyzer, ActionTaker
+  - Orchestrator driving full A->B->C workflow with delegation
 
 ## Repository layout (current)
 
@@ -88,6 +93,11 @@ docs/
     mutauth.md
     deleg.md
     obs.md
+    resource_server.md
+    demo_agents.md
+demo/
+  resource_server/     -- M11 FastAPI resource server
+  agents/              -- M12 Python demo agents
 scripts/
   gates.sh
   doc_check.sh
@@ -141,6 +151,8 @@ tests/
 - M06 mutual auth: `docs/developer/mutauth.md`
 - M07 delegation: `docs/developer/deleg.md`
 - M08 observability: `docs/developer/obs.md`
+- M11 resource server: `docs/developer/resource_server.md`
+- M12 demo agents: `docs/developer/demo_agents.md`
 
 ## Seed tokens (dev/test bootstrap)
 

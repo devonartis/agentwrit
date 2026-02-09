@@ -294,6 +294,52 @@ ok, _ := dr.VerifyBinding(agentID, presentedID) // MITM check
 
 When wired with `RevSvc`, agents missing 3+ heartbeats are automatically revoked. Without `RevSvc`, missed heartbeats are logged as warnings.
 
+## Demo agents (M12)
+
+The demo agents implement a multi-agent ticket resolution workflow where three Python agents collaborate using AgentAuth credentials.
+
+### Prerequisites
+
+```bash
+cd demo
+pip install -r requirements.txt
+```
+
+### Run in insecure mode (no broker needed)
+
+Start the resource server, then run the orchestrator:
+
+```bash
+python -m resource_server.main --mode insecure &
+python -m agents --mode insecure --resource-url http://localhost:8090
+```
+
+### Run in secure mode (full AgentAuth flow)
+
+Start the broker with seed tokens and the resource server:
+
+```bash
+AA_SEED_TOKENS=true go run ./cmd/broker &
+# Copy SEED_LAUNCH_TOKEN from output
+python -m resource_server.main --mode secure &
+python -m agents --mode secure \
+  --launch-token "$SEED_LAUNCH_TOKEN" \
+  --broker-url http://localhost:8080 \
+  --resource-url http://localhost:8090
+```
+
+### Agent workflow
+
+1. **Agent A (DataRetriever)**: Registers with `read:Customers:{id}` scope, fetches customer record
+2. **Agent B (Analyzer)**: Registers with broader scope, fetches orders, analyzes, delegates attenuated `write:Tickets` + `invoke:Notifications` scope to Agent C
+3. **Agent C (ActionTaker)**: Uses delegation token (no fresh registration), closes ticket and sends notification
+
+### Run agent tests
+
+```bash
+pytest demo/agents/tests/ -v
+```
+
 ## Run quality gates
 
 Run these before declaring any task/module complete:

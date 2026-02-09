@@ -7,6 +7,16 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ## [Unreleased]
 
 ### Added
+- Module M12 demo agents (Python):
+  - BrokerClient: async httpx wrapper for all broker REST endpoints
+  - AgentBase: Ed25519 ephemeral key generation, challenge-response registration, dual-mode resource calls
+  - Agent A (DataRetriever): registers with scoped read access, fetches customer data
+  - Agent B (Analyzer): fetches orders, performs analysis, delegates attenuated scope to Agent C
+  - Agent C (ActionTaker): uses delegation token (no fresh registration) to close ticket and send notification
+  - Orchestrator: sequences A->B->C workflow with per-agent timing and DemoResult aggregation
+  - CLI entrypoint via `python -m agents --mode secure|insecure`
+  - 37 tests: unit (15+3+4+4), orchestrator (4), integration (7)
+  - Module documentation in `docs/developer/demo_agents.md`
 - Module M11 resource server (Python/FastAPI):
   - Simulated customer database API with 4 endpoints: GET /customers/{id}, GET /orders/{customer_id}, PUT /tickets/{id}, POST /notifications/send
   - Pre-seeded sample data: 5 customers, 10 orders, 3 tickets per MVP Requirements 5.4
