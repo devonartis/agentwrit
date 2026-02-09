@@ -329,7 +329,7 @@ func (s *AdminSvc) ActivateSidecar(req ActivateSidecarReq) (*ActivateSidecarResp
 	sidecarScopeCeiling := "sidecar:scope:" + scopePrefix
 	issResp, err := s.tknSvc.Issue(token.IssueReq{
 		Sub:   "sidecar:" + sidecarID,
-		Scope: []string{"sidecar:manage", sidecarScopeCeiling},
+		Scope: []string{"sidecar:manage:*", sidecarScopeCeiling},
 		Sid:   sidecarID,
 		TTL:   ttl,
 	})

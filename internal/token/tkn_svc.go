@@ -187,7 +187,7 @@ func (s *TknSvc) Renew(tokenStr string) (*IssueResp, error) {
 }
 
 // Exchange swaps a valid sidecar management token for an attenuated agent
-// token. It verifies that the sidecar has the "sidecar:manage" scope and
+// token. It verifies that the sidecar has the "sidecar:manage:*" scope and
 // that the requested scope is a subset of the sidecar's "sidecar:scope:*"
 // ceiling.
 func (s *TknSvc) Exchange(sidecarToken, agentID string, scope []string, ttl int) (*IssueResp, error) {
@@ -200,7 +200,7 @@ func (s *TknSvc) Exchange(sidecarToken, agentID string, scope []string, ttl int)
 	hasAuthority := false
 	var scopeCeiling []string
 	for _, s := range claims.Scope {
-		if s == "sidecar:manage" {
+		if s == "sidecar:manage:*" || s == "sidecar:manage" {
 			hasAuthority = true
 		}
 		if strings.HasPrefix(s, "sidecar:scope:") {
@@ -229,7 +229,7 @@ func (s *TknSvc) Exchange(sidecarToken, agentID string, scope []string, ttl int)
 }
 
 func (s *TknSvc) isScopeAllowed(requested, ceiling []string) bool {
-	// Simple subset check for MVP. 
+	// Simple subset check for MVP.
 	// In production this would use the full authz.ScopeIsSubset logic.
 	for _, r := range requested {
 		allowed := false

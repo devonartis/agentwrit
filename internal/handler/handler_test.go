@@ -67,6 +67,7 @@ func newTestBroker(t *testing.T) *testBroker {
 	renewHdl := handler.NewRenewHdl(tknSvc, auditLog)
 	revokeHdl := handler.NewRevokeHdl(revSvc, auditLog)
 	delegHdl := handler.NewDelegHdl(delegSvc)
+	tokenExchangeHdl := handler.NewTokenExchangeHdl(tknSvc, sqlStore)
 	auditHdl := handler.NewAuditHdl(auditLog)
 	healthHdl := handler.NewHealthHdl("test")
 	metricsHdl := handler.NewMetricsHdl()
@@ -79,6 +80,8 @@ func newTestBroker(t *testing.T) *testBroker {
 	mux.Handle("POST /v1/token/validate", problemdetails.MaxBytesBody(valHdl))
 	mux.Handle("POST /v1/register", problemdetails.MaxBytesBody(regHdl))
 	mux.Handle("POST /v1/token/renew", problemdetails.MaxBytesBody(valMw.Wrap(renewHdl)))
+	mux.Handle("POST /v1/token/exchange",
+		problemdetails.MaxBytesBody(valMw.Wrap(authz.WithRequiredScope("sidecar:manage:*", tokenExchangeHdl))))
 	mux.Handle("POST /v1/delegate", problemdetails.MaxBytesBody(valMw.Wrap(delegHdl)))
 	mux.Handle("POST /v1/revoke",
 		problemdetails.MaxBytesBody(valMw.Wrap(authz.WithRequiredScope("admin:revoke:*", revokeHdl))))
@@ -264,12 +267,12 @@ func TestFullRegistrationFlow(t *testing.T) {
 
 	// Step 5: Register.
 	regBody := jsonBody(t, map[string]any{
-		"launch_token":   launchToken,
-		"nonce":          nonce,
-		"public_key":     base64.StdEncoding.EncodeToString(agentPub),
-		"signature":      base64.StdEncoding.EncodeToString(sig),
-		"orch_id":        "orch-1",
-		"task_id":        "task-1",
+		"launch_token":    launchToken,
+		"nonce":           nonce,
+		"public_key":      base64.StdEncoding.EncodeToString(agentPub),
+		"signature":       base64.StdEncoding.EncodeToString(sig),
+		"orch_id":         "orch-1",
+		"task_id":         "task-1",
 		"requested_scope": []string{"read:data:*"},
 	})
 	regReq := httptest.NewRequest("POST", "/v1/register", regBody)
@@ -448,12 +451,12 @@ func TestDelegateHTTP_Success(t *testing.T) {
 	nonceBytes1, _ := hex.DecodeString(nonce1)
 	sig1 := ed25519.Sign(priv1, nonceBytes1)
 	regBody1 := jsonBody(t, map[string]any{
-		"launch_token":   lt1,
-		"nonce":          nonce1,
-		"public_key":     base64.StdEncoding.EncodeToString(pub1),
-		"signature":      base64.StdEncoding.EncodeToString(sig1),
-		"orch_id":        "orch-1",
-		"task_id":        "task-1",
+		"launch_token":    lt1,
+		"nonce":           nonce1,
+		"public_key":      base64.StdEncoding.EncodeToString(pub1),
+		"signature":       base64.StdEncoding.EncodeToString(sig1),
+		"orch_id":         "orch-1",
+		"task_id":         "task-1",
 		"requested_scope": []string{"read:data:*", "write:data:*"},
 	})
 	regReq1 := httptest.NewRequest("POST", "/v1/register", regBody1)
@@ -472,12 +475,12 @@ func TestDelegateHTTP_Success(t *testing.T) {
 	nonceBytes2, _ := hex.DecodeString(nonce2)
 	sig2 := ed25519.Sign(priv2, nonceBytes2)
 	regBody2 := jsonBody(t, map[string]any{
-		"launch_token":   lt2,
-		"nonce":          nonce2,
-		"public_key":     base64.StdEncoding.EncodeToString(pub2),
-		"signature":      base64.StdEncoding.EncodeToString(sig2),
-		"orch_id":        "orch-1",
-		"task_id":        "task-1",
+		"launch_token":    lt2,
+		"nonce":           nonce2,
+		"public_key":      base64.StdEncoding.EncodeToString(pub2),
+		"signature":       base64.StdEncoding.EncodeToString(sig2),
+		"orch_id":         "orch-1",
+		"task_id":         "task-1",
 		"requested_scope": []string{"read:data:*"},
 	})
 	regReq2 := httptest.NewRequest("POST", "/v1/register", regBody2)
@@ -513,6 +516,111 @@ func TestDelegateHTTP_Success(t *testing.T) {
 	}
 }
 
+func TestTokenExchange_Success_SidecarIDBrokerDerived(t *testing.T) {
+	b := newTestBroker(t)
+
+	adminToken := getAdminToken(t, b)
+	launchToken := createLaunchToken(t, b, adminToken)
+	nonce := getNonce(t, b)
+
+	agentPub, agentPriv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate agent key: %v", err)
+	}
+	nonceBytes, _ := hex.DecodeString(nonce)
+	sig := ed25519.Sign(agentPriv, nonceBytes)
+
+	regBody := jsonBody(t, map[string]any{
+		"launch_token":    launchToken,
+		"nonce":           nonce,
+		"public_key":      base64.StdEncoding.EncodeToString(agentPub),
+		"signature":       base64.StdEncoding.EncodeToString(sig),
+		"orch_id":         "orch-sidecar",
+		"task_id":         "task-sidecar",
+		"requested_scope": []string{"read:data:*"},
+	})
+	regReq := httptest.NewRequest("POST", "/v1/register", regBody)
+	regRR := b.do(regReq)
+	if regRR.Code != http.StatusOK {
+		t.Fatalf("register failed: %d %s", regRR.Code, regRR.Body.String())
+	}
+	var regResp map[string]any
+	json.NewDecoder(regRR.Body).Decode(&regResp)
+	agentID := regResp["agent_id"].(string)
+
+	// Sidecar token with sidecar:manage + scope ceiling.
+	sidecarResp, err := b.tknSvc.Issue(token.IssueReq{
+		Sub:   "sidecar:abc123",
+		Sid:   "abc123",
+		Scope: []string{"sidecar:manage:*", "sidecar:scope:read:data:*"},
+		TTL:   300,
+	})
+	if err != nil {
+		t.Fatalf("issue sidecar token: %v", err)
+	}
+
+	exBody := jsonBody(t, map[string]any{
+		"agent_id":   agentID,
+		"scope":      []string{"read:data:*"},
+		"ttl":        90,
+		"sidecar_id": "spoofed-client-value",
+	})
+	exReq := httptest.NewRequest("POST", "/v1/token/exchange", exBody)
+	exReq.Header.Set("Authorization", "Bearer "+sidecarResp.AccessToken)
+	exRR := b.do(exReq)
+	if exRR.Code != http.StatusOK {
+		t.Fatalf("token exchange failed: %d %s", exRR.Code, exRR.Body.String())
+	}
+
+	var exResp map[string]any
+	json.NewDecoder(exRR.Body).Decode(&exResp)
+	if exResp["sidecar_id"] != "abc123" {
+		t.Fatalf("expected broker-derived sidecar_id=abc123, got %v", exResp["sidecar_id"])
+	}
+
+	issuedToken, _ := exResp["access_token"].(string)
+	claims, err := b.tknSvc.Verify(issuedToken)
+	if err != nil {
+		t.Fatalf("verify exchanged token: %v", err)
+	}
+	if claims.Sid != "abc123" {
+		t.Fatalf("expected sid=abc123, got %s", claims.Sid)
+	}
+}
+
+func TestTokenExchange_ScopeEscalationDenied(t *testing.T) {
+	b := newTestBroker(t)
+
+	sidecarResp, err := b.tknSvc.Issue(token.IssueReq{
+		Sub:   "sidecar:abc123",
+		Sid:   "abc123",
+		Scope: []string{"sidecar:manage:*", "sidecar:scope:read:data:*"},
+		TTL:   300,
+	})
+	if err != nil {
+		t.Fatalf("issue sidecar token: %v", err)
+	}
+
+	body := jsonBody(t, map[string]any{
+		"agent_id": "spiffe://agentauth.local/agent/o/t/x",
+		"scope":    []string{"write:data:*"},
+	})
+	req := httptest.NewRequest("POST", "/v1/token/exchange", body)
+	req.Header.Set("Authorization", "Bearer "+sidecarResp.AccessToken)
+	rr := b.do(req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var problem map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&problem); err != nil {
+		t.Fatalf("decode problem: %v", err)
+	}
+	if problem["error_code"] != "scope_escalation_denied" {
+		t.Fatalf("expected scope_escalation_denied, got %v", problem["error_code"])
+	}
+}
+
 // --- Metrics endpoint ---
 
 func TestMetrics(t *testing.T) {
@@ -540,12 +648,12 @@ func TestRegister_BadNonce(t *testing.T) {
 
 	pub, _, _ := ed25519.GenerateKey(rand.Reader)
 	regBody := jsonBody(t, map[string]any{
-		"launch_token":   lt,
-		"nonce":          "bad-nonce-not-in-store",
-		"public_key":     base64.StdEncoding.EncodeToString(pub),
-		"signature":      base64.StdEncoding.EncodeToString([]byte("fake-sig")),
-		"orch_id":        "orch-1",
-		"task_id":        "task-1",
+		"launch_token":    lt,
+		"nonce":           "bad-nonce-not-in-store",
+		"public_key":      base64.StdEncoding.EncodeToString(pub),
+		"signature":       base64.StdEncoding.EncodeToString([]byte("fake-sig")),
+		"orch_id":         "orch-1",
+		"task_id":         "task-1",
 		"requested_scope": []string{"read:data:*"},
 	})
 	req := httptest.NewRequest("POST", "/v1/register", regBody)
