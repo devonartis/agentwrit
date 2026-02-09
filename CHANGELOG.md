@@ -7,6 +7,9 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ## [Unreleased]
 
 ### Added
+- **M14 Dashboard**: Web-based demo dashboard with HTMX frontend, SSE real-time events,
+  demo control endpoints (run/reset/status), dark theme, agent workflow visualization,
+  attack results display, and side-by-side comparison metrics
 - Module M13 attack simulator (Python):
   - 5 attack scenarios: credential theft, lateral movement, impersonation, privilege escalation, accountability
   - AttackResult dataclass with uniform attempts/successes/blocked/details shape
