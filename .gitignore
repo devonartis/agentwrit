@@ -1,3 +1,22 @@
 .DS_Store
 *.test
 /agentauth-broker
+/broker
+
+# Internal AI configuration
+CLAUDE.md
+AGENTS.md
+.claude/
+.active_module
+
+# Internal planning and specs
+plans/
+
+# Internal QA reports
+docs/QA_REPORT_*.md
+
+# Python artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/

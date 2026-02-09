@@ -2,114 +2,99 @@
 
 All notable changes to this project are documented in this file.
 
-The format is based on Keep a Changelog and this project follows Semantic Versioning.
+The format is based on [Keep a Changelog](https://keepachangelog.com/) and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
-- P1 security hardening: `LoadSigningKey` now validates path safety (no symlink), enforces regular-file usage, rejects group/other-readable key files, and caps read size before Ed25519 key decoding.
-- P1 security gate stability: module now pins patched Go toolchain `go1.25.7` to clear known stdlib `govulncheck` findings (crypto/tls and crypto/x509 advisories seen on go1.25.4).
-- P0 security: `POST /v1/revoke` is now protected by zero-trust middleware with required scope `admin:Broker:*` in broker and integration router wiring; revoke flows now require authenticated admin bearer tokens.
-- P1 operations: `GET /v1/health` now returns `503` for degraded/unhealthy states (and `200` only when healthy), preventing false-ready probes.
-- P1 observability integrity: previously declared metrics with no runtime updates are now wired to production paths (`RecordClockSkew`, `RecordDelegationDepth`, `SetRevocationCacheHitRatio`, `RecordAnomalyRevocation`, `SetHeartbeatMissRate`).
-- P2 contract consistency: RFC 7807 payload now includes `detail` and `instance` fields; handler/middleware responses now attach request-path instance metadata.
-- P2 live-gate realism: smoke test now verifies `/v1/metrics` and enforces admin-authenticated revoke path; live gate output updated accordingly.
-- P0 security: delegated JWT issuance dropped `delegation_chain` data because `TknSvc.Issue` always reset the claim to empty. `IssueReq` now accepts `DelegChain`, delegated token issuance passes the chain through, and renewal preserves the chain.
-- P1 security: runtime auth middleware did not enforce delegation-chain signature/scope checks. `ValMw` now validates non-empty chains via `deleg.VerifyChain` and denies malformed chains.
-- P1 policy: delegation depth checks were bypassable on re-delegation because chain depth was not carried in tokens. With chain propagation fixed, second-hop depth is now enforced correctly.
-- P1 gate hardening: `scripts/gates.sh task` now includes `SECURITY` (`gosec` + `govulncheck`) and fails with actionable install messages when tools are missing.
-- P0 security: peer substitution vulnerability in `MutAuthHdl.RespondToHandshake` — any registered agent could respond to a handshake meant for a different peer. Added mandatory peer identity check (`ErrPeerMismatch`) and optional `DiscoveryRegistry` binding verification.
-- P1 security: initiator identity spoofing in `MutAuthHdl.RespondToHandshake` — initiator token subject was not cross-checked against declared `InitiatorID`, allowing tampered handshake requests to impersonate a different agent. Added `ErrInitiatorMismatch` check.
-- P2: pass `nil` `DiscoveryRegistry` in `main.go` instead of empty non-nil instance — an unpopulated registry would reject all handshakes via `ErrAgentNotBound` if the handler were ever exposed.
-- P1 documentation: ADR-001 "What the smoke test does" section overstated coverage — claimed admin auth, audit trail, scope mismatch, and hash chain testing that the actual smoketest does not implement. Corrected to match actual 10-step coverage and documented deferred items.
-- P2: live gate pass text in `live_test.sh` was outdated ("error-paths validated") — updated to reflect actual 10-step end-to-end lifecycle coverage.
-- P2 security: responder identity spoofing in `MutAuthHdl.CompleteHandshake` — responder token subject was not cross-checked against declared `ResponderID`, same vulnerability class as the initiator check. Added `ErrResponderMismatch` and changed `GetAgent` to use verified `claims.Sub`.
-- P2: reverted premature `NewDiscoveryRegistry()` wiring in `main.go` — non-nil empty registry activates binding checks that reject all agents. Discovery enforcement deferred until binding lifecycle (bind on register, unbind on revoke) is implemented.
+## [1.0.0] - 2026-02-09
 
-### Added
-- Module M05 audit trail:
-  - Immutable hash-chain audit event storage (`AuditLog`) with SHA-256 integrity
-  - PII sanitization (email, phone, customer ID hashing) in event fields
-  - Read aggregation for repeated access events
-  - `AuditHdl` handler for `GET /v1/audit/events` with filtering and pagination
-  - Audit event emission from `RegHdl` (credential_issued), `ValMw` (access_granted/denied), `RevokeHdl` (token_revoked)
-  - Admin-scoped auth protection on audit endpoint
-  - Integration test for audit trail with chain integrity verification
-  - Live test step for audit events endpoint
-  - Module documentation in `docs/developer/audit.md`
-- Module M08-T01 observability baseline:
-  - Shared RFC 7807 problem factory in `internal/obs` (`WriteProblem`)
-  - Handler and authz paths now emit centralized `application/problem+json` payloads
-  - Factory unit test coverage in `internal/obs/rfc7807_factory_test.go`
-- Module M08-T02/T03 observability expansion:
-  - Prometheus collectors and recorder helpers in `internal/obs/metrics.go`
-  - `GET /v1/metrics` endpoint via `MetricsHdl`
-  - Enhanced `GET /v1/health` payload via `HealthHdl` (status/version/uptime/components)
-  - Unit tests for metrics primitives and health/metrics handlers
-- Module M08-T04 integration/docs coverage:
-  - integration test for issuance metric + validation decision metric + health components
-  - new developer doc `docs/developer/obs.md`
-  - OpenAPI + API reference updates for health and metrics endpoints
-- Module M07 delegation chain verification:
-  - Scope attenuation (`Attenuate`) with actionable error detail on escalation attempts
-  - `DelegSvc` for delegation token creation with TTL enforcement and depth limits (max 3)
-  - Chain verification (`VerifyChain`) with Ed25519 signature validation per hop and revocation checks
-  - SHA-256 chain hash for tamper detection and chain-level revocation
-  - `POST /v1/delegate` endpoint with RFC 7807 errors (401, 403 scope-escalation, 403 depth-exceeded)
-  - Live smoke test extended with delegation steps (delegate, scope escalation blocked, delegation token validated)
-  - Integration tests: happy path, scope escalation blocked, re-delegation blocked, depth limits
-- Module M06 mutual authentication:
-  - 3-step agent-to-agent handshake protocol (`MutAuthHdl`)
-  - Discovery binding registry for agent-to-endpoint mapping and MITM prevention
-  - Heartbeat/liveness monitoring with optional auto-revocation via `RevSvc`
-  - `GetAgent` store method for agent identity lookup
-  - Mutauth components wired into `cmd/broker/main.go` with graceful shutdown
-  - Integration tests for handshake and discovery flows
-- ADR-001 live testing infrastructure:
-  - `AA_SEED_TOKENS=true` bootstrap flag for dev/test launch and admin token seeding
-  - `cmd/smoketest/main.go` — full workflow smoke test against real compiled binary
-  - Updated `scripts/live_test.sh` to build and run smoke test (replaces error-path-only test)
-  - Covers: health, challenge, register, validate, protected access, renew, revoke, revocation check
-- Module M04 revocation service:
-  - 4-level token revocation (token/agent/task/delegation_chain)
-  - `RevChecker` interface for pluggable revocation backends
-  - `POST /v1/revoke` endpoint with RFC 7807 error responses
-  - Integration with `ValMw` authorization middleware
-  - In-memory revocation sets with `RWMutex` for read-heavy access
-- Documentation hardening:
-  - Renamed `docs/dev/` to `docs/developer/` per ADD-6.7
-  - Enriched scaffold.md with design rationale and extension points
-  - Added DelegRecord/DelegChain documentation to token.md
-  - Created `docs/developer/revoke.md` with decision record
-  - Added demo operation flow to README.md
-  - Added godoc comments to all exported symbols
-  - Hardened `doc_check.sh` with godoc and endpoint-OpenAPI parity checks
-- Module M00 scaffold with Go broker entrypoint and `/v1/health`.
-- Structured logging package (`internal/obs`) with stdout/stderr routing and tests.
-- Environment configuration loader (`internal/cfg`).
-- Baseline storage placeholders (`internal/store`).
-- Quality gate runner (`scripts/gates.sh`) and documentation checker (`scripts/doc_check.sh`).
-- Module M01 identity issuance baseline:
-  - SPIFFE ID generation/validation/parsing
-  - Launch token creation and single-use validation
-  - Ed25519 key management and JWK public-key parsing
-  - `GET /v1/challenge` and `POST /v1/register` handlers
-  - Integration flow test and live endpoint checks
-- Module M02 token service baseline:
-  - Token claims model and validation
-  - Scope parsing/matching/subset logic
-  - Signed token issue/verify/renew service
-  - `POST /v1/token/validate` and `POST /v1/token/renew` handlers
-  - Integration and live coverage for token endpoints
-- Module M03 zero-trust authorization baseline:
-  - `ValMw` authorization middleware for bearer token verification
-  - `WithRequiredScope` route scope injection
-  - `AgentIDFromContext` helper for downstream handlers
-  - Protected route `GET /v1/protected/customers/12345`
-  - Why-denied structured logging for auth failures
-- Documentation set:
-  - `docs/USER_GUIDE.md`
-  - `docs/DEVELOPER_GUIDE.md`
-  - `docs/API_REFERENCE.md`
-  - `docs/GIT_WORKFLOW.md`
-  - `docs/api/openapi.yaml`
+### Core Broker (Go)
+
+#### Identity
+- SPIFFE ID generation, validation, and parsing (`spiffe://{domain}/agent/{orch}/{task}/{instance}`)
+- Ed25519 key management with JWK public-key parsing
+- Launch token creation and single-use consumption
+- Challenge-response registration: `GET /v1/challenge` and `POST /v1/register`
+
+#### Tokens
+- Signed JWT issue/verify/renew with EdDSA (Ed25519)
+- Scope model: `action:resource:identifier` with wildcard matching and subset logic
+- Token claims: `sub`, `scope`, `task_id`, `orchestration_id`, `delegation_chain`, `jti`, `exp`
+- Endpoints: `POST /v1/token/validate` and `POST /v1/token/renew`
+
+#### Authorization
+- Zero-trust middleware (`ValMw`) with bearer token verification on every request
+- Route-level scope injection via `WithRequiredScope`
+- Protected resource endpoint: `GET /v1/protected/customers/12345`
+
+#### Revocation
+- 4-level token revocation: token, agent, task, delegation chain
+- `POST /v1/revoke` endpoint with admin scope requirement
+- `RevChecker` interface for pluggable revocation backends
+- Real-time enforcement via authorization middleware integration
+
+#### Audit
+- Immutable hash-chain audit log with SHA-256 integrity verification
+- PII sanitization (email, phone, customer ID hashing)
+- 7 event types: `credential_issued`, `access_granted`, `access_denied`, `token_revoked`, `delegation_created`, `delegation_revoked`, `anomaly_detected`
+- `GET /v1/audit/events` with filtering (agent, task, event type, time range) and pagination
+
+#### Mutual Authentication
+- 3-step agent-to-agent handshake protocol
+- Discovery binding registry for endpoint mapping and MITM prevention
+- Heartbeat/liveness monitoring with optional auto-revocation
+- Identity cross-checks: `ErrInitiatorMismatch`, `ErrPeerMismatch`, `ErrResponderMismatch`
+
+#### Delegation
+- Scope attenuation: permissions narrow at each delegation hop, never expand
+- Delegation token issuance with TTL enforcement and depth limits (max 3 hops)
+- Chain verification with Ed25519 signature validation per hop
+- SHA-256 chain hash for tamper detection and chain-level revocation
+- `POST /v1/delegate` endpoint
+
+#### Observability
+- Centralized RFC 7807 `application/problem+json` error responses
+- Prometheus metrics with `aa_*` prefix
+- `GET /v1/health` endpoint (200 healthy, 503 degraded/unhealthy)
+- `GET /v1/metrics` endpoint (Prometheus exposition format)
+
+### Demo Application (Python)
+
+#### Resource Server
+- FastAPI server with 4 endpoints: customers, orders, tickets, notifications
+- Dual-mode auth middleware: insecure (API-Key) and secure (Bearer + broker validation)
+- Pre-seeded sample data (5 customers, 10 orders, 3 tickets)
+- Scope mapping: URL paths resolve to required scopes
+
+#### Demo Agents
+- BrokerClient: async HTTP wrapper for all broker REST endpoints
+- AgentBase: Ed25519 ephemeral key generation and challenge-response registration
+- Agent A (DataRetriever): scoped customer data retrieval
+- Agent B (Analyzer): order analysis with scope delegation to Agent C
+- Agent C (ActionTaker): uses delegated token to close tickets and send notifications
+- Orchestrator: sequences A->B->C workflow with per-agent timing
+
+#### Attack Simulator
+- 5 adversarial scenarios: credential theft, lateral movement, impersonation, privilege escalation, accountability
+- Dual-mode execution: insecure (attacks succeed) vs. secure (attacks blocked)
+- CLI entrypoint: `python -m attacks --mode secure|insecure`
+
+#### Dashboard
+- Web-based demo dashboard with HTMX frontend and SSE real-time events
+- Demo control endpoints (run/reset/status)
+- Agent workflow visualization and attack results display
+
+### Infrastructure
+
+- Multi-stage Dockerfile (golang:1.23-alpine build, alpine:3.19 runtime)
+- Docker Compose configuration with health checks
+- Quality gate system (`scripts/gates.sh`): build, lint, unit, security (gosec + govulncheck), docs
+- Live test infrastructure with seed tokens and smoke test client
+- Structured logging: `[AA:MODULE:LEVEL] TIMESTAMP | COMPONENT | MESSAGE | CONTEXT`
+
+### Security
+
+- `LoadSigningKey` validates path safety: no symlinks, regular files only, rejects group/other-readable keys
+- Admin endpoints protected by zero-trust middleware with required `admin:Broker:*` scope
+- Token subject cross-checks on all handshake steps to prevent identity spoofing
+- Delegation chain propagation through token issuance and renewal

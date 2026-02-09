@@ -294,6 +294,95 @@ ok, _ := dr.VerifyBinding(agentID, presentedID) // MITM check
 
 When wired with `RevSvc`, agents missing 3+ heartbeats are automatically revoked. Without `RevSvc`, missed heartbeats are logged as warnings.
 
+## Demo agents (M12)
+
+The demo agents implement a multi-agent ticket resolution workflow where three Python agents collaborate using AgentAuth credentials.
+
+### Prerequisites
+
+```bash
+cd demo
+pip install -r requirements.txt
+```
+
+### Run in insecure mode (no broker needed)
+
+Start the resource server, then run the orchestrator:
+
+```bash
+python -m resource_server.main --mode insecure &
+python -m agents --mode insecure --resource-url http://localhost:8090
+```
+
+### Run in secure mode (full AgentAuth flow)
+
+Start the broker with seed tokens and the resource server:
+
+```bash
+AA_SEED_TOKENS=true go run ./cmd/broker &
+# Copy SEED_LAUNCH_TOKEN from output
+python -m resource_server.main --mode secure &
+python -m agents --mode secure \
+  --launch-token "$SEED_LAUNCH_TOKEN" \
+  --broker-url http://localhost:8080 \
+  --resource-url http://localhost:8090
+```
+
+### Agent workflow
+
+1. **Agent A (DataRetriever)**: Registers with `read:Customers:{id}` scope, fetches customer record
+2. **Agent B (Analyzer)**: Registers with broader scope, fetches orders, analyzes, delegates attenuated `write:Tickets` + `invoke:Notifications` scope to Agent C
+3. **Agent C (ActionTaker)**: Uses delegation token (no fresh registration), closes ticket and sends notification
+
+### Run agent tests
+
+```bash
+pytest demo/agents/tests/ -v
+```
+
+## Attack simulator (M13)
+
+The attack simulator runs 5 adversarial scenarios that demonstrate the security gap (insecure mode) vs. the fix (secure mode).
+
+### Run attack tests
+
+```bash
+pytest demo/attacks/tests/ -v
+```
+
+### Run in insecure mode (demonstrates the gap)
+
+```bash
+python -m resource_server.main --mode insecure &
+python -m attacks --mode insecure --resource-url http://localhost:8090
+```
+
+Expected: all 5 attacks succeed (credential theft, lateral movement, impersonation, privilege escalation, no accountability).
+
+### Run in secure mode (demonstrates the fix)
+
+```bash
+AA_SEED_TOKENS=true go run ./cmd/broker &
+python -m resource_server.main --mode secure &
+python -m attacks --mode secure \
+  --broker-url http://localhost:8080 \
+  --resource-url http://localhost:8090 \
+  --stolen-credential "$STOLEN_TOKEN" \
+  --admin-token "$SEED_ADMIN_TOKEN"
+```
+
+Expected: all 5 attacks are blocked (expired token, scope mismatch, forged token rejected, delegation denied, full audit trail).
+
+### Attack scenarios
+
+| # | Attack | Insecure | Secure |
+|---|--------|----------|--------|
+| 1 | Credential Theft | Shared key accesses all customers | Token expired or scoped |
+| 2 | Lateral Movement | Full access via API key | 403 scope mismatch |
+| 3 | Impersonation | Shared key accepted | Fake token rejected (401) |
+| 4 | Privilege Escalation | No scope enforcement | Delegation denied + 403 |
+| 5 | No Accountability | Cannot identify agent | Full SPIFFE ID audit trail |
+
 ## Run quality gates
 
 Run these before declaring any task/module complete:
