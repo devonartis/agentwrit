@@ -66,7 +66,7 @@ func main() {
 	mux.Handle("/v1/token/renew", renewHdl)
 	mux.Handle("/v1/revoke", authz.WithRequiredScope("admin:Broker:*", valMw.Wrap(revokeHdl)))
 	mux.Handle("/v1/audit/events", authz.WithRequiredScope("admin:Broker:*", valMw.Wrap(auditHdl)))
-	mux.Handle("/v1/delegate", delegHdl)
+	mux.Handle("/v1/delegate", valMw.Wrap(delegHdl))
 	mux.Handle("/v1/metrics", metricsHdl)
 	mux.Handle("/v1/health", healthHdl)
 	mux.Handle("/v1/protected/customers/12345", authz.WithRequiredScope("read:Customers:12345", valMw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

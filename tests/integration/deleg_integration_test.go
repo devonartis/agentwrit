@@ -43,7 +43,7 @@ func setupDelegServer(t *testing.T) (*httptest.Server, *store.SqlStore, *token.T
 	mux.Handle("/v1/token/validate", handler.NewValHdl(tknSvc))
 	mux.Handle("/v1/token/renew", handler.NewRenewHdl(tknSvc))
 	mux.Handle("/v1/revoke", authz.WithRequiredScope("admin:Broker:*", valMw.Wrap(handler.NewRevokeHdl(revSvc, nil))))
-	mux.Handle("/v1/delegate", delegHdl)
+	mux.Handle("/v1/delegate", valMw.Wrap(delegHdl))
 	mux.Handle("/v1/protected/customers/12345", authz.WithRequiredScope("read:Customers:12345", valMw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -68,7 +68,10 @@ func TestDelegationHappyPathIntegration(t *testing.T) {
 		"delegated_scope": []string{"read:Customers:12345"},
 		"max_ttl":         60,
 	})
-	delegRes, err := http.Post(srv.URL+"/v1/delegate", "application/json", bytes.NewReader(delegReq))
+	delegHTTP, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/delegate", bytes.NewReader(delegReq))
+	delegHTTP.Header.Set("Content-Type", "application/json")
+	delegHTTP.Header.Set("Authorization", "Bearer "+tokenA)
+	delegRes, err := http.DefaultClient.Do(delegHTTP)
 	if err != nil {
 		t.Fatalf("delegate POST: %v", err)
 	}
@@ -138,7 +141,10 @@ func TestDelegationScopeEscalationBlockedIntegration(t *testing.T) {
 		"delegated_scope": []string{"read:Customers:*"},
 		"max_ttl":         60,
 	})
-	delegRes, err := http.Post(srv.URL+"/v1/delegate", "application/json", bytes.NewReader(delegReq))
+	delegHTTP, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/delegate", bytes.NewReader(delegReq))
+	delegHTTP.Header.Set("Content-Type", "application/json")
+	delegHTTP.Header.Set("Authorization", "Bearer "+tokenA)
+	delegRes, err := http.DefaultClient.Do(delegHTTP)
 	if err != nil {
 		t.Fatalf("delegate POST: %v", err)
 	}
@@ -225,7 +231,10 @@ func TestDelegationReDelegateBroaderScopeBlockedIntegration(t *testing.T) {
 		"delegated_scope": []string{"read:Customers:12345"},
 		"max_ttl":         60,
 	})
-	delegRes, err := http.Post(srv.URL+"/v1/delegate", "application/json", bytes.NewReader(delegReq))
+	delegHTTP, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/delegate", bytes.NewReader(delegReq))
+	delegHTTP.Header.Set("Content-Type", "application/json")
+	delegHTTP.Header.Set("Authorization", "Bearer "+tokenA)
+	delegRes, err := http.DefaultClient.Do(delegHTTP)
 	if err != nil {
 		t.Fatalf("delegate: %v", err)
 	}
@@ -244,7 +253,10 @@ func TestDelegationReDelegateBroaderScopeBlockedIntegration(t *testing.T) {
 		"delegated_scope": []string{"read:Customers:*"},
 		"max_ttl":         30,
 	})
-	reDelegRes, err := http.Post(srv.URL+"/v1/delegate", "application/json", bytes.NewReader(reDelegReq))
+	reDelegHTTP, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/delegate", bytes.NewReader(reDelegReq))
+	reDelegHTTP.Header.Set("Content-Type", "application/json")
+	reDelegHTTP.Header.Set("Authorization", "Bearer "+delegTokenB)
+	reDelegRes, err := http.DefaultClient.Do(reDelegHTTP)
 	if err != nil {
 		t.Fatalf("re-delegate: %v", err)
 	}
