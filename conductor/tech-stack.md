@@ -16,3 +16,7 @@
 ## Observability
 - **Metrics:** Prometheus - Industry-standard metrics collection and exposure.
 - **Logging:** Structured logging (via `internal/obs`) for operational visibility and auditability.
+
+## Infrastructure
+- **Containerization:** Docker - Multi-stage builds for small, secure production images.
+- **Orchestration:** Docker Compose - Used for local development and service orchestration.
