@@ -32,7 +32,7 @@ type renewResp struct {
 func (h *RenewHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	tokenStr := authz.TokenFromRequest(r)
 	if tokenStr == "" {
-		WriteProblem(w, http.StatusUnauthorized, "unauthorized", "missing Bearer token", r.URL.Path)
+		WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "missing Bearer token", r.URL.Path)
 		return
 	}
 
@@ -45,7 +45,7 @@ func (h *RenewHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.auditLog.Record(audit.EventTokenRenewalFailed, claims.Sub, claims.TaskId, claims.OrchId,
 				fmt.Sprintf("token renewal failed for agent=%s: %s", claims.Sub, err.Error()))
 		}
-		WriteProblem(w, http.StatusUnauthorized, "unauthorized", "token renewal failed: "+err.Error(), r.URL.Path)
+		WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "token renewal failed: "+err.Error(), r.URL.Path)
 		return
 	}
 

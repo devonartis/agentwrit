@@ -25,7 +25,7 @@ func NewRegHdl(idSvc *identity.IdSvc) *RegHdl {
 func (h *RegHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var req identity.RegisterReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		WriteProblem(w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
+		WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
 		return
 	}
 
@@ -33,17 +33,17 @@ func (h *RegHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, identity.ErrMissingField):
-			WriteProblem(w, http.StatusBadRequest, "invalid_request", err.Error(), r.URL.Path)
+			WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", err.Error(), r.URL.Path)
 		case errors.Is(err, identity.ErrScopeViolation):
-			WriteProblem(w, http.StatusForbidden, "scope_violation", err.Error(), r.URL.Path)
+			WriteProblem(r.Context(), w, http.StatusForbidden, "scope_violation", err.Error(), r.URL.Path)
 		case errors.Is(err, store.ErrTokenNotFound), errors.Is(err, store.ErrTokenExpired), errors.Is(err, store.ErrTokenConsumed):
-			WriteProblem(w, http.StatusUnauthorized, "unauthorized", err.Error(), r.URL.Path)
+			WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", err.Error(), r.URL.Path)
 		case errors.Is(err, store.ErrNonceNotFound), errors.Is(err, store.ErrNonceConsumed):
-			WriteProblem(w, http.StatusUnauthorized, "unauthorized", err.Error(), r.URL.Path)
+			WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", err.Error(), r.URL.Path)
 		case errors.Is(err, identity.ErrInvalidSignature), errors.Is(err, identity.ErrInvalidPublicKey):
-			WriteProblem(w, http.StatusUnauthorized, "unauthorized", err.Error(), r.URL.Path)
+			WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", err.Error(), r.URL.Path)
 		default:
-			WriteProblem(w, http.StatusInternalServerError, "internal_error", "registration failed", r.URL.Path)
+			WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "registration failed", r.URL.Path)
 		}
 		return
 	}

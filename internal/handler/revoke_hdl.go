@@ -41,18 +41,18 @@ type revokeResp struct {
 func (h *RevokeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	claims := authz.ClaimsFromContext(r.Context())
 	if claims == nil {
-		WriteProblem(w, http.StatusUnauthorized, "unauthorized", "missing authentication", r.URL.Path)
+		WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "missing authentication", r.URL.Path)
 		return
 	}
 
 	var req revokeReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		WriteProblem(w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
+		WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
 		return
 	}
 
 	if req.Level == "" || req.Target == "" {
-		WriteProblem(w, http.StatusBadRequest, "invalid_request", "level and target are required", r.URL.Path)
+		WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "level and target are required", r.URL.Path)
 		return
 	}
 
@@ -60,11 +60,11 @@ func (h *RevokeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, revoke.ErrInvalidLevel):
-			WriteProblem(w, http.StatusBadRequest, "invalid_request", "invalid revocation level: "+req.Level, r.URL.Path)
+			WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "invalid revocation level: "+req.Level, r.URL.Path)
 		case errors.Is(err, revoke.ErrMissingTarget):
-			WriteProblem(w, http.StatusBadRequest, "invalid_request", "missing target", r.URL.Path)
+			WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "missing target", r.URL.Path)
 		default:
-			WriteProblem(w, http.StatusInternalServerError, "internal_error", "revocation failed", r.URL.Path)
+			WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "revocation failed", r.URL.Path)
 		}
 		return
 	}

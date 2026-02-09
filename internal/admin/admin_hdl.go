@@ -8,6 +8,7 @@ import (
 
 	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/authz"
+	"github.com/divineartis/agentauth/internal/handler"
 	"github.com/divineartis/agentauth/internal/obs"
 )
 
@@ -68,22 +69,19 @@ func (h *AdminHdl) handleAuth(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	var req authReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeProblem(w, http.StatusBadRequest, "invalid_request",
-			"Invalid Request", "malformed JSON body", r.URL.Path)
+		handler.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
 		return
 	}
 
 	if req.ClientID == "" || req.ClientSecret == "" {
-		writeProblem(w, http.StatusBadRequest, "invalid_request",
-			"Invalid Request", "client_id and client_secret are required", r.URL.Path)
+		handler.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "client_id and client_secret are required", r.URL.Path)
 		return
 	}
 
 	issueResp, err := h.adminSvc.Authenticate(req.ClientID, req.ClientSecret)
 	if err != nil {
 		obs.Warn(mod, hdlCmp, "auth failed", "client_id="+req.ClientID)
-		writeProblem(w, http.StatusUnauthorized, "unauthorized",
-			"Unauthorized", "invalid credentials", r.URL.Path)
+		handler.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "invalid credentials", r.URL.Path)
 		return
 	}
 
@@ -99,16 +97,14 @@ func (h *AdminHdl) handleAuth(w http.ResponseWriter, r *http.Request) {
 func (h *AdminHdl) handleCreateLaunchToken(w http.ResponseWriter, r *http.Request) {
 	claims := authz.ClaimsFromContext(r.Context())
 	if claims == nil {
-		writeProblem(w, http.StatusUnauthorized, "unauthorized",
-			"Unauthorized", "missing authentication", r.URL.Path)
+		handler.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "missing authentication", r.URL.Path)
 		return
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	var req CreateLaunchTokenReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeProblem(w, http.StatusBadRequest, "invalid_request",
-			"Invalid Request", "malformed JSON body", r.URL.Path)
+		handler.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
 		return
 	}
 
@@ -121,15 +117,12 @@ func (h *AdminHdl) handleCreateLaunchToken(w http.ResponseWriter, r *http.Reques
 		}
 		switch {
 		case errors.Is(err, ErrAgentNameEmpty):
-			writeProblem(w, http.StatusBadRequest, "invalid_request",
-				"Invalid Request", "agent_name is required", r.URL.Path)
+			handler.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "agent_name is required", r.URL.Path)
 		case errors.Is(err, ErrScopeEmpty):
-			writeProblem(w, http.StatusBadRequest, "invalid_request",
-				"Invalid Request", "allowed_scope must not be empty", r.URL.Path)
+			handler.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "allowed_scope must not be empty", r.URL.Path)
 		default:
 			obs.Fail(mod, hdlCmp, "launch token creation failed", "err="+err.Error())
-			writeProblem(w, http.StatusInternalServerError, "internal_error",
-				"Internal Error", "failed to create launch token", r.URL.Path)
+			handler.WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "failed to create launch token", r.URL.Path)
 		}
 		return
 	}
@@ -137,17 +130,4 @@ func (h *AdminHdl) handleCreateLaunchToken(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(resp)
-}
-
-// writeProblem writes an RFC 7807 application/problem+json response.
-func writeProblem(w http.ResponseWriter, status int, errType, title, detail, instance string) {
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]any{
-		"type":     "urn:agentauth:error:" + errType,
-		"title":    title,
-		"status":   status,
-		"detail":   detail,
-		"instance": instance,
-	})
 }

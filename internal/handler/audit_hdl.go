@@ -32,7 +32,7 @@ type auditResp struct {
 func (h *AuditHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	claims := authz.ClaimsFromContext(r.Context())
 	if claims == nil {
-		WriteProblem(w, http.StatusUnauthorized, "unauthorized", "missing authentication", r.URL.Path)
+		WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "missing authentication", r.URL.Path)
 		return
 	}
 
