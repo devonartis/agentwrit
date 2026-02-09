@@ -7,7 +7,7 @@
 - [x] Task: Implement HTTP Request Logging Middleware (8a9d3b4)
     - [ ] [Write Tests] Verify logging of method, path, status, and latency
     - [ ] [Implement] Logger middleware using `internal/obs`
-- [ ] Task: Standardize Error Contract & Problem Writer
+- [x] Task: Standardize Error Contract & Problem Writer (47a22db)
     - [ ] [Write Tests] Verify `error_code` and `hint` are present in JSON responses
     - [ ] [Implement] Update `handler.WriteProblem` and align `admin/admin_hdl.go:writeProblem`
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Global Infrastructure & Middleware' (Protocol in workflow.md)
