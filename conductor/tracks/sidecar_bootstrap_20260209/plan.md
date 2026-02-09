@@ -1,17 +1,17 @@
 # Implementation Plan: Sidecar-First Developer Bootstrap (Broker Support)
 
-## Phase 1: Global Infrastructure & Middleware
+## Phase 1: Global Infrastructure & Middleware [checkpoint: dae6f20]
 - [x] Task: Implement Global Request-ID Middleware (5431984)
-    - [ ] [Write Tests] Verify unique ID generation and context propagation
-    - [ ] [Implement] Middleware to inject `X-Request-ID` into context and response headers
+    - [x] [Write Tests] Verify unique ID generation and context propagation
+    - [x] [Implement] Middleware to inject `X-Request-ID` into context and response headers
 - [x] Task: Implement HTTP Request Logging Middleware (8a9d3b4)
-    - [ ] [Write Tests] Verify logging of method, path, status, and latency
-    - [ ] [Implement] Logger middleware using `internal/obs`
+    - [x] [Write Tests] Verify logging of method, path, status, and latency
+    - [x] [Implement] Logger middleware using `internal/obs`
 - [x] Task: Standardize Error Contract & Problem Writer (47a22db)
-    - [ ] [Write Tests] Verify `error_code` and `hint` are present in JSON responses
-    - [ ] [Implement] Update `handler.WriteProblem` and align `admin/admin_hdl.go:writeProblem`
-- [ ] Task: Conductor - User Manual Verification 'Phase 1: Global Infrastructure & Middleware' (Protocol in workflow.md)
-- [ ] Task: Quality Gate Check: Run `./scripts/gates.sh task`
+    - [x] [Write Tests] Verify `error_code` and `hint` are present in JSON responses
+    - [x] [Implement] Update `handler.WriteProblem` and align `admin/admin_hdl.go:writeProblem`
+- [x] Task: Conductor - User Manual Verification 'Phase 1: Global Infrastructure & Middleware' (Protocol in workflow.md)
+- [x] Task: Quality Gate Check: Run `./scripts/gates.sh task`
 
 ## Phase 2: Foundation & Model Updates
 - [ ] Task: Update Token Claims for Sidecar Identity
