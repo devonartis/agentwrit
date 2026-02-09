@@ -26,6 +26,7 @@ var (
 // the broker's configured DefaultTTL is used.
 type IssueReq struct {
 	Sub        string
+	Aud        []string
 	Scope      []string
 	TaskId     string
 	OrchId     string
@@ -87,6 +88,7 @@ func (s *TknSvc) Issue(req IssueReq) (*IssueResp, error) {
 	claims := &TknClaims{
 		Iss:        "agentauth",
 		Sub:        req.Sub,
+		Aud:        req.Aud,
 		Exp:        now + int64(ttl),
 		Nbf:        now,
 		Iat:        now,

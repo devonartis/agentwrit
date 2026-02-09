@@ -15,6 +15,8 @@
 //	GET  /v1/audit/events        – query audit trail (admin scope)
 //	POST /v1/admin/auth          – admin authentication (public)
 //	POST /v1/admin/launch-tokens – create launch token (admin scope)
+//	POST /v1/admin/sidecar-activations – create sidecar activation token (admin scope)
+//	POST /v1/sidecar/activate    – exchange sidecar activation token (public, single-use)
 //	GET  /v1/health              – health check (public)
 //	GET  /v1/metrics             – Prometheus metrics (public)
 package main

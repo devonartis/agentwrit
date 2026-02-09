@@ -17,6 +17,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/divineartis/agentauth/internal/audit"
@@ -31,6 +32,7 @@ const (
 
 	adminSub        = "admin"
 	adminTTL        = 300
+	sidecarTTL      = 900
 	defaultMaxTTL   = 300
 	defaultTokenTTL = 30
 
@@ -46,9 +48,12 @@ var adminScope = []string{
 
 // Sentinel errors returned by admin operations.
 var (
-	ErrInvalidSecret  = errors.New("invalid client secret")
-	ErrAgentNameEmpty = errors.New("agent_name is required")
-	ErrScopeEmpty     = errors.New("allowed_scope must not be empty")
+	ErrInvalidSecret           = errors.New("invalid client secret")
+	ErrAgentNameEmpty          = errors.New("agent_name is required")
+	ErrScopeEmpty              = errors.New("allowed_scope must not be empty")
+	ErrActivationScopeEmpty    = errors.New("allowed_scope_prefix is required")
+	ErrActivationTokenInvalid  = errors.New("invalid activation token")
+	ErrActivationTokenReplayed = errors.New("activation token replayed")
 )
 
 // CreateLaunchTokenReq is the JSON request body for
@@ -60,6 +65,36 @@ type CreateLaunchTokenReq struct {
 	MaxTTL       int      `json:"max_ttl"`
 	SingleUse    *bool    `json:"single_use"`
 	TTL          int      `json:"ttl"`
+}
+
+// CreateSidecarActivationReq is the JSON request body for
+// POST /v1/admin/sidecar-activations.
+type CreateSidecarActivationReq struct {
+	AllowedScopePrefix string `json:"allowed_scope_prefix"`
+	TTL                int    `json:"ttl"`
+}
+
+// CreateSidecarActivationResp is the JSON response for a successful
+// sidecar activation token issuance.
+type CreateSidecarActivationResp struct {
+	ActivationToken string `json:"activation_token"`
+	ExpiresAt       string `json:"expires_at"`
+	Scope           string `json:"scope"`
+}
+
+// ActivateSidecarReq is the JSON request body for
+// POST /v1/sidecar/activate.
+type ActivateSidecarReq struct {
+	SidecarActivationToken string `json:"sidecar_activation_token"`
+}
+
+// ActivateSidecarResp is the JSON response for a successful sidecar
+// activation exchange.
+type ActivateSidecarResp struct {
+	AccessToken string `json:"access_token"`
+	ExpiresIn   int    `json:"expires_in"`
+	TokenType   string `json:"token_type"`
+	SidecarID   string `json:"sidecar_id"`
 }
 
 // CreateLaunchTokenResp is the JSON response returned on successful
@@ -210,6 +245,116 @@ func (s *AdminSvc) CreateLaunchToken(req CreateLaunchTokenReq, createdBy string)
 	}, nil
 }
 
+// CreateSidecarActivationToken issues a short-lived activation JWT that can
+// be exchanged exactly once at POST /v1/sidecar/activate.
+func (s *AdminSvc) CreateSidecarActivationToken(req CreateSidecarActivationReq, createdBy string) (*CreateSidecarActivationResp, error) {
+	if req.AllowedScopePrefix == "" {
+		return nil, ErrActivationScopeEmpty
+	}
+	scope := "sidecar:activate:" + req.AllowedScopePrefix
+
+	ttl := req.TTL
+	if ttl <= 0 {
+		ttl = sidecarTTL
+	}
+
+	resp, err := s.tknSvc.Issue(token.IssueReq{
+		Sub:   adminSub,
+		Aud:   []string{"sidecar_activation"},
+		Scope: []string{scope},
+		TTL:   ttl,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("issue sidecar activation token: %w", err)
+	}
+
+	expiresAt := time.Unix(resp.Claims.Exp, 0).UTC()
+	if s.auditLog != nil {
+		s.auditLog.Record(
+			audit.EventSidecarActivationIssued,
+			createdBy,
+			"",
+			"",
+			fmt.Sprintf("issued sidecar activation token scope=%s exp=%s", scope, expiresAt.Format(time.RFC3339)),
+		)
+	}
+
+	return &CreateSidecarActivationResp{
+		ActivationToken: resp.AccessToken,
+		ExpiresAt:       expiresAt.Format(time.RFC3339),
+		Scope:           scope,
+	}, nil
+}
+
+// ActivateSidecar exchanges a valid, single-use sidecar activation token
+// for a functional sidecar bearer token.
+func (s *AdminSvc) ActivateSidecar(req ActivateSidecarReq) (*ActivateSidecarResp, error) {
+	if req.SidecarActivationToken == "" {
+		return nil, ErrActivationTokenInvalid
+	}
+
+	claims, err := s.tknSvc.Verify(req.SidecarActivationToken)
+	if err != nil {
+		return nil, ErrActivationTokenInvalid
+	}
+	if claims.Sub != adminSub || !containsAudience(claims.Aud, "sidecar_activation") {
+		return nil, ErrActivationTokenInvalid
+	}
+
+	scopePrefix, ok := extractActivationScopePrefix(claims.Scope)
+	if !ok {
+		return nil, ErrActivationTokenInvalid
+	}
+
+	if err := s.store.ConsumeActivationToken(claims.Jti, claims.Exp); err != nil {
+		if errors.Is(err, store.ErrTokenConsumed) {
+			if s.auditLog != nil {
+				s.auditLog.Record(audit.EventSidecarActivationFailed, "", "", "", "activation token replay detected")
+			}
+			return nil, ErrActivationTokenReplayed
+		}
+		return nil, fmt.Errorf("consume activation token: %w", err)
+	}
+
+	now := time.Now().Unix()
+	ttl := int(claims.Exp - now)
+	if ttl <= 0 {
+		return nil, ErrActivationTokenInvalid
+	}
+	if ttl > sidecarTTL {
+		ttl = sidecarTTL
+	}
+
+	sidecarID := claims.Jti
+	sidecarScopeCeiling := "sidecar:scope:" + scopePrefix
+	issResp, err := s.tknSvc.Issue(token.IssueReq{
+		Sub:   "sidecar:" + sidecarID,
+		Scope: []string{"sidecar:manage", sidecarScopeCeiling},
+		Sid:   sidecarID,
+		TTL:   ttl,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("issue sidecar token: %w", err)
+	}
+
+	if s.auditLog != nil {
+		s.auditLog.Record(
+			audit.EventSidecarActivated,
+			"sidecar:"+sidecarID,
+			"",
+			"",
+			fmt.Sprintf("sidecar activated with scope_ceiling=%s", sidecarScopeCeiling),
+		)
+	}
+
+	return &ActivateSidecarResp{
+		AccessToken: issResp.AccessToken,
+		ExpiresIn:   issResp.ExpiresIn,
+		TokenType:   "Bearer",
+		SidecarID:   sidecarID,
+	}, nil
+}
+
 // ValidateLaunchToken looks up a launch token and checks that it has not
 // expired or been consumed. It does NOT consume the token; call
 // [AdminSvc.ConsumeLaunchToken] after successful registration.
@@ -229,4 +374,26 @@ func (s *AdminSvc) ConsumeLaunchToken(tokenStr string) error {
 		return nil
 	}
 	return s.store.ConsumeLaunchToken(tokenStr)
+}
+
+func extractActivationScopePrefix(scopes []string) (string, bool) {
+	for _, scope := range scopes {
+		if strings.HasPrefix(scope, "sidecar:activate:") {
+			prefix := strings.TrimPrefix(scope, "sidecar:activate:")
+			if prefix == "" {
+				return "", false
+			}
+			return prefix, true
+		}
+	}
+	return "", false
+}
+
+func containsAudience(aud []string, target string) bool {
+	for _, item := range aud {
+		if item == target {
+			return true
+		}
+	}
+	return false
 }

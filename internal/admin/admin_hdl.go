@@ -47,6 +47,11 @@ func (h *AdminHdl) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /v1/admin/launch-tokens",
 		h.valMw.Wrap(authz.WithRequiredScope("admin:launch-tokens:*",
 			http.HandlerFunc(h.handleCreateLaunchToken))))
+	mux.Handle("POST /v1/admin/sidecar-activations",
+		h.valMw.Wrap(authz.WithRequiredScope("admin:launch-tokens:*",
+			http.HandlerFunc(h.handleCreateSidecarActivation))))
+	mux.Handle("POST /v1/sidecar/activate",
+		h.rateLimiter.Wrap(http.HandlerFunc(h.handleActivateSidecar)))
 }
 
 // authReq is the JSON body for POST /v1/admin/auth.
@@ -129,5 +134,61 @@ func (h *AdminHdl) handleCreateLaunchToken(w http.ResponseWriter, r *http.Reques
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (h *AdminHdl) handleCreateSidecarActivation(w http.ResponseWriter, r *http.Request) {
+	claims := authz.ClaimsFromContext(r.Context())
+	if claims == nil {
+		problemdetails.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "missing authentication", r.URL.Path)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+	var req CreateSidecarActivationReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
+		return
+	}
+
+	resp, err := h.adminSvc.CreateSidecarActivationToken(req, claims.Sub)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrActivationScopeEmpty):
+			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "allowed_scope_prefix is required", r.URL.Path)
+		default:
+			problemdetails.WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "failed to create sidecar activation token", r.URL.Path)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (h *AdminHdl) handleActivateSidecar(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+	var req ActivateSidecarReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
+		return
+	}
+
+	resp, err := h.adminSvc.ActivateSidecar(req)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrActivationTokenReplayed):
+			problemdetails.WriteProblemExtended(r.Context(), w, http.StatusUnauthorized, "unauthorized", "activation token replay detected", r.URL.Path, "activation_token_replayed", "")
+		case errors.Is(err, ErrActivationTokenInvalid):
+			problemdetails.WriteProblemExtended(r.Context(), w, http.StatusUnauthorized, "unauthorized", "invalid activation token", r.URL.Path, "invalid_activation_token", "")
+		default:
+			problemdetails.WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "sidecar activation failed", r.URL.Path)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(resp)
 }

@@ -3,6 +3,7 @@ package admin
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -381,5 +382,113 @@ func TestLaunchTokenRecord_SpecCompliance(t *testing.T) {
 	// ConsumedAt is a pointer — nil means not consumed.
 	if rec.ConsumedAt != nil {
 		t.Error("new record should have nil ConsumedAt")
+	}
+}
+
+func TestCreateSidecarActivationToken_Success(t *testing.T) {
+	svc := newTestAdminSvc(t)
+
+	resp, err := svc.CreateSidecarActivationToken(CreateSidecarActivationReq{
+		AllowedScopePrefix: "read:Customers",
+		TTL:                120,
+	}, adminSub)
+	if err != nil {
+		t.Fatalf("expected success, got err: %v", err)
+	}
+	if resp.ActivationToken == "" {
+		t.Fatal("expected activation token")
+	}
+	if resp.Scope != "sidecar:activate:read:Customers" {
+		t.Fatalf("unexpected scope: %s", resp.Scope)
+	}
+
+	claims, err := svc.tknSvc.Verify(resp.ActivationToken)
+	if err != nil {
+		t.Fatalf("verify activation token: %v", err)
+	}
+	if claims.Sub != adminSub {
+		t.Fatalf("expected admin subject, got %s", claims.Sub)
+	}
+	if len(claims.Aud) != 1 || claims.Aud[0] != "sidecar_activation" {
+		t.Fatalf("unexpected audience: %v", claims.Aud)
+	}
+}
+
+func TestCreateSidecarActivationToken_EmptyScope(t *testing.T) {
+	svc := newTestAdminSvc(t)
+
+	_, err := svc.CreateSidecarActivationToken(CreateSidecarActivationReq{}, adminSub)
+	if !errors.Is(err, ErrActivationScopeEmpty) {
+		t.Fatalf("expected ErrActivationScopeEmpty, got %v", err)
+	}
+}
+
+func TestActivateSidecar_Success(t *testing.T) {
+	svc := newTestAdminSvc(t)
+
+	act, err := svc.CreateSidecarActivationToken(CreateSidecarActivationReq{
+		AllowedScopePrefix: "read:Customers",
+		TTL:                120,
+	}, adminSub)
+	if err != nil {
+		t.Fatalf("create activation token: %v", err)
+	}
+
+	resp, err := svc.ActivateSidecar(ActivateSidecarReq{
+		SidecarActivationToken: act.ActivationToken,
+	})
+	if err != nil {
+		t.Fatalf("activate sidecar: %v", err)
+	}
+	if resp.AccessToken == "" || resp.SidecarID == "" {
+		t.Fatalf("expected access token and sidecar_id")
+	}
+
+	claims, err := svc.tknSvc.Verify(resp.AccessToken)
+	if err != nil {
+		t.Fatalf("verify sidecar token: %v", err)
+	}
+	if claims.Sid != resp.SidecarID {
+		t.Fatalf("sid mismatch: claims=%s resp=%s", claims.Sid, resp.SidecarID)
+	}
+	if claims.Sub != "sidecar:"+resp.SidecarID {
+		t.Fatalf("unexpected sub: %s", claims.Sub)
+	}
+}
+
+func TestActivateSidecar_Replay(t *testing.T) {
+	svc := newTestAdminSvc(t)
+
+	act, err := svc.CreateSidecarActivationToken(CreateSidecarActivationReq{
+		AllowedScopePrefix: "read:Customers",
+		TTL:                120,
+	}, adminSub)
+	if err != nil {
+		t.Fatalf("create activation token: %v", err)
+	}
+
+	_, err = svc.ActivateSidecar(ActivateSidecarReq{
+		SidecarActivationToken: act.ActivationToken,
+	})
+	if err != nil {
+		t.Fatalf("first activation should pass: %v", err)
+	}
+
+	_, err = svc.ActivateSidecar(ActivateSidecarReq{
+		SidecarActivationToken: act.ActivationToken,
+	})
+	if !errors.Is(err, ErrActivationTokenReplayed) {
+		t.Fatalf("expected replay error, got %v", err)
+	}
+}
+
+func TestActivateSidecar_InvalidToken(t *testing.T) {
+	svc := newTestAdminSvc(t)
+
+	_, err := svc.ActivateSidecar(ActivateSidecarReq{
+		SidecarActivationToken: "not-a-token",
+	})
+	if !errors.Is(err, ErrActivationTokenInvalid) {
+		t.Fatalf("expected invalid token error, got %v", err)
 	}
 }

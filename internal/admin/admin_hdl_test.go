@@ -262,3 +262,104 @@ func TestHandleCreateLaunchToken_EmptyScope(t *testing.T) {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestHandleCreateSidecarActivation_Success(t *testing.T) {
+	mux, _, _ := newTestMux(t)
+	adminToken := getAdminToken(t, mux)
+
+	body, _ := json.Marshal(CreateSidecarActivationReq{
+		AllowedScopePrefix: "read:Customers",
+		TTL:                120,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/admin/sidecar-activations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp CreateSidecarActivationResp
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.ActivationToken == "" {
+		t.Fatal("expected activation_token")
+	}
+}
+
+func TestHandleActivateSidecar_SuccessAndReplay(t *testing.T) {
+	mux, _, _ := newTestMux(t)
+	adminToken := getAdminToken(t, mux)
+
+	createBody, _ := json.Marshal(CreateSidecarActivationReq{
+		AllowedScopePrefix: "read:Customers",
+		TTL:                120,
+	})
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/admin/sidecar-activations", bytes.NewReader(createBody))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set("Authorization", "Bearer "+adminToken)
+	createRec := httptest.NewRecorder()
+	mux.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", createRec.Code, createRec.Body.String())
+	}
+
+	var createResp CreateSidecarActivationResp
+	if err := json.NewDecoder(createRec.Body).Decode(&createResp); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	activateBody, _ := json.Marshal(ActivateSidecarReq{
+		SidecarActivationToken: createResp.ActivationToken,
+	})
+	activateReq := httptest.NewRequest(http.MethodPost, "/v1/sidecar/activate", bytes.NewReader(activateBody))
+	activateReq.Header.Set("Content-Type", "application/json")
+	activateRec := httptest.NewRecorder()
+	mux.ServeHTTP(activateRec, activateReq)
+	if activateRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", activateRec.Code, activateRec.Body.String())
+	}
+
+	var activateResp ActivateSidecarResp
+	if err := json.NewDecoder(activateRec.Body).Decode(&activateResp); err != nil {
+		t.Fatalf("decode activate response: %v", err)
+	}
+	if activateResp.AccessToken == "" || activateResp.SidecarID == "" {
+		t.Fatalf("expected sidecar token response")
+	}
+
+	// Replay should be rejected.
+	replayReq := httptest.NewRequest(http.MethodPost, "/v1/sidecar/activate", bytes.NewReader(activateBody))
+	replayReq.Header.Set("Content-Type", "application/json")
+	replayRec := httptest.NewRecorder()
+	mux.ServeHTTP(replayRec, replayReq)
+	if replayRec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", replayRec.Code, replayRec.Body.String())
+	}
+	var problem map[string]any
+	if err := json.NewDecoder(replayRec.Body).Decode(&problem); err != nil {
+		t.Fatalf("decode replay problem: %v", err)
+	}
+	if problem["error_code"] != "activation_token_replayed" {
+		t.Fatalf("expected error_code=activation_token_replayed, got %v", problem["error_code"])
+	}
+}
+
+func TestHandleActivateSidecar_InvalidToken(t *testing.T) {
+	mux, _, _ := newTestMux(t)
+	body, _ := json.Marshal(ActivateSidecarReq{
+		SidecarActivationToken: "bad-token",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/sidecar/activate", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
