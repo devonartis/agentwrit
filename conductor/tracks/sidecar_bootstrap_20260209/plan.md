@@ -4,7 +4,7 @@
 - [x] Task: Implement Global Request-ID Middleware (5431984)
     - [ ] [Write Tests] Verify unique ID generation and context propagation
     - [ ] [Implement] Middleware to inject `X-Request-ID` into context and response headers
-- [ ] Task: Implement HTTP Request Logging Middleware
+- [x] Task: Implement HTTP Request Logging Middleware (8a9d3b4)
     - [ ] [Write Tests] Verify logging of method, path, status, and latency
     - [ ] [Implement] Logger middleware using `internal/obs`
 - [ ] Task: Standardize Error Contract & Problem Writer
