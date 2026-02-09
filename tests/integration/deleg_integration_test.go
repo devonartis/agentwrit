@@ -31,7 +31,7 @@ func setupDelegServer(t *testing.T) (*httptest.Server, *store.SqlStore, *token.T
 	idSvc := identity.NewIdSvc(sqlStore, brokerPriv, c.TrustDomain)
 	tknSvc := token.NewTknSvc(brokerPriv, brokerPub, c)
 	revSvc := revoke.NewRevSvc()
-	valMw := authz.NewValMw(tknSvc, revSvc)
+	valMw := authz.NewValMw(tknSvc, revSvc, nil)
 
 	// M07: Delegation.
 	delegSvc := deleg.NewDelegSvc(tknSvc, brokerPriv, 3)
@@ -39,10 +39,10 @@ func setupDelegServer(t *testing.T) (*httptest.Server, *store.SqlStore, *token.T
 
 	mux := http.NewServeMux()
 	mux.Handle("/v1/challenge", handler.NewChallengeHdl(sqlStore))
-	mux.Handle("/v1/register", handler.NewRegHdl(idSvc, tknSvc, c))
+	mux.Handle("/v1/register", handler.NewRegHdl(idSvc, tknSvc, c, nil))
 	mux.Handle("/v1/token/validate", handler.NewValHdl(tknSvc))
 	mux.Handle("/v1/token/renew", handler.NewRenewHdl(tknSvc))
-	mux.Handle("/v1/revoke", authz.WithRequiredScope("admin:Broker:*", valMw.Wrap(handler.NewRevokeHdl(revSvc))))
+	mux.Handle("/v1/revoke", authz.WithRequiredScope("admin:Broker:*", valMw.Wrap(handler.NewRevokeHdl(revSvc, nil))))
 	mux.Handle("/v1/delegate", delegHdl)
 	mux.Handle("/v1/protected/customers/12345", authz.WithRequiredScope("read:Customers:12345", valMw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

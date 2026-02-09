@@ -20,7 +20,7 @@ func TestRegHdlSuccess(t *testing.T) {
 	sqlStore := store.NewSqlStore()
 	_, brokerPriv, _ := identity.GenerateSigningKeyPair()
 	idSvc := identity.NewIdSvc(sqlStore, brokerPriv, "agentauth.local")
-	regHdl := NewRegHdl(idSvc, token.NewTknSvc(brokerPriv, brokerPriv.Public().(ed25519.PublicKey), cfg.Cfg{TrustDomain: "agentauth.local", DefaultTTL: 300}), cfg.Cfg{TrustDomain: "agentauth.local", DefaultTTL: 300})
+	regHdl := NewRegHdl(idSvc, token.NewTknSvc(brokerPriv, brokerPriv.Public().(ed25519.PublicKey), cfg.Cfg{TrustDomain: "agentauth.local", DefaultTTL: 300}), cfg.Cfg{TrustDomain: "agentauth.local", DefaultTTL: 300}, nil)
 
 	launch, _ := identity.CreateLaunchToken(sqlStore, "orch-1", "task-1", []string{"read:Customers:1"}, 30*time.Second)
 	agentPub, agentPriv, _ := identity.GenerateSigningKeyPair()
@@ -51,7 +51,7 @@ func TestRegHdlSuccess(t *testing.T) {
 func TestRegHdlMalformedBody(t *testing.T) {
 	sqlStore := store.NewSqlStore()
 	_, brokerPriv, _ := identity.GenerateSigningKeyPair()
-	regHdl := NewRegHdl(identity.NewIdSvc(sqlStore, brokerPriv, "agentauth.local"), token.NewTknSvc(brokerPriv, brokerPriv.Public().(ed25519.PublicKey), cfg.Cfg{TrustDomain: "agentauth.local", DefaultTTL: 300}), cfg.Cfg{TrustDomain: "agentauth.local", DefaultTTL: 300})
+	regHdl := NewRegHdl(identity.NewIdSvc(sqlStore, brokerPriv, "agentauth.local"), token.NewTknSvc(brokerPriv, brokerPriv.Public().(ed25519.PublicKey), cfg.Cfg{TrustDomain: "agentauth.local", DefaultTTL: 300}), cfg.Cfg{TrustDomain: "agentauth.local", DefaultTTL: 300}, nil)
 	req := httptest.NewRequest(http.MethodPost, "/v1/register", bytes.NewReader([]byte("{bad")))
 	rec := httptest.NewRecorder()
 	regHdl.ServeHTTP(rec, req)
@@ -63,7 +63,7 @@ func TestRegHdlMalformedBody(t *testing.T) {
 func TestRegHdlBadLaunchToken(t *testing.T) {
 	sqlStore := store.NewSqlStore()
 	_, brokerPriv, _ := identity.GenerateSigningKeyPair()
-	regHdl := NewRegHdl(identity.NewIdSvc(sqlStore, brokerPriv, "agentauth.local"), token.NewTknSvc(brokerPriv, brokerPriv.Public().(ed25519.PublicKey), cfg.Cfg{TrustDomain: "agentauth.local", DefaultTTL: 300}), cfg.Cfg{TrustDomain: "agentauth.local", DefaultTTL: 300})
+	regHdl := NewRegHdl(identity.NewIdSvc(sqlStore, brokerPriv, "agentauth.local"), token.NewTknSvc(brokerPriv, brokerPriv.Public().(ed25519.PublicKey), cfg.Cfg{TrustDomain: "agentauth.local", DefaultTTL: 300}), cfg.Cfg{TrustDomain: "agentauth.local", DefaultTTL: 300}, nil)
 
 	agentPub, agentPriv, _ := identity.GenerateSigningKeyPair()
 	nonce := "nonce-2"

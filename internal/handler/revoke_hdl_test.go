@@ -12,7 +12,7 @@ import (
 
 func TestRevokeTokenSuccess(t *testing.T) {
 	svc := revoke.NewRevSvc()
-	hdl := NewRevokeHdl(svc)
+	hdl := NewRevokeHdl(svc, nil)
 	body, _ := json.Marshal(map[string]string{
 		"level":     "token",
 		"target_id": "jti-123",
@@ -42,7 +42,7 @@ func TestRevokeTokenSuccess(t *testing.T) {
 
 func TestRevokeInvalidLevel(t *testing.T) {
 	svc := revoke.NewRevSvc()
-	hdl := NewRevokeHdl(svc)
+	hdl := NewRevokeHdl(svc, nil)
 	body, _ := json.Marshal(map[string]string{
 		"level":     "invalid",
 		"target_id": "abc",
@@ -63,7 +63,7 @@ func TestRevokeInvalidLevel(t *testing.T) {
 
 func TestRevokeMissingFields(t *testing.T) {
 	svc := revoke.NewRevSvc()
-	hdl := NewRevokeHdl(svc)
+	hdl := NewRevokeHdl(svc, nil)
 	// Empty body.
 	req := httptest.NewRequest(http.MethodPost, "/v1/revoke", bytes.NewReader([]byte(`{}`)))
 	rec := httptest.NewRecorder()
@@ -75,7 +75,7 @@ func TestRevokeMissingFields(t *testing.T) {
 
 func TestRevokeAllLevels(t *testing.T) {
 	svc := revoke.NewRevSvc()
-	hdl := NewRevokeHdl(svc)
+	hdl := NewRevokeHdl(svc, nil)
 	levels := []string{"token", "agent", "task", "delegation_chain"}
 	for _, level := range levels {
 		body, _ := json.Marshal(map[string]string{

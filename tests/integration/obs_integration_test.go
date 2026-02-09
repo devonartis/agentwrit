@@ -46,7 +46,7 @@ func TestObservabilityMetricsAndHealthIntegration(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mux.Handle("/v1/challenge", handler.NewChallengeHdl(sqlStore))
-	mux.Handle("/v1/register", handler.NewRegHdl(idSvc, tknSvc, c))
+	mux.Handle("/v1/register", handler.NewRegHdl(idSvc, tknSvc, c, nil))
 	mux.Handle("/v1/token/validate", handler.NewValHdl(tknSvc))
 	mux.Handle("/v1/health", handler.NewHealthHdl(sqlStore, nil, "0.1.0"))
 	mux.Handle("/v1/metrics", handler.NewMetricsHdl())
