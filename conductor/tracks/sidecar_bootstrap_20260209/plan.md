@@ -14,7 +14,7 @@
 - [x] Task: Quality Gate Check: Run `./scripts/gates.sh task`
 
 ## Phase 2: Foundation & Model Updates
-- [ ] Task: Update Token Claims for Sidecar Identity
+- [x] Task: Update Token Claims for Sidecar Identity (bbb5aba)
     - [ ] [Write Tests] Verify `sid` (internal JWT claim) is handled and validated
     - [ ] [Implement] Add `Sid` string field to `internal/token.TknClaims`; update `Validate()`
 - [ ] Task: Implement Activation Token Persistence & Replay Protection
