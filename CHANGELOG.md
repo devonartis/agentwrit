@@ -6,6 +6,16 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Added
+- Module M11 resource server (Python/FastAPI):
+  - Simulated customer database API with 4 endpoints: GET /customers/{id}, GET /orders/{customer_id}, PUT /tickets/{id}, POST /notifications/send
+  - Pre-seeded sample data: 5 customers, 10 orders, 3 tickets per MVP Requirements 5.4
+  - Dual-mode `AuthMiddleware`: insecure (API-Key header) and secure (Bearer token validated against broker POST /v1/token/validate)
+  - Scope mapping rules: URL paths resolve to required scopes (e.g., read:Customers:{id})
+  - RFC 7807 problem+json error responses for 401/403/502
+  - 46 tests: route handlers (20), middleware (19), integration flows (7)
+  - Module documentation in `docs/developer/resource_server.md`
+
 ### Fixed
 - P1 security hardening: `LoadSigningKey` now validates path safety (no symlink), enforces regular-file usage, rejects group/other-readable key files, and caps read size before Ed25519 key decoding.
 - P1 security gate stability: module now pins patched Go toolchain `go1.25.7` to clear known stdlib `govulncheck` findings (crypto/tls and crypto/x509 advisories seen on go1.25.4).
