@@ -1,16 +1,16 @@
 # AgentAuth Developer Guide
 
-## Architecture snapshot (M00-M08, M05, M11-M12)
+## Architecture snapshot
 
 Implemented packages and responsibilities:
 
 - `cmd/broker`
   - broker process assembly and route wiring
-- `internal/cfg` (M00)
+- `internal/cfg`
   - environment-driven runtime configuration
-- `internal/obs` (M00)
+- `internal/obs`
   - structured logging and stdout/stderr routing
-- `internal/store` (M00-M01)
+- `internal/store`
   - in-memory data backing for launch tokens, nonces, and agent records
   - exported error sentinels:
     - `ErrLaunchTokenNotFound`
@@ -19,46 +19,52 @@ Implemented packages and responsibilities:
     - `ErrNonceNotFound`
     - `ErrNonceExpired`
     - `ErrAgentExists`
-- `internal/identity` (M01)
+- `internal/identity`
   - SPIFFE ID generation/parsing/validation
   - launch token create/consume logic
   - Ed25519/JWK key handling
   - `IdSvc.Register` proof-of-possession flow
-- `internal/token` (M02)
+- `internal/token`
   - claims model + validation
   - scope parser/matcher/subset logic
   - signed token issue/verify/renew
-- `internal/audit` (M05)
+- `internal/audit`
   - immutable hash-chain audit event storage (`AuditLog`)
   - PII sanitization (email, phone, customer ID hashing)
   - read aggregation for repeated access events
   - chain integrity verification (`VerifyChain`)
-- `internal/handler` (M01-M05)
+- `internal/handler`
   - challenge/register/token validate/token renew/revoke/audit HTTP handlers
-- `internal/authz` (M03)
+- `internal/authz`
   - zero-trust authorization middleware (`ValMw`)
   - required scope context injection and authenticated agent context helper
-- `internal/revoke` (M04)
+- `internal/revoke`
   - 4-level revocation service (token/agent/task/delegation_chain)
   - `RevChecker` interface for pluggable backends
   - integrated into `ValMw` for real-time revocation enforcement
-- `internal/mutauth` (M06)
+- `internal/mutauth`
   - 3-step mutual authentication handshake (`MutAuthHdl`)
   - discovery binding registry (`DiscoveryRegistry`)
   - heartbeat/liveness monitoring with optional auto-revocation (`HeartbeatMgr`)
-- `internal/deleg` (M07)
+- `internal/deleg`
   - scope attenuation (`Attenuate`)
   - delegation token issuance with depth/TTL constraints (`DelegSvc`)
   - delegation-chain integrity checks (`VerifyChain`, `VerifyChainHash`)
-- `internal/obs` + `internal/handler` (M08)
+- `internal/obs` + `internal/handler`
   - centralized RFC 7807 problem factory (`WriteProblem`)
   - Prometheus collectors and recorder helpers
   - health and metrics HTTP handlers (`HealthHdl`, `MetricsHdl`)
-- `demo/resource_server` (M11)
+- `demo/resource_server`
   - FastAPI resource server with 4 endpoints and dual-mode auth middleware
-- `demo/agents` (M12)
+- `demo/agents`
   - Python demo agents: BrokerClient, AgentBase, DataRetriever, Analyzer, ActionTaker
   - Orchestrator driving full A->B->C workflow with delegation
+- `demo/attacks`
+  - Attack simulator with 5 scenarios: credential theft, lateral movement, impersonation, privilege escalation, accountability bypass
+  - Demonstrates how the broker detects and blocks each attack class
+- `demo/dashboard`
+  - FastAPI + HTMX real-time dashboard with SSE event streaming
+  - Dark-themed UI showing broker state, agent activity, and security events
 
 ## Repository layout (current)
 
@@ -95,14 +101,17 @@ docs/
     obs.md
     resource_server.md
     demo_agents.md
+    attack_simulator.md
+    dashboard.md
 demo/
-  resource_server/     -- M11 FastAPI resource server
-  agents/              -- M12 Python demo agents
+  resource_server/     -- FastAPI resource server
+  agents/              -- Python demo agents
+  attacks/             -- Attack simulator (5 scenarios)
+  dashboard/           -- HTMX real-time dashboard
 scripts/
   gates.sh
   doc_check.sh
   gitflow_check.sh
-  set_active_module.sh
   integration_test.sh
   live_test.sh
 tests/
@@ -111,12 +120,29 @@ tests/
   e2e/
 ```
 
+## Setting up the Python demo
+
+The `demo/` directory contains Python components (resource server, demo agents, attack simulator, dashboard). To set up:
+
+```bash
+cd demo
+pip install -r requirements.txt
+python -m pytest -v
+```
+
+Each sub-package can also be tested individually:
+
+```bash
+python -m pytest demo/resource_server/tests/ -v
+python -m pytest demo/agents/tests/ -v
+python -m pytest demo/attacks/tests/ -v
+python -m pytest demo/dashboard/tests/ -v
+```
+
 ## Development workflow
 
-1. Align module context:
-   - `./scripts/set_active_module.sh MNN`
-   - work on `feature/mnn-*`
-2. Implement one micro-task with tests.
+1. Create a feature branch from `develop`.
+2. Implement your change with tests.
 3. Update docs in the same change:
    - `docs/USER_GUIDE.md`
    - `docs/API_REFERENCE.md`
@@ -124,9 +150,9 @@ tests/
    - `docs/api/openapi.yaml`
    - `CHANGELOG.md`
 4. Run `./scripts/gates.sh task`.
-   - includes `SECURITY` (`gosec` + `govulncheck`) and fails if either tool is missing.
-5. At module boundary, run `./scripts/gates.sh module` (includes integration + live).
-6. Fix failures before any new module work.
+   - Includes build, lint, unit tests, security scanning (`gosec` + `govulncheck`), and doc checks.
+5. For larger changes, run `./scripts/gates.sh module` (adds integration + live tests).
+6. Fix all gate failures before opening a PR.
 
 ## Coding standards
 
@@ -142,17 +168,19 @@ tests/
 
 ## Module documentation map
 
-- M00 scaffold: `docs/developer/scaffold.md`
-- M01 identity: `docs/developer/identity.md`
-- M02 token: `docs/developer/token.md`
-- M03 authorization: `docs/developer/authz.md`
-- M04 revocation: `docs/developer/revoke.md`
-- M05 audit: `docs/developer/audit.md`
-- M06 mutual auth: `docs/developer/mutauth.md`
-- M07 delegation: `docs/developer/deleg.md`
-- M08 observability: `docs/developer/obs.md`
-- M11 resource server: `docs/developer/resource_server.md`
-- M12 demo agents: `docs/developer/demo_agents.md`
+- Scaffold: `docs/developer/scaffold.md`
+- Identity: `docs/developer/identity.md`
+- Token: `docs/developer/token.md`
+- Authorization: `docs/developer/authz.md`
+- Revocation: `docs/developer/revoke.md`
+- Audit: `docs/developer/audit.md`
+- Mutual auth: `docs/developer/mutauth.md`
+- Delegation: `docs/developer/deleg.md`
+- Observability: `docs/developer/obs.md`
+- Resource server: `docs/developer/resource_server.md`
+- Demo agents: `docs/developer/demo_agents.md`
+- Attack simulator: `docs/developer/attack_simulator.md`
+- Dashboard: `docs/developer/dashboard.md`
 
 ## Seed tokens (dev/test bootstrap)
 
@@ -165,7 +193,7 @@ AA_SEED_TOKENS=true go run ./cmd/broker
 # SEED_ADMIN_TOKEN=<jwt>
 ```
 
-The smoke test (`cmd/smoketest/main.go`) uses these tokens to exercise the full broker workflow against the real binary, including admin-scoped revoke authorization. This is the live test (Tier 3) per ADR-001.
+The smoke test (`cmd/smoketest/main.go`) uses these tokens to exercise the full broker workflow against the real binary, including admin-scoped revoke authorization.
 
 ## Documentation policy (done criteria)
 
