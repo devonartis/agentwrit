@@ -35,7 +35,7 @@ func setupDelegServer(t *testing.T) (*httptest.Server, *store.SqlStore, *token.T
 
 	// M07: Delegation.
 	delegSvc := deleg.NewDelegSvc(tknSvc, brokerPriv, 3)
-	delegHdl := handler.NewDelegHdl(delegSvc)
+	delegHdl := handler.NewDelegHdl(delegSvc, nil)
 
 	mux := http.NewServeMux()
 	mux.Handle("/v1/challenge", handler.NewChallengeHdl(sqlStore))

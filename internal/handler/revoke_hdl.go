@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/divineartis/agentauth/internal/audit"
+	"github.com/divineartis/agentauth/internal/authz"
 	"github.com/divineartis/agentauth/internal/obs"
 	"github.com/divineartis/agentauth/internal/revoke"
 )
@@ -92,11 +93,16 @@ func (h *RevokeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	obs.Ok("REVOKE", "RevokeHdl.ServeHTTP", "revocation success", "level="+req.Level, "target_id="+req.TargetID)
 
 	if h.auditLog != nil {
+		evtType := audit.EvtTokenRevoked
+		if req.Level == "delegation_chain" {
+			evtType = audit.EvtDelegationRevoked
+		}
 		_ = h.auditLog.LogEvent(&audit.AuditEvt{
-			EventType: audit.EvtTokenRevoked,
-			Resource:  req.TargetID,
-			Action:    "revoke:" + req.Level,
-			Outcome:   "revoked",
+			EventType:       evtType,
+			AgentInstanceId: authz.AgentIDFromContext(r.Context()),
+			Resource:        req.TargetID,
+			Action:          "revoke:" + req.Level,
+			Outcome:         "revoked",
 		})
 	}
 }

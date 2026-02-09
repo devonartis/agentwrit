@@ -14,7 +14,7 @@ const (
 	EvtDelegationCreated = "delegation_created"
 	// EvtDelegationRevoked records a delegation chain revocation.
 	EvtDelegationRevoked = "delegation_revoked"
-	// EvtAnomalyDetected records an anomaly detection event.
+	// EvtAnomalyDetected records an anomaly detection event (M09 — not yet emitted).
 	EvtAnomalyDetected = "anomaly_detected"
 )
 

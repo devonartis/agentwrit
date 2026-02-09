@@ -51,7 +51,7 @@ func main() {
 
 	// M07: Delegation chain verification.
 	delegSvc := deleg.NewDelegSvc(tknSvc, signingKey, 3)
-	delegHdl := handler.NewDelegHdl(delegSvc)
+	delegHdl := handler.NewDelegHdl(delegSvc, auditLog)
 
 	// M06: Mutual authentication components.
 	// DiscoveryRegistry is nil until binding lifecycle is implemented (bind on

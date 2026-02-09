@@ -3,6 +3,7 @@ package audit
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"sync"
 	"time"
 
@@ -27,7 +28,11 @@ func (a *AuditLog) LogEvent(evt *AuditEvt) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	evt.EventId = randomEventId()
+	id, err := randomEventId()
+	if err != nil {
+		return err
+	}
+	evt.EventId = id
 	evt.Timestamp = time.Now().UTC().Format(time.RFC3339)
 	evt.PrevHash = a.lastHash
 
@@ -105,10 +110,10 @@ func (a *AuditLog) QueryEvents(filter AuditFilter) ([]AuditEvt, int, error) {
 	return matched, total, nil
 }
 
-func randomEventId() string {
+func randomEventId() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		return "evt-fallback"
+		return "", fmt.Errorf("randomEventId: %w", err)
 	}
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(b), nil
 }

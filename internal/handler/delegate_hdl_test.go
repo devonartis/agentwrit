@@ -29,7 +29,7 @@ func newDelegTestKit() *delegTestKit {
 	return &delegTestKit{
 		tknSvc:   tknSvc,
 		delegSvc: delegSvc,
-		hdl:      NewDelegHdl(delegSvc),
+		hdl:      NewDelegHdl(delegSvc, nil),
 	}
 }
 
@@ -126,7 +126,7 @@ func TestDelegHdl_DepthExceeded(t *testing.T) {
 	c := cfg.Cfg{TrustDomain: "test.local", DefaultTTL: 300}
 	tknSvc := token.NewTknSvc(priv, pub, c)
 	delegSvc := deleg.NewDelegSvc(tknSvc, priv, 0)
-	hdl := NewDelegHdl(delegSvc)
+	hdl := NewDelegHdl(delegSvc, nil)
 
 	resp, _ := tknSvc.Issue(token.IssueReq{
 		AgentID: "spiffe://test.local/agent/orch/task/agentA",
