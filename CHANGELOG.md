@@ -7,6 +7,13 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ## [Unreleased]
 
 ### Added
+- Module M13 attack simulator (Python):
+  - 5 attack scenarios: credential theft, lateral movement, impersonation, privilege escalation, accountability
+  - AttackResult dataclass with uniform attempts/successes/blocked/details shape
+  - SimulatorResult aggregation with mode-aware expectation checking
+  - CLI entrypoint via `python -m attacks --mode secure|insecure`
+  - 41 tests: credential theft (8), lateral movement (7), impersonation (7), privilege escalation (5), accountability (6), simulator integration (8)
+  - Module documentation in `docs/developer/attack_simulator.md`
 - Module M12 demo agents (Python):
   - BrokerClient: async httpx wrapper for all broker REST endpoints
   - AgentBase: Ed25519 ephemeral key generation, challenge-response registration, dual-mode resource calls
