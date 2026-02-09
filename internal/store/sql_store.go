@@ -64,18 +64,20 @@ type nonceRecord struct {
 // SqlStore provides in-memory storage with read/write mutex protection.
 // Create one with [NewSqlStore] and share it across all services.
 type SqlStore struct {
-	mu           sync.RWMutex
-	nonces       map[string]*nonceRecord
-	launchTokens map[string]*LaunchTokenRecord
-	agents       map[string]*AgentRecord
+	mu             sync.RWMutex
+	nonces         map[string]*nonceRecord
+	launchTokens   map[string]*LaunchTokenRecord
+	agents         map[string]*AgentRecord
+	jtiConsumption map[string]time.Time
 }
 
 // NewSqlStore returns an initialized, empty in-memory store ready for use.
 func NewSqlStore() *SqlStore {
 	return &SqlStore{
-		nonces:       make(map[string]*nonceRecord),
-		launchTokens: make(map[string]*LaunchTokenRecord),
-		agents:       make(map[string]*AgentRecord),
+		nonces:         make(map[string]*nonceRecord),
+		launchTokens:   make(map[string]*LaunchTokenRecord),
+		agents:         make(map[string]*AgentRecord),
+		jtiConsumption: make(map[string]time.Time),
 	}
 }
 
@@ -203,5 +205,22 @@ func (s *SqlStore) UpdateAgentLastSeen(agentID string) error {
 		return ErrAgentNotFound
 	}
 	rec.LastSeen = time.Now()
+	return nil
+}
+
+// ConsumeActivationToken marks an activation token's JTI as consumed. It
+// returns [ErrTokenConsumed] if the JTI has already been recorded. The exp
+// timestamp is provided to allow for future garbage collection of the JTI
+// set, though the current in-memory implementation does not yet implement
+// automatic pruning.
+func (s *SqlStore) ConsumeActivationToken(jti string, exp int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.jtiConsumption[jti]; exists {
+		return ErrTokenConsumed
+	}
+
+	s.jtiConsumption[jti] = time.Unix(exp, 0)
 	return nil
 }
