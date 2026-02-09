@@ -83,7 +83,10 @@ async def _default_demo_runner(state: DashboardState, mode: str) -> None:
         from attacks.simulator import run_all_attacks
 
         sim_result = await run_all_attacks(mode=mode)
-        state.attack_results = [asdict(r) for r in sim_result.results]
+        state.attack_results = [
+            {**asdict(r), "attack_succeeded": r.attack_succeeded}
+            for r in sim_result.results
+        ]
 
         for attack in sim_result.results:
             await state.publish({

@@ -82,7 +82,16 @@ async def run_demo_endpoint(request: Request):
     state.mode = mode
 
     runner = request.app.state.demo_runner
-    asyncio.create_task(runner(state, mode))
+
+    async def _safe_runner():
+        try:
+            await runner(state, mode)
+        except Exception as exc:
+            logger.error("Runner failed: %s", _sanitize_error(exc))
+            await state.publish({"type": "status", "data": {"message": "Demo failed", "error": _sanitize_error(exc)}})
+            state.running = False
+
+    state._task = asyncio.create_task(_safe_runner())
 
     return {"status": "started", "mode": mode}
 
