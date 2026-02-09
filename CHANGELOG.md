@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+
+- **Deployment**: Multi-stage Dockerfile for small, secure production images
+- **Deployment**: Docker Compose configuration for local development and orchestration
+- **Infrastructure**: Global Request-ID middleware for request correlation across logs and diagnostics
+- **Infrastructure**: HTTP request logging middleware capturing method, path, status, and latency
+- **Infrastructure**: Centralized `problemdetails` package for RFC 7807 compliance and cycle resolution
+- **Identity**: Support for stable sidecar identity via the `sid` JWT claim
+- **Security**: Activation token replay protection in `SqlStore` using JTI tracking
+- **Tokens**: `IssueReq` now supports optional JWT audience (`aud`) so broker-issued tokens can carry endpoint-specific intent (used by sidecar activation contract).
+- **Admin/Sidecar**: Added sidecar activation service models:
+  - `CreateSidecarActivationReq` / `CreateSidecarActivationResp`
+  - `ActivateSidecarReq` / `ActivateSidecarResp`
+- **Admin/Sidecar**: Added service methods for sidecar bootstrap flow:
+  - `CreateSidecarActivationToken(...)`
+  - `ActivateSidecar(...)`
+
+### Changed
+
+- **Errors**: Standardized all error responses to include `error_code` and `request_id` fields
+- **Admin**: Refactored admin handlers to use shared standardized error helpers
+- **Admin/Sidecar**: Added validation and replay-protection error semantics for activation flow:
+  - `ErrActivationScopeEmpty`
+  - `ErrActivationTokenInvalid`
+  - `ErrActivationTokenReplayed`
+- **Admin/Sidecar**: Activation exchange now enforces one-time token consumption via `SqlStore.ConsumeActivationToken(...)` and issues a bounded sidecar token carrying broker-derived `sid`.
 
 ## [2.0.0] - 2026-02-09
 
