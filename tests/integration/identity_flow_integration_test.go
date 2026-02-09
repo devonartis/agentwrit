@@ -29,12 +29,12 @@ func TestIdentityChallengeRegisterAndSingleUseLaunchToken(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mux.Handle("/v1/challenge", handler.NewChallengeHdl(sqlStore))
-	mux.Handle("/v1/register", handler.NewRegHdl(idSvc, tknSvc, cfg.Cfg{DefaultTTL: 300}))
+	mux.Handle("/v1/register", handler.NewRegHdl(idSvc, tknSvc, cfg.Cfg{DefaultTTL: 300}, nil))
 	mux.Handle("/v1/token/validate", handler.NewValHdl(tknSvc))
 	mux.Handle("/v1/token/renew", handler.NewRenewHdl(tknSvc))
 	revSvc := revoke.NewRevSvc()
-	valMw := authz.NewValMw(tknSvc, revSvc)
-	mux.Handle("/v1/revoke", authz.WithRequiredScope("admin:Broker:*", valMw.Wrap(handler.NewRevokeHdl(revSvc))))
+	valMw := authz.NewValMw(tknSvc, revSvc, nil)
+	mux.Handle("/v1/revoke", authz.WithRequiredScope("admin:Broker:*", valMw.Wrap(handler.NewRevokeHdl(revSvc, nil))))
 	mux.Handle("/v1/protected/customers/12345", authz.WithRequiredScope("read:Customers:12345", valMw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"customer_id":"12345"}`))

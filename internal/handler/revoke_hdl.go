@@ -5,18 +5,21 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/divineartis/agentauth/internal/audit"
+	"github.com/divineartis/agentauth/internal/authz"
 	"github.com/divineartis/agentauth/internal/obs"
 	"github.com/divineartis/agentauth/internal/revoke"
 )
 
 // RevokeHdl handles POST /v1/revoke requests.
 type RevokeHdl struct {
-	revSvc *revoke.RevSvc
+	revSvc   *revoke.RevSvc
+	auditLog *audit.AuditLog
 }
 
-// NewRevokeHdl creates a revocation handler.
-func NewRevokeHdl(revSvc *revoke.RevSvc) *RevokeHdl {
-	return &RevokeHdl{revSvc: revSvc}
+// NewRevokeHdl creates a revocation handler with optional audit logging.
+func NewRevokeHdl(revSvc *revoke.RevSvc, auditLog *audit.AuditLog) *RevokeHdl {
+	return &RevokeHdl{revSvc: revSvc, auditLog: auditLog}
 }
 
 type revokeReq struct {
@@ -88,4 +91,18 @@ func (h *RevokeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		RevokedAt: time.Now().UTC().Format(time.RFC3339),
 	})
 	obs.Ok("REVOKE", "RevokeHdl.ServeHTTP", "revocation success", "level="+req.Level, "target_id="+req.TargetID)
+
+	if h.auditLog != nil {
+		evtType := audit.EvtTokenRevoked
+		if req.Level == "delegation_chain" {
+			evtType = audit.EvtDelegationRevoked
+		}
+		_ = h.auditLog.LogEvent(&audit.AuditEvt{
+			EventType:       evtType,
+			AgentInstanceId: authz.AgentIDFromContext(r.Context()),
+			Resource:        req.TargetID,
+			Action:          "revoke:" + req.Level,
+			Outcome:         "revoked",
+		})
+	}
 }

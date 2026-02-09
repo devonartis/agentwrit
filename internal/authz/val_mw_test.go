@@ -54,7 +54,7 @@ func issueTokenWithChain(t *testing.T, svc *token.TknSvc, scopes []string, chain
 
 func TestValMwAllowsMatchingScope(t *testing.T) {
 	svc := testSvc(t)
-	mw := NewValMw(svc, revoke.NewRevSvc())
+	mw := NewValMw(svc, revoke.NewRevSvc(), nil)
 	protected := WithRequiredScope("read:Customers:12345", mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if AgentIDFromContext(r.Context()) == "" {
 			t.Fatalf("expected agent id in context")
@@ -73,7 +73,7 @@ func TestValMwAllowsMatchingScope(t *testing.T) {
 
 func TestValMwDeniesMissingBearer(t *testing.T) {
 	svc := testSvc(t)
-	mw := NewValMw(svc, revoke.NewRevSvc())
+	mw := NewValMw(svc, revoke.NewRevSvc(), nil)
 	protected := WithRequiredScope("read:Customers:12345", mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})))
@@ -87,7 +87,7 @@ func TestValMwDeniesMissingBearer(t *testing.T) {
 
 func TestValMwDeniesScopeMismatch(t *testing.T) {
 	svc := testSvc(t)
-	mw := NewValMw(svc, revoke.NewRevSvc())
+	mw := NewValMw(svc, revoke.NewRevSvc(), nil)
 	protected := WithRequiredScope("write:Customers:12345", mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})))
@@ -104,7 +104,7 @@ func TestValMwDeniesScopeMismatch(t *testing.T) {
 func TestWrapRevokedTokenDenied(t *testing.T) {
 	svc := testSvc(t)
 	revSvc := revoke.NewRevSvc()
-	mw := NewValMw(svc, revSvc)
+	mw := NewValMw(svc, revSvc, nil)
 	protected := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -139,7 +139,7 @@ func TestWrapRevokedTokenDenied(t *testing.T) {
 
 func TestValMwDeniesInvalidDelegationChain(t *testing.T) {
 	svc := testSvc(t)
-	mw := NewValMw(svc, revoke.NewRevSvc())
+	mw := NewValMw(svc, revoke.NewRevSvc(), nil)
 	protected := WithRequiredScope("read:Customers:12345", mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})))

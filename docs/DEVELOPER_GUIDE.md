@@ -1,6 +1,6 @@
 # AgentAuth Developer Guide
 
-## Architecture snapshot (M00-M08)
+## Architecture snapshot (M00-M08, M05)
 
 Implemented packages and responsibilities:
 
@@ -28,8 +28,13 @@ Implemented packages and responsibilities:
   - claims model + validation
   - scope parser/matcher/subset logic
   - signed token issue/verify/renew
-- `internal/handler` (M01-M04)
-  - challenge/register/token validate/token renew/revoke HTTP handlers
+- `internal/audit` (M05)
+  - immutable hash-chain audit event storage (`AuditLog`)
+  - PII sanitization (email, phone, customer ID hashing)
+  - read aggregation for repeated access events
+  - chain integrity verification (`VerifyChain`)
+- `internal/handler` (M01-M05)
+  - challenge/register/token validate/token renew/revoke/audit HTTP handlers
 - `internal/authz` (M03)
   - zero-trust authorization middleware (`ValMw`)
   - required scope context injection and authenticated agent context helper
@@ -56,6 +61,7 @@ Implemented packages and responsibilities:
 cmd/
   broker/
 internal/
+  audit/
   authz/
   cfg/
   deleg/
@@ -77,6 +83,7 @@ docs/
     identity.md
     token.md
     authz.md
+    audit.md
     revoke.md
     mutauth.md
     deleg.md
@@ -130,6 +137,7 @@ tests/
 - M02 token: `docs/developer/token.md`
 - M03 authorization: `docs/developer/authz.md`
 - M04 revocation: `docs/developer/revoke.md`
+- M05 audit: `docs/developer/audit.md`
 - M06 mutual auth: `docs/developer/mutauth.md`
 - M07 delegation: `docs/developer/deleg.md`
 - M08 observability: `docs/developer/obs.md`

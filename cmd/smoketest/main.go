@@ -245,7 +245,40 @@ func main() {
 	}
 	pass("delegation token validated with correct scope")
 
-	fmt.Println("[AA:SMOKE:PASS] all smoke tests passed (core + delegation)")
+	// ── M05 Audit Trail Test ─────────────────────────────────────
+
+	// Step 16: Query audit trail (requires admin token).
+	stepAuditTrail(baseURL, adminToken)
+
+	fmt.Println("[AA:SMOKE:PASS] all smoke tests passed (core + delegation + audit)")
+}
+
+func stepAuditTrail(baseURL, adminToken string) {
+	status, body := httpGetAuth(baseURL+"/v1/audit/events", adminToken)
+	if status != 200 {
+		fail(fmt.Sprintf("audit trail: expected 200, got %d body=%s", status, body))
+	}
+	var result map[string]any
+	mustUnmarshal(body, &result)
+	eventsRaw, ok := result["events"].([]any)
+	if !ok || len(eventsRaw) == 0 {
+		fail("audit trail: expected non-empty events array")
+	}
+	pass("audit trail queried", fmt.Sprintf("event_count=%d", len(eventsRaw)))
+
+	// Verify at least one credential_issued event exists.
+	found := false
+	for _, e := range eventsRaw {
+		evt, _ := e.(map[string]any)
+		if evt["event_type"] == "credential_issued" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		fail("audit trail: no credential_issued event found")
+	}
+	pass("audit trail contains credential_issued event")
 }
 
 func pass(msg string, ctx ...string) {

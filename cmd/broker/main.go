@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/authz"
 	"github.com/divineartis/agentauth/internal/cfg"
 	"github.com/divineartis/agentauth/internal/deleg"
@@ -36,19 +37,21 @@ func main() {
 	}
 	idSvc := identity.NewIdSvc(sqlStore, signingKey, c.TrustDomain)
 	tknSvc := token.NewTknSvc(signingKey, signingKey.Public().(ed25519.PublicKey), c)
+	auditLog := audit.NewAuditLog()
 	challengeHdl := handler.NewChallengeHdl(sqlStore)
-	regHdl := handler.NewRegHdl(idSvc, tknSvc, c)
+	regHdl := handler.NewRegHdl(idSvc, tknSvc, c, auditLog)
 	valHdl := handler.NewValHdl(tknSvc)
 	renewHdl := handler.NewRenewHdl(tknSvc)
 	healthHdl := handler.NewHealthHdl(sqlStore, nil, "0.1.0")
 	metricsHdl := handler.NewMetricsHdl()
 	revSvc := revoke.NewRevSvc()
-	revokeHdl := handler.NewRevokeHdl(revSvc)
-	valMw := authz.NewValMw(tknSvc, revSvc)
+	revokeHdl := handler.NewRevokeHdl(revSvc, auditLog)
+	valMw := authz.NewValMw(tknSvc, revSvc, auditLog)
+	auditHdl := handler.NewAuditHdl(auditLog)
 
 	// M07: Delegation chain verification.
 	delegSvc := deleg.NewDelegSvc(tknSvc, signingKey, 3)
-	delegHdl := handler.NewDelegHdl(delegSvc)
+	delegHdl := handler.NewDelegHdl(delegSvc, auditLog)
 
 	// M06: Mutual authentication components.
 	// DiscoveryRegistry is nil until binding lifecycle is implemented (bind on
@@ -62,7 +65,8 @@ func main() {
 	mux.Handle("/v1/token/validate", valHdl)
 	mux.Handle("/v1/token/renew", renewHdl)
 	mux.Handle("/v1/revoke", authz.WithRequiredScope("admin:Broker:*", valMw.Wrap(revokeHdl)))
-	mux.Handle("/v1/delegate", delegHdl)
+	mux.Handle("/v1/audit/events", authz.WithRequiredScope("admin:Broker:*", valMw.Wrap(auditHdl)))
+	mux.Handle("/v1/delegate", valMw.Wrap(delegHdl))
 	mux.Handle("/v1/metrics", metricsHdl)
 	mux.Handle("/v1/health", healthHdl)
 	mux.Handle("/v1/protected/customers/12345", authz.WithRequiredScope("read:Customers:12345", valMw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

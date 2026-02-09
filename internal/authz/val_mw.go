@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/deleg"
 	"github.com/divineartis/agentauth/internal/obs"
 	"github.com/divineartis/agentauth/internal/revoke"
@@ -26,11 +27,12 @@ const (
 type ValMw struct {
 	tknSvc     *token.TknSvc
 	revChecker revoke.RevChecker
+	auditLog   *audit.AuditLog
 }
 
-// NewValMw creates a validation middleware with token verification and revocation checking.
-func NewValMw(tknSvc *token.TknSvc, revChecker revoke.RevChecker) *ValMw {
-	return &ValMw{tknSvc: tknSvc, revChecker: revChecker}
+// NewValMw creates a validation middleware with token verification, revocation checking, and optional audit logging.
+func NewValMw(tknSvc *token.TknSvc, revChecker revoke.RevChecker, auditLog *audit.AuditLog) *ValMw {
+	return &ValMw{tknSvc: tknSvc, revChecker: revChecker, auditLog: auditLog}
 }
 
 // Wrap returns an http.Handler that enforces bearer token authentication and scope validation.
@@ -41,6 +43,7 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 			deny(w, r, http.StatusUnauthorized, "urn:agentauth:error:missing-token", "missing bearer token")
 			obs.RecordValidation(false)
 			obs.Fail("AUTHZ", "ValMw.Wrap", "authorization denied", "reason=missing_bearer")
+			m.emitDenied("", r.URL.Path, "missing_bearer")
 			return
 		}
 		tokenStr := strings.TrimSpace(authz[len("Bearer "):])
@@ -49,6 +52,7 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 			deny(w, r, http.StatusUnauthorized, "urn:agentauth:error:invalid-token", "invalid token")
 			obs.RecordValidation(false)
 			obs.Fail("AUTHZ", "ValMw.Wrap", "authorization denied", "reason=invalid_token")
+			m.emitDenied("", r.URL.Path, "invalid_token")
 			return
 		}
 
@@ -62,6 +66,7 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 					"hop="+strconv.Itoa(cerr.Hop),
 					"detail="+cerr.Reason,
 				)
+				m.emitDenied(claims.Sub, r.URL.Path, "invalid_delegation_chain")
 				return
 			}
 		}
@@ -72,6 +77,7 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 				deny(w, r, http.StatusUnauthorized, "urn:agentauth:error:token-revoked", "token has been revoked")
 				obs.RecordValidation(false)
 				obs.Fail("AUTHZ", "ValMw.Wrap", "authorization denied", "reason=revoked", "level="+level)
+				m.emitDenied(claims.Sub, r.URL.Path, "revoked:"+level)
 				return
 			}
 		}
@@ -88,6 +94,7 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 				deny(w, r, http.StatusForbidden, "urn:agentauth:error:scope-mismatch", "insufficient scope")
 				obs.RecordValidation(false)
 				obs.Fail("AUTHZ", "ValMw.Wrap", "authorization denied", "reason=scope_mismatch", "required="+required)
+				m.emitDenied(claims.Sub, r.URL.Path, "scope_mismatch")
 				return
 			}
 		}
@@ -95,6 +102,19 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), ctxAgentID, claims.Sub)
 		obs.RecordValidation(true)
 		obs.Ok("AUTHZ", "ValMw.Wrap", "authorization granted", "agent_id="+claims.Sub)
+		if m.auditLog != nil {
+			_ = m.auditLog.LogEvent(&audit.AuditEvt{
+				EventType:       audit.EvtAccessGranted,
+				AgentInstanceId: claims.Sub,
+				TaskId:          claims.TaskId,
+				OrchId:          claims.OrchId,
+				Resource:        r.URL.Path,
+				Action:          r.Method,
+				Outcome:         "granted",
+				DelegDepth:      len(claims.DelegChain),
+				DelegChainHash:  chainHash,
+			})
+		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -111,6 +131,19 @@ func WithRequiredScope(scope string, next http.Handler) http.Handler {
 func AgentIDFromContext(ctx context.Context) string {
 	id, _ := ctx.Value(ctxAgentID).(string)
 	return id
+}
+
+func (m *ValMw) emitDenied(agentId, resource, reason string) {
+	if m.auditLog != nil {
+		_ = m.auditLog.LogEvent(&audit.AuditEvt{
+			EventType:       audit.EvtAccessDenied,
+			AgentInstanceId: agentId,
+			Resource:        resource,
+			Action:          "access",
+			Outcome:         "denied",
+			DenialReason:    reason,
+		})
+	}
 }
 
 func deny(w http.ResponseWriter, r *http.Request, status int, typ, title string) {

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/divineartis/agentauth/internal/audit"
+	"github.com/divineartis/agentauth/internal/authz"
 	"github.com/divineartis/agentauth/internal/deleg"
 	"github.com/divineartis/agentauth/internal/obs"
 )
@@ -12,11 +14,12 @@ import (
 // DelegHdl handles POST /v1/delegate requests for delegation token creation.
 type DelegHdl struct {
 	delegSvc *deleg.DelegSvc
+	auditLog *audit.AuditLog
 }
 
-// NewDelegHdl creates a delegation handler backed by the given DelegSvc.
-func NewDelegHdl(delegSvc *deleg.DelegSvc) *DelegHdl {
-	return &DelegHdl{delegSvc: delegSvc}
+// NewDelegHdl creates a delegation handler with optional audit logging.
+func NewDelegHdl(delegSvc *deleg.DelegSvc, auditLog *audit.AuditLog) *DelegHdl {
+	return &DelegHdl{delegSvc: delegSvc, auditLog: auditLog}
 }
 
 // ServeHTTP processes delegation requests, enforcing scope attenuation and chain depth limits.
@@ -44,6 +47,18 @@ func (h *DelegHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	obs.Ok("DELEG", "DelegHdl.ServeHTTP", "delegation issued",
 		"target="+req.TargetAgentId,
 	)
+
+	if h.auditLog != nil {
+		_ = h.auditLog.LogEvent(&audit.AuditEvt{
+			EventType:       audit.EvtDelegationCreated,
+			AgentInstanceId: authz.AgentIDFromContext(r.Context()),
+			Resource:        req.TargetAgentId,
+			Action:          "delegate",
+			Outcome:         "created",
+			DelegDepth:      resp.DelegationDepth,
+			DelegChainHash:  resp.ChainHash,
+		})
+	}
 }
 
 // handleDelegError maps DelegSvc errors to RFC 7807 responses.

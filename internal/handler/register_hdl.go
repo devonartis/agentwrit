@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/cfg"
 	"github.com/divineartis/agentauth/internal/identity"
 	"github.com/divineartis/agentauth/internal/obs"
@@ -13,14 +14,15 @@ import (
 
 // RegHdl handles POST /v1/register requests for agent registration.
 type RegHdl struct {
-	idSvc  *identity.IdSvc
-	tknSvc *token.TknSvc
-	cfg    cfg.Cfg
+	idSvc    *identity.IdSvc
+	tknSvc   *token.TknSvc
+	cfg      cfg.Cfg
+	auditLog *audit.AuditLog
 }
 
-// NewRegHdl creates a registration handler with identity, token, and config dependencies.
-func NewRegHdl(idSvc *identity.IdSvc, tknSvc *token.TknSvc, c cfg.Cfg) *RegHdl {
-	return &RegHdl{idSvc: idSvc, tknSvc: tknSvc, cfg: c}
+// NewRegHdl creates a registration handler with identity, token, config, and optional audit dependencies.
+func NewRegHdl(idSvc *identity.IdSvc, tknSvc *token.TknSvc, c cfg.Cfg, auditLog *audit.AuditLog) *RegHdl {
+	return &RegHdl{idSvc: idSvc, tknSvc: tknSvc, cfg: c, auditLog: auditLog}
 }
 
 type registerBody struct {
@@ -111,4 +113,16 @@ func (h *RegHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		RefreshAfter:    tknResp.RefreshAfter,
 	})
 	obs.Ok("IDENTITY", "RegHdl.ServeHTTP", "register success", "agent_id="+idResp.AgentInstanceID)
+
+	if h.auditLog != nil {
+		_ = h.auditLog.LogEvent(&audit.AuditEvt{
+			EventType:       audit.EvtCredentialIssued,
+			AgentInstanceId: idResp.AgentInstanceID,
+			TaskId:          idResp.TaskId,
+			OrchId:          idResp.OrchId,
+			Resource:        "credential",
+			Action:          "issue",
+			Outcome:         "issued",
+		})
+	}
 }
