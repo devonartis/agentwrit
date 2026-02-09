@@ -120,6 +120,14 @@ class TestCredentialTheftSecure:
 
     @pytest.mark.asyncio
     async def test_only_scoped_customer_accessible(self, monkeypatch) -> None:
+        """Edge case: token scoped to one customer (not expired).
+
+        In the demo's expected flow, stolen tokens are expired (TTL passed),
+        so all 5 customers are blocked (attack_succeeded=False). This test
+        covers the intermediate case where the token is still valid but scoped,
+        resulting in 1/5 success -- which counts as attack_succeeded=True.
+        The integration test in test_simulator.py uses the expired-token path.
+        """
         monkeypatch.setattr(
             httpx, "AsyncClient", _patched_client_class(_secure_transport(12345))
         )

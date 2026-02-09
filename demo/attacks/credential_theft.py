@@ -10,6 +10,13 @@ import httpx
 
 from attacks.models import AttackResult
 
+
+def _sanitize_error(exc: Exception) -> str:
+    """Return a safe error string that never leaks URLs or tokens."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP {exc.response.status_code} from {exc.request.url.path}"
+    return type(exc).__name__
+
 CUSTOMER_IDS = [12345, 12346, 12347, 12348, 12349]
 
 
@@ -36,21 +43,25 @@ async def credential_theft_attack(
     else:
         headers = {"Authorization": f"Bearer {stolen_credential}"}
 
-    async with httpx.AsyncClient() as client:
-        for cid in CUSTOMER_IDS:
-            result.attempts += 1
-            url = f"{resource_url}/customers/{cid}"
-            resp = await client.get(url, headers=headers)
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            for cid in CUSTOMER_IDS:
+                result.attempts += 1
+                url = f"{resource_url}/customers/{cid}"
+                resp = await client.get(url, headers=headers)
 
-            if resp.status_code == 200:
-                result.successes += 1
-                result.details.append(
-                    f"Customer {cid}: ACCESS GRANTED (status {resp.status_code})"
-                )
-            else:
-                result.blocked += 1
-                result.details.append(
-                    f"Customer {cid}: BLOCKED (status {resp.status_code})"
-                )
+                if resp.status_code == 200:
+                    result.successes += 1
+                    result.details.append(
+                        f"Customer {cid}: ACCESS GRANTED (status {resp.status_code})"
+                    )
+                else:
+                    result.blocked += 1
+                    result.details.append(
+                        f"Customer {cid}: BLOCKED (status {resp.status_code})"
+                    )
+    except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        result.details.append(f"CONNECTION FAILED: {_sanitize_error(exc)}")
+        return result
 
     return result

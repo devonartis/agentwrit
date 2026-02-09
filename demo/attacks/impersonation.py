@@ -12,6 +12,13 @@ import httpx
 
 from attacks.models import AttackResult
 
+
+def _sanitize_error(exc: Exception) -> str:
+    """Return a safe error string that never leaks URLs or tokens."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP {exc.response.status_code} from {exc.request.url.path}"
+    return type(exc).__name__
+
 # Resources the impersonator tries to access.
 IMPERSONATION_TARGETS = [
     ("GET", "/customers/12345"),
@@ -49,21 +56,25 @@ async def impersonation_attack(
         fake_token = secrets.token_hex(32)
         headers = {"Authorization": f"Bearer {fake_token}"}
 
-    async with httpx.AsyncClient() as client:
-        for method, path in IMPERSONATION_TARGETS:
-            result.attempts += 1
-            url = f"{resource_url}{path}"
-            resp = await client.request(method, url, headers=headers)
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            for method, path in IMPERSONATION_TARGETS:
+                result.attempts += 1
+                url = f"{resource_url}{path}"
+                resp = await client.request(method, url, headers=headers)
 
-            if resp.status_code == 200:
-                result.successes += 1
-                result.details.append(
-                    f"{method} {path}: IMPERSONATION ACCEPTED (status {resp.status_code})"
-                )
-            else:
-                result.blocked += 1
-                result.details.append(
-                    f"{method} {path}: REJECTED (status {resp.status_code})"
-                )
+                if resp.status_code == 200:
+                    result.successes += 1
+                    result.details.append(
+                        f"{method} {path}: IMPERSONATION ACCEPTED (status {resp.status_code})"
+                    )
+                else:
+                    result.blocked += 1
+                    result.details.append(
+                        f"{method} {path}: REJECTED (status {resp.status_code})"
+                    )
+    except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        result.details.append(f"CONNECTION FAILED: {_sanitize_error(exc)}")
+        return result
 
     return result

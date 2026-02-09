@@ -11,6 +11,13 @@ import httpx
 from attacks.models import AttackResult
 
 
+def _sanitize_error(exc: Exception) -> str:
+    """Return a safe error string that never leaks URLs or tokens."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP {exc.response.status_code} from {exc.request.url.path}"
+    return type(exc).__name__
+
+
 async def accountability_check(
     broker_url: str,
     admin_token: str | None,
@@ -50,37 +57,41 @@ async def accountability_check(
     result.attempts = 1
     headers = {"Authorization": f"Bearer {admin_token}"}
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"{broker_url}/v1/audit/events",
-            headers=headers,
-        )
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                f"{broker_url}/v1/audit/events",
+                headers=headers,
+            )
 
-        if resp.status_code == 200:
-            body = resp.json()
-            events = body if isinstance(body, list) else body.get("events", [])
+            if resp.status_code == 200:
+                body = resp.json()
+                events = body if isinstance(body, list) else body.get("events", [])
 
-            if events:
-                # Found audit events with attribution
-                result.blocked = 1  # attacker's evasion was blocked
-                result.details.append(
-                    f"Audit trail found: {len(events)} event(s) with agent attribution"
-                )
-                for evt in events[:5]:  # Show up to 5 events
-                    agent_id = evt.get("agent_id", evt.get("subject", "unknown"))
-                    action = evt.get("action", evt.get("event_type", "unknown"))
+                if events:
+                    # Found audit events with attribution
+                    result.blocked = 1  # attacker's evasion was blocked
                     result.details.append(
-                        f"  Event: agent={agent_id}, action={action}"
+                        f"Audit trail found: {len(events)} event(s) with agent attribution"
+                    )
+                    for evt in events[:5]:  # Show up to 5 events
+                        agent_id = evt.get("agent_id", evt.get("subject", "unknown"))
+                        action = evt.get("action", evt.get("event_type", "unknown"))
+                        result.details.append(
+                            f"  Event: agent={agent_id}, action={action}"
+                        )
+                else:
+                    result.successes = 1
+                    result.details.append(
+                        "Audit endpoint returned empty: no events recorded"
                     )
             else:
                 result.successes = 1
                 result.details.append(
-                    "Audit endpoint returned empty: no events recorded"
+                    f"Audit query failed (status {resp.status_code}): cannot verify attribution"
                 )
-        else:
-            result.successes = 1
-            result.details.append(
-                f"Audit query failed (status {resp.status_code}): cannot verify attribution"
-            )
+    except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        result.details.append(f"CONNECTION FAILED: {_sanitize_error(exc)}")
+        return result
 
     return result

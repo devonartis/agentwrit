@@ -6,11 +6,16 @@ Secure mode:   Token scoped to read:Customers:12345 cannot access orders/tickets
 
 from __future__ import annotations
 
-import json
-
 import httpx
 
 from attacks.models import AttackResult
+
+
+def _sanitize_error(exc: Exception) -> str:
+    """Return a safe error string that never leaks URLs or tokens."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP {exc.response.status_code} from {exc.request.url.path}"
+    return type(exc).__name__
 
 # Endpoints that Agent A (read:Customers:12345) should NOT be able to reach.
 LATERAL_TARGETS = [
@@ -42,26 +47,30 @@ async def lateral_movement_attack(
     else:
         headers = {"Authorization": f"Bearer {agent_credential}"}
 
-    async with httpx.AsyncClient() as client:
-        for method, path, body in LATERAL_TARGETS:
-            result.attempts += 1
-            url = f"{resource_url}{path}"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            for method, path, body in LATERAL_TARGETS:
+                result.attempts += 1
+                url = f"{resource_url}{path}"
 
-            kwargs: dict = {"headers": headers}
-            if body is not None:
-                kwargs["json"] = body
+                kwargs: dict = {"headers": headers}
+                if body is not None:
+                    kwargs["json"] = body
 
-            resp = await client.request(method, url, **kwargs)
+                resp = await client.request(method, url, **kwargs)
 
-            if resp.status_code == 200:
-                result.successes += 1
-                result.details.append(
-                    f"{method} {path}: ACCESS GRANTED (status {resp.status_code})"
-                )
-            else:
-                result.blocked += 1
-                result.details.append(
-                    f"{method} {path}: BLOCKED (status {resp.status_code})"
-                )
+                if resp.status_code == 200:
+                    result.successes += 1
+                    result.details.append(
+                        f"{method} {path}: ACCESS GRANTED (status {resp.status_code})"
+                    )
+                else:
+                    result.blocked += 1
+                    result.details.append(
+                        f"{method} {path}: BLOCKED (status {resp.status_code})"
+                    )
+    except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        result.details.append(f"CONNECTION FAILED: {_sanitize_error(exc)}")
+        return result
 
     return result

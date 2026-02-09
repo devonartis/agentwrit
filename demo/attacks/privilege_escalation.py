@@ -11,6 +11,13 @@ import httpx
 from attacks.models import AttackResult
 
 
+def _sanitize_error(exc: Exception) -> str:
+    """Return a safe error string that never leaks URLs or tokens."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP {exc.response.status_code} from {exc.request.url.path}"
+    return type(exc).__name__
+
+
 async def escalation_attack(
     agent_credential: str,
     broker_url: str,
@@ -39,52 +46,56 @@ async def escalation_attack(
     else:
         resource_headers = {"Authorization": f"Bearer {agent_credential}"}
 
-    async with httpx.AsyncClient() as client:
-        # Step 1: Attempt scope escalation via delegation
-        if mode == "secure":
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            # Step 1: Attempt scope escalation via delegation
+            if mode == "secure":
+                result.attempts += 1
+                deleg_body = {
+                    "delegator_token": agent_credential,
+                    "target_agent_id": "spiffe://agentauth.local/agent/orch1/task1/rogue",
+                    "delegated_scope": ["write:Customers:*"],
+                    "max_ttl": 300,
+                }
+                resp = await client.post(
+                    f"{broker_url}/v1/delegate",
+                    json=deleg_body,
+                    headers={"Authorization": f"Bearer {agent_credential}"},
+                )
+                if resp.status_code in (200, 201):
+                    result.successes += 1
+                    result.details.append(
+                        f"DELEGATE write:Customers:*: ESCALATION GRANTED (status {resp.status_code})"
+                    )
+                else:
+                    result.blocked += 1
+                    result.details.append(
+                        f"DELEGATE write:Customers:*: DENIED (status {resp.status_code})"
+                    )
+            else:
+                # In insecure mode there is no delegation system.
+                result.details.append(
+                    "DELEGATE: SKIPPED (no delegation system in insecure mode)"
+                )
+
+            # Step 2: Direct access to resource outside scope
             result.attempts += 1
-            deleg_body = {
-                "delegator_token": agent_credential,
-                "target_agent_id": "spiffe://agentauth.local/agent/orch1/task1/rogue",
-                "delegated_scope": ["write:Customers:*"],
-                "max_ttl": 300,
-            }
-            resp = await client.post(
-                f"{broker_url}/v1/delegate",
-                json=deleg_body,
-                headers={"Authorization": f"Bearer {agent_credential}"},
+            resp = await client.get(
+                f"{resource_url}/customers/12345",
+                headers=resource_headers,
             )
-            if resp.status_code in (200, 201):
+            if resp.status_code == 200:
                 result.successes += 1
                 result.details.append(
-                    f"DELEGATE write:Customers:*: ESCALATION GRANTED (status {resp.status_code})"
+                    f"GET /customers/12345: ACCESS GRANTED (status {resp.status_code})"
                 )
             else:
                 result.blocked += 1
                 result.details.append(
-                    f"DELEGATE write:Customers:*: DENIED (status {resp.status_code})"
+                    f"GET /customers/12345: BLOCKED (status {resp.status_code})"
                 )
-        else:
-            # In insecure mode there is no delegation system.
-            result.details.append(
-                "DELEGATE: SKIPPED (no delegation system in insecure mode)"
-            )
-
-        # Step 2: Direct access to resource outside scope
-        result.attempts += 1
-        resp = await client.get(
-            f"{resource_url}/customers/12345",
-            headers=resource_headers,
-        )
-        if resp.status_code == 200:
-            result.successes += 1
-            result.details.append(
-                f"GET /customers/12345: ACCESS GRANTED (status {resp.status_code})"
-            )
-        else:
-            result.blocked += 1
-            result.details.append(
-                f"GET /customers/12345: BLOCKED (status {resp.status_code})"
-            )
+    except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        result.details.append(f"CONNECTION FAILED: {_sanitize_error(exc)}")
+        return result
 
     return result
