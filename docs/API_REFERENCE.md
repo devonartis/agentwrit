@@ -197,6 +197,7 @@ Validate a token and return its claims. Designed for resource servers that need 
     "nbf": 1770643902,
     "iat": 1770643902,
     "jti": "e2b7777781a064686237079634888b11",
+    "sid": "sidecar-123",
     "scope": ["read:Customers:*"],
     "task_id": "task-001",
     "orch_id": "orch-001",
@@ -499,7 +500,7 @@ print(resp.json())
 
 ### POST /v1/token/renew
 
-Renew an existing token. Issues a new token with the same claims (sub, scope, task_id, orch_id, delegation_chain) but fresh timestamps (`iat`, `nbf`, `exp`) and a new JTI.
+Renew an existing token. Issues a new token with the same claims (`sub`, `sid`, `scope`, `task_id`, `orch_id`, `delegation_chain`) but fresh timestamps (`iat`, `nbf`, `exp`) and a new JTI.
 
 **Auth:** Bearer JWT (the token being renewed)
 
@@ -903,6 +904,7 @@ The payload contains these claims:
   "nbf": 1770643902,
   "iat": 1770643902,
   "jti": "e2b7777781a064686237079634888b11",
+  "sid": "sidecar-123",
   "scope": ["read:Customers:*"],
   "task_id": "task-001",
   "orch_id": "orch-001",
@@ -919,6 +921,7 @@ The payload contains these claims:
 | Not Before | `nbf` | int64 | Not-before timestamp (Unix epoch seconds) |
 | Issued At | `iat` | int64 | Issued-at timestamp (Unix epoch seconds) |
 | JWT ID | `jti` | string | Unique token identifier (32-character hex from 16 random bytes) |
+| Sidecar/session ID | `sid` | string | Optional sidecar/session identifier (present for sidecar-mediated issuance) |
 | Scope | `scope` | string[] | Array of granted scopes |
 | Task ID | `task_id` | string | Task identifier (omitted for admin tokens) |
 | Orchestration ID | `orch_id` | string | Orchestration identifier (omitted for admin tokens) |

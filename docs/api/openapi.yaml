@@ -384,7 +384,8 @@ components:
       description: >
         EdDSA-signed JWT issued by the broker. Claims include standard JWT
         fields plus `scope` (array of `action:resource:identifier` strings),
-        `task_id`, `orch_id`, and `delegation_chain`.
+        `sid` (optional sidecar/session identifier), `task_id`, `orch_id`, and
+        `delegation_chain`.
 
   responses:
     BadRequest:
@@ -787,6 +788,12 @@ components:
         jti:
           type: string
           description: Unique token identifier (32-char hex)
+        sid:
+          type: string
+          description: >
+            Optional sidecar/session identifier. Present when a token is issued
+            through a sidecar-mediated flow.
+          example: "sidecar-123"
         scope:
           type: array
           items:

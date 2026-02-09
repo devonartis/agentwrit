@@ -338,3 +338,56 @@ func TestSidClaim(t *testing.T) {
 		t.Errorf("sid = %q, want %q", claims.Sid, testSid)
 	}
 }
+
+func TestIssueWithoutSid_DefaultsEmpty(t *testing.T) {
+	pub, priv := testKeyPair(t)
+	svc := NewTknSvc(priv, pub, testCfg())
+
+	resp, err := svc.Issue(IssueReq{
+		Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+		Scope: []string{"read:Customers:*"},
+	})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	claims, err := svc.Verify(resp.AccessToken)
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+
+	if claims.Sid != "" {
+		t.Errorf("sid = %q, want empty", claims.Sid)
+	}
+}
+
+func TestRenew_PreservesSid(t *testing.T) {
+	pub, priv := testKeyPair(t)
+	svc := NewTknSvc(priv, pub, testCfg())
+
+	const testSid = "sidecar-renew-001"
+	resp1, err := svc.Issue(IssueReq{
+		Sub:    "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+		Scope:  []string{"read:Customers:*"},
+		TaskId: "task-1",
+		OrchId: "orch-1",
+		Sid:    testSid,
+	})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	resp2, err := svc.Renew(resp1.AccessToken)
+	if err != nil {
+		t.Fatalf("Renew: %v", err)
+	}
+
+	claims2, err := svc.Verify(resp2.AccessToken)
+	if err != nil {
+		t.Fatalf("verify renewed: %v", err)
+	}
+
+	if claims2.Sid != testSid {
+		t.Errorf("renewed sid = %q, want %q", claims2.Sid, testSid)
+	}
+}

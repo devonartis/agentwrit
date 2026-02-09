@@ -363,6 +363,7 @@ Response:
     "nbf": 1739100000,
     "iat": 1739100000,
     "jti": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+    "sid": "sidecar-123",
     "scope": ["read:Customers:12345"],
     "task_id": "task-read-customers",
     "orch_id": "orch-001"
@@ -370,9 +371,11 @@ Response:
 }
 ```
 
+`sid` is optional. It appears when the token is issued through a sidecar-mediated flow and can be used to trace sidecar-to-agent lineage.
+
 ### Step 7: Renew a Token
 
-An agent can renew its token before it expires. The new token preserves the same subject, scope, and metadata but gets fresh timestamps and a new JTI.
+An agent can renew its token before it expires. The new token preserves the same subject, scope, and metadata (including optional `sid` when present) but gets fresh timestamps and a new JTI.
 
 ```bash
 RENEW_RESP=$(curl -s -X POST $BROKER/v1/token/renew \
