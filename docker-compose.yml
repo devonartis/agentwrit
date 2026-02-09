@@ -1,7 +1,17 @@
 services:
   broker:
     build: .
-    command: ["go", "run", "./cmd/broker"]
     ports:
       - "8080:8080"
-
+    environment:
+      AA_PORT: "8080"
+      AA_LOG_LEVEL: "verbose"
+      AA_TRUST_DOMAIN: "agentauth.local"
+      AA_DEFAULT_TTL: "300"
+      AA_SEED_TOKENS: "true"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/v1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
