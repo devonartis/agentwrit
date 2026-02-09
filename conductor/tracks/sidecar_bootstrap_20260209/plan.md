@@ -17,7 +17,7 @@
 - [x] Task: Update Token Claims for Sidecar Identity (bbb5aba)
     - [ ] [Write Tests] Verify `sid` (internal JWT claim) is handled and validated
     - [ ] [Implement] Add `Sid` string field to `internal/token.TknClaims`; update `Validate()`
-- [ ] Task: Implement Activation Token Persistence & Replay Protection
+- [x] Task: Implement Activation Token Persistence & Replay Protection (dac4c29)
     - [ ] [Write Tests] Verify JTI consumption and metadata (exp, scope) tracking
     - [ ] [Implement] Extend `Store` with `ConsumeActivationToken(jti string, exp int64) error`
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: Foundation & Model Updates' (Protocol in workflow.md)
