@@ -13,7 +13,9 @@ import os
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.exceptions import HTTPException
 from fastapi.responses import JSONResponse
+from starlette.requests import Request
 
 from resource_server.middleware import AuthMiddleware, ServerMode
 from resource_server.routes import router
@@ -51,6 +53,25 @@ def create_app(
         http_client=http_client,
     )
     app.include_router(router)
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException):
+        """Return proper RFC 7807 application/problem+json for all HTTP errors."""
+        if isinstance(exc.detail, dict):
+            return JSONResponse(
+                status_code=exc.status_code,
+                content=exc.detail,
+                media_type="application/problem+json",
+            )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "type": f"urn:agentauth:resource:{exc.status_code}",
+                "title": str(exc.detail),
+                "status": exc.status_code,
+            },
+            media_type="application/problem+json",
+        )
 
     @app.get("/health")
     def health() -> dict:

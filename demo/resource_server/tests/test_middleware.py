@@ -205,6 +205,7 @@ class TestProblemFormat:
         assert "title" in body
         assert "status" in body
         assert body["status"] == 401
+        assert "application/problem+json" in resp.headers["content-type"]
 
     def test_secure_401_is_problem_json(self) -> None:
         app = create_app(mode=ServerMode.secure)
@@ -215,3 +216,4 @@ class TestProblemFormat:
         assert "type" in body
         assert "title" in body
         assert "status" in body
+        assert "application/problem+json" in resp.headers["content-type"]

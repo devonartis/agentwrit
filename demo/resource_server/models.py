@@ -55,15 +55,15 @@ class TicketUpdate(BaseModel):
     """Request body for updating a ticket."""
 
     status: TicketStatus | None = None
-    assignee: str | None = None
+    assignee: str | None = Field(default=None, max_length=200)
 
 
 class NotificationRequest(BaseModel):
     """Request body for sending a notification."""
 
     customer_id: int
-    message: str
-    channel: str = "email"
+    message: str = Field(max_length=2000)
+    channel: str = Field(default="email", max_length=100)
 
 
 class NotificationResponse(BaseModel):

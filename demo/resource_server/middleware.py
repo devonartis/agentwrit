@@ -8,6 +8,7 @@ Insecure mode: accepts any request with a non-empty API-Key header.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from dataclasses import dataclass, field
@@ -15,6 +16,8 @@ from enum import Enum
 from typing import Callable
 
 import httpx
+
+logger = logging.getLogger(__name__)
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse
@@ -154,10 +157,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 if self._client is None:
                     await client.aclose()
         except httpx.RequestError as exc:
+            logger.error("Broker unreachable at %s: %s", self.broker_url, exc)
             return _problem_response(
                 502,
                 "Broker unreachable",
-                f"Could not reach broker at {self.broker_url}: {exc}",
+                "Upstream authentication service unavailable",
             )
 
         if resp.status_code == 200:
