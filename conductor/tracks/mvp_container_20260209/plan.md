@@ -9,10 +9,10 @@
     - [x] Configure environment variables and networking
 - [x] Task: Conductor - User Manual Verification 'Phase 1: Dockerization' (Protocol in workflow.md)
 
-## Phase 2: Verification
+## Phase 2: Verification [checkpoint: 12446e3]
 - [x] Task: Validate container build and startup (verified)
-    - [ ] Build the image locally: `docker build -t agentauth:latest .`
-    - [ ] Run via compose: `docker-compose up -d`
+    - [x] Build the image locally: `docker build -t agentauth:latest .`
+    - [x] Run via compose: `docker-compose up -d`
 - [x] Task: Execute live smoke tests against the container (21401e6)
-    - [ ] Run `./scripts/live_test.sh` targeting the containerized endpoint
-- [ ] Task: Conductor - User Manual Verification 'Phase 2: Verification' (Protocol in workflow.md)
+    - [x] Run `./scripts/live_test.sh` targeting the containerized endpoint
+- [x] Task: Conductor - User Manual Verification 'Phase 2: Verification' (Protocol in workflow.md)
