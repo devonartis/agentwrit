@@ -28,9 +28,10 @@ import (
 
 const testAdminSecret = "integration-test-secret-32bytes!"
 
-// testBroker sets up a full HTTP mux identical to cmd/broker/main.go.
+// testBroker sets up a full HTTP mux identical to cmd/broker/main.go,
+// including RequestIDMiddleware wrapping.
 type testBroker struct {
-	mux      *http.ServeMux
+	handler  http.Handler
 	tknSvc   *token.TknSvc
 	store    *store.SqlStore
 	auditLog *audit.AuditLog
@@ -89,8 +90,13 @@ func newTestBroker(t *testing.T) *testBroker {
 		valMw.Wrap(authz.WithRequiredScope("admin:audit:*", auditHdl)))
 	adminHdl.RegisterRoutes(mux)
 
+	// Wrap with global middleware matching cmd/broker/main.go ordering.
+	var root http.Handler = mux
+	root = handler.LoggingMiddleware(root)
+	root = problemdetails.RequestIDMiddleware(root)
+
 	return &testBroker{
-		mux:      mux,
+		handler:  root,
 		tknSvc:   tknSvc,
 		store:    sqlStore,
 		auditLog: auditLog,
@@ -100,7 +106,7 @@ func newTestBroker(t *testing.T) *testBroker {
 
 func (b *testBroker) do(req *http.Request) *httptest.ResponseRecorder {
 	rr := httptest.NewRecorder()
-	b.mux.ServeHTTP(rr, req)
+	b.handler.ServeHTTP(rr, req)
 	return rr
 }
 
@@ -1925,4 +1931,78 @@ func registerAgentHTTP(t *testing.T, b *testBroker, adminToken string, scope []s
 	var regResp map[string]any
 	_ = json.NewDecoder(regRR.Body).Decode(&regResp) //nolint:errcheck // test helper
 	return regResp["access_token"].(string), regResp["agent_id"].(string)
+}
+
+// --- Middleware integration ---
+
+func TestRequestIDPropagation(t *testing.T) {
+	b := newTestBroker(t)
+
+	t.Run("auto-generated when absent", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/v1/health", nil)
+		rr := b.do(req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("health: %d", rr.Code)
+		}
+		rid := rr.Header().Get("X-Request-ID")
+		if rid == "" {
+			t.Fatal("expected X-Request-ID header in response")
+		}
+	})
+
+	t.Run("echoed when provided", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/v1/health", nil)
+		req.Header.Set("X-Request-ID", "client-trace-42")
+		rr := b.do(req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("health: %d", rr.Code)
+		}
+		if got := rr.Header().Get("X-Request-ID"); got != "client-trace-42" {
+			t.Fatalf("X-Request-ID = %q, want %q", got, "client-trace-42")
+		}
+	})
+
+	t.Run("present in RFC7807 error response", func(t *testing.T) {
+		// Use /v1/token/validate (no auth required) with invalid body to trigger 400.
+		req := httptest.NewRequest("POST", "/v1/token/validate", strings.NewReader("not-json"))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Request-ID", "err-trace-99")
+		rr := b.do(req)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+		}
+		var prob map[string]any
+		if err := json.NewDecoder(rr.Body).Decode(&prob); err != nil {
+			t.Fatalf("decode problem: %v", err)
+		}
+		if rid, ok := prob["request_id"].(string); !ok || rid != "err-trace-99" {
+			t.Fatalf("problem request_id = %v, want %q", prob["request_id"], "err-trace-99")
+		}
+	})
+}
+
+func TestMethodRestriction(t *testing.T) {
+	b := newTestBroker(t)
+
+	tests := []struct {
+		method string
+		path   string
+	}{
+		{"GET", "/v1/token/exchange"},
+		{"PUT", "/v1/token/exchange"},
+		{"DELETE", "/v1/register"},
+		{"PATCH", "/v1/token/renew"},
+		{"GET", "/v1/revoke"},
+		{"GET", "/v1/sidecar/activate"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			rr := b.do(req)
+			if rr.Code != http.StatusMethodNotAllowed {
+				t.Fatalf("%s %s: got %d, want 405", tc.method, tc.path, rr.Code)
+			}
+		})
+	}
 }
