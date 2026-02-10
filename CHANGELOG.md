@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Fixed
 
+- **Security [P1]**: Removed dead `TknSvc.Exchange()` and `isScopeAllowed()` methods that used a weaker prefix-based scope check instead of `authz.ScopeIsSubset()`. Deleted associated sentinel errors and stale test.
+- **Security [P2]**: Token exchange TTL=0 now clamps to `maxExchangeTTL` (900s) instead of delegating to `cfg.DefaultTTL`, preventing silent TTL cap bypass when `AA_DEFAULT_TTL` > 900.
 - **Lint**: Resolved 18 errcheck findings across production and test code (token exchange handler, problem details, admin handler, store tests, revoke tests, handler tests, admin handler tests, logging test)
 - **Lint**: Fixed ineffassign in `mut_auth_hdl_test.go` (unused `hdl` variable overwritten immediately)
 - **Production code**: `json.Encode` errors now logged via `obs.Warn` or `log.Printf` in `token_exchange_hdl.go`, `admin_hdl.go`, and `problemdetails.go`

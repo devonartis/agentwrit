@@ -107,6 +107,12 @@ func (h *TokenExchangeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Clamp TTL=0 to exchange cap so cfg.DefaultTTL cannot exceed maxExchangeTTL
+	effectiveTTL := req.TTL
+	if effectiveTTL == 0 {
+		effectiveTTL = maxExchangeTTL
+	}
+
 	// Extract sidecar scope ceiling from caller token
 	allowedScopes := sidecarAllowedScopes(claims.Scope)
 	if len(allowedScopes) == 0 {
@@ -156,7 +162,7 @@ func (h *TokenExchangeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		OrchId:    agent.OrchID,
 		Sid:       sidecarID,
 		SidecarID: sidecarID,
-		TTL:       req.TTL,
+		TTL:       effectiveTTL,
 	})
 	if err != nil {
 		obs.Fail("EXCHANGE", "hdl", "token issuance failed", "err="+err.Error())

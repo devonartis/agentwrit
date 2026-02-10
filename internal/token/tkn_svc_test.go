@@ -339,40 +339,6 @@ func TestSidClaim(t *testing.T) {
 	}
 }
 
-func TestTokenExchange(t *testing.T) {
-	pub, priv := testKeyPair(t)
-	svc := NewTknSvc(priv, pub, testCfg())
-
-	// 1. Issue a sidecar token
-	sidecarSid := "sidecar-abc"
-	sidecarToken, _ := svc.Issue(IssueReq{
-		Sub:   "sidecar:" + sidecarSid,
-		Scope: []string{"sidecar:manage", "sidecar:scope:read:data:*"},
-		Sid:   sidecarSid,
-	})
-
-	// 2. Exchange for an agent token
-	agentID := "spiffe://test/agent/foo"
-	requestedScope := []string{"read:data:profile"}
-	
-	// Red Phase: This will fail because Exchange is missing
-	resp, err := svc.Exchange(sidecarToken.AccessToken, agentID, requestedScope, 60)
-	if err != nil {
-		t.Fatalf("Exchange failed: %v", err)
-	}
-
-	claims, _ := svc.Verify(resp.AccessToken)
-	if claims.Sub != agentID {
-		t.Errorf("sub = %q, want %q", claims.Sub, agentID)
-	}
-	if claims.Sid != "" {
-		t.Error("agent token should not have Sid claim (that's for sidecar tokens)")
-	}
-	// We'll need a way to check for the injected sidecar_id.
-	// Our spec says "injected into the issued agent token".
-	// Let's assume we add a SidecarID field to TknClaims.
-}
-
 func TestIssueWithoutSid_DefaultsEmpty(t *testing.T) {
 	pub, priv := testKeyPair(t)
 	svc := NewTknSvc(priv, pub, testCfg())
