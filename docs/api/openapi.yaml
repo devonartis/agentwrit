@@ -139,8 +139,10 @@ paths:
         Sidecar-mediated token issuance. Requires a Bearer sidecar token with
         `sidecar:manage:*` and at least one sidecar scope ceiling claim of the
         form `sidecar:scope:<action:resource:identifier>`. Requested scopes
-        must be a subset of the sidecar ceiling. Client-supplied sidecar_id is
-        ignored and the broker injects lineage into the issued token's `sid`.
+        must be a subset of the sidecar ceiling. Each scope entry must be valid
+        `action:resource:identifier` format. Client-supplied sidecar_id is
+        ignored and the broker injects lineage from the authenticated token's
+        `sid` claim. TTL is capped at 900 seconds (maxExchangeTTL).
       operationId: exchangeToken
       security:
         - bearerAuth: []
@@ -165,6 +167,12 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           description: Agent not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+        "500":
+          description: Internal error (sidecar identity derivation or token issuance failure)
           content:
             application/problem+json:
               schema:
@@ -271,6 +279,8 @@ paths:
               - sidecar_activation_issued
               - sidecar_activated
               - sidecar_activation_failed
+              - sidecar_exchange_success
+              - sidecar_exchange_denied
               - agent_registered
               - registration_policy_violation
               - token_issued
@@ -420,7 +430,8 @@ paths:
       summary: Activate a sidecar
       description: >
         Exchanges a Sidecar-Activation token for a functional sidecar Bearer
-        token. Enforces single-use JTI replay protection.
+        token. Enforces single-use JTI replay protection. Rate-limited to 5
+        requests per second per IP (burst 10).
       operationId: activateSidecar
       requestBody:
         required: true
@@ -439,6 +450,17 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           description: Unauthorized (invalid or replayed token)
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+        "429":
+          description: Rate limit exceeded (5 req/s per IP, burst 10)
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                example: 1
           content:
             application/problem+json:
               schema:
@@ -660,11 +682,17 @@ components:
           type: array
           items:
             type: string
-          description: Requested scopes; must be a subset of sidecar scope ceiling
+          description: >
+            Requested scopes; must be a subset of sidecar scope ceiling.
+            Each entry must be valid action:resource:identifier format.
           example: ["read:data:*"]
         ttl:
           type: integer
-          description: Optional token TTL seconds (defaults when <=0 or omitted)
+          description: >
+            Token TTL in seconds. Must be 0-900. 0 or omitted clamps to 900
+            (maxExchangeTTL). Negative or >900 returns 400.
+          minimum: 0
+          maximum: 900
           example: 90
         sidecar_id:
           type: string

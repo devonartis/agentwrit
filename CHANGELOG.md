@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `scripts/stack_up.sh` (compose up broker + sidecar)
   - `scripts/stack_down.sh` (compose down)
 - **Live Testing**: `scripts/live_test.sh` now always deploys Docker Compose (`broker` + `sidecar`) before executing E2E checks.
+- **Testing**: Comprehensive token exchange test coverage: scope format validation, TTL bounds, lineage anti-spoof, `Sid` fallback, integration lifecycle, and activation replay protection.
 
 ### Changed
 
@@ -46,7 +47,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `ErrActivationTokenReplayed`
 - **Admin/Sidecar**: Activation exchange now enforces one-time token consumption via `SqlStore.ConsumeActivationToken(...)` and issues a bounded sidecar token carrying broker-derived `sid`.
 - **Token/Sidecar**: Exchange flow now enforces sidecar scope ceilings (`sidecar:scope:*`) and rejects scope escalation with stable `scope_escalation_denied` error code.
+- **Token/Sidecar**: Scope format pre-validation on `POST /v1/token/exchange` rejects malformed scope entries with `invalid_scope_format` error code (400) before attempting scope attenuation.
+- **Token/Sidecar**: Lineage anti-spoof hardening: client-supplied `sidecar_id` is always ignored; `sid` is derived from authenticated caller token's `Sid` field (falling back to `Sub`). Empty derivation returns 500 `sidecar_derivation_failed`.
+- **Token/Sidecar**: TTL bounds enforcement: explicit negative or >900s TTL returns 400 `invalid_ttl`; TTL=0 clamps to `maxExchangeTTL` (900s).
 - **Token**: Added optional audience propagation in `IssueReq -> TknClaims.Aud` to support intent-bound activation tokens.
+- **Audit**: Added `sidecar_exchange_success` and `sidecar_exchange_denied` audit event types for token exchange operations.
 - **Docker**: `docker-compose.yml` now includes a dedicated `sidecar` service for runtime and E2E integration flow testing.
 
 ## [2.0.0] - 2026-02-09

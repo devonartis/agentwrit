@@ -411,6 +411,17 @@ Create a short-lived single-use sidecar activation token. This token is used to 
 }
 ```
 
+**Audit events:** Records `sidecar_activation_issued` on success.
+
+**Error responses:**
+
+| Status | Condition |
+|--------|-----------|
+| `400` | Missing `allowed_scope_prefix` or malformed JSON body |
+| `401` | Missing or invalid Bearer token |
+| `403` | Token lacks `admin:launch-tokens:*` scope |
+| `500` | Internal error during activation token creation |
+
 **Example:**
 
 ```bash
@@ -427,6 +438,8 @@ curl -X POST http://localhost:8080/v1/admin/sidecar-activations \
 Exchange a Sidecar-Activation token for a functional sidecar Bearer token. Enforces single-use replay protection.
 
 **Auth:** None (activation token in body)
+
+**Rate limiting:** This endpoint is rate-limited to 5 requests per second per IP with a burst capacity of 10. Exceeding the limit returns `429 Too Many Requests` with a `Retry-After: 1` header.
 
 **Request:**
 
@@ -454,12 +467,17 @@ Exchange a Sidecar-Activation token for a functional sidecar Bearer token. Enfor
 | `token_type` | string | Always `"Bearer"` |
 | `sidecar_id` | string | Stable sidecar identifier |
 
+**Audit events:** Records `sidecar_activated` on success. Records `sidecar_activation_failed` on invalid or replayed token.
+
 **Error responses:**
 
 | Status | error_code | Condition |
 |--------|------------|-----------|
+| `400` | `invalid_request` | Malformed JSON body |
 | `401` | `activation_token_replayed` | Token already used |
 | `401` | `invalid_activation_token` | Token invalid or expired |
+| `429` | `rate_limited` | Rate limit exceeded (5 req/s per IP, burst 10) |
+| `500` | `internal_error` | Internal activation failure |
 
 **Example:**
 
@@ -657,7 +675,7 @@ Exchange sidecar authority for an agent token. This endpoint is used by a sideca
 |-------|------|----------|-------------|
 | `agent_id` | string | Yes | SPIFFE agent ID receiving the token |
 | `scope` | string[] | Yes | Requested scopes; must be subset of sidecar scope ceiling |
-| `ttl` | int | No | Token TTL seconds (`<=0` or omitted uses broker default) |
+| `ttl` | int | No | Token TTL in seconds. Must be 0-900 (`maxExchangeTTL`). `0` or omitted clamps to 900s. Negative or >900 returns 400. |
 | `sidecar_id` | string | No | Ignored by broker; lineage comes from caller token `sid` |
 
 **Response `200 OK`:**
@@ -683,17 +701,28 @@ Exchange sidecar authority for an agent token. This endpoint is used by a sideca
 **Security semantics:**
 
 1. Requested scopes must be a subset of the sidecar scope ceiling (`scope_escalation_denied` on failure).
-2. Client-provided `sidecar_id` is ignored; broker injects lineage from authenticated sidecar token (`sid`).
-3. If no sidecar scope ceiling exists in the token, request is denied.
+2. Each scope entry must be valid `action:resource:identifier` format (`invalid_scope_format` on failure).
+3. Client-provided `sidecar_id` is ignored; broker injects lineage from authenticated sidecar token (`sid`, falling back to `sub`).
+4. If no sidecar scope ceiling exists in the token, request is denied (`sidecar_scope_missing`).
+5. TTL is capped at `maxExchangeTTL` (900 seconds). TTL=0 clamps to 900s; negative or >900 is rejected.
+
+**Audit events:** Records `sidecar_exchange_success` on success. Records `sidecar_exchange_denied` on scope escalation, missing ceiling, or agent-not-found denial.
 
 **Error responses:**
 
-| Status | Condition |
-|--------|-----------|
-| `400` | Malformed JSON body or missing `agent_id`/`scope` |
-| `401` | Missing/invalid Bearer token |
-| `403` | Scope escalation denied or sidecar scope ceiling missing |
-| `404` | Target `agent_id` not found |
+| Status | `error_code` | Condition |
+|--------|-------------|-----------|
+| `400` | `malformed_body` | Malformed JSON body |
+| `400` | `invalid_content_type` | Missing `Content-Type: application/json` header |
+| `400` | `missing_field` | Missing `agent_id` or empty `scope` |
+| `400` | `invalid_scope_format` | Scope entry not in `action:resource:identifier` format |
+| `400` | `invalid_ttl` | TTL negative or exceeds 900 seconds |
+| `401` | `missing_credentials` | Missing or invalid Bearer token |
+| `403` | `scope_escalation_denied` | Requested scope exceeds sidecar scope ceiling |
+| `403` | `sidecar_scope_missing` | Caller token has no `sidecar:scope:*` entries |
+| `404` | `agent_not_found` | Target `agent_id` not registered |
+| `500` | `sidecar_derivation_failed` | Could not derive sidecar identity from caller token |
+| `500` | `token_issuance_failed` | Internal token issuance error |
 
 **Example:**
 
@@ -951,6 +980,8 @@ Query the audit trail. Returns events with hash-chain integrity verification. Ev
 | `sidecar_activation_issued` | Sidecar activation token issued via `POST /v1/admin/sidecar-activations` |
 | `sidecar_activated` | Sidecar activation token exchanged via `POST /v1/sidecar/activate` |
 | `sidecar_activation_failed` | Sidecar activation failed (invalid/replayed token) |
+| `sidecar_exchange_success` | Sidecar token exchange succeeded via `POST /v1/token/exchange` |
+| `sidecar_exchange_denied` | Sidecar token exchange denied (scope escalation, missing ceiling, agent not found) |
 | `agent_registered` | Agent registration succeeded via `POST /v1/register` |
 | `registration_policy_violation` | Registration rejected due to scope violation |
 | `token_issued` | Agent token issued (during registration) |

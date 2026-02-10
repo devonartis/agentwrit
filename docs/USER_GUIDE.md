@@ -572,6 +572,8 @@ curl -s "$BROKER/v1/audit/events?since=2026-02-09T00:00:00Z&until=2026-02-09T23:
 | `sidecar_activation_issued` | Sidecar activation token issued |
 | `sidecar_activated` | Sidecar activation token exchanged |
 | `sidecar_activation_failed` | Sidecar activation failed (invalid/replayed token) |
+| `sidecar_exchange_success` | Sidecar token exchange succeeded |
+| `sidecar_exchange_denied` | Sidecar token exchange denied (scope escalation, missing ceiling, agent not found) |
 | `agent_registered` | Agent registered successfully |
 | `registration_policy_violation` | Agent registration denied (scope violation) |
 | `token_issued` | Token issued (at registration) |

@@ -78,6 +78,9 @@ The broker starts on port 8080 by default. Set `AA_PORT` to change it.
 | `GET` | `/v1/audit/events` | Bearer + `admin:audit:*` | Query the audit trail |
 | `POST` | `/v1/admin/auth` | None | Authenticate admin with shared secret |
 | `POST` | `/v1/admin/launch-tokens` | Bearer + `admin:launch-tokens:*` | Create launch tokens |
+| `POST` | `/v1/admin/sidecar-activations` | Bearer + `admin:launch-tokens:*` | Create sidecar activation token |
+| `POST` | `/v1/sidecar/activate` | Activation token in body | Exchange activation token for sidecar Bearer token |
+| `POST` | `/v1/token/exchange` | Bearer + `sidecar:manage:*` | Sidecar-mediated token issuance |
 | `GET` | `/v1/health` | None | Health check (status, version, uptime) |
 | `GET` | `/v1/metrics` | None | Prometheus metrics |
 
