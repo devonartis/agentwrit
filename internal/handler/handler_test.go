@@ -946,6 +946,351 @@ func TestTokenExchange_SidecarScopeCeilingMissing_Returns403(t *testing.T) {
 	}
 }
 
+// --- P4-T04: Comprehensive exchange validation tests ---
+
+func issueSidecarToken(t *testing.T, b *testBroker, sid string, scopes []string) string {
+	t.Helper()
+	resp, err := b.tknSvc.Issue(token.IssueReq{
+		Sub:   "sidecar:" + sid,
+		Sid:   sid,
+		Scope: scopes,
+		TTL:   300,
+	})
+	if err != nil {
+		t.Fatalf("issue sidecar token: %v", err)
+	}
+	return resp.AccessToken
+}
+
+func TestTokenExchange_MissingAgentID_Returns400(t *testing.T) {
+	b := newTestBroker(t)
+	tok := issueSidecarToken(t, b, "s1", []string{"sidecar:manage:*", "sidecar:scope:read:data:*"})
+
+	body := jsonBody(t, map[string]any{
+		"scope": []string{"read:data:*"},
+		"ttl":   60,
+	})
+	req := httptest.NewRequest("POST", "/v1/token/exchange", body)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	rr := b.do(req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var p map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&p); err != nil {
+		t.Fatalf("decode problem: %v", err)
+	}
+	if p["error_code"] != "missing_field" {
+		t.Fatalf("expected missing_field, got %v", p["error_code"])
+	}
+}
+
+func TestTokenExchange_EmptyScope_Returns400(t *testing.T) {
+	b := newTestBroker(t)
+	tok := issueSidecarToken(t, b, "s1", []string{"sidecar:manage:*", "sidecar:scope:read:data:*"})
+
+	body := jsonBody(t, map[string]any{
+		"agent_id": "spiffe://test.local/agent/o/t/x",
+		"scope":    []string{},
+		"ttl":      60,
+	})
+	req := httptest.NewRequest("POST", "/v1/token/exchange", body)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	rr := b.do(req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var p map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&p); err != nil {
+		t.Fatalf("decode problem: %v", err)
+	}
+	if p["error_code"] != "missing_field" {
+		t.Fatalf("expected missing_field, got %v", p["error_code"])
+	}
+}
+
+func TestTokenExchange_TTLTooHigh_Returns400(t *testing.T) {
+	b := newTestBroker(t)
+	tok := issueSidecarToken(t, b, "s1", []string{"sidecar:manage:*", "sidecar:scope:read:data:*"})
+
+	body := jsonBody(t, map[string]any{
+		"agent_id": "spiffe://test.local/agent/o/t/x",
+		"scope":    []string{"read:data:*"},
+		"ttl":      901,
+	})
+	req := httptest.NewRequest("POST", "/v1/token/exchange", body)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	rr := b.do(req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var p map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&p); err != nil {
+		t.Fatalf("decode problem: %v", err)
+	}
+	if p["error_code"] != "invalid_ttl" {
+		t.Fatalf("expected invalid_ttl, got %v", p["error_code"])
+	}
+}
+
+func TestTokenExchange_NegativeTTL_Returns400(t *testing.T) {
+	b := newTestBroker(t)
+	tok := issueSidecarToken(t, b, "s1", []string{"sidecar:manage:*", "sidecar:scope:read:data:*"})
+
+	body := jsonBody(t, map[string]any{
+		"agent_id": "spiffe://test.local/agent/o/t/x",
+		"scope":    []string{"read:data:*"},
+		"ttl":      -1,
+	})
+	req := httptest.NewRequest("POST", "/v1/token/exchange", body)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	rr := b.do(req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var p map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&p); err != nil {
+		t.Fatalf("decode problem: %v", err)
+	}
+	if p["error_code"] != "invalid_ttl" {
+		t.Fatalf("expected invalid_ttl, got %v", p["error_code"])
+	}
+}
+
+func TestTokenExchange_MissingBearer_Returns401(t *testing.T) {
+	b := newTestBroker(t)
+
+	body := jsonBody(t, map[string]any{
+		"agent_id": "spiffe://test.local/agent/o/t/x",
+		"scope":    []string{"read:data:*"},
+	})
+	req := httptest.NewRequest("POST", "/v1/token/exchange", body)
+	req.Header.Set("Content-Type", "application/json")
+	// No Authorization header
+	rr := b.do(req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestTokenExchange_RevokedSidecarToken_Returns403(t *testing.T) {
+	b := newTestBroker(t)
+	adminToken := getAdminToken(t, b)
+	_, agentID := registerAgentHTTP(t, b, adminToken, []string{"read:data:*"})
+
+	tok := issueSidecarToken(t, b, "revoke-me", []string{"sidecar:manage:*", "sidecar:scope:read:data:*"})
+
+	// Verify the token works first
+	claims, err := b.tknSvc.Verify(tok)
+	if err != nil {
+		t.Fatalf("verify sidecar token: %v", err)
+	}
+
+	// Revoke by JTI
+	revokeBody := jsonBody(t, map[string]string{"level": "token", "target": claims.Jti})
+	revokeReq := httptest.NewRequest("POST", "/v1/revoke", revokeBody)
+	revokeReq.Header.Set("Authorization", "Bearer "+adminToken)
+	revokeRR := b.do(revokeReq)
+	if revokeRR.Code != http.StatusOK {
+		t.Fatalf("revoke failed: %d %s", revokeRR.Code, revokeRR.Body.String())
+	}
+
+	// Attempt exchange with revoked token -> 403 from ValMw
+	exBody := jsonBody(t, map[string]any{
+		"agent_id": agentID,
+		"scope":    []string{"read:data:*"},
+		"ttl":      60,
+	})
+	exReq := httptest.NewRequest("POST", "/v1/token/exchange", exBody)
+	exReq.Header.Set("Authorization", "Bearer "+tok)
+	exReq.Header.Set("Content-Type", "application/json")
+	exRR := b.do(exReq)
+
+	if exRR.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for revoked sidecar token, got %d: %s", exRR.Code, exRR.Body.String())
+	}
+}
+
+func TestTokenExchange_LackingSidecarManageScope_Returns403(t *testing.T) {
+	b := newTestBroker(t)
+
+	// Issue token WITHOUT sidecar:manage:* — has scope ceiling but not management authority
+	tok := issueSidecarToken(t, b, "no-manage", []string{"sidecar:scope:read:data:*"})
+
+	body := jsonBody(t, map[string]any{
+		"agent_id": "spiffe://test.local/agent/o/t/x",
+		"scope":    []string{"read:data:*"},
+	})
+	req := httptest.NewRequest("POST", "/v1/token/exchange", body)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	rr := b.do(req)
+
+	// Should be rejected by WithRequiredScope("sidecar:manage:*") middleware
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestTokenExchange_NonExistentAgent_Returns404(t *testing.T) {
+	b := newTestBroker(t)
+	tok := issueSidecarToken(t, b, "s1", []string{"sidecar:manage:*", "sidecar:scope:read:data:*"})
+
+	body := jsonBody(t, map[string]any{
+		"agent_id": "spiffe://test.local/agent/no/such/agent",
+		"scope":    []string{"read:data:*"},
+		"ttl":      60,
+	})
+	req := httptest.NewRequest("POST", "/v1/token/exchange", body)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	rr := b.do(req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var p map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&p); err != nil {
+		t.Fatalf("decode problem: %v", err)
+	}
+	if p["error_code"] != "agent_not_found" {
+		t.Fatalf("expected agent_not_found, got %v", p["error_code"])
+	}
+}
+
+func TestTokenExchange_MalformedJSON_Returns400(t *testing.T) {
+	b := newTestBroker(t)
+	tok := issueSidecarToken(t, b, "s1", []string{"sidecar:manage:*", "sidecar:scope:read:data:*"})
+
+	req := httptest.NewRequest("POST", "/v1/token/exchange", strings.NewReader("{invalid json"))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	rr := b.do(req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var p map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&p); err != nil {
+		t.Fatalf("decode problem: %v", err)
+	}
+	if p["error_code"] != "malformed_body" {
+		t.Fatalf("expected malformed_body, got %v", p["error_code"])
+	}
+}
+
+// TestTokenExchange_FullIntegration_AdminToExchange exercises the complete
+// sidecar lifecycle: admin auth -> create sidecar activation -> activate ->
+// exchange -> verify issued token claims.
+func TestTokenExchange_FullIntegration_AdminToExchange(t *testing.T) {
+	b := newTestBroker(t)
+
+	// Step 1: Admin auth
+	adminToken := getAdminToken(t, b)
+
+	// Step 2: Register an agent
+	_, agentID := registerAgentHTTP(t, b, adminToken, []string{"read:data:*"})
+
+	// Step 3: Create sidecar activation token
+	actBody := jsonBody(t, map[string]any{
+		"allowed_scope_prefix": "read:data:*",
+		"ttl":                  120,
+	})
+	actReq := httptest.NewRequest("POST", "/v1/admin/sidecar-activations", actBody)
+	actReq.Header.Set("Authorization", "Bearer "+adminToken)
+	actReq.Header.Set("Content-Type", "application/json")
+	actRR := b.do(actReq)
+	if actRR.Code != http.StatusCreated {
+		t.Fatalf("create sidecar activation failed: %d %s", actRR.Code, actRR.Body.String())
+	}
+	var actResp map[string]any
+	if err := json.NewDecoder(actRR.Body).Decode(&actResp); err != nil {
+		t.Fatalf("decode activation resp: %v", err)
+	}
+	activationToken, _ := actResp["activation_token"].(string)
+	if activationToken == "" {
+		t.Fatal("expected non-empty activation_token")
+	}
+
+	// Step 4: Activate sidecar (exchange activation token for bearer)
+	sidecarBody := jsonBody(t, map[string]any{
+		"sidecar_activation_token": activationToken,
+	})
+	sidecarReq := httptest.NewRequest("POST", "/v1/sidecar/activate", sidecarBody)
+	sidecarReq.Header.Set("Content-Type", "application/json")
+	sidecarRR := b.do(sidecarReq)
+	if sidecarRR.Code != http.StatusOK {
+		t.Fatalf("sidecar activation failed: %d %s", sidecarRR.Code, sidecarRR.Body.String())
+	}
+	var sidecarResp map[string]any
+	if err := json.NewDecoder(sidecarRR.Body).Decode(&sidecarResp); err != nil {
+		t.Fatalf("decode sidecar resp: %v", err)
+	}
+	sidecarToken, _ := sidecarResp["access_token"].(string)
+	sidecarID, _ := sidecarResp["sidecar_id"].(string)
+	if sidecarToken == "" || sidecarID == "" {
+		t.Fatalf("expected non-empty sidecar token and sidecar_id, got token=%q id=%q", sidecarToken, sidecarID)
+	}
+
+	// Step 5: Exchange sidecar token for agent token
+	exBody := jsonBody(t, map[string]any{
+		"agent_id":   agentID,
+		"scope":      []string{"read:data:*"},
+		"ttl":        60,
+		"sidecar_id": "spoofed-ignored",
+	})
+	exReq := httptest.NewRequest("POST", "/v1/token/exchange", exBody)
+	exReq.Header.Set("Authorization", "Bearer "+sidecarToken)
+	exReq.Header.Set("Content-Type", "application/json")
+	exRR := b.do(exReq)
+	if exRR.Code != http.StatusOK {
+		t.Fatalf("token exchange failed: %d %s", exRR.Code, exRR.Body.String())
+	}
+	var exResp map[string]any
+	if err := json.NewDecoder(exRR.Body).Decode(&exResp); err != nil {
+		t.Fatalf("decode exchange resp: %v", err)
+	}
+
+	// Step 6: Verify exchanged token claims
+	issuedToken, _ := exResp["access_token"].(string)
+	claims, err := b.tknSvc.Verify(issuedToken)
+	if err != nil {
+		t.Fatalf("verify exchanged token: %v", err)
+	}
+	if claims.Sub != agentID {
+		t.Errorf("expected sub=%s, got %s", agentID, claims.Sub)
+	}
+	if claims.Sid == "" {
+		t.Error("expected non-empty sid (broker-derived sidecar_id)")
+	}
+	if claims.SidecarID == "" {
+		t.Error("expected non-empty sidecar_id claim")
+	}
+	if claims.Sid != claims.SidecarID {
+		t.Errorf("expected sid == sidecar_id, got sid=%s sidecar_id=%s", claims.Sid, claims.SidecarID)
+	}
+	// Anti-spoof: sidecar_id should be broker-derived, not "spoofed-ignored"
+	if exResp["sidecar_id"] == "spoofed-ignored" {
+		t.Fatal("anti-spoof failed: client sidecar_id was used")
+	}
+	if exResp["token_type"] != "Bearer" {
+		t.Errorf("expected token_type=Bearer, got %v", exResp["token_type"])
+	}
+	expiresIn, _ := exResp["expires_in"].(float64)
+	if expiresIn <= 0 || expiresIn > 900 {
+		t.Errorf("expected expires_in in (0,900], got %.0f", expiresIn)
+	}
+}
+
 // --- Metrics endpoint ---
 
 func TestMetrics(t *testing.T) {
