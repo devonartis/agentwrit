@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/divineartis/agentauth/internal/obs"
 	"github.com/divineartis/agentauth/internal/store"
 )
 
@@ -28,8 +29,10 @@ func (h *ChallengeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	nonce := h.store.CreateNonce()
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(challengeResp{
+	if err := json.NewEncoder(w).Encode(challengeResp{
 		Nonce:     nonce,
 		ExpiresIn: 30,
-	})
+	}); err != nil {
+		obs.Warn("CHALLENGE", "hdl", "failed to encode response", "err="+err.Error())
+	}
 }

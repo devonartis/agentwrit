@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/divineartis/agentauth/internal/obs"
 	"github.com/divineartis/agentauth/internal/problemdetails"
 	"github.com/divineartis/agentauth/internal/revoke"
 	"github.com/divineartis/agentauth/internal/token"
@@ -54,24 +55,30 @@ func (h *ValHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 
 	if err != nil {
-		json.NewEncoder(w).Encode(validateRespInvalid{
+		if encErr := json.NewEncoder(w).Encode(validateRespInvalid{
 			Valid: false,
 			Error: err.Error(),
-		})
+		}); encErr != nil {
+			obs.Warn("VALIDATE", "hdl", "failed to encode response", "err="+encErr.Error())
+		}
 		return
 	}
 
 	// Check revocation status after signature verification
 	if h.revSvc != nil && h.revSvc.IsRevoked(claims) {
-		json.NewEncoder(w).Encode(validateRespInvalid{
+		if encErr := json.NewEncoder(w).Encode(validateRespInvalid{
 			Valid: false,
 			Error: "token has been revoked",
-		})
+		}); encErr != nil {
+			obs.Warn("VALIDATE", "hdl", "failed to encode response", "err="+encErr.Error())
+		}
 		return
 	}
 
-	json.NewEncoder(w).Encode(validateRespValid{
+	if err := json.NewEncoder(w).Encode(validateRespValid{
 		Valid:  true,
 		Claims: claims,
-	})
+	}); err != nil {
+		obs.Warn("VALIDATE", "hdl", "failed to encode response", "err="+err.Error())
+	}
 }

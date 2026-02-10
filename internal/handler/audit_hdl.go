@@ -8,6 +8,7 @@ import (
 
 	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/authz"
+	"github.com/divineartis/agentauth/internal/obs"
 	"github.com/divineartis/agentauth/internal/problemdetails"
 )
 
@@ -79,10 +80,12 @@ func (h *AuditHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(auditResp{
+	if err := json.NewEncoder(w).Encode(auditResp{
 		Events: events,
 		Total:  total,
 		Offset: filters.Offset,
 		Limit:  limit,
-	})
+	}); err != nil {
+		obs.Warn("AUDIT", "hdl", "failed to encode response", "err="+err.Error())
+	}
 }

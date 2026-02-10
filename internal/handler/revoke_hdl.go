@@ -79,10 +79,12 @@ func (h *RevokeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(revokeResp{
+	if err := json.NewEncoder(w).Encode(revokeResp{
 		Revoked: true,
 		Level:   req.Level,
 		Target:  req.Target,
 		Count:   count,
-	})
+	}); err != nil {
+		obs.Warn("REVOKE", "hdl", "failed to encode response", "err="+err.Error())
+	}
 }

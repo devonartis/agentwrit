@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/divineartis/agentauth/internal/identity"
+	"github.com/divineartis/agentauth/internal/obs"
 	"github.com/divineartis/agentauth/internal/problemdetails"
 	"github.com/divineartis/agentauth/internal/store"
 )
@@ -51,5 +52,7 @@ func (h *RegHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		obs.Warn("REGISTER", "hdl", "failed to encode response", "err="+err.Error())
+	}
 }

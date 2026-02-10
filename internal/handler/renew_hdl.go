@@ -7,6 +7,7 @@ import (
 
 	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/authz"
+	"github.com/divineartis/agentauth/internal/obs"
 	"github.com/divineartis/agentauth/internal/problemdetails"
 	"github.com/divineartis/agentauth/internal/token"
 )
@@ -57,8 +58,10 @@ func (h *RenewHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(renewResp{
+	if err := json.NewEncoder(w).Encode(renewResp{
 		AccessToken: resp.AccessToken,
 		ExpiresIn:   resp.ExpiresIn,
-	})
+	}); err != nil {
+		obs.Warn("RENEW", "hdl", "failed to encode response", "err="+err.Error())
+	}
 }

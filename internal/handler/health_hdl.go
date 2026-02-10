@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/divineartis/agentauth/internal/obs"
 )
 
 // HealthHdl handles GET /v1/health. It returns the broker's status,
@@ -32,9 +34,11 @@ func (h *HealthHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	uptime := int64(time.Since(h.startTime).Seconds())
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(healthResp{
+	if err := json.NewEncoder(w).Encode(healthResp{
 		Status:  "ok",
 		Version: h.version,
 		Uptime:  uptime,
-	})
+	}); err != nil {
+		obs.Warn("HEALTH", "hdl", "failed to encode response", "err="+err.Error())
+	}
 }
