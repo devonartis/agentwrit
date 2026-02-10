@@ -1289,6 +1289,73 @@ func TestTokenExchange_FullIntegration_AdminToExchange(t *testing.T) {
 	if expiresIn <= 0 || expiresIn > 900 {
 		t.Errorf("expected expires_in in (0,900], got %.0f", expiresIn)
 	}
+
+	// Step 7: Use exchanged token against a protected endpoint (token renew)
+	renewReq := httptest.NewRequest("POST", "/v1/token/renew", nil)
+	renewReq.Header.Set("Authorization", "Bearer "+issuedToken)
+	renewRR := b.do(renewReq)
+	if renewRR.Code != http.StatusOK {
+		t.Fatalf("exchanged token rejected by protected endpoint: %d %s", renewRR.Code, renewRR.Body.String())
+	}
+	var renewResp map[string]any
+	if err := json.NewDecoder(renewRR.Body).Decode(&renewResp); err != nil {
+		t.Fatalf("decode renew resp: %v", err)
+	}
+	if renewResp["access_token"] == nil || renewResp["access_token"] == "" {
+		t.Error("expected renewed token from protected endpoint")
+	}
+}
+
+// TestSidecarActivation_ReplayDenied verifies that a sidecar activation
+// token cannot be used twice (single-use enforcement).
+func TestSidecarActivation_ReplayDenied(t *testing.T) {
+	b := newTestBroker(t)
+
+	adminToken := getAdminToken(t, b)
+
+	// Create sidecar activation token
+	actBody := jsonBody(t, map[string]any{
+		"allowed_scope_prefix": "read:data:*",
+		"ttl":                  120,
+	})
+	actReq := httptest.NewRequest("POST", "/v1/admin/sidecar-activations", actBody)
+	actReq.Header.Set("Authorization", "Bearer "+adminToken)
+	actReq.Header.Set("Content-Type", "application/json")
+	actRR := b.do(actReq)
+	if actRR.Code != http.StatusCreated {
+		t.Fatalf("create activation: %d %s", actRR.Code, actRR.Body.String())
+	}
+	var actResp map[string]any
+	if err := json.NewDecoder(actRR.Body).Decode(&actResp); err != nil {
+		t.Fatalf("decode activation resp: %v", err)
+	}
+	activationToken := actResp["activation_token"].(string)
+
+	// First activation should succeed
+	body1 := jsonBody(t, map[string]any{"sidecar_activation_token": activationToken})
+	req1 := httptest.NewRequest("POST", "/v1/sidecar/activate", body1)
+	req1.Header.Set("Content-Type", "application/json")
+	rr1 := b.do(req1)
+	if rr1.Code != http.StatusOK {
+		t.Fatalf("first activation failed: %d %s", rr1.Code, rr1.Body.String())
+	}
+
+	// Second activation with same token should be rejected (replay)
+	body2 := jsonBody(t, map[string]any{"sidecar_activation_token": activationToken})
+	req2 := httptest.NewRequest("POST", "/v1/sidecar/activate", body2)
+	req2.Header.Set("Content-Type", "application/json")
+	rr2 := b.do(req2)
+	if rr2.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for activation replay, got %d: %s", rr2.Code, rr2.Body.String())
+	}
+
+	var problem map[string]any
+	if err := json.NewDecoder(rr2.Body).Decode(&problem); err != nil {
+		t.Fatalf("decode problem: %v", err)
+	}
+	if problem["error_code"] != "activation_token_replayed" {
+		t.Fatalf("expected activation_token_replayed, got %v", problem["error_code"])
+	}
 }
 
 // --- Metrics endpoint ---
