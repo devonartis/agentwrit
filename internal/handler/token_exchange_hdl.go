@@ -167,6 +167,13 @@ func (h *TokenExchangeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if sidecarID == "" {
 		sidecarID = claims.Sub
 	}
+	if sidecarID == "" {
+		obs.Fail("EXCHANGE", "hdl", "sidecar identity derivation failed")
+		problemdetails.WriteProblemExtended(r.Context(), w, http.StatusInternalServerError, "internal_error",
+			"could not derive sidecar identity from caller token", r.URL.Path, "sidecar_derivation_failed",
+			"could not derive sidecar identity from caller token")
+		return
+	}
 
 	issResp, err := h.tknSvc.Issue(token.IssueReq{
 		Sub:       req.AgentID,
