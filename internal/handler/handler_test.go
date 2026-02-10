@@ -587,6 +587,130 @@ func TestTokenExchange_Success_SidecarIDBrokerDerived(t *testing.T) {
 	if claims.Sid != "abc123" {
 		t.Fatalf("expected sid=abc123, got %s", claims.Sid)
 	}
+	if claims.SidecarID != "abc123" {
+		t.Fatalf("expected sidecar_id=abc123, got %s", claims.SidecarID)
+	}
+	if claims.Sub != agentID {
+		t.Fatalf("expected sub=%s, got %s", agentID, claims.Sub)
+	}
+}
+
+func TestTokenExchange_SidFallbackToSub(t *testing.T) {
+	b := newTestBroker(t)
+
+	adminToken := getAdminToken(t, b)
+	_, agentID := registerAgentHTTP(t, b, adminToken, []string{"read:data:*"})
+
+	// Issue a sidecar token with NO Sid field — only Sub is set.
+	// The handler should fall back to claims.Sub for sidecar_id derivation.
+	sidecarResp, err := b.tknSvc.Issue(token.IssueReq{
+		Sub:   "sidecar:fallback-sub",
+		Scope: []string{"sidecar:manage:*", "sidecar:scope:read:data:*"},
+		TTL:   300,
+	})
+	if err != nil {
+		t.Fatalf("issue sidecar token: %v", err)
+	}
+
+	exBody := jsonBody(t, map[string]any{
+		"agent_id":   agentID,
+		"scope":      []string{"read:data:*"},
+		"ttl":        60,
+		"sidecar_id": "spoofed-value",
+	})
+	exReq := httptest.NewRequest("POST", "/v1/token/exchange", exBody)
+	exReq.Header.Set("Authorization", "Bearer "+sidecarResp.AccessToken)
+	exReq.Header.Set("Content-Type", "application/json")
+	exRR := b.do(exReq)
+	if exRR.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", exRR.Code, exRR.Body.String())
+	}
+
+	var exResp map[string]any
+	if err := json.NewDecoder(exRR.Body).Decode(&exResp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	// Response sidecar_id should be the Sub value (fallback), NOT the spoofed value
+	if exResp["sidecar_id"] != "sidecar:fallback-sub" {
+		t.Fatalf("expected sidecar_id=sidecar:fallback-sub, got %v", exResp["sidecar_id"])
+	}
+
+	// Verify token claims
+	issuedToken, _ := exResp["access_token"].(string)
+	claims, err := b.tknSvc.Verify(issuedToken)
+	if err != nil {
+		t.Fatalf("verify exchanged token: %v", err)
+	}
+	if claims.Sid != "sidecar:fallback-sub" {
+		t.Fatalf("expected sid=sidecar:fallback-sub, got %s", claims.Sid)
+	}
+	if claims.SidecarID != "sidecar:fallback-sub" {
+		t.Fatalf("expected sidecar_id=sidecar:fallback-sub, got %s", claims.SidecarID)
+	}
+	if claims.Sub != agentID {
+		t.Fatalf("expected sub=%s (agent), got %s", agentID, claims.Sub)
+	}
+}
+
+func TestTokenExchange_AntiSpoof_ClientSidecarIDIgnored(t *testing.T) {
+	b := newTestBroker(t)
+
+	adminToken := getAdminToken(t, b)
+	_, agentID := registerAgentHTTP(t, b, adminToken, []string{"read:data:*"})
+
+	// Issue sidecar token with explicit Sid
+	sidecarResp, err := b.tknSvc.Issue(token.IssueReq{
+		Sub:   "sidecar:real-sidecar",
+		Sid:   "real-sid-value",
+		Scope: []string{"sidecar:manage:*", "sidecar:scope:read:data:*"},
+		TTL:   300,
+	})
+	if err != nil {
+		t.Fatalf("issue sidecar token: %v", err)
+	}
+
+	// Client tries multiple spoof values
+	spoofValues := []string{"attacker-sidecar", "admin:sidecar", "", "sidecar:manage:*"}
+	for _, spoof := range spoofValues {
+		t.Run("spoof="+spoof, func(t *testing.T) {
+			exBody := jsonBody(t, map[string]any{
+				"agent_id":   agentID,
+				"scope":      []string{"read:data:*"},
+				"ttl":        60,
+				"sidecar_id": spoof,
+			})
+			exReq := httptest.NewRequest("POST", "/v1/token/exchange", exBody)
+			exReq.Header.Set("Authorization", "Bearer "+sidecarResp.AccessToken)
+			exReq.Header.Set("Content-Type", "application/json")
+			exRR := b.do(exReq)
+			if exRR.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", exRR.Code, exRR.Body.String())
+			}
+
+			var exResp map[string]any
+			if err := json.NewDecoder(exRR.Body).Decode(&exResp); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if exResp["sidecar_id"] != "real-sid-value" {
+				t.Fatalf("anti-spoof failed: expected sidecar_id=real-sid-value, got %v (spoof=%s)",
+					exResp["sidecar_id"], spoof)
+			}
+
+			issuedToken, _ := exResp["access_token"].(string)
+			claims, err := b.tknSvc.Verify(issuedToken)
+			if err != nil {
+				t.Fatalf("verify exchanged token: %v", err)
+			}
+			if claims.Sid != "real-sid-value" {
+				t.Fatalf("anti-spoof failed: expected sid=real-sid-value, got %s (spoof=%s)",
+					claims.Sid, spoof)
+			}
+			if claims.SidecarID != "real-sid-value" {
+				t.Fatalf("anti-spoof failed: expected sidecar_id=real-sid-value, got %s (spoof=%s)",
+					claims.SidecarID, spoof)
+			}
+		})
+	}
 }
 
 func TestTokenExchange_ScopeEscalationDenied(t *testing.T) {
