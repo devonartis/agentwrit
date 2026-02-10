@@ -264,11 +264,11 @@ func TestCompleteHandshakeResponderIDTampering(t *testing.T) {
 }
 
 func TestHandshakeDiscoveryNotBoundPassthrough(t *testing.T) {
-	hdl, st, tokA, tokB, _, privB, _, agentBID, tknSvc := testSetup(t)
+	_, st, tokA, tokB, _, privB, _, agentBID, tknSvc := testSetup(t)
 
 	// Rebuild handler with discovery enabled but without binding target agent.
 	dr := NewDiscoveryRegistry()
-	hdl = NewMutAuthHdl(tknSvc, st, dr)
+	hdl := NewMutAuthHdl(tknSvc, st, dr)
 
 	req, err := hdl.InitiateHandshake(tokA, agentBID)
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
@@ -47,7 +48,9 @@ func WriteProblemExtended(ctx context.Context, w http.ResponseWriter, status int
 
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(p)
+	if err := json.NewEncoder(w).Encode(p); err != nil {
+		log.Printf("[AA:PROBLEM:WARN] failed to encode problem+json response: %v", err)
+	}
 }
 
 // maxBodyBytes is the maximum allowed request body size (1 MB).

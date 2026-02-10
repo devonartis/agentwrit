@@ -126,7 +126,7 @@ func TestHealth(t *testing.T) {
 	}
 
 	var resp map[string]any
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp) //nolint:errcheck // test assertion
 	if resp["status"] != "ok" {
 		t.Errorf("expected status=ok, got %v", resp["status"])
 	}
@@ -145,7 +145,7 @@ func TestChallenge(t *testing.T) {
 	}
 
 	var resp map[string]any
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp) //nolint:errcheck // test assertion
 	nonce, ok := resp["nonce"].(string)
 	if !ok || nonce == "" {
 		t.Error("expected non-empty nonce in challenge response")
@@ -172,7 +172,7 @@ func TestAdminAuth_Success(t *testing.T) {
 	}
 
 	var resp map[string]any
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp) //nolint:errcheck // test assertion
 	if resp["access_token"] == nil || resp["access_token"] == "" {
 		t.Error("expected non-empty access_token")
 	}
@@ -207,7 +207,7 @@ func getAdminToken(t *testing.T, b *testBroker) string {
 		t.Fatalf("admin auth failed: %d %s", rr.Code, rr.Body.String())
 	}
 	var resp map[string]any
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp) //nolint:errcheck // test helper
 	return resp["access_token"].(string)
 }
 
@@ -226,7 +226,7 @@ func createLaunchToken(t *testing.T, b *testBroker, adminToken string) string {
 		t.Fatalf("create launch token failed: %d %s", rr.Code, rr.Body.String())
 	}
 	var resp map[string]any
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp) //nolint:errcheck // test helper
 	return resp["launch_token"].(string)
 }
 
@@ -238,7 +238,7 @@ func getNonce(t *testing.T, b *testBroker) string {
 		t.Fatalf("challenge failed: %d", rr.Code)
 	}
 	var resp map[string]any
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp) //nolint:errcheck // test helper
 	return resp["nonce"].(string)
 }
 
@@ -282,7 +282,7 @@ func TestFullRegistrationFlow(t *testing.T) {
 	}
 
 	var regResp map[string]any
-	json.NewDecoder(regRR.Body).Decode(&regResp)
+	_ = json.NewDecoder(regRR.Body).Decode(&regResp) //nolint:errcheck // test assertion
 	agentToken := regResp["access_token"].(string)
 	agentID := regResp["agent_id"].(string)
 	if agentToken == "" {
@@ -300,7 +300,7 @@ func TestFullRegistrationFlow(t *testing.T) {
 		t.Fatalf("validate failed: %d %s", valRR.Code, valRR.Body.String())
 	}
 	var valResp map[string]any
-	json.NewDecoder(valRR.Body).Decode(&valResp)
+	_ = json.NewDecoder(valRR.Body).Decode(&valResp) //nolint:errcheck // test assertion
 	if valResp["valid"] != true {
 		t.Errorf("expected valid=true, got %v", valResp["valid"])
 	}
@@ -313,7 +313,7 @@ func TestFullRegistrationFlow(t *testing.T) {
 		t.Fatalf("renew failed: %d %s", renewRR.Code, renewRR.Body.String())
 	}
 	var renewResp map[string]any
-	json.NewDecoder(renewRR.Body).Decode(&renewResp)
+	_ = json.NewDecoder(renewRR.Body).Decode(&renewResp) //nolint:errcheck // test assertion
 	if renewResp["access_token"] == nil || renewResp["access_token"] == "" {
 		t.Error("expected non-empty renewed access_token")
 	}
@@ -330,7 +330,7 @@ func TestFullRegistrationFlow(t *testing.T) {
 		t.Fatalf("revoke failed: %d %s", revokeRR.Code, revokeRR.Body.String())
 	}
 	var revokeResp map[string]any
-	json.NewDecoder(revokeRR.Body).Decode(&revokeResp)
+	_ = json.NewDecoder(revokeRR.Body).Decode(&revokeResp) //nolint:errcheck // test assertion
 	if revokeResp["revoked"] != true {
 		t.Errorf("expected revoked=true, got %v", revokeResp["revoked"])
 	}
@@ -343,7 +343,7 @@ func TestFullRegistrationFlow(t *testing.T) {
 		t.Fatalf("audit failed: %d %s", auditRR.Code, auditRR.Body.String())
 	}
 	var auditResp map[string]any
-	json.NewDecoder(auditRR.Body).Decode(&auditResp)
+	_ = json.NewDecoder(auditRR.Body).Decode(&auditResp) //nolint:errcheck // test assertion
 	total, _ := auditResp["total"].(float64)
 	if total == 0 {
 		t.Error("expected audit events after registration flow")
@@ -363,7 +363,7 @@ func TestValidate_InvalidToken(t *testing.T) {
 		t.Fatalf("expected 200 (with valid=false), got %d", rr.Code)
 	}
 	var resp map[string]any
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp) //nolint:errcheck // test assertion
 	if resp["valid"] != false {
 		t.Errorf("expected valid=false for invalid token, got %v", resp["valid"])
 	}
@@ -465,7 +465,7 @@ func TestDelegateHTTP_Success(t *testing.T) {
 		t.Fatalf("register agent 1: %d %s", regRR1.Code, regRR1.Body.String())
 	}
 	var regResp1 map[string]any
-	json.NewDecoder(regRR1.Body).Decode(&regResp1)
+	_ = json.NewDecoder(regRR1.Body).Decode(&regResp1) //nolint:errcheck // test setup
 	agent1Token := regResp1["access_token"].(string)
 
 	// Register agent 2 (delegate).
@@ -489,7 +489,7 @@ func TestDelegateHTTP_Success(t *testing.T) {
 		t.Fatalf("register agent 2: %d %s", regRR2.Code, regRR2.Body.String())
 	}
 	var regResp2 map[string]any
-	json.NewDecoder(regRR2.Body).Decode(&regResp2)
+	_ = json.NewDecoder(regRR2.Body).Decode(&regResp2) //nolint:errcheck // test setup
 	agent2ID := regResp2["agent_id"].(string)
 
 	// Agent 1 delegates to agent 2.
@@ -506,7 +506,7 @@ func TestDelegateHTTP_Success(t *testing.T) {
 	}
 
 	var delegResp map[string]any
-	json.NewDecoder(delegRR.Body).Decode(&delegResp)
+	_ = json.NewDecoder(delegRR.Body).Decode(&delegResp) //nolint:errcheck // test assertion
 	if delegResp["access_token"] == nil || delegResp["access_token"] == "" {
 		t.Error("expected non-empty delegated access_token")
 	}
@@ -545,7 +545,7 @@ func TestTokenExchange_Success_SidecarIDBrokerDerived(t *testing.T) {
 		t.Fatalf("register failed: %d %s", regRR.Code, regRR.Body.String())
 	}
 	var regResp map[string]any
-	json.NewDecoder(regRR.Body).Decode(&regResp)
+	_ = json.NewDecoder(regRR.Body).Decode(&regResp) //nolint:errcheck // test setup
 	agentID := regResp["agent_id"].(string)
 
 	// Sidecar token with sidecar:manage + scope ceiling.
@@ -574,7 +574,7 @@ func TestTokenExchange_Success_SidecarIDBrokerDerived(t *testing.T) {
 	}
 
 	var exResp map[string]any
-	json.NewDecoder(exRR.Body).Decode(&exResp)
+	_ = json.NewDecoder(exRR.Body).Decode(&exResp) //nolint:errcheck // test assertion
 	if exResp["sidecar_id"] != "abc123" {
 		t.Fatalf("expected broker-derived sidecar_id=abc123, got %v", exResp["sidecar_id"])
 	}
@@ -686,7 +686,7 @@ func TestAudit_QueryParams(t *testing.T) {
 	}
 
 	var resp map[string]any
-	json.NewDecoder(rr.Body).Decode(&resp)
+	_ = json.NewDecoder(rr.Body).Decode(&resp) //nolint:errcheck // test assertion
 	events, _ := resp["events"].([]any)
 	// Should include the token_issued event and possibly events from admin auth.
 	found := false
@@ -708,7 +708,7 @@ func TestAudit_QueryParams(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rr2.Code)
 	}
 	var resp2 map[string]any
-	json.NewDecoder(rr2.Body).Decode(&resp2)
+	_ = json.NewDecoder(rr2.Body).Decode(&resp2) //nolint:errcheck // test assertion
 	total2, _ := resp2["total"].(float64)
 	if total2 < 1 {
 		t.Errorf("expected at least 1 event for agent-x, got %.0f", total2)
@@ -723,7 +723,7 @@ func TestAudit_QueryParams(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rr3.Code)
 	}
 	var resp3 map[string]any
-	json.NewDecoder(rr3.Body).Decode(&resp3)
+	_ = json.NewDecoder(rr3.Body).Decode(&resp3) //nolint:errcheck // test assertion
 	total3, _ := resp3["total"].(float64)
 	if total3 != 0 {
 		t.Errorf("expected 0 events in far future, got %.0f", total3)
@@ -925,7 +925,7 @@ func TestDelegateHTTP_OverDepth(t *testing.T) {
 			t.Fatalf("delegation %d->%d failed: %d %s", i, i+1, delegRR.Code, delegRR.Body.String())
 		}
 		var delegResp map[string]any
-		json.NewDecoder(delegRR.Body).Decode(&delegResp)
+		_ = json.NewDecoder(delegRR.Body).Decode(&delegResp) //nolint:errcheck // test setup
 		currentToken = delegResp["access_token"].(string)
 	}
 
@@ -958,7 +958,7 @@ func TestRevocation_TokenLevel_DeniesAccess(t *testing.T) {
 	valReq := httptest.NewRequest("POST", "/v1/token/validate", valBody)
 	valRR := b.do(valReq)
 	var valResp map[string]any
-	json.NewDecoder(valRR.Body).Decode(&valResp)
+	_ = json.NewDecoder(valRR.Body).Decode(&valResp) //nolint:errcheck // test setup
 	claims := valResp["claims"].(map[string]any)
 	jti := claims["jti"].(string)
 
@@ -984,7 +984,7 @@ func TestRevocation_TokenLevel_DeniesAccess(t *testing.T) {
 	valReq2 := httptest.NewRequest("POST", "/v1/token/validate", valBody2)
 	valRR2 := b.do(valReq2)
 	var valResp2 map[string]any
-	json.NewDecoder(valRR2.Body).Decode(&valResp2)
+	_ = json.NewDecoder(valRR2.Body).Decode(&valResp2) //nolint:errcheck // test assertion
 	if valResp2["valid"] != false {
 		t.Errorf("expected valid=false after revocation, got %v", valResp2["valid"])
 	}
@@ -1022,7 +1022,7 @@ func TestRevocation_TaskLevel_DeniesAccess(t *testing.T) {
 	valReq := httptest.NewRequest("POST", "/v1/token/validate", valBody)
 	valRR := b.do(valReq)
 	var valResp map[string]any
-	json.NewDecoder(valRR.Body).Decode(&valResp)
+	_ = json.NewDecoder(valRR.Body).Decode(&valResp) //nolint:errcheck // test setup
 	claims := valResp["claims"].(map[string]any)
 	taskID := claims["task_id"].(string)
 
@@ -1060,7 +1060,7 @@ func TestRevocation_ChainLevel_DeniesAccess(t *testing.T) {
 		t.Fatalf("delegate: %d %s", delegRR.Code, delegRR.Body.String())
 	}
 	var delegResp map[string]any
-	json.NewDecoder(delegRR.Body).Decode(&delegResp)
+	_ = json.NewDecoder(delegRR.Body).Decode(&delegResp) //nolint:errcheck // test setup
 	delegatedToken := delegResp["access_token"].(string)
 
 	// Revoke the chain by root delegator (agent1ID).
@@ -1136,7 +1136,7 @@ func TestRegister_ScopeEscalation(t *testing.T) {
 		t.Fatalf("create launch token: %d %s", rr.Code, rr.Body.String())
 	}
 	var ltResp map[string]any
-	json.NewDecoder(rr.Body).Decode(&ltResp)
+	_ = json.NewDecoder(rr.Body).Decode(&ltResp) //nolint:errcheck // test setup
 	lt := ltResp["launch_token"].(string)
 
 	// Try to register requesting write:data:* (escalation).
@@ -1188,6 +1188,6 @@ func registerAgentHTTP(t *testing.T, b *testBroker, adminToken string, scope []s
 		t.Fatalf("register agent: %d %s", regRR.Code, regRR.Body.String())
 	}
 	var regResp map[string]any
-	json.NewDecoder(regRR.Body).Decode(&regResp)
+	_ = json.NewDecoder(regRR.Body).Decode(&regResp) //nolint:errcheck // test helper
 	return regResp["access_token"].(string), regResp["agent_id"].(string)
 }

@@ -92,11 +92,13 @@ func (h *AdminHdl) handleAuth(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(authResp{
+	if err := json.NewEncoder(w).Encode(authResp{
 		AccessToken: issueResp.AccessToken,
 		ExpiresIn:   issueResp.ExpiresIn,
 		TokenType:   "Bearer",
-	})
+	}); err != nil {
+		obs.Warn(mod, hdlCmp, "failed to encode auth response", "err="+err.Error())
+	}
 }
 
 func (h *AdminHdl) handleCreateLaunchToken(w http.ResponseWriter, r *http.Request) {
@@ -134,7 +136,9 @@ func (h *AdminHdl) handleCreateLaunchToken(w http.ResponseWriter, r *http.Reques
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		obs.Warn(mod, hdlCmp, "failed to encode launch token response", "err="+err.Error())
+	}
 }
 
 func (h *AdminHdl) handleCreateSidecarActivation(w http.ResponseWriter, r *http.Request) {
@@ -164,7 +168,9 @@ func (h *AdminHdl) handleCreateSidecarActivation(w http.ResponseWriter, r *http.
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		obs.Warn(mod, hdlCmp, "failed to encode sidecar activation response", "err="+err.Error())
+	}
 }
 
 func (h *AdminHdl) handleActivateSidecar(w http.ResponseWriter, r *http.Request) {
@@ -190,5 +196,7 @@ func (h *AdminHdl) handleActivateSidecar(w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		obs.Warn(mod, hdlCmp, "failed to encode activate sidecar response", "err="+err.Error())
+	}
 }

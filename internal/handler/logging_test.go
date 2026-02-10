@@ -13,7 +13,7 @@ func TestLoggingMiddleware(t *testing.T) {
 	
 	innerHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte("created"))
+		_, _ = w.Write([]byte("created")) //nolint:errcheck // test handler
 	})
 
 	// Wrap with RequestIDMiddleware so we have an ID to log.

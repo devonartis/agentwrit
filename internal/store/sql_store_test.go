@@ -122,7 +122,7 @@ func TestGetLaunchToken_Expired(t *testing.T) {
 		Token:     "expired-token",
 		ExpiresAt: time.Now().UTC().Add(-1 * time.Second),
 	}
-	st.SaveLaunchToken(rec)
+	_ = st.SaveLaunchToken(rec) //nolint:errcheck // test setup
 
 	_, err := st.GetLaunchToken("expired-token")
 	if err != ErrTokenExpired {
@@ -137,7 +137,7 @@ func TestConsumeLaunchToken_Success(t *testing.T) {
 		Token:     "consume-me",
 		ExpiresAt: time.Now().UTC().Add(60 * time.Second),
 	}
-	st.SaveLaunchToken(rec)
+	_ = st.SaveLaunchToken(rec) //nolint:errcheck // test setup
 
 	if err := st.ConsumeLaunchToken("consume-me"); err != nil {
 		t.Fatalf("consume: %v", err)
@@ -157,9 +157,9 @@ func TestConsumeLaunchToken_DoubleConsume(t *testing.T) {
 		Token:     "double-consume",
 		ExpiresAt: time.Now().UTC().Add(60 * time.Second),
 	}
-	st.SaveLaunchToken(rec)
+	_ = st.SaveLaunchToken(rec) //nolint:errcheck // test setup
 
-	st.ConsumeLaunchToken("double-consume")
+	_ = st.ConsumeLaunchToken("double-consume") //nolint:errcheck // test setup
 	err := st.ConsumeLaunchToken("double-consume")
 	if err != ErrTokenConsumed {
 		t.Errorf("expected ErrTokenConsumed on double consume, got: %v", err)
@@ -223,7 +223,7 @@ func TestUpdateAgentLastSeen(t *testing.T) {
 		AgentID:  "spiffe://test/agent/o/t/ls",
 		LastSeen: past,
 	}
-	st.SaveAgent(rec)
+	_ = st.SaveAgent(rec) //nolint:errcheck // test setup
 
 	if err := st.UpdateAgentLastSeen("spiffe://test/agent/o/t/ls"); err != nil {
 		t.Fatalf("update: %v", err)
@@ -251,13 +251,13 @@ func TestSaveAgent_Overwrite(t *testing.T) {
 		AgentID: "spiffe://test/agent/o/t/ow",
 		Scope:   []string{"read:data:*"},
 	}
-	st.SaveAgent(rec1)
+	_ = st.SaveAgent(rec1) //nolint:errcheck // test setup
 
 	rec2 := AgentRecord{
 		AgentID: "spiffe://test/agent/o/t/ow",
 		Scope:   []string{"write:data:*"},
 	}
-	st.SaveAgent(rec2)
+	_ = st.SaveAgent(rec2) //nolint:errcheck // test setup
 
 	got, _ := st.GetAgent("spiffe://test/agent/o/t/ow")
 	if len(got.Scope) != 1 || got.Scope[0] != "write:data:*" {

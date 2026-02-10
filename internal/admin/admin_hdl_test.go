@@ -137,7 +137,7 @@ func getAdminToken(t *testing.T, mux *http.ServeMux) string {
 	mux.ServeHTTP(rec, req)
 
 	var resp authResp
-	json.NewDecoder(rec.Body).Decode(&resp)
+	_ = json.NewDecoder(rec.Body).Decode(&resp) //nolint:errcheck // test helper
 	return resp.AccessToken
 }
 
