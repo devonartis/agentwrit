@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/divineartis/agentauth/internal/revoke"
+	"github.com/divineartis/agentauth/internal/token"
 )
 
 func TestHeartbeatRecordAndLiveness(t *testing.T) {
@@ -58,7 +59,8 @@ func TestHeartbeatAutoRevocation(t *testing.T) {
 	time.Sleep(80 * time.Millisecond)
 	cancel()
 
-	if !revSvc.IsAgentRevoked(agentID) {
+	// Check agent-level revocation via IsRevoked with a claims struct
+	if !revSvc.IsRevoked(&token.TknClaims{Sub: agentID}) {
 		t.Fatal("agent should have been auto-revoked after missed heartbeats")
 	}
 }

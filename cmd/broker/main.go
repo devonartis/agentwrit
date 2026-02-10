@@ -1,132 +1,170 @@
+// Command broker starts the AgentAuth broker HTTP server.
+//
+// It wires all internal services together, registers routes on an
+// [http.ServeMux], and listens on the port configured by AA_PORT (default
+// 8080). A fresh Ed25519 signing key pair is generated on every startup.
+//
+// Route table (see also docs/API_REFERENCE.md):
+//
+//	GET  /v1/challenge           – obtain a cryptographic nonce (public)
+//	POST /v1/register            – agent registration (launch-token auth)
+//	POST /v1/token/validate      – verify a token (public)
+//	POST /v1/token/renew         – renew a token (Bearer auth)
+//	POST /v1/token/exchange      – sidecar token exchange (Bearer auth + sidecar scope)
+//	POST /v1/delegate            – scope-attenuated delegation (Bearer auth)
+//	POST /v1/revoke              – revoke tokens (admin scope)
+//	GET  /v1/audit/events        – query audit trail (admin scope)
+//	POST /v1/admin/auth          – admin authentication (public)
+//	POST /v1/admin/launch-tokens – create launch token (admin scope)
+//	POST /v1/admin/sidecar-activations – create sidecar activation token (admin scope)
+//	POST /v1/sidecar/activate    – exchange sidecar activation token (public, single-use)
+//	GET  /v1/health              – health check (public)
+//	GET  /v1/metrics             – Prometheus metrics (public)
 package main
 
 import (
-	"context"
 	"crypto/ed25519"
-	"encoding/json"
+	"crypto/rand"
 	"fmt"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
+	"github.com/divineartis/agentauth/internal/admin"
 	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/authz"
 	"github.com/divineartis/agentauth/internal/cfg"
 	"github.com/divineartis/agentauth/internal/deleg"
 	"github.com/divineartis/agentauth/internal/handler"
 	"github.com/divineartis/agentauth/internal/identity"
-	"github.com/divineartis/agentauth/internal/mutauth"
 	"github.com/divineartis/agentauth/internal/obs"
+	"github.com/divineartis/agentauth/internal/problemdetails"
 	"github.com/divineartis/agentauth/internal/revoke"
 	"github.com/divineartis/agentauth/internal/store"
 	"github.com/divineartis/agentauth/internal/token"
 )
 
+const version = "2.0.0"
+
 func main() {
+	// Load configuration
 	c := cfg.Load()
 	obs.Configure(c.LogLevel)
 
-	mux := http.NewServeMux()
-	sqlStore := store.NewSqlStore()
-	_, signingKey, err := identity.GenerateSigningKeyPair()
+	// P0: Fail fast if admin secret is not configured.
+	if c.AdminSecret == "" {
+		fmt.Fprintln(os.Stderr, "FATAL: AA_ADMIN_SECRET must be set (non-empty)")
+		os.Exit(1)
+	}
+
+	// Generate broker signing key pair
+	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
-		obs.Fail("IDENTITY", "Broker.Main", "failed to generate signing key", "error="+err.Error())
+		fmt.Fprintf(os.Stderr, "FATAL: generate signing key: %v\n", err)
 		os.Exit(1)
 	}
-	idSvc := identity.NewIdSvc(sqlStore, signingKey, c.TrustDomain)
-	tknSvc := token.NewTknSvc(signingKey, signingKey.Public().(ed25519.PublicKey), c)
+
+	// Initialize foundation services
+	sqlStore := store.NewSqlStore()
 	auditLog := audit.NewAuditLog()
-	challengeHdl := handler.NewChallengeHdl(sqlStore)
-	regHdl := handler.NewRegHdl(idSvc, tknSvc, c, auditLog)
-	valHdl := handler.NewValHdl(tknSvc)
-	renewHdl := handler.NewRenewHdl(tknSvc)
-	healthHdl := handler.NewHealthHdl(sqlStore, nil, "0.1.0")
-	metricsHdl := handler.NewMetricsHdl()
+	tknSvc := token.NewTknSvc(privKey, pubKey, c)
 	revSvc := revoke.NewRevSvc()
-	revokeHdl := handler.NewRevokeHdl(revSvc, auditLog)
-	valMw := authz.NewValMw(tknSvc, revSvc, auditLog)
-	auditHdl := handler.NewAuditHdl(auditLog)
+	idSvc := identity.NewIdSvc(sqlStore, tknSvc, c.TrustDomain, auditLog)
+	delegSvc := deleg.NewDelegSvc(tknSvc, sqlStore, auditLog, privKey)
+	adminSvc := admin.NewAdminSvc(c.AdminSecret, tknSvc, sqlStore, auditLog)
 
-	// M07: Delegation chain verification.
-	delegSvc := deleg.NewDelegSvc(tknSvc, signingKey, 3)
-	delegHdl := handler.NewDelegHdl(delegSvc, auditLog)
-
-	// M06: Mutual authentication components.
-	// DiscoveryRegistry is nil until binding lifecycle is implemented (bind on
-	// registration, unbind on revoke/expiry). A non-nil empty registry would
-	// reject all handshakes via ErrAgentNotBound.
-	_ = mutauth.NewMutAuthHdl(tknSvc, sqlStore, nil)
-	heartbeatMgr := mutauth.NewHeartbeatMgr(revSvc)
-
-	mux.Handle("/v1/challenge", challengeHdl)
-	mux.Handle("/v1/register", regHdl)
-	mux.Handle("/v1/token/validate", valHdl)
-	mux.Handle("/v1/token/renew", renewHdl)
-	mux.Handle("/v1/revoke", authz.WithRequiredScope("admin:Broker:*", valMw.Wrap(revokeHdl)))
-	mux.Handle("/v1/audit/events", authz.WithRequiredScope("admin:Broker:*", valMw.Wrap(auditHdl)))
-	mux.Handle("/v1/delegate", valMw.Wrap(delegHdl))
-	mux.Handle("/v1/metrics", metricsHdl)
-	mux.Handle("/v1/health", healthHdl)
-	mux.Handle("/v1/protected/customers/12345", authz.WithRequiredScope("read:Customers:12345", valMw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"customer_id": "12345",
-			"message":     "protected customer data",
-		})
-	}))))
-
-	// ADR-001: Seed tokens for dev/test bootstrap.
-	// When AA_SEED_TOKENS=true, print a launch token and admin token to stdout
-	// before starting the server so external test clients can use them.
+	// Seed tokens for development (AA_SEED_TOKENS=true)
 	if c.SeedTokens {
-		launchToken, ltErr := identity.CreateLaunchToken(
-			sqlStore, "seed-orch", "seed-task",
-			[]string{"read:Customers:*", "write:Customers:*"},
-			5*time.Minute,
-		)
-		if ltErr != nil {
-			obs.Fail("SEED", "Broker.Main", "failed to create seed launch token", "error="+ltErr.Error())
-			os.Exit(1)
-		}
-		adminResp, adminErr := tknSvc.Issue(token.IssueReq{
-			AgentID:   "spiffe://" + c.TrustDomain + "/agent/seed-orch/seed-task/admin",
-			OrchID:    "seed-orch",
-			TaskID:    "seed-task",
-			Scope:     []string{"admin:Broker:*"},
-			TTLSecond: 600,
-		})
-		if adminErr != nil {
-			obs.Fail("SEED", "Broker.Main", "failed to create seed admin token", "error="+adminErr.Error())
-			os.Exit(1)
-		}
-		fmt.Println("SEED_LAUNCH_TOKEN=" + launchToken)
-		fmt.Println("SEED_ADMIN_TOKEN=" + adminResp.AccessToken)
-		obs.Ok("SEED", "Broker.Main", "seed tokens created")
+		seedLaunch(adminSvc)
+		seedAdmin(tknSvc)
 	}
 
-	// Start heartbeat monitor with graceful shutdown context.
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
-	heartbeatMgr.StartMonitor(ctx, 30*time.Second)
+	// Middleware
+	valMw := authz.NewValMw(tknSvc, revSvc, auditLog)
 
-	s := &http.Server{
-		Addr:              ":" + c.Port,
-		Handler:           mux,
-		ReadHeaderTimeout: 3 * time.Second,
-	}
+	// Handlers
+	challengeHdl := handler.NewChallengeHdl(sqlStore)
+	regHdl := handler.NewRegHdl(idSvc)
+	valHdl := handler.NewValHdl(tknSvc, revSvc)
+	renewHdl := handler.NewRenewHdl(tknSvc, auditLog)
+	revokeHdl := handler.NewRevokeHdl(revSvc, auditLog)
+	delegHdl := handler.NewDelegHdl(delegSvc)
+	tokenExchangeHdl := handler.NewTokenExchangeHdl(tknSvc, sqlStore, auditLog)
+	auditHdl := handler.NewAuditHdl(auditLog)
+	healthHdl := handler.NewHealthHdl(version)
+	metricsHdl := handler.NewMetricsHdl()
+	adminHdl := admin.NewAdminHdl(adminSvc, valMw, auditLog)
 
-	obs.Ok("OBS", "Broker.Main", "starting broker", "port="+c.Port, "log_level="+c.LogLevel)
-	go func() {
-		<-ctx.Done()
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer shutdownCancel()
-		_ = s.Shutdown(shutdownCtx)
-	}()
+	// Route table per Tech Spec Section 2
+	mux := http.NewServeMux()
 
-	if err := s.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		obs.Fail("OBS", "Broker.Main", "server exited", "error="+err.Error())
+	// Public endpoints (no auth)
+	mux.Handle("GET /v1/challenge", challengeHdl)
+	mux.Handle("GET /v1/health", healthHdl)
+	mux.Handle("GET /v1/metrics", metricsHdl)
+
+	// Token validation (no auth required per spec)
+	mux.Handle("POST /v1/token/validate", problemdetails.MaxBytesBody(valHdl))
+
+	// Agent registration (launch token auth, not Bearer)
+	mux.Handle("POST /v1/register", problemdetails.MaxBytesBody(regHdl))
+
+	// Authenticated endpoints (Bearer token)
+	mux.Handle("POST /v1/token/renew", problemdetails.MaxBytesBody(valMw.Wrap(renewHdl)))
+	mux.Handle("POST /v1/token/exchange",
+		problemdetails.MaxBytesBody(valMw.Wrap(authz.WithRequiredScope("sidecar:manage:*", tokenExchangeHdl))))
+	mux.Handle("POST /v1/delegate", problemdetails.MaxBytesBody(valMw.Wrap(delegHdl)))
+
+	// Admin endpoints (Bearer + admin scope)
+	mux.Handle("POST /v1/revoke",
+		problemdetails.MaxBytesBody(valMw.Wrap(authz.WithRequiredScope("admin:revoke:*", revokeHdl))))
+	mux.Handle("GET /v1/audit/events",
+		valMw.Wrap(authz.WithRequiredScope("admin:audit:*", auditHdl)))
+
+	// Admin auth and launch token routes (registered by AdminHdl)
+	adminHdl.RegisterRoutes(mux)
+
+	// Global Middleware
+	var rootHandler http.Handler = mux
+	rootHandler = handler.LoggingMiddleware(rootHandler)
+	rootHandler = problemdetails.RequestIDMiddleware(rootHandler)
+
+	addr := ":" + c.Port
+	obs.Ok("BROKER", "main", "starting broker", "addr="+addr, "version="+version)
+	fmt.Printf("AgentAuth broker v%s listening on %s\n", version, addr)
+
+	if err := http.ListenAndServe(addr, rootHandler); err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// seedLaunch creates a seed launch token with full wildcard scope and prints
+// it to stdout. This is for development/testing only (AA_SEED_TOKENS=true).
+func seedLaunch(adminSvc *admin.AdminSvc) {
+	resp, err := adminSvc.CreateLaunchToken(admin.CreateLaunchTokenReq{
+		AgentName:    "seed-agent",
+		AllowedScope: []string{"*:*:*"},
+		MaxTTL:       3600,
+		TTL:          3600,
+	}, "seed")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "WARN: seed launch token: %v\n", err)
+		return
+	}
+	fmt.Printf("SEED_LAUNCH_TOKEN=%s\n", resp.LaunchToken)
+}
+
+// seedAdmin issues a seed admin JWT and prints it to stdout. This is for
+// development/testing only (AA_SEED_TOKENS=true).
+func seedAdmin(tknSvc *token.TknSvc) {
+	resp, err := tknSvc.Issue(token.IssueReq{
+		Sub:   "admin",
+		Scope: []string{"admin:launch-tokens:*", "admin:revoke:*", "admin:audit:*"},
+		TTL:   3600,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "WARN: seed admin token: %v\n", err)
+		return
+	}
+	fmt.Printf("SEED_ADMIN_TOKEN=%s\n", resp.AccessToken)
 }

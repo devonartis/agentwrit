@@ -2,107 +2,89 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
-	"time"
 
 	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/authz"
 	"github.com/divineartis/agentauth/internal/obs"
+	"github.com/divineartis/agentauth/internal/problemdetails"
 	"github.com/divineartis/agentauth/internal/revoke"
 )
 
-// RevokeHdl handles POST /v1/revoke requests.
+// RevokeHdl handles POST /v1/revoke. It accepts a revocation level and
+// target, delegates to [revoke.RevSvc], records an audit event, and
+// increments the revocation Prometheus counter. This endpoint requires
+// the "admin:revoke:*" scope.
 type RevokeHdl struct {
 	revSvc   *revoke.RevSvc
 	auditLog *audit.AuditLog
 }
 
-// NewRevokeHdl creates a revocation handler with optional audit logging.
+// NewRevokeHdl creates a new revocation handler. The auditLog parameter
+// may be nil to disable audit recording.
 func NewRevokeHdl(revSvc *revoke.RevSvc, auditLog *audit.AuditLog) *RevokeHdl {
 	return &RevokeHdl{revSvc: revSvc, auditLog: auditLog}
 }
 
 type revokeReq struct {
-	Level    string `json:"level"`
-	TargetID string `json:"target_id"`
-	Reason   string `json:"reason"`
+	Level  string `json:"level"`
+	Target string `json:"target"`
 }
 
 type revokeResp struct {
-	Revoked   bool   `json:"revoked"`
-	Level     string `json:"level"`
-	TargetID  string `json:"target_id"`
-	RevokedAt string `json:"revoked_at"`
+	Revoked bool   `json:"revoked"`
+	Level   string `json:"level"`
+	Target  string `json:"target"`
+	Count   int    `json:"count"`
 }
 
-// ServeHTTP processes revocation requests at the specified level.
 func (h *RevokeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+	claims := authz.ClaimsFromContext(r.Context())
+	if claims == nil {
+		problemdetails.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "missing authentication", r.URL.Path)
 		return
 	}
 
 	var req revokeReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		obs.WriteProblemForRequest(w, r, http.StatusBadRequest, "urn:agentauth:error:bad-request", "Malformed JSON body", "Malformed JSON body")
+		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
 		return
 	}
 
-	if req.TargetID == "" {
-		obs.WriteProblemForRequest(w, r, http.StatusBadRequest, "urn:agentauth:error:bad-request", "target_id is required", "target_id is required")
+	if req.Level == "" || req.Target == "" {
+		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "level and target are required", r.URL.Path)
 		return
 	}
 
-	var err error
-	switch req.Level {
-	case "token":
-		err = h.revSvc.RevokeToken(req.TargetID, req.Reason)
-	case "agent":
-		err = h.revSvc.RevokeAgent(req.TargetID, req.Reason)
-	case "task":
-		err = h.revSvc.RevokeTask(req.TargetID, req.Reason)
-	case "delegation_chain":
-		err = h.revSvc.RevokeDelegChain(req.TargetID, req.Reason)
-	default:
-		obs.WriteProblemForRequest(
-			w,
-			r,
-			http.StatusBadRequest,
-			"urn:agentauth:error:invalid-revocation-level",
-			"invalid revocation level",
-			"level must be one of: token, agent, task, delegation_chain",
-		)
-		obs.Fail("REVOKE", "RevokeHdl.ServeHTTP", "invalid revocation level", "level="+req.Level)
-		return
-	}
-
+	count, err := h.revSvc.Revoke(req.Level, req.Target)
 	if err != nil {
-		obs.WriteProblemForRequest(w, r, http.StatusInternalServerError, "urn:agentauth:error:internal", "Revocation failed", err.Error())
-		obs.Fail("REVOKE", "RevokeHdl.ServeHTTP", "revocation failed", "error="+err.Error())
+		switch {
+		case errors.Is(err, revoke.ErrInvalidLevel):
+			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "invalid revocation level: "+req.Level, r.URL.Path)
+		case errors.Is(err, revoke.ErrMissingTarget):
+			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "missing target", r.URL.Path)
+		default:
+			problemdetails.WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "revocation failed", r.URL.Path)
+		}
 		return
 	}
+
+	// Audit
+	if h.auditLog != nil {
+		h.auditLog.Record(audit.EventTokenRevoked, req.Target, "", "",
+			"revoked at level="+req.Level+" target="+req.Target)
+	}
+	obs.TokensRevokedTotal.WithLabelValues(req.Level).Inc()
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(revokeResp{
-		Revoked:   true,
-		Level:     req.Level,
-		TargetID:  req.TargetID,
-		RevokedAt: time.Now().UTC().Format(time.RFC3339),
-	})
-	obs.Ok("REVOKE", "RevokeHdl.ServeHTTP", "revocation success", "level="+req.Level, "target_id="+req.TargetID)
-
-	if h.auditLog != nil {
-		evtType := audit.EvtTokenRevoked
-		if req.Level == "delegation_chain" {
-			evtType = audit.EvtDelegationRevoked
-		}
-		_ = h.auditLog.LogEvent(&audit.AuditEvt{
-			EventType:       evtType,
-			AgentInstanceId: authz.AgentIDFromContext(r.Context()),
-			Resource:        req.TargetID,
-			Action:          "revoke:" + req.Level,
-			Outcome:         "revoked",
-		})
+	if err := json.NewEncoder(w).Encode(revokeResp{
+		Revoked: true,
+		Level:   req.Level,
+		Target:  req.Target,
+		Count:   count,
+	}); err != nil {
+		obs.Warn("REVOKE", "hdl", "failed to encode response", "err="+err.Error())
 	}
 }

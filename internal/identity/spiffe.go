@@ -1,78 +1,49 @@
 package identity
 
 import (
-	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/spiffe/go-spiffe/v2/spiffeid"
 )
 
-var (
-	// ErrSpiffeInvalid indicates a SPIFFE ID format violation.
-	ErrSpiffeInvalid = errors.New("invalid spiffe id")
-)
+// NewSpiffeId constructs a SPIFFE ID in the AgentAuth canonical format:
+//
+//	spiffe://{trustDomain}/agent/{orchID}/{taskID}/{instanceID}
+//
+// It uses the go-spiffe library for trust domain and path segment
+// validation. The returned string is suitable for use as an agent's
+// unique identifier (token subject, store key, etc.).
+func NewSpiffeId(trustDomain, orchID, taskID, instanceID string) (string, error) {
+	td, err := spiffeid.TrustDomainFromString(trustDomain)
+	if err != nil {
+		return "", fmt.Errorf("invalid trust domain %q: %w", trustDomain, err)
+	}
 
-// SpiffeId represents a parsed SPIFFE identifier.
-type SpiffeId struct {
-	TrustDomain string
-	OrchId      string
-	TaskId      string
-	InstanceId  string
-	Raw         string
+	id, err := spiffeid.FromSegments(td, "agent", orchID, taskID, instanceID)
+	if err != nil {
+		return "", fmt.Errorf("create SPIFFE ID: %w", err)
+	}
+
+	return id.String(), nil
 }
 
-// NewSpiffeId builds a SPIFFE ID in the canonical AgentAuth format.
-func NewSpiffeId(trustDomain, orchId, taskId, instanceId string) string {
-	return fmt.Sprintf("spiffe://%s/agent/%s/%s/%s", trustDomain, orchId, taskId, instanceId)
+// ParseSpiffeId validates a SPIFFE ID string and extracts its path
+// components. The path must follow the AgentAuth format
+// /agent/{orchID}/{taskID}/{instanceID}. It returns an error if the ID
+// is malformed or does not match the expected structure.
+func ParseSpiffeId(id string) (orchID, taskID, instanceID string, err error) {
+	parsed, err := spiffeid.FromString(id)
+	if err != nil {
+		return "", "", "", fmt.Errorf("invalid SPIFFE ID %q: %w", id, err)
+	}
+
+	path := parsed.Path()
+	// Expected path: /agent/{orchID}/{taskID}/{instanceID}
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	if len(parts) != 4 || parts[0] != "agent" {
+		return "", "", "", fmt.Errorf("invalid SPIFFE path format %q: expected /agent/{orchID}/{taskID}/{instanceID}", path)
+	}
+
+	return parts[1], parts[2], parts[3], nil
 }
-
-// ParseSpiffeId parses a SPIFFE ID string into structured fields.
-func ParseSpiffeId(id string) (*SpiffeId, error) {
-	if err := ValidateSpiffeId(id); err != nil {
-		return nil, err
-	}
-
-	trimmed := strings.TrimPrefix(id, "spiffe://")
-	parts := strings.Split(trimmed, "/")
-	return &SpiffeId{
-		TrustDomain: parts[0],
-		OrchId:      parts[2],
-		TaskId:      parts[3],
-		InstanceId:  parts[4],
-		Raw:         id,
-	}, nil
-}
-
-// ValidateSpiffeId validates the AgentAuth SPIFFE ID format.
-func ValidateSpiffeId(id string) error {
-	if strings.TrimSpace(id) == "" {
-		return fmt.Errorf("%w: empty", ErrSpiffeInvalid)
-	}
-	if !strings.HasPrefix(id, "spiffe://") {
-		return fmt.Errorf("%w: missing spiffe:// prefix", ErrSpiffeInvalid)
-	}
-
-	trimmed := strings.TrimPrefix(id, "spiffe://")
-	if strings.Contains(trimmed, " ") {
-		return fmt.Errorf("%w: whitespace not allowed", ErrSpiffeInvalid)
-	}
-
-	parts := strings.Split(trimmed, "/")
-	if len(parts) != 5 {
-		return fmt.Errorf("%w: expected 5 segments", ErrSpiffeInvalid)
-	}
-	if parts[1] != "agent" {
-		return fmt.Errorf("%w: missing agent segment", ErrSpiffeInvalid)
-	}
-
-	segments := []string{parts[0], parts[2], parts[3], parts[4]}
-	for _, seg := range segments {
-		if strings.TrimSpace(seg) == "" {
-			return fmt.Errorf("%w: empty segment", ErrSpiffeInvalid)
-		}
-		if strings.Contains(seg, "/") {
-			return fmt.Errorf("%w: slash in segment", ErrSpiffeInvalid)
-		}
-	}
-	return nil
-}
-

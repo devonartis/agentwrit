@@ -1,68 +1,104 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BROKER_BIN="$ROOT/agentauth-broker"
-SMOKE_BIN="$ROOT/agentauth-smoke"
-OUT_LOG="/tmp/aa_live_out.log"
-ERR_LOG="/tmp/aa_live_err.log"
-PORT=18080
+# live_test.sh
+#
+# Default: external broker smoke test (does NOT start/stop backend).
+#   Runs the Go-based smoketest binary that exercises the full sidecar
+#   lifecycle (12 steps including challenge-response, activation, exchange,
+#   replay denial, scope escalation denial, and token validation).
+#
+# Optional: --self-host builds + starts broker locally, then runs smoketest.
+# Optional: --docker delegates to live_test_docker.sh.
+#
+# Usage:
+#   ./scripts/live_test.sh                       # external (broker at $AA_LIVE_BASE_URL)
+#   ./scripts/live_test.sh --self-host            # build + start broker, then test
+#   ./scripts/live_test.sh --docker               # docker compose mode
+# Env:
+#   AA_LIVE_BASE_URL   (default: http://127.0.0.1:8080)
+#   AA_ADMIN_SECRET    (default: live-test-secret-32bytes-long!!)
 
-cd "$ROOT"
-go build -o "$BROKER_BIN" ./cmd/broker
-go build -o "$SMOKE_BIN" ./cmd/smoketest
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+BASE_URL="${AA_LIVE_BASE_URL:-http://127.0.0.1:8080}"
+ADMIN_SECRET="${AA_ADMIN_SECRET:-live-test-secret-32bytes-long!!}"
 
-# Start broker with seed tokens on a test port.
-AA_SEED_TOKENS=true AA_PORT="$PORT" "$BROKER_BIN" >"$OUT_LOG" 2>"$ERR_LOG" &
-PID=$!
-trap 'kill $PID 2>/dev/null || true; wait $PID 2>/dev/null || true; rm -f "$BROKER_BIN" "$SMOKE_BIN"' EXIT
+build_smoketest() {
+  local bin="$1"
+  echo "=== Build smoketest binary ==="
+  GOTOOLCHAIN="${GOTOOLCHAIN:-local}" GOCACHE="${TMPDIR:-/tmp}/agentauth-go-build" \
+    go build -o "$bin" "$PROJECT_ROOT/cmd/smoketest"
+}
 
-# Wait for health endpoint readiness.
-for _ in $(seq 1 30); do
-  if curl -sS "http://127.0.0.1:${PORT}/v1/health" >/dev/null 2>&1; then
-    break
+run_external() {
+  local SMOKETEST_BIN="${TMPDIR:-/tmp}/agentauth-smoketest-ext"
+  build_smoketest "$SMOKETEST_BIN"
+
+  echo "=== Live Test (external): broker must already be running at $BASE_URL ==="
+  "$SMOKETEST_BIN" "$BASE_URL" "$ADMIN_SECRET"
+}
+
+run_self_host() {
+  local PORT BROKER_BIN SMOKETEST_BIN BROKER_PID BASE READY
+  PORT=$((RANDOM % 10000 + 20000))
+  BROKER_BIN="${TMPDIR:-/tmp}/agentauth-broker-${PORT}"
+  SMOKETEST_BIN="${TMPDIR:-/tmp}/agentauth-smoketest-${PORT}"
+  BROKER_PID=""
+  BASE="http://127.0.0.1:${PORT}"
+  READY=false
+
+  cleanup_local() {
+    if [[ -n "${BROKER_PID:-}" ]]; then
+      kill "$BROKER_PID" 2>/dev/null || true
+      wait "$BROKER_PID" 2>/dev/null || true
+    fi
+  }
+  trap cleanup_local EXIT
+
+  echo "=== Live Test (self-host): build broker + smoketest ==="
+  GOTOOLCHAIN="${GOTOOLCHAIN:-local}" GOCACHE="${TMPDIR:-/tmp}/agentauth-go-build" \
+    go build -o "$BROKER_BIN" "$PROJECT_ROOT/cmd/broker"
+  build_smoketest "$SMOKETEST_BIN"
+
+  echo "=== Live Test (self-host): start broker on port $PORT ==="
+  AA_PORT="$PORT" \
+  AA_ADMIN_SECRET="$ADMIN_SECRET" \
+  AA_SEED_TOKENS=true \
+  AA_LOG_LEVEL=quiet \
+    "$BROKER_BIN" >/tmp/agentauth_live_local.log 2>&1 &
+  BROKER_PID=$!
+
+  for _ in $(seq 1 50); do
+    if curl -sf "$BASE/v1/health" >/dev/null 2>&1; then
+      READY=true
+      break
+    fi
+    sleep 0.1
+  done
+
+  if [[ "$READY" != "true" ]]; then
+    echo "FAIL: broker did not become ready on port $PORT"
+    cat /tmp/agentauth_live_local.log || true
+    exit 1
   fi
-  sleep 0.2
-done
 
-# Extract seed tokens from broker stdout.
-SEED_LAUNCH=$(grep 'SEED_LAUNCH_TOKEN=' "$OUT_LOG" | head -1 | sed 's/SEED_LAUNCH_TOKEN=//')
-if [ -z "$SEED_LAUNCH" ]; then
-  echo "[LIVE:FAIL] seed launch token not found in broker output"
-  exit 1
-fi
-SEED_ADMIN=$(grep 'SEED_ADMIN_TOKEN=' "$OUT_LOG" | head -1 | sed 's/SEED_ADMIN_TOKEN=//')
-if [ -z "$SEED_ADMIN" ]; then
-  echo "[LIVE:FAIL] seed admin token not found in broker output"
-  exit 1
-fi
+  echo "=== Live Test (self-host): run smoketest ==="
+  "$SMOKETEST_BIN" "$BASE" "$ADMIN_SECRET"
 
-# Run smoke test against the real broker.
-SEED_LAUNCH_TOKEN="$SEED_LAUNCH" \
-SEED_ADMIN_TOKEN="$SEED_ADMIN" \
-AA_BROKER_URL="http://127.0.0.1:${PORT}" \
-"$SMOKE_BIN"
-SMOKE_EXIT=$?
+  echo ""
+  echo "=== Broker log evidence (last 30 lines) ==="
+  tail -30 /tmp/agentauth_live_local.log || true
+}
 
-if [ "$SMOKE_EXIT" -ne 0 ]; then
-  echo "[LIVE:FAIL] smoke test exited with code $SMOKE_EXIT"
-  exit 1
-fi
+run_docker() {
+  "$PROJECT_ROOT/scripts/live_test_docker.sh"
+}
 
-# Audit events endpoint (admin-gated).
-AUDIT_RES=$(curl -sS -w "\n%{http_code}" -H "Authorization: Bearer $SEED_ADMIN" \
-  "http://127.0.0.1:${PORT}/v1/audit/events")
-AUDIT_CODE=$(echo "$AUDIT_RES" | tail -1)
-AUDIT_BODY=$(echo "$AUDIT_RES" | sed '$d')
-if [ "$AUDIT_CODE" != "200" ]; then
-  echo "[LIVE:FAIL] /v1/audit/events returned $AUDIT_CODE"
-  exit 1
+if [[ "${1:-}" == "--docker" ]]; then
+  run_docker
+elif [[ "${1:-}" == "--self-host" ]]; then
+  run_self_host
+else
+  run_external
 fi
-AUDIT_TOTAL=$(echo "$AUDIT_BODY" | grep -o '"total":[0-9]*' | head -1 | cut -d: -f2)
-if [ -z "$AUDIT_TOTAL" ] || [ "$AUDIT_TOTAL" -lt 1 ]; then
-  echo "[LIVE:FAIL] expected at least 1 audit event, got $AUDIT_TOTAL"
-  exit 1
-fi
-echo "[LIVE:OK] /v1/audit/events returned $AUDIT_TOTAL events"
-
-echo "[LIVE:PASS] full lifecycle validated: health, metrics, register, token ops, authz, admin-gated revoke, single-use launch, delegation, audit"

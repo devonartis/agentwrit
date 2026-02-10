@@ -134,12 +134,12 @@ func (h *MutAuthHdl) RespondToHandshake(req *HandshakeReq, responderToken string
 		return nil, ErrPeerMismatch
 	}
 
-	// Optional: verify target is bound in discovery registry.
+	// Optional: verify target identity is consistent with discovery registry.
 	if h.discoveryReg != nil {
 		if _, err := h.discoveryReg.VerifyBinding(req.TargetAgentID, respClaims.Sub); err != nil {
 			obs.Fail("MUTAUTH", "MutAuthHdl.Respond", "discovery binding failed",
 				"target="+req.TargetAgentID, "error="+err.Error())
-			return nil, ErrBindingMismatch
+			return nil, err
 		}
 	}
 
