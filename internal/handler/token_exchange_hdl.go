@@ -66,6 +66,7 @@ func (h *TokenExchangeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	claims := authz.ClaimsFromContext(r.Context())
 	if claims == nil {
 		obs.Warn("EXCHANGE", "hdl", "missing authentication claims")
+		h.recordDenial("", "", "", "unauthenticated exchange attempt")
 		problemdetails.WriteProblemExtended(r.Context(), w, http.StatusUnauthorized, "unauthorized",
 			"missing authentication", r.URL.Path, "missing_credentials",
 			"include a valid Bearer token in the Authorization header")
@@ -169,6 +170,8 @@ func (h *TokenExchangeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if sidecarID == "" {
 		obs.Fail("EXCHANGE", "hdl", "sidecar identity derivation failed")
+		h.recordDenial(claims.Sub, "", "",
+			fmt.Sprintf("sidecar identity derivation failed for sub=%s agent_id=%s", claims.Sub, req.AgentID))
 		problemdetails.WriteProblemExtended(r.Context(), w, http.StatusInternalServerError, "internal_error",
 			"could not derive sidecar identity from caller token", r.URL.Path, "sidecar_derivation_failed",
 			"could not derive sidecar identity from caller token")
@@ -186,6 +189,8 @@ func (h *TokenExchangeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		obs.Fail("EXCHANGE", "hdl", "token issuance failed", "err="+err.Error())
+		h.recordDenial(req.AgentID, agent.TaskID, agent.OrchID,
+			fmt.Sprintf("token issuance failed for sidecar_id=%s scope=%v: %v", sidecarID, req.Scope, err))
 		problemdetails.WriteProblemExtended(r.Context(), w, http.StatusInternalServerError, "internal_error",
 			"token exchange failed", r.URL.Path, "token_issuance_failed",
 			"the broker could not issue the requested token; retry or contact the administrator")

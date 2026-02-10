@@ -157,6 +157,10 @@ func (h *AdminHdl) handleCreateSidecarActivation(w http.ResponseWriter, r *http.
 
 	resp, err := h.adminSvc.CreateSidecarActivationToken(req, claims.Sub)
 	if err != nil {
+		if h.auditLog != nil {
+			h.auditLog.Record(audit.EventSidecarActivationFailed, claims.Sub, "", "",
+				fmt.Sprintf("sidecar activation token creation denied: %v", err))
+		}
 		switch {
 		case errors.Is(err, ErrActivationScopeEmpty):
 			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "allowed_scope_prefix is required", r.URL.Path)
@@ -183,6 +187,10 @@ func (h *AdminHdl) handleActivateSidecar(w http.ResponseWriter, r *http.Request)
 
 	resp, err := h.adminSvc.ActivateSidecar(req)
 	if err != nil {
+		if !errors.Is(err, ErrActivationTokenReplayed) && h.auditLog != nil {
+			h.auditLog.Record(audit.EventSidecarActivationFailed, "", "", "",
+				fmt.Sprintf("sidecar activation failed: %v", err))
+		}
 		switch {
 		case errors.Is(err, ErrActivationTokenReplayed):
 			problemdetails.WriteProblemExtended(r.Context(), w, http.StatusUnauthorized, "unauthorized", "activation token replay detected", r.URL.Path, "activation_token_replayed", "")
