@@ -1,17 +1,3 @@
-// Package identity implements the agent registration flow including
-// challenge-response verification, SPIFFE ID generation, Ed25519 key
-// management, and scope enforcement.
-//
-// The core workflow is:
-//  1. Agent obtains a nonce via GET /v1/challenge.
-//  2. Agent signs the nonce with its Ed25519 private key.
-//  3. Agent calls POST /v1/register with the signed nonce, its public key,
-//     a pre-authorized launch token, and the requested scope.
-//  4. [IdSvc.Register] validates everything, generates a SPIFFE ID, issues
-//     a JWT token, and saves the agent record.
-//
-// Scope enforcement is strict: requested scopes must be a subset of the
-// launch token's allowed scopes, checked before the launch token is consumed.
 package identity
 
 import (
@@ -19,241 +5,128 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
-	"github.com/divineartis/agentauth/internal/authz"
 	"github.com/divineartis/agentauth/internal/obs"
 	"github.com/divineartis/agentauth/internal/store"
-	"github.com/divineartis/agentauth/internal/token"
 )
 
-// Sentinel errors returned by [IdSvc.Register].
 var (
-	ErrScopeViolation   = errors.New("requested scope exceeds allowed scope")
-	ErrInvalidSignature = errors.New("nonce signature verification failed")
-	ErrInvalidPublicKey = errors.New("invalid Ed25519 public key")
-	ErrMissingField     = errors.New("missing required field")
+	// ErrRegisterBadLaunchToken indicates the provided launch token is invalid or expired.
+	ErrRegisterBadLaunchToken = errors.New("invalid launch token")
+	// ErrRegisterBadNonce indicates the provided nonce is invalid or already consumed.
+	ErrRegisterBadNonce = errors.New("invalid nonce")
+	// ErrRegisterBadSignature indicates the agent's Ed25519 signature verification failed.
+	ErrRegisterBadSignature = errors.New("invalid signature")
 )
 
-// RegisterReq contains the fields submitted by an agent in the
-// POST /v1/register request body. All fields are required.
+// RegisterReq holds the parameters required for agent registration.
 type RegisterReq struct {
-	LaunchToken    string   `json:"launch_token"`
-	Nonce          string   `json:"nonce"`
-	PublicKey      string   `json:"public_key"`       // base64-encoded Ed25519 public key
-	Signature      string   `json:"signature"`        // base64-encoded Ed25519 signature of nonce
-	OrchID         string   `json:"orch_id"`
-	TaskID         string   `json:"task_id"`
-	RequestedScope []string `json:"requested_scope"`
+	LaunchToken    string
+	Nonce          string
+	AgentPubKey    json.RawMessage
+	Signature      string
+	OrchId         string
+	TaskId         string
+	RequestedScope []string
 }
 
-// RegisterResp is returned on successful registration. It contains the
-// agent's SPIFFE ID, the issued Bearer token, and its TTL in seconds.
+// RegisterResp contains the result of a successful agent registration.
 type RegisterResp struct {
-	AgentID     string `json:"agent_id"`
-	AccessToken string `json:"access_token"`
-	ExpiresIn   int    `json:"expires_in"`
+	AgentInstanceID string
+	OrchId          string
+	TaskId          string
+	Scope           []string
 }
 
-// AuditRecorder is the interface for recording audit events during
-// registration. It is satisfied by [audit.AuditLog]. A nil value
-// disables audit recording.
-type AuditRecorder interface {
-	Record(eventType, agentID, taskID, orchID, detail string)
-}
-
-// IdSvc is the identity service responsible for the full agent registration
-// flow: launch token validation, scope enforcement, nonce verification,
-// Ed25519 key validation, SPIFFE ID generation, token issuance, and agent
-// record persistence.
+// IdSvc is the identity service that handles agent registration and SPIFFE ID assignment.
 type IdSvc struct {
-	store       *store.SqlStore
-	tknSvc      *token.TknSvc
+	sqlStore    *store.SqlStore
+	signingKey  ed25519.PrivateKey
 	trustDomain string
-	auditLog    AuditRecorder
 }
 
-// NewIdSvc creates a new identity service. The auditLog parameter may
-// be nil to disable audit recording.
-func NewIdSvc(sqlStore *store.SqlStore, tknSvc *token.TknSvc, trustDomain string, auditLog AuditRecorder) *IdSvc {
+// NewIdSvc creates a new identity service with the given store, signing key, and trust domain.
+func NewIdSvc(sqlStore *store.SqlStore, signingKey ed25519.PrivateKey, trustDomain string) *IdSvc {
 	return &IdSvc{
-		store:       sqlStore,
-		tknSvc:      tknSvc,
+		sqlStore:    sqlStore,
+		signingKey:  signingKey,
 		trustDomain: trustDomain,
-		auditLog:    auditLog,
 	}
 }
 
-// Register performs the complete agent registration flow:
-//
-//  1. Validate that all required fields are present.
-//  2. Look up and validate the launch token.
-//  3. Enforce scope attenuation (requested must be subset of allowed).
-//  4. Consume the nonce (one-time use).
-//  5. Decode and validate the Ed25519 public key.
-//  6. Verify the nonce signature against the public key.
-//  7. Consume the launch token (if single-use).
-//  8. Generate a SPIFFE ID for the agent.
-//  9. Issue a JWT token with the granted scope.
-//  10. Persist the agent record.
-//
-// SECURITY: Scope enforcement (step 3) occurs before launch token
-// consumption so that a scope violation does not waste a single-use token.
+// Register validates the agent's challenge-response proof and creates a new agent identity.
 func (s *IdSvc) Register(req RegisterReq) (*RegisterResp, error) {
-	// Validate required fields
-	if req.LaunchToken == "" || req.Nonce == "" || req.PublicKey == "" ||
-		req.Signature == "" || req.OrchID == "" || req.TaskID == "" {
-		obs.RegistrationsTotal.WithLabelValues("failure").Inc()
-		return nil, ErrMissingField
+	if _, err := ValidateLaunchToken(s.sqlStore, req.LaunchToken); err != nil {
+		return nil, ErrRegisterBadLaunchToken
 	}
-	if len(req.RequestedScope) == 0 {
-		obs.RegistrationsTotal.WithLabelValues("failure").Inc()
-		return nil, fmt.Errorf("%w: requested_scope", ErrMissingField)
+	if err := s.sqlStore.ConsumeNonce(req.Nonce); err != nil {
+		return nil, ErrRegisterBadNonce
 	}
 
-	// Validate launch token
-	ltRec, err := s.store.GetLaunchToken(req.LaunchToken)
+	pub, err := ParseAgentPubKey(req.AgentPubKey)
 	if err != nil {
-		obs.RegistrationsTotal.WithLabelValues("failure").Inc()
-		return nil, fmt.Errorf("launch token: %w", err)
+		return nil, ErrRegisterBadSignature
 	}
-
-	// CRITICAL: Check scope BEFORE consuming the launch token
-	if !authz.ScopeIsSubset(req.RequestedScope, ltRec.AllowedScope) {
-		if s.auditLog != nil {
-			s.auditLog.Record("registration_policy_violation", "", req.TaskID, req.OrchID,
-				fmt.Sprintf("scope violation: requested %v exceeds allowed %v", req.RequestedScope, ltRec.AllowedScope))
-		}
-		obs.RegistrationsTotal.WithLabelValues("failure").Inc()
-		obs.Warn("IDENTITY", "Register", "scope violation",
-			fmt.Sprintf("requested=%v", req.RequestedScope),
-			fmt.Sprintf("allowed=%v", ltRec.AllowedScope))
-		return nil, ErrScopeViolation
-	}
-
-	// Consume nonce
-	if err := s.store.ConsumeNonce(req.Nonce); err != nil {
-		obs.RegistrationsTotal.WithLabelValues("failure").Inc()
-		return nil, fmt.Errorf("nonce: %w", err)
-	}
-
-	// Decode and verify Ed25519 public key
-	pubKeyBytes, err := base64.StdEncoding.DecodeString(req.PublicKey)
+	sig, err := decodeSignature(req.Signature)
 	if err != nil {
-		obs.RegistrationsTotal.WithLabelValues("failure").Inc()
-		return nil, fmt.Errorf("%w: base64 decode failed", ErrInvalidPublicKey)
+		return nil, ErrRegisterBadSignature
 	}
-	if len(pubKeyBytes) != ed25519.PublicKeySize {
-		obs.RegistrationsTotal.WithLabelValues("failure").Inc()
-		return nil, fmt.Errorf("%w: wrong key size", ErrInvalidPublicKey)
+	if !ed25519.Verify(pub, []byte(req.Nonce), sig) {
+		return nil, ErrRegisterBadSignature
 	}
-	pubKey := ed25519.PublicKey(pubKeyBytes)
 
-	// Verify nonce signature
-	sigBytes, err := base64.StdEncoding.DecodeString(req.Signature)
+	instID, err := randomInstanceID()
 	if err != nil {
-		obs.RegistrationsTotal.WithLabelValues("failure").Inc()
-		return nil, fmt.Errorf("%w: base64 decode failed", ErrInvalidSignature)
+		obs.Fail("IDENTITY", "IdSvc.Register", "instance id generation failed", "error="+err.Error())
+		return nil, err
 	}
-	nonceBytes, err := hex.DecodeString(req.Nonce)
-	if err != nil {
-		// If nonce is not hex, verify against raw string
-		nonceBytes = []byte(req.Nonce)
-	}
-	if !ed25519.Verify(pubKey, nonceBytes, sigBytes) {
-		obs.RegistrationsTotal.WithLabelValues("failure").Inc()
-		return nil, ErrInvalidSignature
-	}
+	agentID := NewSpiffeId(s.trustDomain, req.OrchId, req.TaskId, instID)
 
-	// Consume launch token (after all checks pass)
-	if ltRec.SingleUse {
-		if err := s.store.ConsumeLaunchToken(req.LaunchToken); err != nil {
-			obs.RegistrationsTotal.WithLabelValues("failure").Inc()
-			return nil, fmt.Errorf("consume launch token: %w", err)
-		}
-	}
-
-	// Generate SPIFFE ID
-	instanceID := randomInstanceID()
-	agentID, err := NewSpiffeId(s.trustDomain, req.OrchID, req.TaskID, instanceID)
-	if err != nil {
-		obs.RegistrationsTotal.WithLabelValues("failure").Inc()
-		return nil, fmt.Errorf("generate SPIFFE ID: %w", err)
-	}
-
-	// Determine TTL (use launch token's MaxTTL as ceiling)
-	ttl := ltRec.MaxTTL
-	if ttl <= 0 {
-		ttl = 300
-	}
-
-	// Issue token
-	issResp, err := s.tknSvc.Issue(token.IssueReq{
-		Sub:    agentID,
-		Scope:  req.RequestedScope,
-		TaskId: req.TaskID,
-		OrchId: req.OrchID,
-		TTL:    ttl,
-	})
-	if err != nil {
-		obs.RegistrationsTotal.WithLabelValues("failure").Inc()
-		return nil, fmt.Errorf("issue token: %w", err)
-	}
-
-	// Save agent record
-	now := time.Now()
-	if err := s.store.SaveAgent(store.AgentRecord{
-		AgentID:      agentID,
-		PublicKey:    pubKeyBytes,
-		OrchID:       req.OrchID,
-		TaskID:       req.TaskID,
-		Scope:        req.RequestedScope,
-		RegisteredAt: now,
-		LastSeen:     now,
+	if err := s.sqlStore.SaveAgent(store.AgentRecord{
+		AgentID:    agentID,
+		OrchId:     req.OrchId,
+		TaskId:     req.TaskId,
+		Scope:      append([]string{}, req.RequestedScope...),
+		CreatedAt:  time.Now().UTC(),
+		PublicKey:  pub,
+		LastNonce:  req.Nonce,
+		LastSigRaw: sig,
 	}); err != nil {
-		obs.RegistrationsTotal.WithLabelValues("failure").Inc()
-		return nil, fmt.Errorf("save agent: %w", err)
+		obs.Fail("IDENTITY", "IdSvc.Register", "agent persist failed", "error="+err.Error())
+		return nil, err
 	}
 
-	// Audit events
-	if s.auditLog != nil {
-		s.auditLog.Record("agent_registered", agentID, req.TaskID, req.OrchID,
-			fmt.Sprintf("Agent registered with scope %v", req.RequestedScope))
-		s.auditLog.Record("token_issued", agentID, req.TaskID, req.OrchID,
-			fmt.Sprintf("Token issued, jti=%s, ttl=%d", issResp.Claims.Jti, ttl))
-	}
-
-	// Metrics
-	obs.ActiveAgents.Inc()
-	obs.RegistrationsTotal.WithLabelValues("success").Inc()
-
-	obs.Ok("IDENTITY", "Register", "agent registered",
-		"agent_id="+agentID, fmt.Sprintf("scope=%v", req.RequestedScope))
-
+	obs.Ok("IDENTITY", "IdSvc.Register", "agent registered", "agent_id="+agentID)
 	return &RegisterResp{
-		AgentID:     agentID,
-		AccessToken: issResp.AccessToken,
-		ExpiresIn:   issResp.ExpiresIn,
+		AgentInstanceID: agentID,
+		OrchId:          req.OrchId,
+		TaskId:          req.TaskId,
+		Scope:           append([]string{}, req.RequestedScope...),
 	}, nil
 }
 
-// GenerateSigningKeyPair generates a new Ed25519 key pair suitable for
-// token signing and verification. It uses [crypto/rand.Reader] as the
-// entropy source.
-func GenerateSigningKeyPair() (ed25519.PublicKey, ed25519.PrivateKey, error) {
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		return nil, nil, fmt.Errorf("generate Ed25519 key pair: %w", err)
+func decodeSignature(sig string) ([]byte, error) {
+	// Register clients can submit either hex or base64url signature payloads.
+	if b, err := hex.DecodeString(strings.TrimSpace(sig)); err == nil {
+		return b, nil
 	}
-	return pub, priv, nil
+	b, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(sig))
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
 }
 
-func randomInstanceID() string {
-	b := make([]byte, 8)
-	if _, err := rand.Read(b); err != nil {
-		panic("crypto/rand failed: " + err.Error())
+func randomInstanceID() (string, error) {
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("random instance id: %w", err)
 	}
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(raw), nil
 }
+

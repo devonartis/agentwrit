@@ -1,96 +1,100 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to this project are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/) and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
-### Fixed
 
-- **Security [P1]**: Removed dead `TknSvc.Exchange()` and `isScopeAllowed()` methods that used a weaker prefix-based scope check instead of `authz.ScopeIsSubset()`. Deleted associated sentinel errors and stale test.
-- **Security [P2]**: Token exchange TTL=0 now clamps to `maxExchangeTTL` (900s) instead of delegating to `cfg.DefaultTTL`, preventing silent TTL cap bypass when `AA_DEFAULT_TTL` > 900.
-- **Lint**: Resolved 18 errcheck findings across production and test code (token exchange handler, problem details, admin handler, store tests, revoke tests, handler tests, admin handler tests, logging test)
-- **Lint**: Fixed ineffassign in `mut_auth_hdl_test.go` (unused `hdl` variable overwritten immediately)
-- **Production code**: `json.Encode` errors now logged via `obs.Warn` or `log.Printf` in `token_exchange_hdl.go`, `admin_hdl.go`, and `problemdetails.go`
+## [1.0.0] - 2026-02-09
 
-### Added
+### Core Broker (Go)
 
-- **Deployment**: Multi-stage Dockerfile for small, secure production images
-- **Deployment**: Docker Compose configuration for local development and orchestration
-- **Infrastructure**: Global Request-ID middleware for request correlation across logs and diagnostics
-- **Infrastructure**: HTTP request logging middleware capturing method, path, status, and latency
-- **Infrastructure**: Centralized `problemdetails` package for RFC 7807 compliance and cycle resolution
-- **Identity**: Support for stable sidecar identity via the `sid` JWT claim
-- **Security**: Activation token replay protection in `SqlStore` using JTI tracking
-- **Tokens**: `IssueReq` now supports optional JWT audience (`aud`) so broker-issued tokens can carry endpoint-specific intent (used by sidecar activation contract).
-- **Admin/Sidecar**: Added sidecar activation service models:
-  - `CreateSidecarActivationReq` / `CreateSidecarActivationResp`
-  - `ActivateSidecarReq` / `ActivateSidecarResp`
-- **Admin/Sidecar**: Added service methods for sidecar bootstrap flow:
-  - `CreateSidecarActivationToken(...)`
-  - `ActivateSidecar(...)`
-- **Token/Sidecar**: Added `POST /v1/token/exchange` for sidecar-mediated token issuance with broker-derived `sid` lineage.
-- **Ops**: Added one-command stack scripts:
-  - `scripts/stack_up.sh` (compose up broker + sidecar)
-  - `scripts/stack_down.sh` (compose down)
-- **Live Testing**: `scripts/live_test.sh` now always deploys Docker Compose (`broker` + `sidecar`) before executing E2E checks.
-- **Testing**: Comprehensive token exchange test coverage: scope format validation, TTL bounds, lineage anti-spoof, `Sid` fallback, integration lifecycle, and activation replay protection.
-- **Testing**: Request-ID propagation tests confirming `X-Request-Id` header round-trips through middleware and appears in every JSON error response.
-- **Testing**: Method restriction tests returning 405 `method_not_allowed` for non-POST requests on token exchange and sidecar activation endpoints.
-- **Testing**: Integration test mux wiring now mirrors `main.go` exactly (auth middleware, rate limiter, route order).
-- **Audit**: Added audit coverage for 5 previously uncovered sidecar denial paths:
-  - Unauthenticated exchange attempt (`sidecar_exchange_denied`)
-  - Sidecar identity derivation failure (`sidecar_exchange_denied`)
-  - Token issuance failure (`sidecar_exchange_denied`)
-  - Sidecar activation token creation denial (`sidecar_activation_failed`)
-  - Sidecar activation failure (`sidecar_activation_failed`)
+#### Identity
+- SPIFFE ID generation, validation, and parsing (`spiffe://{domain}/agent/{orch}/{task}/{instance}`)
+- Ed25519 key management with JWK public-key parsing
+- Launch token creation and single-use consumption
+- Challenge-response registration: `GET /v1/challenge` and `POST /v1/register`
 
-### Changed
+#### Tokens
+- Signed JWT issue/verify/renew with EdDSA (Ed25519)
+- Scope model: `action:resource:identifier` with wildcard matching and subset logic
+- Token claims: `sub`, `scope`, `task_id`, `orchestration_id`, `delegation_chain`, `jti`, `exp`
+- Endpoints: `POST /v1/token/validate` and `POST /v1/token/renew`
 
-- **Errors**: Standardized all error responses to include `error_code` and `request_id` fields
-- **Admin**: Refactored admin handlers to use shared standardized error helpers
-- **Admin/Sidecar**: Added validation and replay-protection error semantics for activation flow:
-  - `ErrActivationScopeEmpty`
-  - `ErrActivationTokenInvalid`
-  - `ErrActivationTokenReplayed`
-- **Admin/Sidecar**: Activation exchange now enforces one-time token consumption via `SqlStore.ConsumeActivationToken(...)` and issues a bounded sidecar token carrying broker-derived `sid`.
-- **Token/Sidecar**: Exchange flow now enforces sidecar scope ceilings (`sidecar:scope:*`) and rejects scope escalation with stable `scope_escalation_denied` error code.
-- **Token/Sidecar**: Scope format pre-validation on `POST /v1/token/exchange` rejects malformed scope entries with `invalid_scope_format` error code (400) before attempting scope attenuation.
-- **Token/Sidecar**: Lineage anti-spoof hardening: client-supplied `sidecar_id` is always ignored; `sid` is derived from authenticated caller token's `Sid` field (falling back to `Sub`). Empty derivation returns 500 `sidecar_derivation_failed`.
-- **Token/Sidecar**: TTL bounds enforcement: explicit negative or >900s TTL returns 400 `invalid_ttl`; TTL=0 clamps to `maxExchangeTTL` (900s).
-- **Token**: Added optional audience propagation in `IssueReq -> TknClaims.Aud` to support intent-bound activation tokens.
-- **Audit**: Added `sidecar_exchange_success` and `sidecar_exchange_denied` audit event types for token exchange operations.
-- **Docker**: `docker-compose.yml` now includes a dedicated `sidecar` service for runtime and E2E integration flow testing.
+#### Authorization
+- Zero-trust middleware (`ValMw`) with bearer token verification on every request
+- Route-level scope injection via `WithRequiredScope`
+- Protected resource endpoint: `GET /v1/protected/customers/12345`
 
-## [2.0.0] - 2026-02-09
+#### Revocation
+- 4-level token revocation: token, agent, task, delegation chain
+- `POST /v1/revoke` endpoint with admin scope requirement
+- `RevChecker` interface for pluggable revocation backends
+- Real-time enforcement via authorization middleware integration
 
-Complete rewrite implementing the Ephemeral Agent Credentialing security pattern.
+#### Audit
+- Immutable hash-chain audit log with SHA-256 integrity verification
+- PII sanitization (email, phone, customer ID hashing)
+- 7 event types: `credential_issued`, `access_granted`, `access_denied`, `token_revoked`, `delegation_created`, `delegation_revoked`, `anomaly_detected`
+- `GET /v1/audit/events` with filtering (agent, task, event type, time range) and pagination
 
-### Added
+#### Mutual Authentication
+- 3-step agent-to-agent handshake protocol
+- Discovery binding registry for endpoint mapping and MITM prevention
+- Heartbeat/liveness monitoring with optional auto-revocation
+- Identity cross-checks: `ErrInitiatorMismatch`, `ErrPeerMismatch`, `ErrResponderMismatch`
 
-- **Identity**: Challenge-response agent registration with Ed25519 cryptographic verification
-- **Identity**: SPIFFE-format agent IDs (`spiffe://{domain}/agent/{orch}/{task}/{instance}`)
-- **Tokens**: EdDSA-signed JWT tokens with configurable TTL (default 5 minutes)
-- **Tokens**: Token verification endpoint returning decoded claims
-- **Tokens**: Token renewal with fresh timestamps and new JTI
-- **Authorization**: `ValMw` middleware enforcing Bearer token + scope on every request
-- **Authorization**: Scope format `action:resource:identifier` with wildcard support
-- **Revocation**: 4-level token revocation (token/JTI, agent/SPIFFE ID, task, delegation chain)
-- **Audit**: Hash-chain tamper-evident audit trail with SHA-256 linking
-- **Audit**: Automatic PII sanitization (secrets, passwords, private keys, token values)
-- **Audit**: 12 event types covering admin auth, registration, token lifecycle, delegation, and resource access
-- **Audit**: Query endpoint with filtering (agent, task, event type, time range) and pagination
-- **Delegation**: Scope-attenuated token delegation with chain verification
-- **Delegation**: Maximum delegation depth of 5 hops
-- **Delegation**: Cryptographic delegation chain embedded in token claims
-- **Admin**: Admin authentication via shared secret with constant-time comparison
-- **Admin**: Launch token creation with policy (allowed scope, max TTL, single-use flag)
-- **Admin**: Admin bootstrap flow for initial system setup
-- **Observability**: Prometheus metrics (registrations, revocations, active agents)
-- **Observability**: Structured logging via `obs` package (`Ok`/`Warn`/`Fail`/`Trace` levels)
-- **Errors**: RFC 7807 `application/problem+json` error responses on all endpoints
-- **Health**: Health check endpoint reporting status, version, and uptime
-- **Metrics**: Prometheus exposition format at `/v1/metrics`
-- **Config**: `AA_*` environment variable configuration with sensible defaults
-- **API**: OpenAPI 3.0 specification at `docs/api/openapi.yaml`
+#### Delegation
+- Scope attenuation: permissions narrow at each delegation hop, never expand
+- Delegation token issuance with TTL enforcement and depth limits (max 3 hops)
+- Chain verification with Ed25519 signature validation per hop
+- SHA-256 chain hash for tamper detection and chain-level revocation
+- `POST /v1/delegate` endpoint
+
+#### Observability
+- Centralized RFC 7807 `application/problem+json` error responses
+- Prometheus metrics with `aa_*` prefix
+- `GET /v1/health` endpoint (200 healthy, 503 degraded/unhealthy)
+- `GET /v1/metrics` endpoint (Prometheus exposition format)
+
+### Demo Application (Python)
+
+#### Resource Server
+- FastAPI server with 4 endpoints: customers, orders, tickets, notifications
+- Dual-mode auth middleware: insecure (API-Key) and secure (Bearer + broker validation)
+- Pre-seeded sample data (5 customers, 10 orders, 3 tickets)
+- Scope mapping: URL paths resolve to required scopes
+
+#### Demo Agents
+- BrokerClient: async HTTP wrapper for all broker REST endpoints
+- AgentBase: Ed25519 ephemeral key generation and challenge-response registration
+- Agent A (DataRetriever): scoped customer data retrieval
+- Agent B (Analyzer): order analysis with scope delegation to Agent C
+- Agent C (ActionTaker): uses delegated token to close tickets and send notifications
+- Orchestrator: sequences A->B->C workflow with per-agent timing
+
+#### Attack Simulator
+- 5 adversarial scenarios: credential theft, lateral movement, impersonation, privilege escalation, accountability
+- Dual-mode execution: insecure (attacks succeed) vs. secure (attacks blocked)
+- CLI entrypoint: `python -m attacks --mode secure|insecure`
+
+#### Dashboard
+- Web-based demo dashboard with HTMX frontend and SSE real-time events
+- Demo control endpoints (run/reset/status)
+- Agent workflow visualization and attack results display
+
+### Infrastructure
+
+- Multi-stage Dockerfile (golang:1.23-alpine build, alpine:3.19 runtime)
+- Docker Compose configuration with health checks
+- Quality gate system (`scripts/gates.sh`): build, lint, unit, security (gosec + govulncheck), docs
+- Live test infrastructure with seed tokens and smoke test client
+- Structured logging: `[AA:MODULE:LEVEL] TIMESTAMP | COMPONENT | MESSAGE | CONTEXT`
+
+### Security
+
+- `LoadSigningKey` validates path safety: no symlinks, regular files only, rejects group/other-readable keys
+- Admin endpoints protected by zero-trust middleware with required `admin:Broker:*` scope
+- Token subject cross-checks on all handshake steps to prevent identity spoofing
+- Delegation chain propagation through token issuance and renewal

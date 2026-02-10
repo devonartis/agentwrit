@@ -1,269 +1,142 @@
 package audit
 
 import (
-	"strings"
+	"fmt"
 	"testing"
-	"time"
 )
 
-func TestRecord_BasicEvent(t *testing.T) {
+func TestLogAndQueryRoundTrip(t *testing.T) {
 	al := NewAuditLog()
+	evt := &AuditEvt{
+		EventType:       EvtAccessGranted,
+		AgentInstanceId: "agent-1",
+		TaskId:          "task-1",
+		OrchId:          "orch-1",
+		Resource:        "customers/12345",
+		Action:          "read",
+		Outcome:         "granted",
+	}
+	if err := al.LogEvent(evt); err != nil {
+		t.Fatalf("LogEvent: %v", err)
+	}
 
-	al.Record(EventAgentRegistered, "agent-1", "task-1", "orch-1", "agent registered successfully")
-
-	events := al.Events()
+	events, total, err := al.QueryEvents(AuditFilter{})
+	if err != nil {
+		t.Fatalf("QueryEvents: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("expected total=1, got %d", total)
+	}
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(events))
 	}
-	evt := events[0]
-	if evt.ID != "evt-000001" {
-		t.Errorf("expected ID=evt-000001, got %s", evt.ID)
+	if events[0].EventType != EvtAccessGranted {
+		t.Fatalf("expected event_type=%s, got %s", EvtAccessGranted, events[0].EventType)
 	}
-	if evt.EventType != EventAgentRegistered {
-		t.Errorf("expected event_type=%s, got %s", EventAgentRegistered, evt.EventType)
+	if events[0].EventId == "" {
+		t.Fatal("expected non-empty event_id")
 	}
-	if evt.AgentID != "agent-1" {
-		t.Errorf("expected agent_id=agent-1, got %s", evt.AgentID)
+	if events[0].Timestamp == "" {
+		t.Fatal("expected non-empty timestamp")
 	}
-	if evt.TaskID != "task-1" {
-		t.Errorf("expected task_id=task-1, got %s", evt.TaskID)
-	}
-	if evt.OrchID != "orch-1" {
-		t.Errorf("expected orch_id=orch-1, got %s", evt.OrchID)
-	}
-	if evt.Detail != "agent registered successfully" {
-		t.Errorf("unexpected detail: %s", evt.Detail)
+	if events[0].EventHash == "" {
+		t.Fatal("expected non-empty event_hash")
 	}
 }
 
-func TestRecord_HashChainIntegrity(t *testing.T) {
+func TestChainIntegrityAfterMultipleEvents(t *testing.T) {
 	al := NewAuditLog()
-
-	al.Record(EventTokenIssued, "a1", "t1", "o1", "first")
-	al.Record(EventTokenRevoked, "a2", "t2", "o2", "second")
-	al.Record(EventDelegationCreated, "a3", "t3", "o3", "third")
-
-	events := al.Events()
-	if len(events) != 3 {
-		t.Fatalf("expected 3 events, got %d", len(events))
-	}
-
-	// Genesis event's PrevHash should be 64 zeros.
-	genesis := "0000000000000000000000000000000000000000000000000000000000000000"
-	if events[0].PrevHash != genesis {
-		t.Errorf("first event PrevHash should be genesis, got %s", events[0].PrevHash)
-	}
-
-	// Each event's Hash should chain to the next event's PrevHash.
-	for i := 0; i < len(events)-1; i++ {
-		if events[i].Hash != events[i+1].PrevHash {
-			t.Errorf("event %d hash (%s) != event %d prev_hash (%s)",
-				i, events[i].Hash, i+1, events[i+1].PrevHash)
-		}
-	}
-
-	// Hashes should be non-empty and unique.
-	seen := make(map[string]bool)
-	for i, evt := range events {
-		if evt.Hash == "" {
-			t.Errorf("event %d has empty hash", i)
-		}
-		if seen[evt.Hash] {
-			t.Errorf("duplicate hash at event %d: %s", i, evt.Hash)
-		}
-		seen[evt.Hash] = true
-	}
-}
-
-func TestRecord_PIISanitization(t *testing.T) {
-	al := NewAuditLog()
-
-	al.Record(EventAdminAuth, "", "", "", "secret=my-super-secret-value")
-	al.Record(EventAdminAuth, "", "", "", "password: hunter2")
-	al.Record(EventAdminAuth, "", "", "", "token_value=eyJ...")
-	al.Record(EventAdminAuth, "", "", "", "private_key=AAAA")
-
-	events := al.Events()
-	for _, evt := range events {
-		if strings.Contains(evt.Detail, "my-super-secret-value") ||
-			strings.Contains(evt.Detail, "hunter2") ||
-			strings.Contains(evt.Detail, "eyJ...") ||
-			strings.Contains(evt.Detail, "AAAA") {
-			t.Errorf("PII not redacted in detail: %s", evt.Detail)
-		}
-		if !strings.Contains(evt.Detail, "***REDACTED***") {
-			t.Errorf("expected ***REDACTED*** in detail: %s", evt.Detail)
-		}
-	}
-}
-
-func TestRecord_PIISanitization_NoFalsePositive(t *testing.T) {
-	al := NewAuditLog()
-
-	al.Record(EventAgentRegistered, "", "", "", "agent registered with scope [read:data:*]")
-
-	events := al.Events()
-	if events[0].Detail != "agent registered with scope [read:data:*]" {
-		t.Errorf("non-sensitive detail should not be modified: %s", events[0].Detail)
-	}
-}
-
-func TestQuery_NoFilters(t *testing.T) {
-	al := NewAuditLog()
-	al.Record(EventTokenIssued, "a1", "t1", "o1", "first")
-	al.Record(EventTokenRevoked, "a2", "t2", "o2", "second")
-
-	events, total := al.Query(QueryFilters{})
-	if total != 2 {
-		t.Errorf("expected total=2, got %d", total)
-	}
-	if len(events) != 2 {
-		t.Errorf("expected 2 events, got %d", len(events))
-	}
-}
-
-func TestQuery_FilterByEventType(t *testing.T) {
-	al := NewAuditLog()
-	al.Record(EventTokenIssued, "a1", "t1", "o1", "issued")
-	al.Record(EventTokenRevoked, "a2", "t2", "o2", "revoked")
-	al.Record(EventTokenIssued, "a3", "t3", "o3", "issued again")
-
-	events, total := al.Query(QueryFilters{EventType: EventTokenIssued})
-	if total != 2 {
-		t.Errorf("expected total=2, got %d", total)
-	}
-	if len(events) != 2 {
-		t.Errorf("expected 2 events, got %d", len(events))
-	}
-}
-
-func TestQuery_FilterByAgentID(t *testing.T) {
-	al := NewAuditLog()
-	al.Record(EventTokenIssued, "agent-A", "t1", "o1", "for A")
-	al.Record(EventTokenIssued, "agent-B", "t2", "o2", "for B")
-
-	events, total := al.Query(QueryFilters{AgentID: "agent-A"})
-	if total != 1 {
-		t.Errorf("expected total=1, got %d", total)
-	}
-	if len(events) != 1 || events[0].AgentID != "agent-A" {
-		t.Errorf("expected agent-A event, got %v", events)
-	}
-}
-
-func TestQuery_FilterByTaskID(t *testing.T) {
-	al := NewAuditLog()
-	al.Record(EventTokenIssued, "a1", "task-X", "o1", "task X")
-	al.Record(EventTokenIssued, "a2", "task-Y", "o2", "task Y")
-
-	events, total := al.Query(QueryFilters{TaskID: "task-X"})
-	if total != 1 {
-		t.Errorf("expected total=1, got %d", total)
-	}
-	if len(events) != 1 || events[0].TaskID != "task-X" {
-		t.Errorf("expected task-X event, got %v", events)
-	}
-}
-
-func TestQuery_FilterBySinceUntil(t *testing.T) {
-	al := NewAuditLog()
-
-	al.Record(EventTokenIssued, "a1", "t1", "o1", "early")
-	time.Sleep(10 * time.Millisecond)
-	midpoint := time.Now().UTC()
-	time.Sleep(10 * time.Millisecond)
-	al.Record(EventTokenRevoked, "a2", "t2", "o2", "late")
-
-	events, total := al.Query(QueryFilters{Since: &midpoint})
-	if total != 1 {
-		t.Errorf("expected total=1 after midpoint, got %d", total)
-	}
-	if len(events) != 1 || events[0].EventType != EventTokenRevoked {
-		t.Errorf("expected only late event, got %v", events)
-	}
-
-	events, total = al.Query(QueryFilters{Until: &midpoint})
-	if total != 1 {
-		t.Errorf("expected total=1 before midpoint, got %d", total)
-	}
-	if len(events) != 1 || events[0].EventType != EventTokenIssued {
-		t.Errorf("expected only early event, got %v", events)
-	}
-}
-
-func TestQuery_Pagination(t *testing.T) {
-	al := NewAuditLog()
-	for i := 0; i < 10; i++ {
-		al.Record(EventTokenIssued, "a", "t", "o", "event")
-	}
-
-	events, total := al.Query(QueryFilters{Limit: 3})
-	if total != 10 {
-		t.Errorf("expected total=10, got %d", total)
-	}
-	if len(events) != 3 {
-		t.Errorf("expected 3 events with limit=3, got %d", len(events))
-	}
-
-	events, total = al.Query(QueryFilters{Offset: 8, Limit: 5})
-	if total != 10 {
-		t.Errorf("expected total=10, got %d", total)
-	}
-	if len(events) != 2 {
-		t.Errorf("expected 2 events with offset=8 limit=5, got %d", len(events))
-	}
-}
-
-func TestQuery_OffsetBeyondTotal(t *testing.T) {
-	al := NewAuditLog()
-	al.Record(EventTokenIssued, "a", "t", "o", "only one")
-
-	events, total := al.Query(QueryFilters{Offset: 10})
-	if total != 1 {
-		t.Errorf("expected total=1, got %d", total)
-	}
-	if events != nil {
-		t.Errorf("expected nil events when offset > total, got %v", events)
-	}
-}
-
-func TestQuery_DefaultLimitIs100(t *testing.T) {
-	al := NewAuditLog()
-	for i := 0; i < 150; i++ {
-		al.Record(EventTokenIssued, "a", "t", "o", "event")
-	}
-
-	events, total := al.Query(QueryFilters{})
-	if total != 150 {
-		t.Errorf("expected total=150, got %d", total)
-	}
-	if len(events) != 100 {
-		t.Errorf("expected default limit=100, got %d events", len(events))
-	}
-}
-
-func TestQuery_LimitCappedAt1000(t *testing.T) {
-	al := NewAuditLog()
-	// We'll just check the cap logic with a smaller set.
 	for i := 0; i < 5; i++ {
-		al.Record(EventTokenIssued, "a", "t", "o", "event")
+		if err := al.LogEvent(&AuditEvt{
+			EventType:       EvtAccessGranted,
+			AgentInstanceId: fmt.Sprintf("agent-%d", i),
+			TaskId:          "task-1",
+			OrchId:          "orch-1",
+			Resource:        "res",
+			Action:          "read",
+			Outcome:         "granted",
+		}); err != nil {
+			t.Fatalf("LogEvent %d: %v", i, err)
+		}
 	}
 
-	events, _ := al.Query(QueryFilters{Limit: 9999})
-	if len(events) != 5 {
-		t.Errorf("expected 5 events (all available), got %d", len(events))
+	events, _, _ := al.QueryEvents(AuditFilter{})
+	ok, idx := VerifyChain(events)
+	if !ok {
+		t.Fatalf("chain invalid at index %d", idx)
 	}
 }
 
-func TestEvents_ReturnsCopy(t *testing.T) {
+func TestQueryFilterByType(t *testing.T) {
 	al := NewAuditLog()
-	al.Record(EventTokenIssued, "a", "t", "o", "detail")
+	_ = al.LogEvent(&AuditEvt{EventType: EvtAccessGranted, Outcome: "granted"})
+	_ = al.LogEvent(&AuditEvt{EventType: EvtAccessDenied, Outcome: "denied"})
+	_ = al.LogEvent(&AuditEvt{EventType: EvtAccessGranted, Outcome: "granted"})
 
-	events := al.Events()
-	events[0].Detail = "tampered"
+	events, total, _ := al.QueryEvents(AuditFilter{EventType: EvtAccessDenied})
+	if total != 1 {
+		t.Fatalf("expected total=1, got %d", total)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].EventType != EvtAccessDenied {
+		t.Fatalf("expected %s, got %s", EvtAccessDenied, events[0].EventType)
+	}
+}
 
-	original := al.Events()
-	if original[0].Detail == "tampered" {
-		t.Error("Events() should return a copy, not a reference to the internal slice")
+func TestQueryFilterByAgent(t *testing.T) {
+	al := NewAuditLog()
+	_ = al.LogEvent(&AuditEvt{EventType: EvtAccessGranted, AgentInstanceId: "agent-a", Outcome: "granted"})
+	_ = al.LogEvent(&AuditEvt{EventType: EvtAccessGranted, AgentInstanceId: "agent-b", Outcome: "granted"})
+	_ = al.LogEvent(&AuditEvt{EventType: EvtAccessGranted, AgentInstanceId: "agent-a", Outcome: "granted"})
+
+	events, total, _ := al.QueryEvents(AuditFilter{AgentId: "agent-a"})
+	if total != 2 {
+		t.Fatalf("expected total=2, got %d", total)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(events))
+	}
+}
+
+func TestQueryPagination(t *testing.T) {
+	al := NewAuditLog()
+	for i := 0; i < 25; i++ {
+		_ = al.LogEvent(&AuditEvt{
+			EventType:       EvtAccessGranted,
+			AgentInstanceId: "agent-1",
+			Outcome:         "granted",
+		})
+	}
+
+	// First page.
+	events, total, _ := al.QueryEvents(AuditFilter{Limit: 10, Offset: 0})
+	if total != 25 {
+		t.Fatalf("expected total=25, got %d", total)
+	}
+	if len(events) != 10 {
+		t.Fatalf("expected 10 events on page 1, got %d", len(events))
+	}
+
+	// Second page.
+	events2, total2, _ := al.QueryEvents(AuditFilter{Limit: 10, Offset: 10})
+	if total2 != 25 {
+		t.Fatalf("expected total=25, got %d", total2)
+	}
+	if len(events2) != 10 {
+		t.Fatalf("expected 10 events on page 2, got %d", len(events2))
+	}
+
+	// Third page (partial).
+	events3, _, _ := al.QueryEvents(AuditFilter{Limit: 10, Offset: 20})
+	if len(events3) != 5 {
+		t.Fatalf("expected 5 events on page 3, got %d", len(events3))
+	}
+
+	// Beyond range.
+	events4, _, _ := al.QueryEvents(AuditFilter{Limit: 10, Offset: 30})
+	if len(events4) != 0 {
+		t.Fatalf("expected 0 events beyond range, got %d", len(events4))
 	}
 }

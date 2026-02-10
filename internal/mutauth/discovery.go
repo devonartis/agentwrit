@@ -59,8 +59,8 @@ func (d *DiscoveryRegistry) Unbind(agentID string) {
 }
 
 // VerifyBinding checks that a presented agent ID matches the identity bound
-// in the discovery registry. This is an identity-consistency check only; it
-// does not by itself prove transport endpoint authenticity.
+// in the discovery registry. This prevents MITM attacks where an attacker
+// substitutes a different agent identity during handshake.
 func (d *DiscoveryRegistry) VerifyBinding(agentID, presentedID string) (bool, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()

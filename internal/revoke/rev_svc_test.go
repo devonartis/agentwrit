@@ -2,173 +2,155 @@ package revoke
 
 import (
 	"testing"
-	"time"
-
-	"github.com/divineartis/agentauth/internal/token"
 )
 
-func TestRevoke_InvalidLevel(t *testing.T) {
+func TestRevokeAndCheckToken(t *testing.T) {
 	svc := NewRevSvc()
-	_, err := svc.Revoke("invalid", "target")
-	if err != ErrInvalidLevel {
-		t.Fatalf("expected ErrInvalidLevel, got %v", err)
+	jti := "test-jti-001"
+	if svc.IsTokenRevoked(jti) {
+		t.Fatal("expected token not revoked before revocation")
+	}
+	if err := svc.RevokeToken(jti, "compromised"); err != nil {
+		t.Fatalf("RevokeToken: %v", err)
+	}
+	if !svc.IsTokenRevoked(jti) {
+		t.Fatal("expected token revoked after revocation")
 	}
 }
 
-func TestRevoke_MissingTarget(t *testing.T) {
+func TestRevokeAndCheckAgent(t *testing.T) {
 	svc := NewRevSvc()
-	for _, level := range []string{"token", "agent", "task", "chain"} {
-		_, err := svc.Revoke(level, "")
-		if err != ErrMissingTarget {
-			t.Fatalf("level %q: expected ErrMissingTarget, got %v", level, err)
-		}
+	agentID := "spiffe://agentauth.local/agent/orch/task/inst"
+	if svc.IsAgentRevoked(agentID) {
+		t.Fatal("expected agent not revoked before revocation")
+	}
+	if err := svc.RevokeAgent(agentID, "decommissioned"); err != nil {
+		t.Fatalf("RevokeAgent: %v", err)
+	}
+	if !svc.IsAgentRevoked(agentID) {
+		t.Fatal("expected agent revoked after revocation")
 	}
 }
 
-func TestRevoke_AllLevels(t *testing.T) {
+func TestRevokeAndCheckTask(t *testing.T) {
 	svc := NewRevSvc()
-	for _, level := range []string{"token", "agent", "task", "chain"} {
-		n, err := svc.Revoke(level, "target-"+level)
-		if err != nil {
-			t.Fatalf("level %q: unexpected error: %v", level, err)
-		}
-		if n != 1 {
-			t.Fatalf("level %q: expected count 1, got %d", level, n)
-		}
+	taskID := "task-789"
+	if svc.IsTaskRevoked(taskID) {
+		t.Fatal("expected task not revoked before revocation")
+	}
+	if err := svc.RevokeTask(taskID, "task completed"); err != nil {
+		t.Fatalf("RevokeTask: %v", err)
+	}
+	if !svc.IsTaskRevoked(taskID) {
+		t.Fatal("expected task revoked after revocation")
 	}
 }
 
-func TestIsRevoked_Token(t *testing.T) {
+func TestRevokeAndCheckChain(t *testing.T) {
 	svc := NewRevSvc()
-	claims := &token.TknClaims{Jti: "jti-1", Sub: "agent-a"}
-
-	if svc.IsRevoked(claims) {
-		t.Fatal("should not be revoked before any revocation")
+	chainHash := "abc123def456"
+	if svc.IsChainRevoked(chainHash) {
+		t.Fatal("expected chain not revoked before revocation")
 	}
-
-	_, _ = svc.Revoke("token", "jti-1") //nolint:errcheck // test setup: error checked in dedicated test
-	if !svc.IsRevoked(claims) {
-		t.Fatal("should be revoked after token-level revocation")
+	if err := svc.RevokeDelegChain(chainHash, "chain compromised"); err != nil {
+		t.Fatalf("RevokeDelegChain: %v", err)
+	}
+	if !svc.IsChainRevoked(chainHash) {
+		t.Fatal("expected chain revoked after revocation")
 	}
 }
 
-func TestIsRevoked_Agent(t *testing.T) {
+func TestIsRevokedMultiLevel(t *testing.T) {
 	svc := NewRevSvc()
-	claims := &token.TknClaims{Jti: "jti-2", Sub: "spiffe://example/agent/a"}
+	jti := "jti-multi"
+	agentID := "agent-multi"
+	taskID := "task-multi"
+	chainHash := "chain-multi"
 
-	_, _ = svc.Revoke("agent", "spiffe://example/agent/a") //nolint:errcheck // test setup
-	if !svc.IsRevoked(claims) {
-		t.Fatal("should be revoked after agent-level revocation")
+	// Nothing revoked.
+	revoked, level := svc.IsRevoked(jti, agentID, taskID, chainHash)
+	if revoked {
+		t.Fatalf("expected not revoked, got level=%s", level)
+	}
+
+	// Revoke at token level — should match first.
+	_ = svc.RevokeToken(jti, "test")
+	revoked, level = svc.IsRevoked(jti, agentID, taskID, chainHash)
+	if !revoked || level != "token" {
+		t.Fatalf("expected revoked at token level, got revoked=%v level=%s", revoked, level)
+	}
+
+	// Revoke at agent level — token check still matches first.
+	_ = svc.RevokeAgent(agentID, "test")
+	revoked, level = svc.IsRevoked(jti, agentID, taskID, chainHash)
+	if !revoked || level != "token" {
+		t.Fatalf("expected revoked at token level (priority), got revoked=%v level=%s", revoked, level)
+	}
+
+	// With only agent revoked (different jti).
+	revoked, level = svc.IsRevoked("other-jti", agentID, taskID, chainHash)
+	if !revoked || level != "agent" {
+		t.Fatalf("expected revoked at agent level, got revoked=%v level=%s", revoked, level)
+	}
+
+	// Revoke task — check with unrevoked jti and agent.
+	_ = svc.RevokeTask(taskID, "test")
+	revoked, level = svc.IsRevoked("other-jti", "other-agent", taskID, chainHash)
+	if !revoked || level != "task" {
+		t.Fatalf("expected revoked at task level, got revoked=%v level=%s", revoked, level)
+	}
+
+	// Revoke chain — check with everything else unrevoked.
+	_ = svc.RevokeDelegChain(chainHash, "test")
+	revoked, level = svc.IsRevoked("other-jti", "other-agent", "other-task", chainHash)
+	if !revoked || level != "delegation_chain" {
+		t.Fatalf("expected revoked at delegation_chain level, got revoked=%v level=%s", revoked, level)
 	}
 }
 
-func TestIsRevoked_Task(t *testing.T) {
+func TestNotRevoked(t *testing.T) {
 	svc := NewRevSvc()
-	claims := &token.TknClaims{Jti: "jti-3", Sub: "agent-b", TaskId: "task-42"}
-
-	_, _ = svc.Revoke("task", "task-42") //nolint:errcheck // test setup
-	if !svc.IsRevoked(claims) {
-		t.Fatal("should be revoked after task-level revocation")
+	if svc.IsTokenRevoked("nonexistent") {
+		t.Fatal("expected false for non-revoked token")
+	}
+	if svc.IsAgentRevoked("nonexistent") {
+		t.Fatal("expected false for non-revoked agent")
+	}
+	if svc.IsTaskRevoked("nonexistent") {
+		t.Fatal("expected false for non-revoked task")
+	}
+	if svc.IsChainRevoked("nonexistent") {
+		t.Fatal("expected false for non-revoked chain")
+	}
+	revoked, level := svc.IsRevoked("a", "b", "c", "d")
+	if revoked {
+		t.Fatalf("expected not revoked, got level=%s", level)
 	}
 }
 
-func TestIsRevoked_Chain(t *testing.T) {
+func TestRevokeRecordReason(t *testing.T) {
 	svc := NewRevSvc()
-	rootAgent := "spiffe://example/agent/root"
-
-	// Simulate a 2-level delegation chain: root → mid → leaf.
-	// DelegChain[0].Agent is the root delegator.
-	claims := &token.TknClaims{
-		Jti: "leaf-jti",
-		Sub: "spiffe://example/agent/leaf",
-		DelegChain: []token.DelegRecord{
-			{Agent: rootAgent, Scope: []string{"read:res:*"}, DelegatedAt: time.Now()},
-			{Agent: "spiffe://example/agent/mid", Scope: []string{"read:res:*"}, DelegatedAt: time.Now()},
-		},
+	reason := "policy violation detected"
+	_ = svc.RevokeToken("jti-reason", reason)
+	svc.mu.RLock()
+	rec, ok := svc.tokens["jti-reason"]
+	svc.mu.RUnlock()
+	if !ok {
+		t.Fatal("expected revocation record to exist")
 	}
-
-	if svc.IsRevoked(claims) {
-		t.Fatal("should not be revoked before chain revocation")
+	if rec.Reason != reason {
+		t.Fatalf("expected reason %q, got %q", reason, rec.Reason)
 	}
-
-	// Revoke the chain by the root delegator's agent ID.
-	_, _ = svc.Revoke("chain", rootAgent) //nolint:errcheck // test setup
-
-	if !svc.IsRevoked(claims) {
-		t.Fatal("delegated token should be revoked after chain-level revocation of root agent")
+	if rec.Level != "token" {
+		t.Fatalf("expected level 'token', got %q", rec.Level)
+	}
+	if rec.RevokedAt.IsZero() {
+		t.Fatal("expected non-zero RevokedAt")
 	}
 }
 
-func TestIsRevoked_ChainDoesNotAffectNonDelegated(t *testing.T) {
+func TestRevCheckerInterface(t *testing.T) {
 	svc := NewRevSvc()
-	rootAgent := "spiffe://example/agent/root"
-
-	// A non-delegated token from the same agent should NOT be caught by chain revocation.
-	claims := &token.TknClaims{
-		Jti: "direct-jti",
-		Sub: rootAgent,
-	}
-
-	_, _ = svc.Revoke("chain", rootAgent) //nolint:errcheck // test setup
-
-	if svc.IsRevoked(claims) {
-		t.Fatal("non-delegated token should not be affected by chain revocation")
-	}
-}
-
-func TestIsRevoked_ChainSubDelegation(t *testing.T) {
-	svc := NewRevSvc()
-	rootAgent := "spiffe://example/agent/root"
-
-	// A sub-delegation (3 levels) still has the root as DelegChain[0].Agent.
-	claims := &token.TknClaims{
-		Jti: "sub-deleg-jti",
-		Sub: "spiffe://example/agent/deep",
-		DelegChain: []token.DelegRecord{
-			{Agent: rootAgent, Scope: []string{"read:res:*"}, DelegatedAt: time.Now()},
-			{Agent: "spiffe://example/agent/mid", Scope: []string{"read:res:*"}, DelegatedAt: time.Now()},
-			{Agent: "spiffe://example/agent/leaf", Scope: []string{"read:res:*"}, DelegatedAt: time.Now()},
-		},
-	}
-
-	_, _ = svc.Revoke("chain", rootAgent) //nolint:errcheck // test setup
-
-	if !svc.IsRevoked(claims) {
-		t.Fatal("sub-delegated token should be revoked when root is chain-revoked")
-	}
-}
-
-func TestIsRevoked_ChainWrongRoot(t *testing.T) {
-	svc := NewRevSvc()
-
-	// Revoke a different root — should not affect this chain.
-	claims := &token.TknClaims{
-		Jti: "other-jti",
-		Sub: "spiffe://example/agent/leaf",
-		DelegChain: []token.DelegRecord{
-			{Agent: "spiffe://example/agent/root-A", Scope: []string{"read:res:*"}, DelegatedAt: time.Now()},
-		},
-	}
-
-	_, _ = svc.Revoke("chain", "spiffe://example/agent/root-B") //nolint:errcheck // test setup
-
-	if svc.IsRevoked(claims) {
-		t.Fatal("chain revocation of a different root should not affect this token")
-	}
-}
-
-func TestIsRevoked_EmptyDelegChainSkipsChainCheck(t *testing.T) {
-	svc := NewRevSvc()
-
-	claims := &token.TknClaims{
-		Jti: "no-chain-jti",
-		Sub: "spiffe://example/agent/solo",
-	}
-
-	// Revoke something at chain level — shouldn't match a non-delegated token.
-	_, _ = svc.Revoke("chain", "no-chain-jti") //nolint:errcheck // test setup
-
-	if svc.IsRevoked(claims) {
-		t.Fatal("non-delegated token should not match chain revocation even if JTI matches target")
-	}
+	// Compile-time interface check.
+	var _ RevChecker = svc
 }

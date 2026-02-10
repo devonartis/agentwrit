@@ -125,7 +125,8 @@ func (h *HeartbeatMgr) sweep() {
 
 		if s.missedCount >= h.maxMiss {
 			if h.revSvc != nil {
-				_, _ = h.revSvc.Revoke("agent", id)
+				_ = h.revSvc.RevokeAgent(id, "heartbeat: exceeded max missed heartbeats")
+				obs.RecordAnomalyRevocation()
 				obs.Warn("MUTAUTH", "Heartbeat.Sweep", "agent auto-revoked",
 					"agent_id="+id, "missed="+itoa(s.missedCount))
 			} else {
@@ -139,8 +140,7 @@ func (h *HeartbeatMgr) sweep() {
 		missRate = float64(missedAgents) / float64(totalAgents)
 	}
 	h.mu.Unlock()
-	// missRate available for future metrics integration
-	_ = missRate
+	obs.SetHeartbeatMissRate(missRate)
 }
 
 func itoa(n int) string {
