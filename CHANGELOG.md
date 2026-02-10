@@ -36,6 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `scripts/stack_down.sh` (compose down)
 - **Live Testing**: `scripts/live_test.sh` now always deploys Docker Compose (`broker` + `sidecar`) before executing E2E checks.
 - **Testing**: Comprehensive token exchange test coverage: scope format validation, TTL bounds, lineage anti-spoof, `Sid` fallback, integration lifecycle, and activation replay protection.
+- **Testing**: Request-ID propagation tests confirming `X-Request-Id` header round-trips through middleware and appears in every JSON error response.
+- **Testing**: Method restriction tests returning 405 `method_not_allowed` for non-POST requests on token exchange and sidecar activation endpoints.
+- **Testing**: Integration test mux wiring now mirrors `main.go` exactly (auth middleware, rate limiter, route order).
+- **Audit**: Added audit coverage for 5 previously uncovered sidecar denial paths:
+  - Unauthenticated exchange attempt (`sidecar_exchange_denied`)
+  - Sidecar identity derivation failure (`sidecar_exchange_denied`)
+  - Token issuance failure (`sidecar_exchange_denied`)
+  - Sidecar activation token creation denial (`sidecar_activation_failed`)
+  - Sidecar activation failure (`sidecar_activation_failed`)
 
 ### Changed
 

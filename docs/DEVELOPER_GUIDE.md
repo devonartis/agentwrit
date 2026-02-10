@@ -13,6 +13,7 @@ If you need a step-by-step app integration walkthrough (Python/TypeScript), star
 3. [Package Walkthrough](#3-package-walkthrough)
 4. [Request Lifecycle](#4-request-lifecycle)
 5. [Bootstrap Flow](#5-bootstrap-flow)
+5b. [Sidecar Bootstrap Flow](#5b-sidecar-bootstrap-flow)
 6. [Token Lifecycle](#6-token-lifecycle)
 7. [Scope System](#7-scope-system)
 8. [SPIFFE ID Generation](#8-spiffe-id-generation)
@@ -419,6 +420,123 @@ Key invariants:
 - The admin JWT can ONLY create launch tokens, revoke, and query audit. It cannot issue agent tokens.
 - Launch tokens are single-use with a 30-second default TTL.
 - `requested_scope` MUST be a subset of the launch token's `allowed_scope`. Scope can only narrow.
+
+---
+
+## 5b. Sidecar Bootstrap Flow
+
+The sidecar flow is an alternative to per-agent launch tokens. A sidecar process activates once and then mints scoped agent tokens for local agents.
+
+```
+Step 1: Admin issues sidecar activation token
+    POST /v1/admin/sidecar-activations
+    Authorization: Bearer <admin-jwt>
+    {"allowed_scope_prefix":"read:data:*","ttl":900}
+    --> ValMw + WithRequiredScope("admin:launch-tokens:*")
+    --> AdminSvc.CreateSidecarActivationToken
+        --> TknSvc.Issue (sub="admin", aud=["sidecar_activation"],
+                          scope=["sidecar:activate:read:data:*"], ttl=900)
+    <-- 201 {activation_token: "<jwt>", expires_at, scope}
+    Audit: sidecar_activation_issued
+
+Step 2: Sidecar activates (one-time exchange)
+    POST /v1/sidecar/activate  (rate-limited: 5 req/s, burst 10)
+    {"sidecar_activation_token":"<jwt>"}
+    --> AdminSvc.ActivateSidecar
+        --> TknSvc.Verify (checks sig, iss, exp)
+        --> Validate sub="admin", aud contains "sidecar_activation"
+        --> extractActivationScopePrefix (strips "sidecar:activate:" prefix)
+        --> store.ConsumeActivationToken (JTI replay protection)
+        --> TknSvc.Issue (sub="sidecar:<jti>",
+                          scope=["sidecar:manage:*", "sidecar:scope:read:data:*"],
+                          sid=<jti>, ttl=min(remaining, 900))
+    <-- 200 {access_token, expires_in, token_type, sidecar_id}
+    Audit: sidecar_activated
+
+Step 3: Sidecar mints agent tokens
+    POST /v1/token/exchange
+    Authorization: Bearer <sidecar-token>
+    {"agent_id":"spiffe://...","scope":["read:data:report-42"],"ttl":90}
+    --> ValMw + WithRequiredScope("sidecar:manage:*")
+    --> TokenExchangeHdl.ServeHTTP
+        --> Validate Content-Type, JSON body, required fields
+        --> Validate TTL bounds (0-900, clamp 0 to 900)
+        --> Validate scope format (each entry: action:resource:identifier)
+        --> sidecarAllowedScopes (strip "sidecar:scope:" from claims)
+        --> authz.ScopeIsSubset (requested vs ceiling)
+        --> store.GetAgent (verify agent_id exists)
+        --> Derive sidecar_id: claims.Sid, fallback claims.Sub
+        --> TknSvc.Issue (sub=agent_id, scope, sid=sidecar_id, ttl)
+    <-- 200 {access_token, expires_in, token_type, agent_id, sidecar_id}
+    Audit: sidecar_exchange_success
+```
+
+### Scope Ceiling Extraction
+
+`sidecarAllowedScopes()` in `internal/handler/token_exchange_hdl.go` extracts the ceiling from the sidecar token:
+
+```go
+func sidecarAllowedScopes(scopes []string) []string {
+    out := make([]string, 0)
+    for _, scope := range scopes {
+        if strings.HasPrefix(scope, "sidecar:scope:") {
+            allowed := strings.TrimPrefix(scope, "sidecar:scope:")
+            if allowed != "" {
+                out = append(out, allowed)
+            }
+        }
+    }
+    return out
+}
+```
+
+Example: token scope `["sidecar:manage:*", "sidecar:scope:read:data:*"]` produces ceiling `["read:data:*"]`. The requested agent scope must be a subset of this ceiling via `authz.ScopeIsSubset`.
+
+### Anti-Spoof Lineage Derivation
+
+The `sidecar_id` in the exchange response is always **broker-derived**, never client-supplied:
+
+```
+1. Use claims.Sid (set during activation from the activation JTI)
+2. Fallback to claims.Sub (the sidecar's SPIFFE-like identity)
+3. If both empty → 500 sidecar_derivation_failed
+```
+
+This prevents a compromised client from injecting a fake `sidecar_id` to mask its identity in audit trails.
+
+### TTL Capping
+
+Token exchange enforces `maxExchangeTTL = 900` seconds:
+
+- TTL > 900 or TTL < 0 → `400 invalid_ttl`
+- TTL = 0 → clamps to 900 (prevents `cfg.DefaultTTL` from exceeding the exchange cap)
+- TTL 1-900 → used as-is
+
+### Activation Token Validation Pipeline
+
+`ActivateSidecar` in `internal/admin/admin_svc.go` validates in this order:
+
+1. Token is not empty
+2. `TknSvc.Verify` passes (signature, issuer, expiry)
+3. `sub == "admin"` (activation tokens are admin-issued)
+4. `aud` contains `"sidecar_activation"` (intent binding)
+5. Scope contains a `sidecar:activate:*` entry (scope prefix extraction)
+6. JTI not already consumed (`store.ConsumeActivationToken` -- replay protection)
+7. Remaining TTL > 0 and capped at 900s
+
+Failure at any step returns `ErrActivationTokenInvalid` (except step 6 which returns `ErrActivationTokenReplayed`).
+
+### Audit Events
+
+All sidecar operations are audit-logged:
+
+| Event | Recorded when |
+|-------|---------------|
+| `sidecar_activation_issued` | Activation token created successfully |
+| `sidecar_activated` | Activation token exchanged for sidecar bearer |
+| `sidecar_activation_failed` | Activation denied (invalid token, replay, or creation failure) |
+| `sidecar_exchange_success` | Agent token minted via sidecar exchange |
+| `sidecar_exchange_denied` | Exchange denied (scope escalation, missing ceiling, agent not found, unauthenticated, derivation failure, issuance failure) |
 
 ---
 

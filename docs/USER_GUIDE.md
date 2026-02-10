@@ -585,32 +585,119 @@ curl -s "$BROKER/v1/audit/events?since=2026-02-09T00:00:00Z&until=2026-02-09T23:
 
 ---
 
-## Sidecar Bootstrap flow
+## Sidecar Bootstrap Flow
 
-For scenarios where multiple agents run on a single host (e.g., a developer laptop), you can use the Sidecar-First bootstrap flow.
+For scenarios where multiple agents run on a single host (e.g., a developer laptop or container pod), you can use the Sidecar-First bootstrap flow. A sidecar process obtains a management token from the broker and then mints scoped agent tokens locally, without each agent needing its own launch token.
+
+### How Scope Ceilings Work
+
+The sidecar receives a **scope ceiling** at activation time. This ceiling limits what agent tokens the sidecar can issue. Scope ceiling entries are stored in the sidecar token's `scope` array with the prefix `sidecar:scope:`. For example, if the admin sets `allowed_scope_prefix` to `read:data:*`, the sidecar token will contain `sidecar:scope:read:data:*`. When the sidecar calls `POST /v1/token/exchange`, the broker strips the `sidecar:scope:` prefix and checks that every requested agent scope is a subset of the ceiling. Agent tokens can only narrow scope, never exceed the ceiling.
 
 ### 1. Admin generates activation token
 
+Authenticate as admin first (see [Bootstrap Walkthrough](#bootstrap-walkthrough)), then create an activation token:
+
 ```bash
-curl -s -X POST http://localhost:8080/v1/admin/sidecar-activations \
+ACT_RESP=$(curl -s -X POST http://localhost:8080/v1/admin/sidecar-activations \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -d '{"allowed_scope_prefix":"read:data:*","ttl":900}'
+  -d '{"allowed_scope_prefix":"read:data:*","ttl":900}')
+
+echo "$ACT_RESP" | jq .
+
+ACTIVATION_TOKEN=$(echo "$ACT_RESP" | jq -r '.activation_token')
 ```
+
+Response:
+
+```json
+{
+  "activation_token": "eyJhbGciOiJFZERTQSIs...",
+  "expires_at": "2026-02-09T13:45:00Z",
+  "scope": "sidecar:activate:read:data:*"
+}
+```
+
+The activation token is a short-lived JWT with `aud: ["sidecar_activation"]`. It can only be used once.
 
 ### 2. Sidecar activates its identity
 
-The sidecar swaps the activation token for a functional sidecar management token. This is a one-time exchange.
+The sidecar swaps the activation token for a functional sidecar management token. This is a **one-time exchange** -- replaying the same token returns `401 activation_token_replayed`.
 
 ```bash
-curl -s -X POST http://localhost:8080/v1/sidecar/activate \
+SIDECAR_RESP=$(curl -s -X POST http://localhost:8080/v1/sidecar/activate \
   -H "Content-Type: application/json" \
-  -d "{\"sidecar_activation_token\":\"$ACTIVATION_TOKEN\"}"
+  -d "{\"sidecar_activation_token\":\"$ACTIVATION_TOKEN\"}")
+
+echo "$SIDECAR_RESP" | jq .
+
+SIDECAR_TOKEN=$(echo "$SIDECAR_RESP" | jq -r '.access_token')
+SIDECAR_ID=$(echo "$SIDECAR_RESP" | jq -r '.sidecar_id')
 ```
+
+Response:
+
+```json
+{
+  "access_token": "eyJhbGciOiJFZERTQSIs...",
+  "expires_in": 900,
+  "token_type": "Bearer",
+  "sidecar_id": "e2b7777781a064686237079634888b11"
+}
+```
+
+The sidecar token contains:
+- `scope`: `["sidecar:manage:*", "sidecar:scope:read:data:*"]` -- management permission plus scope ceiling
+- `sid`: the `sidecar_id` value -- used for lineage tracking in agent tokens
+- TTL: inherits the remaining activation token TTL, capped at 900 seconds
 
 ### 3. Sidecar requests agent tokens
 
-The sidecar can now mint tokens for local agents using `POST /v1/token/exchange`. All agent tokens issued this way will have a `sidecar_id` claim for audit traceability.
+The sidecar can now mint tokens for registered agents using `POST /v1/token/exchange`. The agent must already be registered via the normal challenge-response flow.
+
+```bash
+curl -s -X POST http://localhost:8080/v1/token/exchange \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $SIDECAR_TOKEN" \
+  -d "{
+    \"agent_id\": \"$AGENT_ID\",
+    \"scope\": [\"read:data:report-42\"],
+    \"ttl\": 90
+  }" | jq .
+```
+
+Response:
+
+```json
+{
+  "access_token": "eyJhbGciOiJFZERTQSIs...",
+  "expires_in": 90,
+  "token_type": "Bearer",
+  "agent_id": "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+  "sidecar_id": "e2b7777781a064686237079634888b11"
+}
+```
+
+Notes:
+- The `sidecar_id` in the response is **broker-derived** from the authenticated sidecar token's `sid` claim. Any client-supplied `sidecar_id` in the request body is ignored (anti-spoof protection).
+- Requested scope must be a subset of the sidecar scope ceiling (`403 scope_escalation_denied` otherwise).
+- Each scope entry must be valid `action:resource:identifier` format (`400 invalid_scope_format` otherwise).
+- TTL is capped at 900 seconds (`maxExchangeTTL`). TTL=0 clamps to 900s. Negative or >900 returns `400 invalid_ttl`.
+- The `agent_id` must refer to a registered agent (`404 agent_not_found` otherwise).
+- The issued agent token carries a `sid` claim matching the sidecar's identity, enabling audit traceability.
+
+### Sidecar Error Reference
+
+| Error Code | Status | Cause | Fix |
+|------------|--------|-------|-----|
+| `activation_token_replayed` | 401 | Activation token already consumed | Create a new activation token |
+| `invalid_activation_token` | 401 | Activation token expired, invalid signature, wrong audience, or missing scope | Create a fresh activation token with correct parameters |
+| `scope_escalation_denied` | 403 | Requested scope exceeds sidecar scope ceiling | Request only scopes within the ceiling set at activation |
+| `sidecar_scope_missing` | 403 | Sidecar token has no `sidecar:scope:*` entries | Re-activate sidecar with an `allowed_scope_prefix` |
+| `invalid_scope_format` | 400 | Scope entry not in `action:resource:identifier` format | Fix malformed scope entries |
+| `invalid_ttl` | 400 | TTL negative or exceeds 900 seconds | Use TTL between 0 and 900 |
+| `agent_not_found` | 404 | Target `agent_id` not registered | Register the agent first via the challenge-response flow |
+| `sidecar_derivation_failed` | 500 | Broker could not derive sidecar identity from caller token | Contact administrator -- internal error |
 
 ---
 
