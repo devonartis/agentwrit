@@ -1,115 +1,44 @@
 package handler
 
 import (
-	"bufio"
 	"encoding/json"
-	"net"
 	"net/http"
 	"time"
 
 	"github.com/divineartis/agentauth/internal/obs"
-	"github.com/divineartis/agentauth/internal/store"
 )
 
-// HealthHdl serves broker health details for operators and probes.
+// HealthHdl handles GET /v1/health. It returns the broker's status,
+// version, and uptime in seconds. No authentication is required.
 type HealthHdl struct {
-	sqlStore   *store.SqlStore
-	redisStore *store.RedisStore
-	version    string
-	startedAt  time.Time
+	startTime time.Time
+	version   string
 }
 
-// NewHealthHdl creates a health handler with current process start time.
-func NewHealthHdl(sqlStore *store.SqlStore, redisStore *store.RedisStore, version string) *HealthHdl {
-	return NewHealthHdlWithStart(sqlStore, redisStore, version, time.Now().UTC())
-}
-
-// NewHealthHdlWithStart creates a health handler with explicit start time (useful for tests).
-func NewHealthHdlWithStart(sqlStore *store.SqlStore, redisStore *store.RedisStore, version string, startedAt time.Time) *HealthHdl {
-	if version == "" {
-		version = "0.1.0"
-	}
-	if startedAt.IsZero() {
-		startedAt = time.Now().UTC()
-	}
+// NewHealthHdl creates a new health handler that reports the given version
+// string and starts tracking uptime from the moment of creation.
+func NewHealthHdl(version string) *HealthHdl {
 	return &HealthHdl{
-		sqlStore:   sqlStore,
-		redisStore: redisStore,
-		version:    version,
-		startedAt:  startedAt,
+		startTime: time.Now(),
+		version:   version,
 	}
 }
 
 type healthResp struct {
-	Status        string            `json:"status"`
-	Version       string            `json:"version"`
-	UptimeSeconds int64             `json:"uptime_seconds"`
-	Components    map[string]string `json:"components"`
+	Status  string `json:"status"`
+	Version string `json:"version"`
+	Uptime  int64  `json:"uptime"`
 }
 
-// ServeHTTP reports broker/component health.
 func (h *HealthHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
-	components := map[string]string{
-		"sqlite": h.sqliteStatus(),
-		"redis":  h.redisStatus(),
-	}
-
-	status := "healthy"
-	httpStatus := http.StatusOK
-	if components["sqlite"] != "healthy" {
-		status = "unhealthy"
-		httpStatus = http.StatusServiceUnavailable
-	} else if components["redis"] != "healthy" {
-		status = "degraded"
-		httpStatus = http.StatusServiceUnavailable
-	}
-
-	obs.Ok("OBS", "HealthHdl.ServeHTTP", "health check", "status="+status)
-
+	uptime := int64(time.Since(h.startTime).Seconds())
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(httpStatus)
-	_ = json.NewEncoder(w).Encode(healthResp{
-		Status:        status,
-		Version:       h.version,
-		UptimeSeconds: int64(time.Since(h.startedAt).Seconds()),
-		Components:    components,
-	})
-}
-
-func (h *HealthHdl) sqliteStatus() string {
-	if h.sqlStore == nil {
-		return "unhealthy"
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(healthResp{
+		Status:  "ok",
+		Version: h.version,
+		Uptime:  uptime,
+	}); err != nil {
+		obs.Warn("HEALTH", "hdl", "failed to encode response", "err="+err.Error())
 	}
-	return "healthy"
-}
-
-func (h *HealthHdl) redisStatus() string {
-	// Redis is optional in current broker wiring; if not configured, report healthy.
-	if h.redisStore == nil || h.redisStore.Addr == "" {
-		return "healthy"
-	}
-
-	conn, err := net.DialTimeout("tcp", h.redisStore.Addr, 250*time.Millisecond)
-	if err != nil {
-		return "unhealthy"
-	}
-	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(250 * time.Millisecond))
-
-	if _, err := conn.Write([]byte("*1\r\n$4\r\nPING\r\n")); err != nil {
-		return "unhealthy"
-	}
-	reply, err := bufio.NewReader(conn).ReadString('\n')
-	if err != nil {
-		return "unhealthy"
-	}
-	if len(reply) >= 5 && reply[:5] == "+PONG" {
-		return "healthy"
-	}
-	return "unhealthy"
 }

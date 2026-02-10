@@ -1,182 +1,113 @@
+// Package revoke provides four-level token revocation for the AgentAuth
+// broker.
+//
+// Revocation operates at four granularity levels:
+//
+//   - token: revoke a single token by its JTI.
+//   - agent: revoke all tokens belonging to a SPIFFE agent ID.
+//   - task:  revoke all tokens associated with a task_id.
+//   - chain: revoke all tokens in a delegation chain by the root delegator's agent ID.
+//
+// Revocation entries are stored in memory and checked by [RevSvc.IsRevoked]
+// during middleware validation (see [authz.ValMw]).
 package revoke
 
 import (
+	"errors"
 	"sync"
-	"time"
 
-	"github.com/divineartis/agentauth/internal/obs"
+	"github.com/divineartis/agentauth/internal/token"
 )
 
-// RevChecker is the interface for revocation lookups.
-// In-memory implementation now; Redis can be plugged in later.
-type RevChecker interface {
-	IsTokenRevoked(jti string) bool
-	IsAgentRevoked(agentID string) bool
-	IsTaskRevoked(taskID string) bool
-	IsChainRevoked(chainHash string) bool
-	// IsRevoked checks all 4 levels given full claims context.
-	// Returns (revoked, level) where level indicates which check matched.
-	IsRevoked(jti, agentID, taskID, chainHash string) (bool, string)
-}
+// Sentinel errors returned by [RevSvc.Revoke].
+var (
+	ErrInvalidLevel  = errors.New("invalid revocation level")
+	ErrMissingTarget = errors.New("missing revocation target")
+)
 
-// RevRecord stores metadata about a single revocation.
-type RevRecord struct {
-	TargetID  string
-	Level     string // "token" | "agent" | "task" | "delegation_chain"
-	Reason    string
-	RevokedAt time.Time
-}
-
-// RevSvc manages in-memory revocation state.
+// RevSvc maintains in-memory revocation lists at four levels (token, agent,
+// task, chain). All methods are safe for concurrent use.
 type RevSvc struct {
-	mu         sync.RWMutex
-	tokens     map[string]RevRecord // jti → record
-	agents     map[string]RevRecord // agentID → record
-	tasks      map[string]RevRecord // taskID → record
-	chains     map[string]RevRecord // chainHash → record
-	checkCount uint64
-	hitCount   uint64
+	mu     sync.RWMutex
+	tokens map[string]bool // JTI → revoked
+	agents map[string]bool // agent SPIFFE ID → revoked
+	tasks  map[string]bool // task_id → revoked
+	chains map[string]bool // root delegator agent ID → revoked
 }
 
-// NewRevSvc creates a new revocation service with empty revocation sets.
+// NewRevSvc returns an empty revocation service ready for use.
 func NewRevSvc() *RevSvc {
-	svc := &RevSvc{
-		tokens: make(map[string]RevRecord),
-		agents: make(map[string]RevRecord),
-		tasks:  make(map[string]RevRecord),
-		chains: make(map[string]RevRecord),
+	return &RevSvc{
+		tokens: make(map[string]bool),
+		agents: make(map[string]bool),
+		tasks:  make(map[string]bool),
+		chains: make(map[string]bool),
 	}
-	obs.SetRevocationCacheHitRatio(0)
-	return svc
 }
 
-// RevokeToken revokes a specific token by its JTI.
-func (r *RevSvc) RevokeToken(jti, reason string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.tokens[jti] = RevRecord{
-		TargetID:  jti,
-		Level:     "token",
-		Reason:    reason,
-		RevokedAt: time.Now().UTC(),
+// IsRevoked checks whether the given token claims match any active
+// revocation entry. It checks all four levels in order: token (JTI),
+// agent (subject), task (task_id), and chain (root delegator agent ID).
+// It returns true if any match is found.
+func (s *RevSvc) IsRevoked(claims *token.TknClaims) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Check token-level (JTI)
+	if s.tokens[claims.Jti] {
+		return true
 	}
-	obs.Ok("REVOKE", "RevSvc.RevokeToken", "token revoked", "jti="+jti, "reason="+reason)
-	return nil
-}
 
-// RevokeAgent revokes all tokens for a given agent ID.
-func (r *RevSvc) RevokeAgent(agentID, reason string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.agents[agentID] = RevRecord{
-		TargetID:  agentID,
-		Level:     "agent",
-		Reason:    reason,
-		RevokedAt: time.Now().UTC(),
+	// Check agent-level (subject = SPIFFE ID)
+	if s.agents[claims.Sub] {
+		return true
 	}
-	obs.Ok("REVOKE", "RevSvc.RevokeAgent", "agent revoked", "agent_id="+agentID, "reason="+reason)
-	return nil
-}
 
-// RevokeTask revokes all tokens for a given task ID.
-func (r *RevSvc) RevokeTask(taskID, reason string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.tasks[taskID] = RevRecord{
-		TargetID:  taskID,
-		Level:     "task",
-		Reason:    reason,
-		RevokedAt: time.Now().UTC(),
+	// Check task-level
+	if claims.TaskId != "" && s.tasks[claims.TaskId] {
+		return true
 	}
-	obs.Ok("REVOKE", "RevSvc.RevokeTask", "task revoked", "task_id="+taskID, "reason="+reason)
-	return nil
-}
 
-// RevokeDelegChain revokes all tokens with a given delegation chain hash.
-func (r *RevSvc) RevokeDelegChain(chainHash, reason string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.chains[chainHash] = RevRecord{
-		TargetID:  chainHash,
-		Level:     "delegation_chain",
-		Reason:    reason,
-		RevokedAt: time.Now().UTC(),
-	}
-	obs.Ok("REVOKE", "RevSvc.RevokeDelegChain", "delegation chain revoked", "chain_hash="+chainHash, "reason="+reason)
-	return nil
-}
-
-// IsTokenRevoked returns true if the given JTI has been revoked.
-func (r *RevSvc) IsTokenRevoked(jti string) bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	_, ok := r.tokens[jti]
-	return ok
-}
-
-// IsAgentRevoked returns true if the given agent ID has been revoked.
-func (r *RevSvc) IsAgentRevoked(agentID string) bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	_, ok := r.agents[agentID]
-	return ok
-}
-
-// IsTaskRevoked returns true if the given task ID has been revoked.
-func (r *RevSvc) IsTaskRevoked(taskID string) bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	_, ok := r.tasks[taskID]
-	return ok
-}
-
-// IsChainRevoked returns true if the given delegation chain hash has been revoked.
-func (r *RevSvc) IsChainRevoked(chainHash string) bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	_, ok := r.chains[chainHash]
-	return ok
-}
-
-// IsRevoked checks all 4 revocation levels given full claims context.
-// Returns (revoked bool, level string) where level indicates which check matched.
-func (r *RevSvc) IsRevoked(jti, agentID, taskID, chainHash string) (bool, string) {
-	r.mu.Lock()
-	revoked := false
-	level := ""
-	if jti != "" {
-		if _, ok := r.tokens[jti]; ok {
-			revoked = true
-			level = "token"
+	// Check chain-level: if the token was delegated, the first entry in the
+	// chain is the root delegator. Revoking at chain level targets the root
+	// delegator's agent ID (SPIFFE ID), which invalidates every token in
+	// that delegation lineage.
+	if len(claims.DelegChain) > 0 {
+		if s.chains[claims.DelegChain[0].Agent] {
+			return true
 		}
 	}
-	if !revoked && agentID != "" {
-		if _, ok := r.agents[agentID]; ok {
-			revoked = true
-			level = "agent"
-		}
+
+	return false
+}
+
+// Revoke adds a revocation entry at the specified level for the given
+// target. Valid levels are "token", "agent", "task", and "chain". The
+// target is the JTI, SPIFFE ID, task_id, or root delegator agent ID respectively.
+// It returns the count of entries affected (always 1 on success) and an
+// error if the level is invalid or the target is empty.
+func (s *RevSvc) Revoke(level, target string) (int, error) {
+	if target == "" {
+		return 0, ErrMissingTarget
 	}
-	if !revoked && taskID != "" {
-		if _, ok := r.tasks[taskID]; ok {
-			revoked = true
-			level = "task"
-		}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	switch level {
+	case "token":
+		s.tokens[target] = true
+		return 1, nil
+	case "agent":
+		s.agents[target] = true
+		return 1, nil
+	case "task":
+		s.tasks[target] = true
+		return 1, nil
+	case "chain":
+		s.chains[target] = true
+		return 1, nil
+	default:
+		return 0, ErrInvalidLevel
 	}
-	if !revoked && chainHash != "" {
-		if _, ok := r.chains[chainHash]; ok {
-			revoked = true
-			level = "delegation_chain"
-		}
-	}
-	r.checkCount++
-	if revoked {
-		r.hitCount++
-	}
-	ratio := 0.0
-	if r.checkCount > 0 {
-		ratio = float64(r.hitCount) / float64(r.checkCount)
-	}
-	r.mu.Unlock()
-	obs.SetRevocationCacheHitRatio(ratio)
-	return revoked, level
 }

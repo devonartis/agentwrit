@@ -1,147 +1,226 @@
+// Package store provides the persistence layer for nonces, launch tokens,
+// and agent records.
+//
+// The current implementation ([SqlStore]) keeps everything in memory behind
+// a [sync.RWMutex]. The type is named SqlStore to ease a future migration to
+// a SQL-backed store without changing call sites.
+//
+// All public methods are safe for concurrent use.
 package store
 
 import (
-	"database/sql"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"sync"
 	"time"
 )
 
-// ErrLaunchTokenNotFound indicates the requested launch token does not exist in the store.
-// ErrLaunchTokenExpired indicates the launch token has passed its expiration time.
-// ErrLaunchTokenConsumed indicates the launch token has already been used.
-// ErrNonceNotFound indicates the requested nonce does not exist in the store.
-// ErrNonceExpired indicates the nonce has passed its expiration time.
-// ErrAgentExists indicates an agent with the same ID is already registered.
+// Sentinel errors returned by store operations. Callers can use
+// [errors.Is] to match specific failure modes.
 var (
-	ErrLaunchTokenNotFound = errors.New("launch token not found")
-	ErrLaunchTokenExpired  = errors.New("launch token expired")
-	ErrLaunchTokenConsumed = errors.New("launch token already consumed")
-	ErrNonceNotFound       = errors.New("nonce not found")
-	ErrNonceExpired        = errors.New("nonce expired")
-	ErrAgentExists         = errors.New("agent already exists")
-	// ErrAgentNotFound indicates no agent exists with the given ID.
+	ErrNonceNotFound = errors.New("nonce not found or expired")
+	ErrNonceConsumed = errors.New("nonce already consumed")
+	ErrTokenNotFound = errors.New("launch token not found")
+	ErrTokenExpired  = errors.New("launch token expired")
+	ErrTokenConsumed = errors.New("launch token already consumed")
 	ErrAgentNotFound = errors.New("agent not found")
 )
 
-// LaunchTokenData holds the metadata and state of an issued launch token.
-type LaunchTokenData struct {
-	Token      string
-	OrchId     string
-	TaskId     string
-	Scope      []string
-	ExpiresAt  time.Time
-	Consumed   bool
-	ConsumedAt time.Time
+// LaunchTokenRecord represents a pre-authorized launch token created by an
+// admin. It binds an agent name to an allowed scope ceiling and optional
+// TTL cap. A single-use token is consumed on first registration.
+type LaunchTokenRecord struct {
+	Token        string
+	AgentName    string
+	AllowedScope []string
+	MaxTTL       int
+	SingleUse    bool
+	CreatedAt    time.Time
+	ExpiresAt    time.Time
+	ConsumedAt   *time.Time
+	CreatedBy    string
 }
 
-// AgentRecord represents a registered agent's identity and cryptographic material.
+// AgentRecord stores the persistent state of a registered agent,
+// including its SPIFFE-format AgentID, Ed25519 public key, and the
+// scope granted at registration time.
 type AgentRecord struct {
-	AgentID    string
-	OrchId     string
-	TaskId     string
-	Scope      []string
-	CreatedAt  time.Time
-	PublicKey  []byte
-	LastNonce  string
-	LastSigRaw []byte
+	AgentID      string
+	PublicKey    []byte
+	OrchID       string
+	TaskID       string
+	Scope        []string
+	RegisteredAt time.Time
+	LastSeen     time.Time
 }
 
-// NonceRecord represents a challenge nonce and its expiration time.
-type NonceRecord struct {
-	Nonce     string
-	ExpiresAt time.Time
+type nonceRecord struct {
+	value     string
+	expiresAt time.Time
+	consumed  bool
 }
 
-// SqlStore provides in-memory storage for launch tokens, agents, and nonces behind a mutex.
+// SqlStore provides in-memory storage with read/write mutex protection.
+// Create one with [NewSqlStore] and share it across all services.
 type SqlStore struct {
-	DB           *sql.DB
-	mu           sync.Mutex
-	launchTokens map[string]LaunchTokenData
-	agents       map[string]AgentRecord
-	nonces       map[string]NonceRecord
+	mu             sync.RWMutex
+	nonces         map[string]*nonceRecord
+	launchTokens   map[string]*LaunchTokenRecord
+	agents         map[string]*AgentRecord
+	jtiConsumption map[string]time.Time
 }
 
-// NewSqlStore creates a new SqlStore with initialized in-memory maps.
+// NewSqlStore returns an initialized, empty in-memory store ready for use.
 func NewSqlStore() *SqlStore {
 	return &SqlStore{
-		launchTokens: make(map[string]LaunchTokenData),
-		agents:       make(map[string]AgentRecord),
-		nonces:       make(map[string]NonceRecord),
+		nonces:         make(map[string]*nonceRecord),
+		launchTokens:   make(map[string]*LaunchTokenRecord),
+		agents:         make(map[string]*AgentRecord),
+		jtiConsumption: make(map[string]time.Time),
 	}
 }
 
-// CreateLaunchToken stores a new launch token in the store.
-func (s *SqlStore) CreateLaunchToken(data LaunchTokenData) error {
+// CreateNonce generates a cryptographically random 64-character hex nonce,
+// stores it with a 30-second TTL, and returns the nonce string. The nonce
+// must be consumed via [SqlStore.ConsumeNonce] before it expires.
+func (s *SqlStore) CreateNonce() string {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		panic("crypto/rand failed: " + err.Error())
+	}
+	nonce := hex.EncodeToString(b)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.launchTokens[data.Token] = data
-	return nil
+	s.nonces[nonce] = &nonceRecord{
+		value:     nonce,
+		expiresAt: time.Now().Add(30 * time.Second),
+		consumed:  false,
+	}
+	return nonce
 }
 
-// ConsumeLaunchToken marks a launch token as consumed and returns its data, or an error if the token is missing, expired, or already consumed.
-func (s *SqlStore) ConsumeLaunchToken(token string) (*LaunchTokenData, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	data, ok := s.launchTokens[token]
-	if !ok {
-		return nil, ErrLaunchTokenNotFound
-	}
-	now := time.Now().UTC()
-	if now.After(data.ExpiresAt) {
-		return nil, ErrLaunchTokenExpired
-	}
-	if data.Consumed {
-		return nil, ErrLaunchTokenConsumed
-	}
-
-	data.Consumed = true
-	data.ConsumedAt = now
-	s.launchTokens[token] = data
-	return &data, nil
-}
-
-// SaveAgent persists a new agent record, returning ErrAgentExists if the agent ID is already registered.
-func (s *SqlStore) SaveAgent(rec AgentRecord) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.agents[rec.AgentID]; ok {
-		return ErrAgentExists
-	}
-	s.agents[rec.AgentID] = rec
-	return nil
-}
-
-// GetAgent retrieves an agent record by its SPIFFE-compatible ID.
-func (s *SqlStore) GetAgent(agentID string) (*AgentRecord, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	rec, ok := s.agents[agentID]
-	if !ok {
-		return nil, ErrAgentNotFound
-	}
-	return &rec, nil
-}
-
-// PutNonce stores a challenge nonce with the given expiration time.
-func (s *SqlStore) PutNonce(nonce string, expiresAt time.Time) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.nonces[nonce] = NonceRecord{Nonce: nonce, ExpiresAt: expiresAt}
-}
-
-// ConsumeNonce validates and removes a nonce from the store, returning an error if it is missing or expired.
+// ConsumeNonce atomically marks a nonce as consumed. It returns
+// [ErrNonceNotFound] if the nonce does not exist or has expired, or
+// [ErrNonceConsumed] if it was already consumed.
 func (s *SqlStore) ConsumeNonce(nonce string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	rec, ok := s.nonces[nonce]
 	if !ok {
 		return ErrNonceNotFound
 	}
-	if time.Now().UTC().After(rec.ExpiresAt) {
-		return ErrNonceExpired
+	if rec.consumed {
+		return ErrNonceConsumed
 	}
-	delete(s.nonces, nonce)
+	if time.Now().After(rec.expiresAt) {
+		delete(s.nonces, nonce)
+		return ErrNonceNotFound
+	}
+	rec.consumed = true
+	return nil
+}
+
+// SaveLaunchToken persists a [LaunchTokenRecord], keyed by its Token field.
+// If a record with the same token already exists it is silently overwritten.
+func (s *SqlStore) SaveLaunchToken(rec LaunchTokenRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.launchTokens[rec.Token] = &rec
+	return nil
+}
+
+// GetLaunchToken retrieves a launch token record by its opaque token string.
+// It returns [ErrTokenNotFound] if the token does not exist,
+// [ErrTokenExpired] if it has passed its ExpiresAt time, or
+// [ErrTokenConsumed] if it was already consumed.
+func (s *SqlStore) GetLaunchToken(token string) (*LaunchTokenRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	rec, ok := s.launchTokens[token]
+	if !ok {
+		return nil, ErrTokenNotFound
+	}
+	if time.Now().After(rec.ExpiresAt) {
+		return nil, ErrTokenExpired
+	}
+	if rec.ConsumedAt != nil {
+		return nil, ErrTokenConsumed
+	}
+	return rec, nil
+}
+
+// ConsumeLaunchToken sets the ConsumedAt timestamp on a launch token,
+// preventing it from being used again. It returns [ErrTokenNotFound] if
+// the token does not exist or [ErrTokenConsumed] if already consumed.
+func (s *SqlStore) ConsumeLaunchToken(token string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rec, ok := s.launchTokens[token]
+	if !ok {
+		return ErrTokenNotFound
+	}
+	if rec.ConsumedAt != nil {
+		return ErrTokenConsumed
+	}
+	now := time.Now()
+	rec.ConsumedAt = &now
+	return nil
+}
+
+// SaveAgent persists an [AgentRecord], keyed by its AgentID (SPIFFE ID).
+func (s *SqlStore) SaveAgent(rec AgentRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.agents[rec.AgentID] = &rec
+	return nil
+}
+
+// GetAgent retrieves an [AgentRecord] by its SPIFFE ID. It returns
+// [ErrAgentNotFound] if no record exists for agentID.
+func (s *SqlStore) GetAgent(agentID string) (*AgentRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	rec, ok := s.agents[agentID]
+	if !ok {
+		return nil, ErrAgentNotFound
+	}
+	return rec, nil
+}
+
+// UpdateAgentLastSeen sets the LastSeen field of the agent identified by
+// agentID to the current time. It returns [ErrAgentNotFound] if no matching
+// record exists.
+func (s *SqlStore) UpdateAgentLastSeen(agentID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rec, ok := s.agents[agentID]
+	if !ok {
+		return ErrAgentNotFound
+	}
+	rec.LastSeen = time.Now()
+	return nil
+}
+
+// ConsumeActivationToken marks an activation token's JTI as consumed. It
+// returns [ErrTokenConsumed] if the JTI has already been recorded. The exp
+// timestamp is provided to allow for future garbage collection of the JTI
+// set, though the current in-memory implementation does not yet implement
+// automatic pruning.
+func (s *SqlStore) ConsumeActivationToken(jti string, exp int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.jtiConsumption[jti]; exists {
+		return ErrTokenConsumed
+	}
+
+	s.jtiConsumption[jti] = time.Unix(exp, 0)
 	return nil
 }

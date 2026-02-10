@@ -2,6 +2,7 @@
 *.test
 /agentauth-broker
 /broker
+/smoketest
 
 # Internal AI configuration
 CLAUDE.md

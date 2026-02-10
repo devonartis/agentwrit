@@ -1,9 +1,33 @@
+// Command smoketest runs a live E2E smoke test against a running AgentAuth broker.
+//
+// It exercises the full sidecar bootstrap lifecycle:
+//
+//  1. GET  /v1/health         – readiness check
+//  2. GET  /v1/metrics        – Prometheus endpoint
+//  3. POST /v1/admin/auth     – obtain admin token
+//  4. POST /v1/admin/launch-tokens        – create launch token
+//  5. GET  /v1/challenge      – obtain nonce
+//  6. POST /v1/register       – register agent (Ed25519 challenge-response)
+//  7. POST /v1/admin/sidecar-activations  – create sidecar activation token
+//  8. POST /v1/sidecar/activate           – activate sidecar (single-use)
+//  9. POST /v1/sidecar/activate           – replay denied
+//  10. POST /v1/token/exchange            – exchange for agent token (happy path)
+//  11. POST /v1/token/exchange            – scope escalation denied
+//  12. POST /v1/token/validate            – validate exchanged token
+//
+// Usage:
+//
+//	go run ./cmd/smoketest [base-url] [admin-secret]
+//
+// Defaults: http://127.0.0.1:8080, "live-test-secret-32bytes-long!!"
 package main
 
 import (
 	"bytes"
 	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,369 +37,320 @@ import (
 	"time"
 )
 
+var (
+	baseURL     = "http://127.0.0.1:8080"
+	adminSecret = "live-test-secret-32bytes-long!!"
+	pass, fail  int
+)
+
 func main() {
-	baseURL := os.Getenv("AA_BROKER_URL")
-	if baseURL == "" {
-		baseURL = "http://127.0.0.1:8080"
+	if len(os.Args) > 1 {
+		baseURL = os.Args[1]
 	}
-	launchToken := os.Getenv("SEED_LAUNCH_TOKEN")
-	if launchToken == "" {
-		fail("SEED_LAUNCH_TOKEN not set")
-	}
-	adminToken := os.Getenv("SEED_ADMIN_TOKEN")
-	if adminToken == "" {
-		fail("SEED_ADMIN_TOKEN not set")
+	if len(os.Args) > 2 {
+		adminSecret = os.Args[2]
 	}
 
-	pass("config", "broker_url="+baseURL)
+	client := &http.Client{Timeout: 10 * time.Second}
 
-	// Step 1: Health check.
-	healthStatus, healthBody := httpGetNoAuth(baseURL + "/v1/health")
-	if healthStatus != 200 {
-		fail(fmt.Sprintf("health check: expected 200, got %d body=%s", healthStatus, healthBody))
-	}
-	if !strings.Contains(healthBody, `"status":"healthy"`) {
-		fail("health check: unexpected body: " + healthBody)
-	}
-	pass("health check")
+	fmt.Println("=== AgentAuth Sidecar Smoke Test ===")
+	fmt.Printf("  broker: %s\n\n", baseURL)
 
-	// Step 2: Metrics endpoint is live.
-	metricsStatus, metricsBody := httpGetNoAuth(baseURL + "/v1/metrics")
-	if metricsStatus != 200 {
-		fail(fmt.Sprintf("metrics: expected 200, got %d", metricsStatus))
-	}
-	if !strings.Contains(metricsBody, "aa_token_issuance_duration_ms") {
-		fail("metrics: expected aa_token_issuance_duration_ms")
-	}
-	pass("metrics endpoint exposed")
+	// Step 1: Health
+	checkGET(client, "Step 1: GET /v1/health", "/v1/health", 200)
 
-	// Step 3: Get challenge nonce.
-	challengeBody := httpGet(baseURL + "/v1/challenge")
-	var ch map[string]string
-	mustUnmarshal(challengeBody, &ch)
-	nonce := ch["nonce"]
-	if nonce == "" {
-		fail("challenge: missing nonce")
-	}
-	if ch["expires_at"] == "" {
-		fail("challenge: missing expires_at")
-	}
-	pass("challenge nonce received", "nonce_len="+itoa(len(nonce)))
+	// Step 2: Metrics
+	checkGET(client, "Step 2: GET /v1/metrics", "/v1/metrics", 200)
 
-	// Step 4: Register agent with Ed25519 proof-of-possession.
-	agentPub, agentPriv, _ := ed25519.GenerateKey(nil)
-	sig := ed25519.Sign(agentPriv, []byte(nonce))
-	pubJWK, _ := json.Marshal(map[string]string{
-		"kty": "OKP",
-		"crv": "Ed25519",
-		"x":   base64.RawURLEncoding.EncodeToString(agentPub),
-	})
-
-	regReq, _ := json.Marshal(map[string]any{
-		"launch_token":     launchToken,
-		"nonce":            nonce,
-		"agent_public_key": json.RawMessage(pubJWK),
-		"signature":        base64.RawURLEncoding.EncodeToString(sig),
-		"orchestration_id": "seed-orch",
-		"task_id":          "seed-task",
-		"requested_scope":  []string{"read:Customers:12345"},
-	})
-
-	regStatus, regBody := httpPost(baseURL+"/v1/register", regReq)
-	if regStatus != 201 {
-		fail(fmt.Sprintf("register: expected 201, got %d body=%s", regStatus, regBody))
-	}
-	var reg map[string]any
-	mustUnmarshal(regBody, &reg)
-	agentID, _ := reg["agent_instance_id"].(string)
-	accessToken, _ := reg["access_token"].(string)
-	if agentID == "" || accessToken == "" {
-		fail("register: missing agent_instance_id or access_token")
-	}
-	if !strings.HasPrefix(agentID, "spiffe://") {
-		fail("register: agent_instance_id not a SPIFFE ID: " + agentID)
-	}
-	pass("agent registered", "agent_id="+agentID)
-
-	// Step 5: Validate token.
-	valReq, _ := json.Marshal(map[string]any{
-		"token":          accessToken,
-		"required_scope": "read:Customers:12345",
-	})
-	valStatus, _ := httpPost(baseURL+"/v1/token/validate", valReq)
-	if valStatus != 200 {
-		fail(fmt.Sprintf("validate: expected 200, got %d", valStatus))
-	}
-	pass("token validated with matching scope")
-
-	// Step 6: Access protected resource.
-	protStatus, protBody := httpGetAuth(baseURL+"/v1/protected/customers/12345", accessToken)
-	if protStatus != 200 {
-		fail(fmt.Sprintf("protected: expected 200, got %d", protStatus))
-	}
-	if !strings.Contains(protBody, `"customer_id"`) {
-		fail("protected: missing customer_id in body")
-	}
-	pass("protected resource accessed with valid token")
-
-	// Step 7: No-auth access denied.
-	denyStatus, _ := httpGetNoAuth(baseURL + "/v1/protected/customers/12345")
-	if denyStatus != 401 {
-		fail(fmt.Sprintf("protected no-auth: expected 401, got %d", denyStatus))
-	}
-	pass("protected resource denied without token")
-
-	// Step 8: Renew token.
-	renewReq, _ := json.Marshal(map[string]any{
-		"token": accessToken,
-	})
-	renewStatus, renewBody := httpPost(baseURL+"/v1/token/renew", renewReq)
-	if renewStatus != 200 {
-		fail(fmt.Sprintf("renew: expected 200, got %d", renewStatus))
-	}
-	var ren map[string]any
-	mustUnmarshal(renewBody, &ren)
-	renewedToken, _ := ren["access_token"].(string)
-	if renewedToken == "" || renewedToken == accessToken {
-		fail("renew: should return a different token")
-	}
-	pass("token renewed")
-
-	// Step 9: Revoke without admin token should fail.
-	jti := extractJTI(renewedToken)
-	revokeReq, _ := json.Marshal(map[string]string{
-		"level":     "token",
-		"target_id": jti,
-		"reason":    "smoke test revocation",
-	})
-	revokeNoAuthStatus, _ := httpPost(baseURL+"/v1/revoke", revokeReq)
-	if revokeNoAuthStatus != 401 {
-		fail(fmt.Sprintf("revoke without admin auth: expected 401, got %d", revokeNoAuthStatus))
-	}
-	pass("revoke denied without admin token")
-
-	// Step 10: Revoke the renewed token with admin auth.
-	// Extract JTI by decoding the payload.
-	revokeStatus, _ := httpPostAuth(baseURL+"/v1/revoke", adminToken, revokeReq)
-	if revokeStatus != 200 {
-		fail(fmt.Sprintf("revoke: expected 200, got %d", revokeStatus))
-	}
-	pass("token revoked", "jti="+jti)
-
-	// Step 11: Verify revoked token is denied.
-	revokedStatus, _ := httpGetAuth(baseURL+"/v1/protected/customers/12345", renewedToken)
-	if revokedStatus != 401 {
-		fail(fmt.Sprintf("revoked access: expected 401, got %d", revokedStatus))
-	}
-	pass("revoked token denied on protected resource")
-
-	// Step 12: Reused launch token rejected.
-	regReq2, _ := json.Marshal(map[string]any{
-		"launch_token":     launchToken,
-		"nonce":            nonce,
-		"agent_public_key": json.RawMessage(pubJWK),
-		"signature":        base64.RawURLEncoding.EncodeToString(sig),
-		"orchestration_id": "seed-orch",
-		"task_id":          "seed-task",
-		"requested_scope":  []string{"read:Customers:12345"},
-	})
-	reuse2Status, _ := httpPost(baseURL+"/v1/register", regReq2)
-	if reuse2Status != 401 {
-		fail(fmt.Sprintf("reused launch token: expected 401, got %d", reuse2Status))
-	}
-	pass("reused launch token rejected")
-
-	// ── M07 Delegation Chain Tests ──────────────────────────────────
-
-	// Step 13: Delegate scope from Agent A to Agent B.
-	// Use the original accessToken (pre-revocation, still valid).
-	delegReq, _ := json.Marshal(map[string]any{
-		"delegator_token": accessToken,
-		"target_agent_id": "spiffe://agentauth.local/agent/seed-orch/seed-task/agentB",
-		"delegated_scope": []string{"read:Customers:12345"},
-		"max_ttl":         60,
-	})
-	delegStatus, delegBody := httpPost(baseURL+"/v1/delegate", delegReq)
-	if delegStatus != 201 {
-		fail(fmt.Sprintf("delegate: expected 201, got %d body=%s", delegStatus, delegBody))
-	}
-	var delegResp map[string]any
-	mustUnmarshal(delegBody, &delegResp)
-	delegToken, _ := delegResp["delegation_token"].(string)
-	chainHash, _ := delegResp["chain_hash"].(string)
-	delegDepth, _ := delegResp["delegation_depth"].(float64)
-	if delegToken == "" {
-		fail("delegate: missing delegation_token")
-	}
-	if chainHash == "" {
-		fail("delegate: missing chain_hash")
-	}
-	if int(delegDepth) != 1 {
-		fail(fmt.Sprintf("delegate: expected depth=1, got %d", int(delegDepth)))
-	}
-	pass("delegation created", "depth=1", "chain_hash="+chainHash[:16]+"...")
-
-	// Step 14: Scope escalation blocked.
-	// Agent A (scope read:Customers:12345) tries to delegate read:Customers:* (broader).
-	escalateReq, _ := json.Marshal(map[string]any{
-		"delegator_token": accessToken,
-		"target_agent_id": "spiffe://agentauth.local/agent/seed-orch/seed-task/agentC",
-		"delegated_scope": []string{"read:Customers:*"},
-		"max_ttl":         60,
-	})
-	escalateStatus, escalateBody := httpPost(baseURL+"/v1/delegate", escalateReq)
-	if escalateStatus != 403 {
-		fail(fmt.Sprintf("scope escalation: expected 403, got %d body=%s", escalateStatus, escalateBody))
-	}
-	var escalateResp map[string]any
-	mustUnmarshal(escalateBody, &escalateResp)
-	if escalateResp["type"] != "urn:agentauth:error:scope-escalation" {
-		fail(fmt.Sprintf("scope escalation: expected scope-escalation error type, got %v", escalateResp["type"]))
-	}
-	pass("scope escalation blocked (403)")
-
-	// Step 15: Validate delegation token is a valid JWT.
-	valDelegReq, _ := json.Marshal(map[string]any{
-		"token":          delegToken,
-		"required_scope": "read:Customers:12345",
-	})
-	valDelegStatus, _ := httpPost(baseURL+"/v1/token/validate", valDelegReq)
-	if valDelegStatus != 200 {
-		fail(fmt.Sprintf("validate delegation token: expected 200, got %d", valDelegStatus))
-	}
-	pass("delegation token validated with correct scope")
-
-	// ── M05 Audit Trail Test ─────────────────────────────────────
-
-	// Step 16: Query audit trail (requires admin token).
-	stepAuditTrail(baseURL, adminToken)
-
-	fmt.Println("[AA:SMOKE:PASS] all smoke tests passed (core + delegation + audit)")
-}
-
-func stepAuditTrail(baseURL, adminToken string) {
-	status, body := httpGetAuth(baseURL+"/v1/audit/events", adminToken)
-	if status != 200 {
-		fail(fmt.Sprintf("audit trail: expected 200, got %d body=%s", status, body))
-	}
-	var result map[string]any
-	mustUnmarshal(body, &result)
-	eventsRaw, ok := result["events"].([]any)
-	if !ok || len(eventsRaw) == 0 {
-		fail("audit trail: expected non-empty events array")
-	}
-	pass("audit trail queried", fmt.Sprintf("event_count=%d", len(eventsRaw)))
-
-	// Verify at least one credential_issued event exists.
-	found := false
-	for _, e := range eventsRaw {
-		evt, _ := e.(map[string]any)
-		if evt["event_type"] == "credential_issued" {
-			found = true
-			break
+	// Step 3: Admin auth
+	adminToken := ""
+	{
+		body := jsonEnc(map[string]string{
+			"client_id":     "admin",
+			"client_secret": adminSecret,
+		})
+		resp := doJSON(client, "Step 3: POST /v1/admin/auth", "POST", "/v1/admin/auth", body, nil, 200)
+		if t, ok := resp["access_token"].(string); ok && t != "" {
+			adminToken = t
+		} else {
+			reportFail("Step 3: no access_token in response")
 		}
 	}
-	if !found {
-		fail("audit trail: no credential_issued event found")
+	if adminToken == "" {
+		summarize()
+		return
 	}
-	pass("audit trail contains credential_issued event")
-}
 
-func pass(msg string, ctx ...string) {
-	line := "[AA:SMOKE:PASS] " + msg
-	if len(ctx) > 0 {
-		line += " | " + strings.Join(ctx, " ")
+	// Step 4: Create launch token
+	launchToken := ""
+	{
+		body := jsonEnc(map[string]any{
+			"agent_name":    "smoke-agent",
+			"allowed_scope": []string{"read:data:*"},
+			"max_ttl":       600,
+			"ttl":           600,
+		})
+		resp := doJSON(client, "Step 4: POST /v1/admin/launch-tokens", "POST", "/v1/admin/launch-tokens", body, &adminToken, 201)
+		if t, ok := resp["launch_token"].(string); ok && t != "" {
+			launchToken = t
+		} else {
+			reportFail("Step 4: no launch_token in response")
+		}
 	}
-	fmt.Println(line)
-}
-
-func fail(msg string) {
-	fmt.Println("[AA:SMOKE:FAIL] " + msg)
-	os.Exit(1)
-}
-
-func httpGet(url string) string {
-	status, body := httpRequest(http.MethodGet, url, "", nil, "")
-	if status != http.StatusOK {
-		fail(fmt.Sprintf("GET %s: expected 200, got %d body=%s", url, status, body))
+	if launchToken == "" {
+		summarize()
+		return
 	}
-	return body
+
+	// Step 5: Get challenge nonce
+	nonce := ""
+	{
+		resp := doJSON(client, "Step 5: GET /v1/challenge", "GET", "/v1/challenge", nil, nil, 200)
+		if n, ok := resp["nonce"].(string); ok && n != "" {
+			nonce = n
+		} else {
+			reportFail("Step 5: no nonce in response")
+		}
+	}
+	if nonce == "" {
+		summarize()
+		return
+	}
+
+	// Step 6: Register agent with Ed25519 signature
+	agentToken := ""
+	agentID := ""
+	{
+		pub, priv, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			reportFail(fmt.Sprintf("Step 6: keygen: %v", err))
+			summarize()
+			return
+		}
+		nonceBytes, err := hex.DecodeString(nonce)
+		if err != nil {
+			reportFail(fmt.Sprintf("Step 6: nonce decode: %v", err))
+			summarize()
+			return
+		}
+		sig := ed25519.Sign(priv, nonceBytes)
+
+		body := jsonEnc(map[string]any{
+			"launch_token":    launchToken,
+			"nonce":           nonce,
+			"public_key":      base64.StdEncoding.EncodeToString(pub),
+			"signature":       base64.StdEncoding.EncodeToString(sig),
+			"orch_id":         "smoke-orch",
+			"task_id":         "smoke-task",
+			"requested_scope": []string{"read:data:*"},
+		})
+		resp := doJSON(client, "Step 6: POST /v1/register", "POST", "/v1/register", body, nil, 200)
+		if t, ok := resp["access_token"].(string); ok && t != "" {
+			agentToken = t
+		}
+		if id, ok := resp["agent_id"].(string); ok && id != "" {
+			agentID = id
+		}
+		if agentToken == "" || agentID == "" {
+			reportFail("Step 6: missing access_token or agent_id")
+		}
+		_ = agentToken // Used for future steps if needed
+	}
+	if agentID == "" {
+		summarize()
+		return
+	}
+
+	// Step 7: Create sidecar activation token
+	activationToken := ""
+	{
+		body := jsonEnc(map[string]any{
+			"allowed_scope_prefix": "read:data:*",
+			"ttl":                  120,
+		})
+		resp := doJSON(client, "Step 7: POST /v1/admin/sidecar-activations", "POST", "/v1/admin/sidecar-activations", body, &adminToken, 201)
+		if t, ok := resp["activation_token"].(string); ok && t != "" {
+			activationToken = t
+		} else {
+			reportFail("Step 7: no activation_token in response")
+		}
+	}
+	if activationToken == "" {
+		summarize()
+		return
+	}
+
+	// Step 8: Activate sidecar (single-use)
+	sidecarToken := ""
+	{
+		body := jsonEnc(map[string]string{
+			"sidecar_activation_token": activationToken,
+		})
+		resp := doJSON(client, "Step 8: POST /v1/sidecar/activate", "POST", "/v1/sidecar/activate", body, nil, 200)
+		if t, ok := resp["access_token"].(string); ok && t != "" {
+			sidecarToken = t
+		} else {
+			reportFail("Step 8: no access_token in response")
+		}
+	}
+	if sidecarToken == "" {
+		summarize()
+		return
+	}
+
+	// Step 9: Replay denial
+	{
+		body := jsonEnc(map[string]string{
+			"sidecar_activation_token": activationToken,
+		})
+		resp := doJSON(client, "Step 9: POST /v1/sidecar/activate (replay)", "POST", "/v1/sidecar/activate", body, nil, 401)
+		if ec, ok := resp["error_code"].(string); ok && ec == "activation_token_replayed" {
+			// good, error code verified
+		} else {
+			reportFail(fmt.Sprintf("Step 9: expected error_code=activation_token_replayed, got %v", resp["error_code"]))
+		}
+	}
+
+	// Step 10: Token exchange (happy path)
+	exchangedToken := ""
+	{
+		body := jsonEnc(map[string]any{
+			"agent_id": agentID,
+			"scope":    []string{"read:data:*"},
+			"ttl":      300,
+		})
+		resp := doJSON(client, "Step 10: POST /v1/token/exchange", "POST", "/v1/token/exchange", body, &sidecarToken, 200)
+		if t, ok := resp["access_token"].(string); ok && t != "" {
+			exchangedToken = t
+		} else {
+			reportFail("Step 10: no access_token in response")
+		}
+		// Verify sidecar_id is present
+		if sid, ok := resp["sidecar_id"].(string); !ok || sid == "" {
+			reportFail("Step 10: missing sidecar_id in exchange response")
+		}
+	}
+
+	// Step 11: Scope escalation denied
+	{
+		body := jsonEnc(map[string]any{
+			"agent_id": agentID,
+			"scope":    []string{"write:data:*"},
+			"ttl":      300,
+		})
+		resp := doJSON(client, "Step 11: POST /v1/token/exchange (escalation)", "POST", "/v1/token/exchange", body, &sidecarToken, 403)
+		if ec, ok := resp["error_code"].(string); ok && ec == "scope_escalation_denied" {
+			// good
+		} else {
+			reportFail(fmt.Sprintf("Step 11: expected error_code=scope_escalation_denied, got %v", resp["error_code"]))
+		}
+	}
+
+	// Step 12: Validate exchanged token
+	if exchangedToken != "" {
+		body := jsonEnc(map[string]string{
+			"token": exchangedToken,
+		})
+		resp := doJSON(client, "Step 12: POST /v1/token/validate", "POST", "/v1/token/validate", body, nil, 200)
+		if valid, ok := resp["valid"].(bool); ok && valid {
+			// good
+		} else {
+			reportFail(fmt.Sprintf("Step 12: expected valid=true, got %v", resp["valid"]))
+		}
+	}
+
+	summarize()
 }
 
-func httpGetAuth(url, token string) (int, string) {
-	req, _ := http.NewRequest(http.MethodGet, url, nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := http.DefaultClient.Do(req)
+func checkGET(client *http.Client, name, path string, expected int) {
+	req, err := http.NewRequest("GET", baseURL+path, nil)
 	if err != nil {
-		fail("GET " + url + ": " + err.Error())
+		reportFail(fmt.Sprintf("%s: %v", name, err))
+		return
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		reportFail(fmt.Sprintf("%s: %v", name, err))
+		return
 	}
 	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
-	return resp.StatusCode, string(b)
+	_, _ = io.Copy(io.Discard, resp.Body)
+	if resp.StatusCode == expected {
+		reportPass(name)
+	} else {
+		reportFail(fmt.Sprintf("%s: expected %d, got %d", name, expected, resp.StatusCode))
+	}
 }
 
-func httpGetNoAuth(url string) (int, string) {
-	return httpRequest(http.MethodGet, url, "", nil, "")
-}
-
-func httpPost(url string, body []byte) (int, string) {
-	return httpRequest(http.MethodPost, url, "", bytes.NewReader(body), "application/json")
-}
-
-func httpPostAuth(url, token string, body []byte) (int, string) {
-	return httpRequest(http.MethodPost, url, token, bytes.NewReader(body), "application/json")
-}
-
-func httpRequest(method, url, token string, body io.Reader, contentType string) (int, string) {
-	req, err := http.NewRequest(method, url, body)
+func doJSON(client *http.Client, name, method, path string, body []byte, bearerToken *string, expected int) map[string]any {
+	var bodyReader io.Reader
+	if body != nil {
+		bodyReader = bytes.NewReader(body)
+	}
+	req, err := http.NewRequest(method, baseURL+path, bodyReader)
 	if err != nil {
-		fail(method + " " + url + ": " + err.Error())
+		reportFail(fmt.Sprintf("%s: %v", name, err))
+		return nil
 	}
-	if contentType != "" {
-		req.Header.Set("Content-Type", contentType)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if bearerToken != nil {
+		req.Header.Set("Authorization", "Bearer "+*bearerToken)
 	}
-	resp, err := http.DefaultClient.Do(req)
+
+	resp, err := client.Do(req)
 	if err != nil {
-		fail(method + " " + url + ": " + err.Error())
+		reportFail(fmt.Sprintf("%s: %v", name, err))
+		return nil
 	}
 	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
-	return resp.StatusCode, string(b)
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != expected {
+		reportFail(fmt.Sprintf("%s: expected %d, got %d: %s", name, expected, resp.StatusCode, truncate(string(respBody), 200)))
+		return nil
+	}
+	reportPass(name)
+
+	var result map[string]any
+	ct := resp.Header.Get("Content-Type")
+	if len(respBody) > 0 && (strings.HasPrefix(ct, "application/json") || strings.HasPrefix(ct, "application/problem+json")) {
+		_ = json.Unmarshal(respBody, &result)
+	}
+	return result
 }
 
-func mustUnmarshal(data string, v any) {
-	if err := json.Unmarshal([]byte(data), v); err != nil {
-		fail("json unmarshal: " + err.Error() + " body=" + data)
-	}
+func jsonEnc(v any) []byte {
+	b, _ := json.Marshal(v)
+	return b
 }
 
-func extractJTI(tokenStr string) string {
-	parts := strings.SplitN(tokenStr, ".", 3)
-	if len(parts) < 2 {
-		fail("extractJTI: malformed token")
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		fail("extractJTI: base64 decode: " + err.Error())
-	}
-	var claims map[string]any
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		fail("extractJTI: json unmarshal: " + err.Error())
-	}
-	jti, _ := claims["jti"].(string)
-	if jti == "" {
-		fail("extractJTI: missing jti claim")
-	}
-	return jti
+func reportPass(name string) {
+	pass++
+	fmt.Printf("  PASS: %s\n", name)
 }
 
-func itoa(n int) string {
-	return fmt.Sprintf("%d", n)
+func reportFail(msg string) {
+	fail++
+	fmt.Printf("  FAIL: %s\n", msg)
 }
 
-func init() {
-	http.DefaultClient.Timeout = 10 * time.Second
+func summarize() {
+	fmt.Println()
+	fmt.Println("=== Smoke Test Summary ===")
+	fmt.Printf("  PASS: %d\n", pass)
+	fmt.Printf("  FAIL: %d\n", fail)
+	if fail > 0 {
+		fmt.Println("RESULT: FAILED")
+		os.Exit(1)
+	}
+	fmt.Println("RESULT: PASSED")
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
 }

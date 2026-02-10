@@ -1,139 +1,92 @@
 # AgentAuth
 
-**Ephemeral agent credentialing for AI systems.**
+AgentAuth is an ephemeral agent credentialing broker that issues short-lived, scope-attenuated tokens to AI agents. It implements the [Ephemeral Agent Credentialing](plans/Security-Pattern-That-Is-Why-We-Built-AgentAuth.md) security pattern: each agent proves identity via Ed25519 challenge-response, receives a SPIFFE-format identifier, and operates with only the permissions its task requires. Tokens expire in minutes, not hours, eliminating the credential exposure window that plagues traditional IAM approaches to AI agent security.
 
-AgentAuth is a Go broker that issues short-lived, scoped tokens to AI agents via cryptographic challenge-response identity flows. It implements the [Ephemeral Agent Credentialing](docs/SECURITY_PATTERN.md) security pattern to solve the AI agent identity crisis.
+## Release Status
 
----
+**Current release:** MVP Prototype (pattern validation release)
 
-## The Problem
+This release validates that AgentAuth is a working implementation of the target security pattern and is ready for controlled demos, integration testing, and senior-engineering productionization.
 
-Traditional IAM (OAuth, AWS IAM, service accounts) was designed for long-lived services with static identities. AI agents break every assumption: they are ephemeral (minutes), non-deterministic, require task-specific permissions at runtime, operate autonomously, and need to authenticate each other.
+This is intentionally **not** a production-hardening release. Production controls (transport hardening, deployment architecture, and operations posture) are handled in a follow-on build-out phase.
 
-A system with 100 concurrent agents using 15-minute OAuth tokens for 2-minute tasks creates **21,666 agent-hours of unnecessary credential exposure per day**. Static credentials shared across agents mean one compromise exposes everything. There is no per-agent accountability, no scope enforcement, and no way to revoke a single agent's access.
+For full release framing and handoff scope, see [plans/AgentAuth-MVP-Release-Writeup-v1.0.md](plans/AgentAuth-MVP-Release-Writeup-v1.0.md).
 
-AgentAuth eliminates this exposure window.
+## Quick Start
 
-## What AgentAuth Does
+```bash
+# 1. Build
+go build ./...
 
-| Capability | Description |
-|---|---|
-| **Ephemeral Identity** | Each agent instance gets a unique SPIFFE ID, cryptographically bound via Ed25519 |
-| **Task-Scoped Tokens** | JWTs scoped to `action:resource:identifier` with configurable TTL (1-15 min) |
-| **Zero-Trust Enforcement** | Every request validated: signature, expiry, scope, revocation status |
-| **4-Level Revocation** | Revoke by token, agent, task, or delegation chain -- takes effect immediately |
-| **Immutable Audit Trail** | SHA-256 hash-chain audit log with PII sanitization |
-| **Mutual Authentication** | 3-step agent-to-agent handshake with discovery binding |
-| **Delegation Chains** | Scope attenuation across agent hops with cryptographic lineage proof |
-| **Observability** | Prometheus metrics, structured logging, health endpoints |
+# 2. Configure (required -- AA_ADMIN_SECRET must be set)
+export AA_ADMIN_SECRET="change-me-in-production"
+
+# 3. Run
+go run ./cmd/broker
+
+# 4. Test health
+curl http://localhost:8080/v1/health
+```
+
+The broker starts on port 8080 by default. Set `AA_PORT` to change it.
 
 ## Architecture
 
 ```
-                           AgentAuth Broker (:8080)
-                          +-----------------------+
-                          |                       |
-  Agent                   |  Identity   Token     |
-  +-----------+           |  Service    Service   |
-  | Ed25519   |  Challenge|  (IdSvc)    (TknSvc)  |
-  | Key Pair  |<--------->|                       |
-  |           |  Register |  Authz MW   Revoke    |
-  +-----------+---------->|  (ValMw)    (RevSvc)  |
-        |                 |                       |
-        | Bearer Token    |  Audit      Deleg     |
-        +---------------->|  (AuditLog) (DelegSvc)|
-        |                 |                       |
-        v                 |  MutAuth    Obs       |
-  Resource Server         |  (MutAuthHdl)(Metrics)|
-                          +-----------------------+
+                          AgentAuth Broker (:8080)
+                         +-------------------------+
+                         |                         |
+  Agent                  |  Identity   Token       |
+  +----------+           |  Service    Service     |   Resource
+  | Ed25519  |--challenge-->  |           |        |   Server
+  | key pair |--register---->  |           |        |   +------+
+  |          |<--JWT token----+-----------+        |   |      |
+  |          |--request + Bearer token-------------------> |  |
+  +----------+           |  Authz    Revoke        |   +------+
+                         |  Middleware Service      |
+  Admin                  |     |         |         |
+  +----------+           |  Audit    Delegation    |
+  | client   |--auth---->|  Log      Service       |
+  | secret   |<--admin-->|     |         |         |
+  +----------+  token    |  Prometheus Metrics      |
+                         +-------------------------+
 ```
 
-**Request flow:**
+**Key components:**
 
-1. Agent calls `GET /v1/challenge` to receive a nonce
-2. Agent signs nonce with Ed25519 private key
-3. Agent calls `POST /v1/register` with launch token + signed nonce + public key
-4. Broker validates proof-of-possession, creates SPIFFE ID, issues scoped JWT
-5. Agent uses JWT as Bearer token to access protected resources
-6. Token auto-expires; broker can also revoke immediately
-
-## Quick Start
-
-### Prerequisites
-
-- Go 1.23+
-- Python 3.11+ (for demo application)
-- Docker (optional)
-
-### Run the Broker
-
-```bash
-git clone https://github.com/YOUR_ORG/agentauth.git
-cd agentauth
-
-# Build and run
-go run ./cmd/broker
-
-# Verify
-curl http://localhost:8080/v1/health
-```
-
-### Run with Docker
-
-```bash
-docker compose up
-```
-
-### Run with Seed Tokens (Development)
-
-```bash
-AA_SEED_TOKENS=true go run ./cmd/broker
-# Prints SEED_LAUNCH_TOKEN and SEED_ADMIN_TOKEN for development use
-```
+| Component | Package | Purpose |
+|-----------|---------|---------|
+| Identity Service | `internal/identity` | Challenge-response registration, SPIFFE ID generation, Ed25519 key management |
+| Token Service | `internal/token` | EdDSA JWT issuance, verification, and renewal |
+| Authz Middleware | `internal/authz` | Bearer token validation, scope enforcement on every request |
+| Revocation Service | `internal/revoke` | 4-level revocation (token, agent, task, delegation chain) |
+| Audit Log | `internal/audit` | Hash-chain tamper-evident audit trail with PII sanitization |
+| Delegation Service | `internal/deleg` | Scope-attenuated delegation with chain verification |
+| Admin Service | `internal/admin` | Admin authentication, launch token lifecycle |
+| Observability | `internal/obs` | Structured logging, Prometheus metrics |
 
 ## API Endpoints
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET` | `/v1/health` | None | Broker liveness and readiness check |
-| `GET` | `/v1/metrics` | None | Prometheus metrics endpoint |
-| `GET` | `/v1/challenge` | None | Generate nonce for registration proof |
-| `POST` | `/v1/register` | Launch token + signature | Register agent, receive SPIFFE ID and scoped JWT |
-| `POST` | `/v1/token/validate` | None | Verify token signature, expiry, and scope |
-| `POST` | `/v1/token/renew` | Valid token | Rotate token for long-running agents |
-| `POST` | `/v1/revoke` | Admin scope | Revoke tokens at 4 levels |
-| `POST` | `/v1/delegate` | Valid token | Delegate attenuated scope to another agent |
-| `GET` | `/v1/audit/events` | Admin scope | Query immutable audit trail |
+| `GET` | `/v1/challenge` | None | Obtain a cryptographic nonce (30s TTL) |
+| `POST` | `/v1/register` | Launch token | Register agent with signed nonce and public key |
+| `POST` | `/v1/token/validate` | None | Verify a token and return decoded claims |
+| `POST` | `/v1/token/renew` | Bearer | Renew a token with fresh timestamps |
+| `POST` | `/v1/delegate` | Bearer | Create scope-attenuated delegation token |
+| `POST` | `/v1/revoke` | Bearer + `admin:revoke:*` | Revoke tokens at 4 levels |
+| `GET` | `/v1/audit/events` | Bearer + `admin:audit:*` | Query the audit trail |
+| `POST` | `/v1/admin/auth` | None | Authenticate admin with shared secret |
+| `POST` | `/v1/admin/launch-tokens` | Bearer + `admin:launch-tokens:*` | Create launch tokens |
+| `POST` | `/v1/admin/sidecar-activations` | Bearer + `admin:launch-tokens:*` | Create sidecar activation token |
+| `POST` | `/v1/sidecar/activate` | Activation token in body | Exchange activation token for sidecar Bearer token |
+| `POST` | `/v1/token/exchange` | Bearer + `sidecar:manage:*` | Sidecar-mediated token issuance |
+| `GET` | `/v1/health` | None | Health check (status, version, uptime) |
+| `GET` | `/v1/metrics` | None | Prometheus metrics |
 
-See [API Reference](docs/API_REFERENCE.md) for full request/response details.
+All error responses use [RFC 7807](https://tools.ietf.org/html/rfc7807) `application/problem+json`.
 
-## Demo Application
-
-The `demo/` directory contains a Python application that demonstrates AgentAuth in action:
-
-- **Resource Server** (FastAPI): Simulated customer database with 4 endpoints and dual-mode auth
-- **Demo Agents**: Three agents (DataRetriever, Analyzer, ActionTaker) collaborating via delegation
-- **Attack Simulator**: 5 adversarial scenarios showing the security gap (insecure) vs. the fix (secure)
-- **Dashboard**: Web UI with real-time event stream and side-by-side comparison
-
-```bash
-# Install Python dependencies
-cd demo && pip install -r requirements.txt
-
-# Run demo agents in insecure mode (no broker)
-python -m resource_server.main --mode insecure &
-python -m agents --mode insecure --resource-url http://localhost:8090
-
-# Run in secure mode (with broker)
-AA_SEED_TOKENS=true go run ./cmd/broker &
-python -m resource_server.main --mode secure &
-python -m agents --mode secure \
-  --launch-token "$SEED_LAUNCH_TOKEN" \
-  --broker-url http://localhost:8080 \
-  --resource-url http://localhost:8090
-```
-
-See the [User Guide](docs/USER_GUIDE.md) for detailed instructions.
+See [docs/api/openapi.yaml](docs/api/openapi.yaml) for the full machine-readable API specification.
 
 ## Configuration
 
@@ -141,46 +94,74 @@ All environment variables are prefixed with `AA_`:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AA_PORT` | `8080` | Broker listen port |
-| `AA_LOG_LEVEL` | `verbose` | Logging verbosity: `quiet`, `standard`, `verbose`, `trace` |
-| `AA_TRUST_DOMAIN` | `agentauth.local` | SPIFFE trust domain |
-| `AA_DEFAULT_TTL` | `300` | Token TTL in seconds |
-| `AA_SEED_TOKENS` | `false` | Print dev seed tokens on startup |
+| `AA_PORT` | `8080` | HTTP listen port |
+| `AA_LOG_LEVEL` | `verbose` | Logging level: `quiet`, `standard`, `verbose`, `trace` |
+| `AA_TRUST_DOMAIN` | `agentauth.local` | SPIFFE trust domain for agent IDs |
+| `AA_DEFAULT_TTL` | `300` | Default token TTL in seconds (5 minutes) |
+| `AA_ADMIN_SECRET` | **(required)** | Shared secret for admin authentication. Broker exits on startup if unset. |
+| `AA_SEED_TOKENS` | `false` | Print seed launch/admin tokens on startup (dev only) |
 
-## Development
+## Running Tests
 
 ```bash
-# Build
-go build ./...
+go test ./...                     # all tests
+go test ./... -short              # unit tests only (skip integration)
+go test ./internal/token/...      # single package
+```
 
-# Test (all)
-go test ./...
+## Production Deployment
 
-# Test (unit only)
-go test ./... -short
+The broker listens on plain HTTP by default. **Production deployments MUST use a TLS-terminating reverse proxy** (e.g., nginx, envoy, Caddy) or configure a load balancer with TLS termination. Native TLS support (`AA_TLS_CERT`, `AA_TLS_KEY`) is planned for a future release.
 
-# Test (single package)
-go test ./internal/token/...
+Example with nginx:
 
-# Lint
-golangci-lint run ./...
+```nginx
+server {
+    listen 443 ssl;
+    server_name agentauth.example.com;
+    ssl_certificate     /etc/ssl/certs/agentauth.pem;
+    ssl_certificate_key /etc/ssl/private/agentauth-key.pem;
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
 
-# Python demo tests
-cd demo && python -m pytest -v
+## Docker (Broker + Sidecar)
+
+This repo includes a Docker Compose stack for the broker and sidecar runtime.
+The demo app is intentionally separate and should run from its own repository.
+
+One-command startup:
+
+```bash
+./scripts/stack_up.sh
+```
+
+One-command teardown:
+
+```bash
+./scripts/stack_down.sh
+```
+
+Run live E2E (always deploys compose stack first):
+
+```bash
+./scripts/live_test.sh
 ```
 
 ## Documentation
 
-| Document | Purpose |
-|----------|---------|
-| [User Guide](docs/USER_GUIDE.md) | Operator and evaluator guide |
-| [Developer Guide](docs/DEVELOPER_GUIDE.md) | Architecture, packages, coding standards |
-| [API Reference](docs/API_REFERENCE.md) | Endpoint request/response details |
-| [OpenAPI Spec](docs/api/openapi.yaml) | Machine-readable API contract |
-| [Security Pattern](docs/SECURITY_PATTERN.md) | The security pattern AgentAuth implements |
-| [Contributing](CONTRIBUTING.md) | How to contribute |
-| [Security Policy](SECURITY.md) | Vulnerability reporting |
+- [API Reference](docs/API_REFERENCE.md) -- endpoint details and examples
+- [Agent Integration Guide](docs/AGENT_INTEGRATION_GUIDE.md) -- step-by-step Python/TypeScript agent integration
+- [Developer Guide](docs/DEVELOPER_GUIDE.md) -- architecture, conventions, contributing
+- [User Guide](docs/USER_GUIDE.md) -- workflows and integration patterns
+- [OpenAPI Spec](docs/api/openapi.yaml) -- machine-readable API contract
+- [Security Pattern](plans/Security-Pattern-That-Is-Why-We-Built-AgentAuth.md) -- the "why" behind AgentAuth
+- [Changelog](CHANGELOG.md) -- release history
 
 ## License
 
-This project is licensed under the [Apache License 2.0](LICENSE).
+See [LICENSE](LICENSE) for details.

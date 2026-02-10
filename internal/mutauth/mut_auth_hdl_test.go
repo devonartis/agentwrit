@@ -38,34 +38,34 @@ func testSetup(t *testing.T) (
 	agentBID := "spiffe://agentauth.local/agent/orch-1/task-2/inst-b"
 
 	if err := st.SaveAgent(store.AgentRecord{
-		AgentID:   agentAID,
-		OrchId:    "orch-1",
-		TaskId:    "task-1",
-		Scope:     []string{"read:Data:*"},
-		CreatedAt: time.Now().UTC(),
-		PublicKey: pubA,
+		AgentID:      agentAID,
+		OrchID:       "orch-1",
+		TaskID:       "task-1",
+		Scope:        []string{"read:Data:*"},
+		RegisteredAt: time.Now().UTC(),
+		PublicKey:     pubA,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.SaveAgent(store.AgentRecord{
-		AgentID:   agentBID,
-		OrchId:    "orch-1",
-		TaskId:    "task-2",
-		Scope:     []string{"write:Data:*"},
-		CreatedAt: time.Now().UTC(),
-		PublicKey: pubB,
+		AgentID:      agentBID,
+		OrchID:       "orch-1",
+		TaskID:       "task-2",
+		Scope:        []string{"write:Data:*"},
+		RegisteredAt: time.Now().UTC(),
+		PublicKey:     pubB,
 	}); err != nil {
 		t.Fatal(err)
 	}
 
 	tokA, err := tknSvc.Issue(token.IssueReq{
-		AgentID: agentAID, OrchID: "orch-1", TaskID: "task-1", Scope: []string{"read:Data:*"},
+		Sub: agentAID, OrchId: "orch-1", TaskId: "task-1", Scope: []string{"read:Data:*"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	tokB, err := tknSvc.Issue(token.IssueReq{
-		AgentID: agentBID, OrchID: "orch-1", TaskID: "task-2", Scope: []string{"write:Data:*"},
+		Sub: agentBID, OrchId: "orch-1", TaskId: "task-2", Scope: []string{"write:Data:*"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -131,13 +131,13 @@ func TestHandshakeUnregisteredInitiator(t *testing.T) {
 	targetID := "spiffe://agentauth.local/agent/orch-1/task-2/inst-b"
 	pubB, _, _ := ed25519.GenerateKey(nil)
 	_ = st.SaveAgent(store.AgentRecord{
-		AgentID: targetID, OrchId: "orch-1", TaskId: "task-2",
-		Scope: []string{"write:Data:*"}, CreatedAt: time.Now().UTC(), PublicKey: pubB,
+		AgentID: targetID, OrchID: "orch-1", TaskID: "task-2",
+		Scope: []string{"write:Data:*"}, RegisteredAt: time.Now().UTC(), PublicKey: pubB,
 	})
 
 	ghostID := "spiffe://agentauth.local/agent/orch-1/task-1/ghost"
 	tok, _ := tknSvc.Issue(token.IssueReq{
-		AgentID: ghostID, OrchID: "orch-1", TaskID: "task-1", Scope: []string{"read:Data:*"},
+		Sub: ghostID, OrchId: "orch-1", TaskId: "task-1", Scope: []string{"read:Data:*"},
 	})
 
 	hdl := NewMutAuthHdl(tknSvc, st, nil)
@@ -213,17 +213,17 @@ func TestHandshakePeerMismatch(t *testing.T) {
 	pubC, privC, _ := ed25519.GenerateKey(nil)
 	agentCID := "spiffe://agentauth.local/agent/orch-1/task-3/inst-c"
 	if err := st.SaveAgent(store.AgentRecord{
-		AgentID:   agentCID,
-		OrchId:    "orch-1",
-		TaskId:    "task-3",
-		Scope:     []string{"read:Data:*"},
-		CreatedAt: time.Now().UTC(),
-		PublicKey: pubC,
+		AgentID:      agentCID,
+		OrchID:       "orch-1",
+		TaskID:       "task-3",
+		Scope:        []string{"read:Data:*"},
+		RegisteredAt: time.Now().UTC(),
+		PublicKey:     pubC,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	tokC, err := tknSvc.Issue(token.IssueReq{
-		AgentID: agentCID, OrchID: "orch-1", TaskID: "task-3", Scope: []string{"read:Data:*"},
+		Sub: agentCID, OrchId: "orch-1", TaskId: "task-3", Scope: []string{"read:Data:*"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -260,5 +260,23 @@ func TestCompleteHandshakeResponderIDTampering(t *testing.T) {
 	ok, err := hdl.CompleteHandshake(resp, req.Nonce)
 	if !errors.Is(err, ErrResponderMismatch) {
 		t.Fatalf("expected ErrResponderMismatch, got ok=%v err=%v", ok, err)
+	}
+}
+
+func TestHandshakeDiscoveryNotBoundPassthrough(t *testing.T) {
+	_, st, tokA, tokB, _, privB, _, agentBID, tknSvc := testSetup(t)
+
+	// Rebuild handler with discovery enabled but without binding target agent.
+	dr := NewDiscoveryRegistry()
+	hdl := NewMutAuthHdl(tknSvc, st, dr)
+
+	req, err := hdl.InitiateHandshake(tokA, agentBID)
+	if err != nil {
+		t.Fatalf("initiate: %v", err)
+	}
+
+	_, err = hdl.RespondToHandshake(req, tokB, privB)
+	if !errors.Is(err, ErrAgentNotBound) {
+		t.Fatalf("expected ErrAgentNotBound, got %v", err)
 	}
 }

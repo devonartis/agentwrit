@@ -1,260 +1,149 @@
-openapi: 3.1.0
+openapi: "3.0.3"
 info:
   title: AgentAuth Broker API
-  version: 0.1.0
+  description: >
+    Ephemeral agent credentialing broker. Issues short-lived, scope-attenuated
+    EdDSA JWT tokens to AI agents via Ed25519 challenge-response identity
+    verification. All error responses use RFC 7807 application/problem+json.
+  version: "2.0.0"
+  contact:
+    name: AgentAuth
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+security: []
+
+tags:
+  - name: Identity
+    description: Agent challenge-response registration
+  - name: Token
+    description: Token validation, renewal
+  - name: Delegation
+    description: Scope-attenuated token delegation
+  - name: Revocation
+    description: Multi-level token revocation
+  - name: Audit
+    description: Tamper-evident audit trail
+  - name: Admin
+    description: Admin authentication and launch token management
+  - name: Observability
+    description: Health and metrics
+
 paths:
-  /v1/health:
-    get:
-      summary: Broker health check
-      responses:
-        "200":
-          description: Broker is healthy
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [status, version, uptime_seconds, components]
-                properties:
-                  status:
-                    type: string
-                    enum: [healthy]
-                    example: healthy
-                  version:
-                    type: string
-                    example: "0.1.0"
-                  uptime_seconds:
-                    type: integer
-                    example: 42
-                  components:
-                    type: object
-                    required: [sqlite, redis]
-                    properties:
-                      sqlite:
-                        type: string
-                        enum: [healthy, unhealthy]
-                        example: healthy
-                      redis:
-                        type: string
-                        enum: [healthy, unhealthy]
-                        example: healthy
-        "503":
-          description: Broker is degraded or unhealthy
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [status, version, uptime_seconds, components]
-                properties:
-                  status:
-                    type: string
-                    enum: [degraded, unhealthy]
-                    example: degraded
-                  version:
-                    type: string
-                    example: "0.1.0"
-                  uptime_seconds:
-                    type: integer
-                    example: 42
-                  components:
-                    type: object
-                    required: [sqlite, redis]
-                    properties:
-                      sqlite:
-                        type: string
-                        enum: [healthy, unhealthy]
-                        example: healthy
-                      redis:
-                        type: string
-                        enum: [healthy, unhealthy]
-                        example: unhealthy
-  /v1/metrics:
-    get:
-      summary: Prometheus metrics endpoint
-      responses:
-        "200":
-          description: Prometheus metrics exposition
-          content:
-            text/plain:
-              schema:
-                type: string
   /v1/challenge:
     get:
-      summary: Issue nonce challenge for registration proof-of-possession
+      tags: [Identity]
+      summary: Obtain a cryptographic nonce
+      description: >
+        Generates a hex-encoded cryptographic nonce that the agent must sign
+        with its Ed25519 private key during registration. The nonce is valid
+        for 30 seconds and can be consumed only once.
+      operationId: getChallenge
       responses:
         "200":
-          description: Nonce challenge issued
+          description: Nonce issued
           content:
             application/json:
               schema:
-                type: object
-                required: [nonce, expires_at]
-                properties:
-                  nonce:
-                    type: string
-                    description: 32-byte random nonce encoded as 64 hex characters
-                    example: a548b028f64aec9ff7cdd7e50871490c552198a7df0bd01d9a148a5e6dba1e4e
-                  expires_at:
-                    type: string
-                    format: date-time
-                    example: 2026-02-07T19:07:40Z
+                $ref: "#/components/schemas/ChallengeResponse"
+
   /v1/register:
     post:
-      summary: Register agent identity and issue first access token
+      tags: [Identity]
+      summary: Register an agent
+      description: >
+        Completes the challenge-response registration flow. The agent presents
+        a valid launch token, the nonce from GET /v1/challenge signed with its
+        Ed25519 private key, and the base64-encoded public key. On success the
+        broker generates a SPIFFE ID and issues a scoped JWT token.
+      operationId: registerAgent
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - launch_token
-                - nonce
-                - agent_public_key
-                - signature
-                - orchestration_id
-                - task_id
-                - requested_scope
-              properties:
-                launch_token:
-                  type: string
-                  example: 4af3a8f9...
-                nonce:
-                  type: string
-                agent_public_key:
-                  type: object
-                  properties:
-                    kty: { type: string, example: OKP }
-                    crv: { type: string, example: Ed25519 }
-                    x: { type: string, description: base64url public key }
-                signature:
-                  type: string
-                  description: base64url or hex encoded Ed25519 signature over nonce
-                orchestration_id:
-                  type: string
-                  example: orch-456
-                task_id:
-                  type: string
-                  example: task-789
-                requested_scope:
-                  type: array
-                  items:
-                    type: string
-                  example: [read:Customers:12345]
-      responses:
-        "201":
-          description: Registration success
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [agent_instance_id, access_token, expires_in, refresh_after]
-                properties:
-                  agent_instance_id:
-                    type: string
-                    example: spiffe://agentauth.local/agent/orch-456/task-789/cc07a7f4194cbe4bfecacb1d94a6bd2c
-                  access_token:
-                    type: string
-                  expires_in:
-                    type: integer
-                    example: 300
-                  refresh_after:
-                    type: integer
-                    example: 225
-        "400":
-          description: Malformed body
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-        "401":
-          description: Invalid or expired launch token
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-        "403":
-          description: Signature or nonce validation failure
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-  /v1/token/validate:
-    post:
-      summary: Validate access token and optional required scope
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [token]
-              properties:
-                token:
-                  type: string
-                required_scope:
-                  type: string
-                  example: read:Customers:12345
+              $ref: "#/components/schemas/RegisterRequest"
       responses:
         "200":
-          description: Token valid
+          description: Agent registered successfully
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  valid: { type: boolean, example: true }
-                  agent_id: { type: string }
-                  scope:
-                    type: array
-                    items: { type: string }
-                  expires_in: { type: integer }
-                  delegation_depth: { type: integer }
+                $ref: "#/components/schemas/RegisterResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
-          description: Token invalid
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
+          $ref: "#/components/responses/Unauthorized"
         "403":
-          description: Scope mismatch
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-  /v1/token/renew:
+          $ref: "#/components/responses/Forbidden"
+
+  /v1/token/validate:
     post:
-      summary: Renew an existing access token
+      tags: [Token]
+      summary: Validate a token
+      description: >
+        Accepts a compact JWT string and returns whether the token is valid.
+        On success, the decoded claims are included. On failure, an error
+        string describes the reason. This endpoint always returns HTTP 200;
+        the `valid` boolean indicates the outcome.
+      operationId: validateToken
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required: [token]
-              properties:
-                token:
-                  type: string
+              $ref: "#/components/schemas/ValidateRequest"
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ValidateResponseValid"
+                  - $ref: "#/components/schemas/ValidateResponseInvalid"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /v1/token/renew:
+    post:
+      tags: [Token]
+      summary: Renew a token
+      description: >
+        Verifies the Bearer token from the Authorization header and issues a
+        replacement token with the same subject, scope, task, orchestration,
+        and delegation chain but fresh timestamps and a new JTI. The original
+        token remains valid until its own expiry or revocation.
+      operationId: renewToken
+      security:
+        - bearerAuth: []
       responses:
         "200":
           description: Token renewed
           content:
             application/json:
               schema:
-                type: object
-                required: [access_token, expires_in, refresh_after]
-                properties:
-                  access_token: { type: string }
-                  expires_in: { type: integer, example: 300 }
-                  refresh_after: { type: integer, example: 225 }
+                $ref: "#/components/schemas/RenewResponse"
         "401":
-          description: Token invalid
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-  /v1/revoke:
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/token/exchange:
     post:
-      summary: Revoke tokens at 4 levels (token, agent, task, delegation_chain)
+      tags: [Token]
+      summary: Exchange sidecar authority for an agent token
+      description: >
+        Sidecar-mediated token issuance. Requires a Bearer sidecar token with
+        `sidecar:manage:*` and at least one sidecar scope ceiling claim of the
+        form `sidecar:scope:<action:resource:identifier>`. Requested scopes
+        must be a subset of the sidecar ceiling. Each scope entry must be valid
+        `action:resource:identifier` format. Client-supplied sidecar_id is
+        ignored and the broker injects lineage from the authenticated token's
+        `sid` claim. TTL is capped at 900 seconds (maxExchangeTTL).
+      operationId: exchangeToken
       security:
         - bearerAuth: []
       requestBody:
@@ -262,262 +151,935 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [level, target_id]
-              properties:
-                level:
-                  type: string
-                  enum: [token, agent, task, delegation_chain]
-                  description: Revocation level
-                target_id:
-                  type: string
-                  description: Identifier to revoke (JTI, agent ID, task ID, or chain hash)
-                  example: jti-abc123
-                reason:
-                  type: string
-                  description: Human-readable reason for revocation
-                  example: compromised credentials
+              $ref: "#/components/schemas/TokenExchangeRequest"
+      responses:
+        "200":
+          description: Token exchanged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenExchangeResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Agent not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+        "500":
+          description: Internal error (sidecar identity derivation or token issuance failure)
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+
+  /v1/delegate:
+    post:
+      tags: [Delegation]
+      summary: Create a delegation token
+      description: >
+        Creates a scope-attenuated delegation token for another registered
+        agent. The delegated scope must be a subset of the caller's scope
+        (scopes can only narrow, never expand). The delegation chain is
+        appended to the new token's claims. Maximum delegation depth is 5.
+      operationId: delegateToken
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DelegateRequest"
+      responses:
+        "200":
+          description: Delegation successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DelegateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Delegate agent not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+
+  /v1/revoke:
+    post:
+      tags: [Revocation]
+      summary: Revoke tokens
+      description: >
+        Revokes tokens at one of four granularity levels: token (by JTI),
+        agent (by SPIFFE ID), task (by task_id), or chain (by root delegator
+        agent ID). Requires the `admin:revoke:*` scope.
+      operationId: revokeTokens
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevokeRequest"
       responses:
         "200":
           description: Revocation successful
           content:
             application/json:
               schema:
-                type: object
-                required: [revoked, level, target_id, revoked_at]
-                properties:
-                  revoked: { type: boolean, example: true }
-                  level: { type: string, example: token }
-                  target_id: { type: string, example: jti-abc123 }
-                  revoked_at: { type: string, format: date-time }
+                $ref: "#/components/schemas/RevokeResponse"
         "400":
-          description: Invalid level or missing target_id
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
+          $ref: "#/components/responses/BadRequest"
         "401":
-          description: Missing or invalid bearer token
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-        "403":
-          description: Caller does not have required admin scope
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-  /v1/protected/customers/12345:
-    get:
-      summary: Protected customer resource (authz middleware example)
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Authorized access
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  customer_id: { type: string, example: "12345" }
-                  message: { type: string, example: protected customer data }
-        "401":
-          description: Missing or invalid bearer token
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-        "403":
-          description: Insufficient scope
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-  /v1/delegate:
-    post:
-      summary: Delegate attenuated scope from one agent to another
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [delegator_token, target_agent_id, delegated_scope]
-              properties:
-                delegator_token:
-                  type: string
-                  description: Current agent's valid access token
-                target_agent_id:
-                  type: string
-                  description: SPIFFE ID of the agent receiving delegation
-                  example: spiffe://agentauth.local/agent/orch/task/agentB
-                delegated_scope:
-                  type: array
-                  items: { type: string }
-                  description: Scopes to delegate (must be subset of delegator's scope)
-                  example: ["read:Customers:12345"]
-                max_ttl:
-                  type: integer
-                  description: Maximum TTL for delegated token (must be <= delegator's remaining TTL)
-                  example: 60
-      responses:
-        "201":
-          description: Delegation created
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [delegation_token, chain_hash, delegation_depth]
-                properties:
-                  delegation_token:
-                    type: string
-                    description: Signed JWT with attenuated scope for target agent
-                  chain_hash:
-                    type: string
-                    description: SHA-256 hash of the complete delegation chain
-                    example: a1b2c3d4e5f6...
-                  delegation_depth:
-                    type: integer
-                    description: Current depth in delegation chain
-                    example: 1
-        "400":
-          description: Malformed request or TTL exceeded
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-        "401":
-          description: Invalid delegator token
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-        "403":
-          description: Scope escalation or depth exceeded
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
+          $ref: "#/components/responses/Unauthorized"
+
   /v1/audit/events:
     get:
-      summary: Query audit trail events with filtering and pagination
+      tags: [Audit]
+      summary: Query audit trail
+      description: >
+        Returns audit events matching the given filters with pagination.
+        Events are returned in insertion order. Requires the
+        `admin:audit:*` scope.
+      operationId: queryAuditEvents
       security:
         - bearerAuth: []
       parameters:
         - name: agent_id
           in: query
-          schema: { type: string }
+          schema:
+            type: string
           description: Filter by agent SPIFFE ID
         - name: task_id
           in: query
-          schema: { type: string }
-          description: Filter by task identifier
-        - name: orchestration_id
-          in: query
-          schema: { type: string }
-          description: Filter by orchestration ID
+          schema:
+            type: string
+          description: Filter by task ID
         - name: event_type
           in: query
           schema:
             type: string
-            enum: [credential_issued, access_granted, access_denied, token_revoked, delegation_created, delegation_revoked, anomaly_detected]
+            enum:
+              - admin_auth
+              - admin_auth_failed
+              - launch_token_issued
+              - launch_token_denied
+              - sidecar_activation_issued
+              - sidecar_activated
+              - sidecar_activation_failed
+              - sidecar_exchange_success
+              - sidecar_exchange_denied
+              - agent_registered
+              - registration_policy_violation
+              - token_issued
+              - token_renewed
+              - token_renewal_failed
+              - token_revoked
+              - delegation_created
+              - resource_accessed
           description: Filter by event type
-        - name: from
+        - name: since
           in: query
-          schema: { type: string, format: date-time }
-          description: ISO 8601 lower bound (inclusive)
-        - name: to
+          schema:
+            type: string
+            format: date-time
+          description: Events after this timestamp (RFC 3339)
+        - name: until
           in: query
-          schema: { type: string, format: date-time }
-          description: ISO 8601 upper bound (inclusive)
+          schema:
+            type: string
+            format: date-time
+          description: Events before this timestamp (RFC 3339)
         - name: limit
           in: query
-          schema: { type: integer, default: 100, maximum: 1000 }
-          description: Page size
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 1000
+          description: Maximum events to return
         - name: offset
           in: query
-          schema: { type: integer, default: 0 }
-          description: Pagination offset
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          description: Number of events to skip
       responses:
         "200":
-          description: Audit events returned
+          description: Audit events
           content:
             application/json:
               schema:
-                type: object
-                required: [events, total, next_offset]
-                properties:
-                  events:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/AuditEvt"
-                  total:
-                    type: integer
-                    example: 42
-                  next_offset:
-                    type: integer
-                    example: 10
-        "400":
-          description: Invalid query parameters
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
+                $ref: "#/components/schemas/AuditResponse"
         "401":
-          description: Missing or invalid bearer token
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/admin/auth:
+    post:
+      tags: [Admin]
+      summary: Authenticate as admin
+      description: >
+        Authenticates with a shared client secret using constant-time
+        comparison. Returns a short-lived admin JWT with scopes
+        `admin:launch-tokens:*`, `admin:revoke:*`, and `admin:audit:*`.
+        Rate-limited to 5 requests per second per IP (burst 10).
+      operationId: adminAuth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAuthRequest"
+      responses:
+        "200":
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          description: Rate limit exceeded (5 req/s per IP, burst 10)
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                example: 1
           content:
             application/problem+json:
               schema:
-                $ref: "#/components/schemas/Problem"
-        "403":
-          description: Caller does not have required admin scope
+                $ref: "#/components/schemas/ProblemDetail"
+
+  /v1/admin/launch-tokens:
+    post:
+      tags: [Admin]
+      summary: Create a launch token
+      description: >
+        Creates a cryptographically random opaque launch token bound to a
+        policy (allowed scope ceiling, max TTL, single-use flag). The token
+        is consumed during agent registration. Requires the
+        `admin:launch-tokens:*` scope.
+      operationId: createLaunchToken
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLaunchTokenRequest"
+      responses:
+        "201":
+          description: Launch token created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateLaunchTokenResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/admin/sidecar-activations:
+    post:
+      tags: [Admin]
+      summary: Create a sidecar activation token
+      description: >
+        Issues a short-lived single-use JWT that allows a sidecar to initialize
+        its functional identity. Requires the `admin:launch-tokens:*` scope.
+      operationId: createSidecarActivation
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSidecarActivationRequest"
+      responses:
+        "201":
+          description: Activation token created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateSidecarActivationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/sidecar/activate:
+    post:
+      tags: [Admin]
+      summary: Activate a sidecar
+      description: >
+        Exchanges a Sidecar-Activation token for a functional sidecar Bearer
+        token. Enforces single-use JTI replay protection. Rate-limited to 5
+        requests per second per IP (burst 10).
+      operationId: activateSidecar
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivateSidecarRequest"
+      responses:
+        "200":
+          description: Sidecar activated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivateSidecarResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          description: Unauthorized (invalid or replayed token)
           content:
             application/problem+json:
               schema:
-                $ref: "#/components/schemas/Problem"
-  # M06: Mutual authentication is a programmatic (library) API, not an HTTP endpoint.
-  # Agents use MutAuthHdl.InitiateHandshake / RespondToHandshake / CompleteHandshake
-  # directly. Discovery binding and heartbeat are also library APIs.
-  # See docs/developer/mutauth.md for protocol documentation.
+                $ref: "#/components/schemas/ProblemDetail"
+        "429":
+          description: Rate limit exceeded (5 req/s per IP, burst 10)
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                example: 1
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+
+  /v1/health:
+    get:
+      tags: [Observability]
+      summary: Health check
+      description: Returns broker status, version, and uptime in seconds.
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Broker is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /v1/metrics:
+    get:
+      tags: [Observability]
+      summary: Prometheus metrics
+      description: >
+        Returns all registered Prometheus metrics in the standard exposition
+        format. Includes counters for registrations, revocations, and a gauge
+        for active agents.
+      operationId: getMetrics
+      responses:
+        "200":
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
+      bearerFormat: JWT
+      description: >
+        EdDSA-signed JWT issued by the broker. Claims include standard JWT
+        fields plus `scope` (array of `action:resource:identifier` strings),
+        `sid` (optional sidecar/session identifier), `task_id`, `orch_id`, and
+        `delegation_chain`.
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+    Unauthorized:
+      description: Authentication required or failed
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+    Forbidden:
+      description: Insufficient scope
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+
   schemas:
-    AuditEvt:
+    ProblemDetail:
       type: object
-      required: [event_id, event_type, timestamp, event_hash, prev_hash]
-      properties:
-        event_id: { type: string, example: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6 }
-        event_type:
-          type: string
-          enum: [credential_issued, access_granted, access_denied, token_revoked, delegation_created, delegation_revoked, anomaly_detected]
-        timestamp: { type: string, format: date-time }
-        agent_instance_id: { type: string }
-        task_id: { type: string }
-        orchestration_id: { type: string }
-        resource: { type: string }
-        action: { type: string }
-        outcome: { type: string }
-        denial_reason: { type: string }
-        delegation_depth: { type: integer }
-        delegation_chain_hash: { type: string }
-        prev_hash: { type: string }
-        event_hash: { type: string }
-    Problem:
-      type: object
-      required: [type, title, status]
+      description: RFC 7807 error response
+      required: [type, title, status, detail, instance]
       properties:
         type:
           type: string
+          description: Error type URN (e.g. `urn:agentauth:error:invalid_request`)
+          example: "urn:agentauth:error:invalid_request"
         title:
           type: string
+          description: HTTP status text
+          example: "Bad Request"
         status:
           type: integer
+          description: HTTP status code
+          example: 400
         detail:
           type: string
+          description: Human-readable explanation
+          example: "malformed JSON body"
         instance:
           type: string
+          description: Request path
+          example: "/v1/register"
+        error_code:
+          type: string
+          description: Standardized internal error code for programmatic handling
+          example: "invalid_request"
+        request_id:
+          type: string
+          description: Unique request identifier for log correlation
+          example: "c3b53ae48e64af95"
+        hint:
+          type: string
+          description: Optional diagnostic hint for developers
+          example: "Check the 'token' field in your JSON body"
+
+    ChallengeResponse:
+      type: object
+      required: [nonce, expires_in]
+      properties:
+        nonce:
+          type: string
+          description: Hex-encoded cryptographic nonce
+          example: "a1b2c3d4e5f6..."
+        expires_in:
+          type: integer
+          description: Nonce TTL in seconds
+          example: 30
+
+    RegisterRequest:
+      type: object
+      required: [launch_token, nonce, public_key, signature, orch_id, task_id, requested_scope]
+      properties:
+        launch_token:
+          type: string
+          description: Opaque 64-character hex launch token
+        nonce:
+          type: string
+          description: Nonce obtained from GET /v1/challenge
+        public_key:
+          type: string
+          description: Base64-encoded Ed25519 public key (32 bytes)
+        signature:
+          type: string
+          description: Base64-encoded Ed25519 signature of the nonce
+        orch_id:
+          type: string
+          description: Orchestration ID
+        task_id:
+          type: string
+          description: Task ID
+        requested_scope:
+          type: array
+          items:
+            type: string
+          description: >
+            Scopes to request. Must be a subset of the launch token's
+            allowed_scope. Format: `action:resource:identifier`.
+          example: ["read:data:*"]
+
+    RegisterResponse:
+      type: object
+      required: [agent_id, access_token, expires_in]
+      properties:
+        agent_id:
+          type: string
+          description: SPIFFE-format agent ID
+          example: "spiffe://agentauth.local/agent/orch-1/task-1/abc123"
+        access_token:
+          type: string
+          description: EdDSA-signed JWT
+        expires_in:
+          type: integer
+          description: Token TTL in seconds
+          example: 300
+
+    ValidateRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: Compact JWT string to validate
+
+    ValidateResponseValid:
+      type: object
+      required: [valid, claims]
+      properties:
+        valid:
+          type: boolean
+          enum: [true]
+        claims:
+          $ref: "#/components/schemas/TknClaims"
+
+    ValidateResponseInvalid:
+      type: object
+      required: [valid, error]
+      properties:
+        valid:
+          type: boolean
+          enum: [false]
+        error:
+          type: string
+          description: Reason the token is invalid
+          example: "token expired"
+
+    RenewResponse:
+      type: object
+      required: [access_token, expires_in]
+      properties:
+        access_token:
+          type: string
+          description: New EdDSA-signed JWT
+        expires_in:
+          type: integer
+          description: Token TTL in seconds
+          example: 300
+
+    TokenExchangeRequest:
+      type: object
+      required: [agent_id, scope]
+      properties:
+        agent_id:
+          type: string
+          description: SPIFFE agent ID receiving the exchanged token
+          example: "spiffe://agentauth.local/agent/orch-1/task-1/abc123"
+        scope:
+          type: array
+          items:
+            type: string
+          description: >
+            Requested scopes; must be a subset of sidecar scope ceiling.
+            Each entry must be valid action:resource:identifier format.
+          example: ["read:data:*"]
+        ttl:
+          type: integer
+          description: >
+            Token TTL in seconds. Must be 0-900. 0 or omitted clamps to 900
+            (maxExchangeTTL). Negative or >900 returns 400.
+          minimum: 0
+          maximum: 900
+          example: 90
+        sidecar_id:
+          type: string
+          description: Optional client hint ignored by broker; broker-derived lineage is authoritative
+          example: "spoofed-client-value"
+
+    TokenExchangeResponse:
+      type: object
+      required: [access_token, expires_in, token_type, agent_id, sidecar_id]
+      properties:
+        access_token:
+          type: string
+          description: EdDSA-signed JWT for the target agent
+        expires_in:
+          type: integer
+          description: Token TTL in seconds
+          example: 90
+        token_type:
+          type: string
+          example: "Bearer"
+        agent_id:
+          type: string
+          description: Target SPIFFE agent ID
+          example: "spiffe://agentauth.local/agent/orch-1/task-1/abc123"
+        sidecar_id:
+          type: string
+          description: Broker-derived sidecar lineage identifier
+          example: "abc123"
+
+    DelegateRequest:
+      type: object
+      required: [delegate_to, scope]
+      properties:
+        delegate_to:
+          type: string
+          description: SPIFFE ID of the registered delegate agent
+          example: "spiffe://agentauth.local/agent/orch-1/task-1/def456"
+        scope:
+          type: array
+          items:
+            type: string
+          description: >
+            Scopes to grant the delegate. Must be a subset of the caller's scope.
+          example: ["read:data:*"]
+        ttl:
+          type: integer
+          description: Token TTL in seconds (default 60)
+          example: 60
+
+    DelegateResponse:
+      type: object
+      required: [access_token, expires_in, delegation_chain]
+      properties:
+        access_token:
+          type: string
+          description: EdDSA-signed JWT for the delegate
+        expires_in:
+          type: integer
+          description: Token TTL in seconds
+          example: 60
+        delegation_chain:
+          type: array
+          items:
+            $ref: "#/components/schemas/DelegRecord"
+
+    RevokeRequest:
+      type: object
+      required: [level, target]
+      properties:
+        level:
+          type: string
+          enum: [token, agent, task, chain]
+          description: >
+            Revocation level. `token` revokes by JTI. `agent` revokes by SPIFFE ID.
+            `task` revokes by task_id. `chain` revokes by root delegator agent ID.
+        target:
+          type: string
+          description: >
+            The JTI, SPIFFE ID, task_id, or root delegator agent ID depending
+            on the level.
+
+    RevokeResponse:
+      type: object
+      required: [revoked, level, target, count]
+      properties:
+        revoked:
+          type: boolean
+          example: true
+        level:
+          type: string
+          example: "token"
+        target:
+          type: string
+          example: "abc123..."
+        count:
+          type: integer
+          description: Number of entries affected
+          example: 1
+
+    AuditEvent:
+      type: object
+      required: [id, timestamp, event_type, detail, hash, prev_hash]
+      properties:
+        id:
+          type: string
+          description: Monotonically increasing event ID
+          example: "evt-000001"
+        timestamp:
+          type: string
+          format: date-time
+          description: UTC timestamp
+        event_type:
+          type: string
+          description: Event type identifier
+          example: "agent_registered"
+        agent_id:
+          type: string
+          description: Agent SPIFFE ID (may be empty)
+        task_id:
+          type: string
+          description: Task ID (may be empty)
+        orch_id:
+          type: string
+          description: Orchestration ID (may be empty)
+        detail:
+          type: string
+          description: Human-readable event description (PII sanitized)
+        hash:
+          type: string
+          description: SHA-256 hash of this event (chains to next event's prev_hash)
+        prev_hash:
+          type: string
+          description: SHA-256 hash of the previous event (genesis is 64 zeros)
+
+    AuditResponse:
+      type: object
+      required: [events, total, offset, limit]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditEvent"
+        total:
+          type: integer
+          description: Total matching events before pagination
+        offset:
+          type: integer
+          description: Current offset
+        limit:
+          type: integer
+          description: Applied limit
+
+    AdminAuthRequest:
+      type: object
+      required: [client_id, client_secret]
+      properties:
+        client_id:
+          type: string
+          description: Admin client identifier
+          example: "admin"
+        client_secret:
+          type: string
+          description: Shared admin secret (must match AA_ADMIN_SECRET)
+
+    AdminAuthResponse:
+      type: object
+      required: [access_token, expires_in, token_type]
+      properties:
+        access_token:
+          type: string
+          description: Admin JWT with admin scopes
+        expires_in:
+          type: integer
+          description: Token TTL in seconds
+          example: 300
+        token_type:
+          type: string
+          enum: [Bearer]
+
+    CreateSidecarActivationRequest:
+      type: object
+      required: [allowed_scope_prefix]
+      properties:
+        allowed_scope_prefix:
+          type: string
+          description: Scope prefix the sidecar is allowed to grant to agents
+          example: "read:data:*"
+        ttl:
+          type: integer
+          description: Activation token validity in seconds
+          example: 900
+
+    CreateSidecarActivationResponse:
+      type: object
+      required: [activation_token, expires_at, scope]
+      properties:
+        activation_token:
+          type: string
+          description: Short-lived single-use activation JWT
+        expires_at:
+          type: string
+          format: date-time
+          description: Expiry timestamp
+        scope:
+          type: string
+          description: The activation scope assigned to the token
+
+    ActivateSidecarRequest:
+      type: object
+      required: [sidecar_activation_token]
+      properties:
+        sidecar_activation_token:
+          type: string
+          description: The JWT from POST /v1/admin/sidecar-activations
+
+    ActivateSidecarResponse:
+      type: object
+      required: [access_token, expires_in, token_type, sidecar_id]
+      properties:
+        access_token:
+          type: string
+          description: Functional sidecar Bearer token
+        expires_in:
+          type: integer
+          example: 900
+        token_type:
+          type: string
+          example: "Bearer"
+        sidecar_id:
+          type: string
+          description: Stable sidecar identifier derived from activation event
+          example: "e2b7777781a064686237079634888b11"
+
+    CreateLaunchTokenRequest:
+      type: object
+      required: [agent_name, allowed_scope]
+      properties:
+        agent_name:
+          type: string
+          description: Name of the agent this token is for
+          example: "data-analyzer"
+        allowed_scope:
+          type: array
+          items:
+            type: string
+          description: Scope ceiling -- agents cannot exceed these scopes
+          example: ["read:data:*", "write:results:*"]
+        max_ttl:
+          type: integer
+          description: Maximum token TTL in seconds (default 300)
+          example: 300
+        single_use:
+          type: boolean
+          description: Whether the token can only be used once (default true)
+          example: true
+        ttl:
+          type: integer
+          description: Launch token validity in seconds (default 30)
+          example: 30
+
+    CreateLaunchTokenResponse:
+      type: object
+      required: [launch_token, expires_at, policy]
+      properties:
+        launch_token:
+          type: string
+          description: Opaque 64-character hex token
+        expires_at:
+          type: string
+          format: date-time
+          description: RFC 3339 expiry timestamp
+        policy:
+          $ref: "#/components/schemas/LaunchTokenPolicy"
+
+    LaunchTokenPolicy:
+      type: object
+      required: [allowed_scope, max_ttl]
+      properties:
+        allowed_scope:
+          type: array
+          items:
+            type: string
+          description: Scope ceiling bound to this launch token
+        max_ttl:
+          type: integer
+          description: Maximum token TTL in seconds
+
+    HealthResponse:
+      type: object
+      required: [status, version, uptime]
+      properties:
+        status:
+          type: string
+          example: "ok"
+        version:
+          type: string
+          example: "2.0.0"
+        uptime:
+          type: integer
+          description: Uptime in seconds
+          example: 3600
+
+    TknClaims:
+      type: object
+      description: JWT payload for an AgentAuth token
+      required: [iss, sub, exp, nbf, iat, jti, scope]
+      properties:
+        iss:
+          type: string
+          description: Issuer (always "agentauth")
+          example: "agentauth"
+        sub:
+          type: string
+          description: Subject -- SPIFFE-format agent ID or "admin"
+          example: "spiffe://agentauth.local/agent/orch-1/task-1/abc123"
+        aud:
+          type: array
+          items:
+            type: string
+          description: Audience (optional)
+        exp:
+          type: integer
+          format: int64
+          description: Expiration time (Unix timestamp)
+        nbf:
+          type: integer
+          format: int64
+          description: Not before (Unix timestamp)
+        iat:
+          type: integer
+          format: int64
+          description: Issued at (Unix timestamp)
+        jti:
+          type: string
+          description: Unique token identifier (32-char hex)
+        sid:
+          type: string
+          description: >
+            Optional sidecar/session identifier. Present when a token is issued
+            through a sidecar-mediated flow.
+          example: "sidecar-123"
+        scope:
+          type: array
+          items:
+            type: string
+          description: >
+            Granted scopes in `action:resource:identifier` format.
+            Wildcard `*` is supported for the identifier segment.
+          example: ["read:data:*"]
+        task_id:
+          type: string
+          description: Task ID (optional)
+        orch_id:
+          type: string
+          description: Orchestration ID (optional)
+        delegation_chain:
+          type: array
+          items:
+            $ref: "#/components/schemas/DelegRecord"
+          description: Delegation provenance chain (optional)
+        chain_hash:
+          type: string
+          description: >
+            SHA-256 hex digest of the JSON-serialized delegation chain.
+            Present only on delegated tokens.
+          example: "a1b2c3d4e5f6..."
+
+    DelegRecord:
+      type: object
+      description: Single link in a delegation chain
+      required: [agent, scope, delegated_at]
+      properties:
+        agent:
+          type: string
+          description: SPIFFE ID of the delegating agent
+        scope:
+          type: array
+          items:
+            type: string
+          description: Scope held by the delegator at time of delegation
+        delegated_at:
+          type: string
+          format: date-time
+          description: Timestamp of delegation
+        signature:
+          type: string
+          description: >
+            Hex-encoded Ed25519 signature over canonical content
+            (agent|scope_csv|delegated_at). Produced by the broker's
+            signing key when the delegation is created.
