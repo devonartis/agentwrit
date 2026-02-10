@@ -64,29 +64,37 @@ func (h *TokenExchangeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	claims := authz.ClaimsFromContext(r.Context())
 	if claims == nil {
 		obs.Warn("EXCHANGE", "hdl", "missing authentication claims")
-		problemdetails.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "missing authentication", r.URL.Path)
+		problemdetails.WriteProblemExtended(r.Context(), w, http.StatusUnauthorized, "unauthorized",
+			"missing authentication", r.URL.Path, "missing_credentials",
+			"include a valid Bearer token in the Authorization header")
 		return
 	}
 
-	// Validate Content-Type when present
+	// Validate Content-Type: POST with JSON body must declare application/json
 	ct := r.Header.Get("Content-Type")
-	if ct != "" && !strings.HasPrefix(ct, "application/json") {
+	if !strings.HasPrefix(ct, "application/json") {
 		obs.Warn("EXCHANGE", "hdl", "invalid content-type", "content_type="+ct)
-		problemdetails.WriteProblemExtended(r.Context(), w, http.StatusBadRequest, "invalid_request", "Content-Type must be application/json", r.URL.Path, "invalid_content_type", "")
+		problemdetails.WriteProblemExtended(r.Context(), w, http.StatusBadRequest, "invalid_request",
+			"Content-Type must be application/json", r.URL.Path, "invalid_content_type",
+			"set Content-Type: application/json in the request header")
 		return
 	}
 
 	var req TokenExchangeReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		obs.Warn("EXCHANGE", "hdl", "malformed JSON body", "err="+err.Error())
-		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
+		problemdetails.WriteProblemExtended(r.Context(), w, http.StatusBadRequest, "invalid_request",
+			"malformed JSON body", r.URL.Path, "malformed_body",
+			"request body must be valid JSON")
 		return
 	}
 	if req.AgentID == "" || len(req.Scope) == 0 {
 		obs.Warn("EXCHANGE", "hdl", "missing required field",
 			"agent_id_present="+fmt.Sprintf("%t", req.AgentID != ""),
 			"scope_len="+fmt.Sprintf("%d", len(req.Scope)))
-		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", ErrExchangeMissingField.Error(), r.URL.Path)
+		problemdetails.WriteProblemExtended(r.Context(), w, http.StatusBadRequest, "invalid_request",
+			ErrExchangeMissingField.Error(), r.URL.Path, "missing_field",
+			"agent_id and scope are required fields")
 		return
 	}
 
@@ -152,7 +160,9 @@ func (h *TokenExchangeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		obs.Fail("EXCHANGE", "hdl", "token issuance failed", "err="+err.Error())
-		problemdetails.WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "token exchange failed", r.URL.Path)
+		problemdetails.WriteProblemExtended(r.Context(), w, http.StatusInternalServerError, "internal_error",
+			"token exchange failed", r.URL.Path, "token_issuance_failed",
+			"the broker could not issue the requested token; retry or contact the administrator")
 		return
 	}
 

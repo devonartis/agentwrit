@@ -567,6 +567,7 @@ func TestTokenExchange_Success_SidecarIDBrokerDerived(t *testing.T) {
 	})
 	exReq := httptest.NewRequest("POST", "/v1/token/exchange", exBody)
 	exReq.Header.Set("Authorization", "Bearer "+sidecarResp.AccessToken)
+	exReq.Header.Set("Content-Type", "application/json")
 	exRR := b.do(exReq)
 	if exRR.Code != http.StatusOK {
 		t.Fatalf("token exchange failed: %d %s", exRR.Code, exRR.Body.String())
@@ -607,6 +608,7 @@ func TestTokenExchange_ScopeEscalationDenied(t *testing.T) {
 	})
 	req := httptest.NewRequest("POST", "/v1/token/exchange", body)
 	req.Header.Set("Authorization", "Bearer "+sidecarResp.AccessToken)
+	req.Header.Set("Content-Type", "application/json")
 	rr := b.do(req)
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d: %s", rr.Code, rr.Body.String())
