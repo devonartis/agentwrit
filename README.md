@@ -126,9 +126,28 @@ server {
 }
 ```
 
-## Docker
+## Docker (Broker + Sidecar)
 
-Docker support (Dockerfile and docker-compose.yml) is planned but not yet available on this branch. Run the broker directly with `go run ./cmd/broker` for now.
+This repo includes a Docker Compose stack for the broker and sidecar runtime.
+The demo app is intentionally separate and should run from its own repository.
+
+One-command startup:
+
+```bash
+./scripts/stack_up.sh
+```
+
+One-command teardown:
+
+```bash
+./scripts/stack_down.sh
+```
+
+Run live E2E (always deploys compose stack first):
+
+```bash
+./scripts/live_test.sh
+```
 
 ## Documentation
 

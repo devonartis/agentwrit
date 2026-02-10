@@ -88,7 +88,7 @@ func main() {
 	renewHdl := handler.NewRenewHdl(tknSvc, auditLog)
 	revokeHdl := handler.NewRevokeHdl(revSvc, auditLog)
 	delegHdl := handler.NewDelegHdl(delegSvc)
-	tokenExchangeHdl := handler.NewTokenExchangeHdl(tknSvc, sqlStore)
+	tokenExchangeHdl := handler.NewTokenExchangeHdl(tknSvc, sqlStore, auditLog)
 	auditHdl := handler.NewAuditHdl(auditLog)
 	healthHdl := handler.NewHealthHdl(version)
 	metricsHdl := handler.NewMetricsHdl()

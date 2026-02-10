@@ -67,7 +67,7 @@ func newTestBroker(t *testing.T) *testBroker {
 	renewHdl := handler.NewRenewHdl(tknSvc, auditLog)
 	revokeHdl := handler.NewRevokeHdl(revSvc, auditLog)
 	delegHdl := handler.NewDelegHdl(delegSvc)
-	tokenExchangeHdl := handler.NewTokenExchangeHdl(tknSvc, sqlStore)
+	tokenExchangeHdl := handler.NewTokenExchangeHdl(tknSvc, sqlStore, auditLog)
 	auditHdl := handler.NewAuditHdl(auditLog)
 	healthHdl := handler.NewHealthHdl("test")
 	metricsHdl := handler.NewMetricsHdl()

@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `CreateSidecarActivationToken(...)`
   - `ActivateSidecar(...)`
 - **Token/Sidecar**: Added `POST /v1/token/exchange` for sidecar-mediated token issuance with broker-derived `sid` lineage.
+- **Ops**: Added one-command stack scripts:
+  - `scripts/stack_up.sh` (compose up broker + sidecar)
+  - `scripts/stack_down.sh` (compose down)
+- **Live Testing**: `scripts/live_test.sh` now always deploys Docker Compose (`broker` + `sidecar`) before executing E2E checks.
 
 ### Changed
 
@@ -35,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Admin/Sidecar**: Activation exchange now enforces one-time token consumption via `SqlStore.ConsumeActivationToken(...)` and issues a bounded sidecar token carrying broker-derived `sid`.
 - **Token/Sidecar**: Exchange flow now enforces sidecar scope ceilings (`sidecar:scope:*`) and rejects scope escalation with stable `scope_escalation_denied` error code.
 - **Token**: Added optional audience propagation in `IssueReq -> TknClaims.Aud` to support intent-bound activation tokens.
+- **Docker**: `docker-compose.yml` now includes a dedicated `sidecar` service for runtime and E2E integration flow testing.
 
 ## [2.0.0] - 2026-02-09
 

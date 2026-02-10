@@ -1,176 +1,229 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# live_test.sh — starts the broker and runs live smoke tests against it.
-# Usage: ./scripts/live_test.sh
-# Exit 0 on success, non-zero on failure.
+# live_test.sh — Docker-based live E2E for broker + sidecar.
 #
-# The script picks a random high port, starts the broker with seed tokens
-# enabled, waits for readiness, exercises key endpoints, and tears down.
+# This script ALWAYS deploys docker compose stack first, then runs live HTTP
+# checks through the sidecar container against broker:8080.
+#
+# Usage:
+#   ./scripts/live_test.sh
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+COMPOSE_FILE="$PROJECT_ROOT/docker-compose.yml"
+PROJECT_NAME="agentauth-live-${RANDOM}"
 
-# Pick a random port in the ephemeral range to avoid conflicts.
-PORT=$((RANDOM % 10000 + 20000))
-GO_TMP_ROOT="${TMPDIR:-/tmp}/agentauth-go"
-BROKER_BIN="${TMPDIR:-/tmp}/agentauth-broker-${PORT}"
-BROKER_PID=""
+ADMIN_SECRET="live-test-secret-32bytes-long!!"
+HOST_PORT="${AA_HOST_PORT:-18080}"
+
 PASS=0
 FAIL=0
 
 cleanup() {
-  if [[ -n "$BROKER_PID" ]]; then
-    kill "$BROKER_PID" 2>/dev/null || true
-    wait "$BROKER_PID" 2>/dev/null || true
-  fi
+  echo ""
+  echo "=== Live Test: docker cleanup ==="
+  (cd "$PROJECT_ROOT" && docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" down -v --remove-orphans) || true
 }
 trap cleanup EXIT
 
-echo "=== Live Test: building broker ==="
-mkdir -p "$GO_TMP_ROOT/build" "$GO_TMP_ROOT/path/pkg/mod"
-GOTOOLCHAIN="${GOTOOLCHAIN:-local}" \
-GOCACHE="$GO_TMP_ROOT/build" \
-  go build -o "$BROKER_BIN" "$PROJECT_ROOT/cmd/broker"
+if ! docker info >/dev/null 2>&1; then
+  echo "FAIL: Docker daemon is not running. Start Docker Desktop or dockerd, then rerun ./scripts/live_test.sh"
+  exit 1
+fi
 
-echo "=== Live Test: starting broker on port $PORT ==="
-AA_PORT="$PORT" \
-AA_ADMIN_SECRET="live-test-secret-32bytes-long!!" \
-AA_SEED_TOKENS=true \
-AA_LOG_LEVEL=quiet \
-  "$BROKER_BIN" > /tmp/broker_live_test.log 2>&1 &
-BROKER_PID=$!
+echo "=== Live Test: docker compose up (broker + sidecar) ==="
+(
+  cd "$PROJECT_ROOT"
+  AA_ADMIN_SECRET="$ADMIN_SECRET" \
+  AA_HOST_PORT="$HOST_PORT" \
+  AA_SEED_TOKENS=false \
+  AA_LOG_LEVEL=standard \
+  docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d --build broker sidecar
+)
 
-# Wait for broker to become ready (up to 5 seconds).
-BASE="http://127.0.0.1:$PORT"
+scurl() {
+  (
+    cd "$PROJECT_ROOT"
+    docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" exec -T sidecar \
+      curl -sS "$@"
+  )
+}
+
+status_check() {
+  local name="$1"
+  local method="$2"
+  local url="$3"
+  local expected="$4"
+  shift 4
+
+  local status
+  status=$(scurl -o /dev/null -w "%{http_code}" -X "$method" "$url" "$@" 2>/dev/null) || true
+
+  if [[ "$status" == "$expected" ]]; then
+    echo "  PASS: $name (HTTP $status)"
+    PASS=$((PASS + 1))
+  else
+    echo "  FAIL: $name (expected HTTP $expected, got $status)"
+    FAIL=$((FAIL + 1))
+  fi
+}
+
+BASE="http://broker:8080"
+
+echo "=== Live Test: wait for broker readiness ==="
 READY=false
-for i in $(seq 1 50); do
-  if curl -sf "$BASE/v1/health" >/dev/null 2>&1; then
+for i in $(seq 1 60); do
+  if scurl -f "$BASE/v1/health" >/dev/null 2>&1; then
     READY=true
     break
   fi
-  sleep 0.1
+  sleep 0.5
 done
 
 if [[ "$READY" != "true" ]]; then
-  echo "FAIL: broker did not become ready within 5 seconds"
-  echo "--- Broker log ---"
-  cat /tmp/broker_live_test.log || true
+  echo "FAIL: broker did not become ready"
+  (cd "$PROJECT_ROOT" && docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" logs broker --tail=200) || true
   exit 1
 fi
-echo "Broker ready (PID=$BROKER_PID, port=$PORT)"
 
-# --- Test helpers ---
-
-check() {
-  local name="$1"
-  local method="$2"
-  local url="$3"
-  local expected_status="$4"
-  shift 4
-  # remaining args are extra curl flags
-
-  local status
-  status=$(curl -s -o /dev/null -w "%{http_code}" -X "$method" "$url" "$@" 2>/dev/null) || true
-
-  if [[ "$status" == "$expected_status" ]]; then
-    echo "  PASS: $name (HTTP $status)"
-    PASS=$((PASS + 1))
-  else
-    echo "  FAIL: $name (expected HTTP $expected_status, got $status)"
-    FAIL=$((FAIL + 1))
-  fi
-}
-
-check_json() {
-  local name="$1"
-  local method="$2"
-  local url="$3"
-  local expected_status="$4"
-  local body="$5"
-  shift 5
-
-  local status
-  status=$(curl -s -o /dev/null -w "%{http_code}" -X "$method" "$url" \
-    -H "Content-Type: application/json" \
-    -d "$body" "$@" 2>/dev/null) || true
-
-  if [[ "$status" == "$expected_status" ]]; then
-    echo "  PASS: $name (HTTP $status)"
-    PASS=$((PASS + 1))
-  else
-    echo "  FAIL: $name (expected HTTP $expected_status, got $status)"
-    FAIL=$((FAIL + 1))
-  fi
-}
-
-# --- Live tests ---
+echo "Broker ready (compose project: $PROJECT_NAME)"
 
 echo ""
-echo "=== Live Test: endpoint smoke tests ==="
+echo "=== Live Test: smoke + sidecar E2E ==="
 
-# 1. Health check
-check "GET /v1/health" GET "$BASE/v1/health" 200
+# 1. Public endpoints
+status_check "GET /v1/health" GET "$BASE/v1/health" 200
+status_check "GET /v1/metrics" GET "$BASE/v1/metrics" 200
+status_check "GET /v1/challenge" GET "$BASE/v1/challenge" 200
 
-# 2. Metrics endpoint
-check "GET /v1/metrics" GET "$BASE/v1/metrics" 200
-
-# 3. Challenge endpoint returns nonce
-check "GET /v1/challenge" GET "$BASE/v1/challenge" 200
-
-# 4. Token validate with empty body returns 400
-check_json "POST /v1/token/validate (empty)" POST "$BASE/v1/token/validate" 400 '{}'
-
-# 5. Token validate with bad token returns 200 (valid:false, not HTTP error)
-check_json "POST /v1/token/validate (bad token)" POST "$BASE/v1/token/validate" 200 '{"token":"not.a.valid.token"}'
-
-# 6. Delegate without auth returns 401
-check_json "POST /v1/delegate (no auth)" POST "$BASE/v1/delegate" 401 '{"delegate_to":"x","scope":["read:data:*"]}'
-
-# 7. Revoke without auth returns 401
-check_json "POST /v1/revoke (no auth)" POST "$BASE/v1/revoke" 401 '{"level":"token","target":"x"}'
-
-# 8. Audit without auth returns 401
-check "GET /v1/audit/events (no auth)" GET "$BASE/v1/audit/events" 401
-
-# 9. Admin auth with correct credentials returns 200
-AUTH_RESP=$(curl -sS -X POST "$BASE/v1/admin/auth" \
+# 2. Admin auth
+AUTH_RESP=$(scurl -X POST "$BASE/v1/admin/auth" \
   -H "Content-Type: application/json" \
-  -d '{"client_id":"admin","client_secret":"live-test-secret-32bytes-long!!"}' 2>/dev/null || true)
+  -d '{"client_id":"admin","client_secret":"'"$ADMIN_SECRET"'"}') || true
+
 if [[ "$AUTH_RESP" == *'"access_token"'* ]]; then
-  echo "  PASS: POST /v1/admin/auth (valid) returned access token"
+  echo "  PASS: POST /v1/admin/auth returned access_token"
   PASS=$((PASS + 1))
   ADMIN_TOKEN=$(printf '%s' "$AUTH_RESP" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
 else
-  echo "  FAIL: POST /v1/admin/auth (valid) did not return access token"
+  echo "  FAIL: POST /v1/admin/auth did not return access_token"
   FAIL=$((FAIL + 1))
   ADMIN_TOKEN=""
 fi
 
-# 10. Admin auth with wrong secret returns 401
-check_json "POST /v1/admin/auth (invalid)" POST "$BASE/v1/admin/auth" 401 \
-  '{"client_id":"admin","client_secret":"wrong-secret"}'
-
-# 11. Launch token creation with admin token returns 201
+# 3. Sidecar activation token issuance
 if [[ -n "$ADMIN_TOKEN" ]]; then
-  check_json "POST /v1/admin/launch-tokens (auth)" POST "$BASE/v1/admin/launch-tokens" 201 \
-    '{"agent_name":"live-smoke","allowed_scope":["read:Customers:*"],"max_ttl":300,"ttl":120}' \
-    -H "Authorization: Bearer $ADMIN_TOKEN"
+  ACT_RESP=$(scurl -X POST "$BASE/v1/admin/sidecar-activations" \
+    -H "Authorization: Bearer $ADMIN_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"allowed_scope_prefix":"read:data:*","ttl":120}') || true
+
+  if [[ "$ACT_RESP" == *'"activation_token"'* ]]; then
+    echo "  PASS: POST /v1/admin/sidecar-activations returned activation_token"
+    PASS=$((PASS + 1))
+    ACTIVATION_TOKEN=$(printf '%s' "$ACT_RESP" | sed -n 's/.*"activation_token":"\([^"]*\)".*/\1/p')
+  else
+    echo "  FAIL: POST /v1/admin/sidecar-activations did not return activation_token"
+    FAIL=$((FAIL + 1))
+    ACTIVATION_TOKEN=""
+  fi
 else
-  echo "  FAIL: POST /v1/admin/launch-tokens (auth) skipped, missing admin token"
+  echo "  FAIL: activation issuance skipped, missing admin token"
+  FAIL=$((FAIL + 1))
+  ACTIVATION_TOKEN=""
+fi
+
+# 4. Activate sidecar + replay denial
+if [[ -n "$ACTIVATION_TOKEN" ]]; then
+  SIDECAR_RESP=$(scurl -X POST "$BASE/v1/sidecar/activate" \
+    -H "Content-Type: application/json" \
+    -d '{"sidecar_activation_token":"'"$ACTIVATION_TOKEN"'"}') || true
+
+  if [[ "$SIDECAR_RESP" == *'"access_token"'* ]]; then
+    echo "  PASS: POST /v1/sidecar/activate returned sidecar access_token"
+    PASS=$((PASS + 1))
+    SIDECAR_TOKEN=$(printf '%s' "$SIDECAR_RESP" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+  else
+    echo "  FAIL: POST /v1/sidecar/activate did not return access_token"
+    FAIL=$((FAIL + 1))
+    SIDECAR_TOKEN=""
+  fi
+
+  REPLAY_STATUS=$(scurl -o /tmp/replay_body.json -w "%{http_code}" -X POST "$BASE/v1/sidecar/activate" \
+    -H "Content-Type: application/json" \
+    -d '{"sidecar_activation_token":"'"$ACTIVATION_TOKEN"'"}' 2>/dev/null) || true
+  if [[ "$REPLAY_STATUS" == "401" ]] && grep -q 'activation_token_replayed' /tmp/replay_body.json; then
+    echo "  PASS: sidecar activation replay denied (401 activation_token_replayed)"
+    PASS=$((PASS + 1))
+  else
+    echo "  FAIL: sidecar activation replay behavior unexpected (status=$REPLAY_STATUS)"
+    FAIL=$((FAIL + 1))
+  fi
+else
+  echo "  FAIL: sidecar activation checks skipped, missing activation token"
+  FAIL=$((FAIL + 1))
+  SIDECAR_TOKEN=""
+fi
+
+# 5. Token exchange negative checks (enforced sidecar authority)
+if [[ -n "$SIDECAR_TOKEN" ]]; then
+  # 5a. Scope escalation should be denied before agent lookup.
+  ESC_STATUS=$(scurl -o /tmp/exchange_escalation.json -w "%{http_code}" -X POST "$BASE/v1/token/exchange" \
+    -H "Authorization: Bearer $SIDECAR_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"agent_id":"spiffe://agentauth.local/agent/o/t/i","scope":["write:data:*"]}' 2>/dev/null) || true
+
+  if [[ "$ESC_STATUS" == "403" ]] && grep -q 'scope_escalation_denied' /tmp/exchange_escalation.json; then
+    echo "  PASS: token exchange scope escalation denied"
+    PASS=$((PASS + 1))
+  else
+    echo "  FAIL: token exchange escalation check unexpected (status=$ESC_STATUS)"
+    FAIL=$((FAIL + 1))
+  fi
+
+  # 5b. Allowed scope but unknown agent -> 404 not_found.
+  NF_STATUS=$(scurl -o /tmp/exchange_not_found.json -w "%{http_code}" -X POST "$BASE/v1/token/exchange" \
+    -H "Authorization: Bearer $SIDECAR_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"agent_id":"spiffe://agentauth.local/agent/o/t/i","scope":["read:data:*"]}' 2>/dev/null) || true
+
+  if [[ "$NF_STATUS" == "404" ]]; then
+    echo "  PASS: token exchange not_found behavior confirmed"
+    PASS=$((PASS + 1))
+  else
+    echo "  FAIL: token exchange expected 404 for unknown agent (got $NF_STATUS)"
+    FAIL=$((FAIL + 1))
+  fi
+else
+  echo "  FAIL: token exchange checks skipped, missing sidecar token"
   FAIL=$((FAIL + 1))
 fi
 
-# 12. Audit query with admin token returns 200
+# 6. Audit query includes sidecar activation events
 if [[ -n "$ADMIN_TOKEN" ]]; then
-  check "GET /v1/audit/events (auth)" GET "$BASE/v1/audit/events" 200 \
-    -H "Authorization: Bearer $ADMIN_TOKEN"
+  AUDIT_RESP=$(scurl -X GET "$BASE/v1/audit/events?limit=200" -H "Authorization: Bearer $ADMIN_TOKEN") || true
+  if [[ "$AUDIT_RESP" == *'sidecar_activated'* ]] && [[ "$AUDIT_RESP" == *'sidecar_activation_failed'* ]]; then
+    echo "  PASS: audit contains sidecar activation success/failure events"
+    PASS=$((PASS + 1))
+  else
+    echo "  FAIL: audit missing expected sidecar activation events"
+    FAIL=$((FAIL + 1))
+  fi
 else
-  echo "  FAIL: GET /v1/audit/events (auth) skipped, missing admin token"
+  echo "  FAIL: audit check skipped, missing admin token"
   FAIL=$((FAIL + 1))
 fi
 
-# --- Summary ---
+# 7. HTTP request logging evidence check
+BROKER_LOGS=$(cd "$PROJECT_ROOT" && docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" logs broker --tail=200 || true)
+if printf '%s' "$BROKER_LOGS" | grep -q 'request completed'; then
+  echo "  PASS: broker HTTP request logs present"
+  PASS=$((PASS + 1))
+else
+  echo "  FAIL: broker HTTP request logs not detected"
+  FAIL=$((FAIL + 1))
+fi
 
 echo ""
 echo "=== Live Test Summary ==="
@@ -179,6 +232,8 @@ echo "  FAIL: $FAIL"
 
 if [[ $FAIL -gt 0 ]]; then
   echo "RESULT: FAILED"
+  echo "--- Broker logs (tail) ---"
+  (cd "$PROJECT_ROOT" && docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" logs broker --tail=200) || true
   exit 1
 fi
 

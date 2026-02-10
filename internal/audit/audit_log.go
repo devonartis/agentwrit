@@ -39,7 +39,9 @@ const (
 	EventTokenRenewed            = "token_renewed"
 	EventTokenRenewalFailed      = "token_renewal_failed"
 	EventDelegationCreated       = "delegation_created"
-	EventResourceAccessed        = "resource_accessed"
+	EventResourceAccessed         = "resource_accessed"
+	EventSidecarExchangeSuccess   = "sidecar_exchange_success"
+	EventSidecarExchangeDenied    = "sidecar_exchange_denied"
 )
 
 // AuditEvent is a single immutable entry in the audit trail. The Hash
