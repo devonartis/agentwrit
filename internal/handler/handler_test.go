@@ -623,6 +623,205 @@ func TestTokenExchange_ScopeEscalationDenied(t *testing.T) {
 	}
 }
 
+func TestTokenExchange_MalformedScope_Returns400(t *testing.T) {
+	b := newTestBroker(t)
+
+	sidecarResp, err := b.tknSvc.Issue(token.IssueReq{
+		Sub:   "sidecar:abc123",
+		Sid:   "abc123",
+		Scope: []string{"sidecar:manage:*", "sidecar:scope:read:data:*"},
+		TTL:   300,
+	})
+	if err != nil {
+		t.Fatalf("issue sidecar token: %v", err)
+	}
+
+	tests := []struct {
+		name  string
+		scope []string
+	}{
+		{"two-segment scope", []string{"read:data"}},
+		{"single-segment scope", []string{"read"}},
+		{"empty-segment scope", []string{"read::*"}},
+		{"scope with leading colon", []string{":data:*"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			body := jsonBody(t, map[string]any{
+				"agent_id": "spiffe://test.local/agent/o/t/x",
+				"scope":    tc.scope,
+			})
+			req := httptest.NewRequest("POST", "/v1/token/exchange", body)
+			req.Header.Set("Authorization", "Bearer "+sidecarResp.AccessToken)
+			req.Header.Set("Content-Type", "application/json")
+			rr := b.do(req)
+
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+			}
+
+			var problem map[string]any
+			if err := json.NewDecoder(rr.Body).Decode(&problem); err != nil {
+				t.Fatalf("decode problem: %v", err)
+			}
+			if problem["error_code"] != "invalid_scope_format" {
+				t.Fatalf("expected invalid_scope_format, got %v", problem["error_code"])
+			}
+		})
+	}
+}
+
+func TestTokenExchange_WildcardIdentifierCeiling_CoversScope(t *testing.T) {
+	b := newTestBroker(t)
+
+	adminToken := getAdminToken(t, b)
+	agentToken, agentID := registerAgentHTTP(t, b, adminToken, []string{"read:data:*"})
+	_ = agentToken
+
+	// Sidecar with wildcard identifier ceiling: sidecar:scope:read:data:*
+	// covers read:data:project-42 because wildcard is in identifier position
+	sidecarResp, err := b.tknSvc.Issue(token.IssueReq{
+		Sub:   "sidecar:wildcard",
+		Sid:   "wildcard-sid",
+		Scope: []string{"sidecar:manage:*", "sidecar:scope:read:data:*"},
+		TTL:   300,
+	})
+	if err != nil {
+		t.Fatalf("issue sidecar token: %v", err)
+	}
+
+	body := jsonBody(t, map[string]any{
+		"agent_id": agentID,
+		"scope":    []string{"read:data:project-42"},
+		"ttl":      60,
+	})
+	req := httptest.NewRequest("POST", "/v1/token/exchange", body)
+	req.Header.Set("Authorization", "Bearer "+sidecarResp.AccessToken)
+	req.Header.Set("Content-Type", "application/json")
+	rr := b.do(req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["sidecar_id"] != "wildcard-sid" {
+		t.Errorf("expected sidecar_id=wildcard-sid, got %v", resp["sidecar_id"])
+	}
+}
+
+func TestTokenExchange_TripleWildcardCeiling_DeniesScope(t *testing.T) {
+	b := newTestBroker(t)
+
+	// sidecar:scope:*:*:* does NOT cover read:data:* because ScopeIsSubset
+	// requires exact action:resource match; wildcard only applies to identifier.
+	sidecarResp, err := b.tknSvc.Issue(token.IssueReq{
+		Sub:   "sidecar:wildcard",
+		Sid:   "wildcard-sid",
+		Scope: []string{"sidecar:manage:*", "sidecar:scope:*:*:*"},
+		TTL:   300,
+	})
+	if err != nil {
+		t.Fatalf("issue sidecar token: %v", err)
+	}
+
+	body := jsonBody(t, map[string]any{
+		"agent_id": "spiffe://test.local/agent/o/t/x",
+		"scope":    []string{"read:data:*"},
+	})
+	req := httptest.NewRequest("POST", "/v1/token/exchange", body)
+	req.Header.Set("Authorization", "Bearer "+sidecarResp.AccessToken)
+	req.Header.Set("Content-Type", "application/json")
+	rr := b.do(req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var problem map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&problem); err != nil {
+		t.Fatalf("decode problem: %v", err)
+	}
+	if problem["error_code"] != "scope_escalation_denied" {
+		t.Fatalf("expected scope_escalation_denied, got %v", problem["error_code"])
+	}
+}
+
+func TestTokenExchange_MissingContentType_Returns400(t *testing.T) {
+	b := newTestBroker(t)
+
+	sidecarResp, err := b.tknSvc.Issue(token.IssueReq{
+		Sub:   "sidecar:abc123",
+		Sid:   "abc123",
+		Scope: []string{"sidecar:manage:*", "sidecar:scope:read:data:*"},
+		TTL:   300,
+	})
+	if err != nil {
+		t.Fatalf("issue sidecar token: %v", err)
+	}
+
+	body := jsonBody(t, map[string]any{
+		"agent_id": "spiffe://test.local/agent/o/t/x",
+		"scope":    []string{"read:data:*"},
+	})
+	req := httptest.NewRequest("POST", "/v1/token/exchange", body)
+	req.Header.Set("Authorization", "Bearer "+sidecarResp.AccessToken)
+	// Deliberately NOT setting Content-Type
+	rr := b.do(req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var problem map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&problem); err != nil {
+		t.Fatalf("decode problem: %v", err)
+	}
+	if problem["error_code"] != "invalid_content_type" {
+		t.Fatalf("expected invalid_content_type, got %v", problem["error_code"])
+	}
+}
+
+func TestTokenExchange_SidecarScopeCeilingMissing_Returns403(t *testing.T) {
+	b := newTestBroker(t)
+
+	// Sidecar token with manage authority but NO sidecar:scope:* entries
+	sidecarResp, err := b.tknSvc.Issue(token.IssueReq{
+		Sub:   "sidecar:no-ceiling",
+		Sid:   "no-ceiling-sid",
+		Scope: []string{"sidecar:manage:*"},
+		TTL:   300,
+	})
+	if err != nil {
+		t.Fatalf("issue sidecar token: %v", err)
+	}
+
+	body := jsonBody(t, map[string]any{
+		"agent_id": "spiffe://test.local/agent/o/t/x",
+		"scope":    []string{"read:data:*"},
+	})
+	req := httptest.NewRequest("POST", "/v1/token/exchange", body)
+	req.Header.Set("Authorization", "Bearer "+sidecarResp.AccessToken)
+	req.Header.Set("Content-Type", "application/json")
+	rr := b.do(req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var problem map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&problem); err != nil {
+		t.Fatalf("decode problem: %v", err)
+	}
+	if problem["error_code"] != "sidecar_scope_missing" {
+		t.Fatalf("expected sidecar_scope_missing, got %v", problem["error_code"])
+	}
+}
+
 // --- Metrics endpoint ---
 
 func TestMetrics(t *testing.T) {

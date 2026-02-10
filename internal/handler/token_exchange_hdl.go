@@ -29,6 +29,8 @@ var (
 	ErrExchangeSidecarScopeMissing = errors.New("sidecar scope ceiling missing")
 	// ErrExchangeInvalidTTL indicates a TTL outside acceptable bounds.
 	ErrExchangeInvalidTTL = errors.New("ttl must be between 1 and 900 seconds")
+	// ErrExchangeInvalidScopeFormat indicates a scope entry is not in action:resource:identifier format.
+	ErrExchangeInvalidScopeFormat = errors.New("scope must be in action:resource:identifier format")
 )
 
 // TokenExchangeReq is the JSON request body for POST /v1/token/exchange.
@@ -111,6 +113,17 @@ func (h *TokenExchangeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	effectiveTTL := req.TTL
 	if effectiveTTL == 0 {
 		effectiveTTL = maxExchangeTTL
+	}
+
+	// Validate scope format: each entry must be action:resource:identifier
+	for _, s := range req.Scope {
+		if _, _, _, err := authz.ParseScope(s); err != nil {
+			obs.Warn("EXCHANGE", "hdl", "invalid scope format", "scope="+s)
+			problemdetails.WriteProblemExtended(r.Context(), w, http.StatusBadRequest, "invalid_request",
+				ErrExchangeInvalidScopeFormat.Error(), r.URL.Path, "invalid_scope_format",
+				fmt.Sprintf("each scope must have 3 non-empty colon-separated parts; got %q", s))
+			return
+		}
 	}
 
 	// Extract sidecar scope ceiling from caller token
