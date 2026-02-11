@@ -1,7 +1,7 @@
 # AgentAuth API Reference
 
 **Version:** 2.0.0
-**Base URL:** `http://localhost:8080` (configurable via `AA_PORT`)
+**Base URL:** `http://localhost:8080` (Docker Compose default host mapping; override with `AA_HOST_PORT`)
 **Content-Type:** All requests and responses use `application/json` unless noted otherwise
 **Errors:** All errors use [RFC 7807](https://tools.ietf.org/html/rfc7807) `application/problem+json`
 **Request body limit:** All endpoints enforce a maximum request body size of 1 MB (1,048,576 bytes) via `MaxBytesBody`. Requests exceeding this limit receive a `413 Request Entity Too Large` error.
@@ -1190,13 +1190,13 @@ Available at `GET /v1/metrics` in Prometheus exposition format.
 
 ## End-to-End Walkthrough
 
-This walkthrough demonstrates the complete agent lifecycle using `curl`. It assumes the broker is running locally with `AA_ADMIN_SECRET=my-secret`.
+This walkthrough demonstrates the complete agent lifecycle using `curl`.
+For repository integration work, run the broker via Docker Compose.
 
 ```bash
-# Start the broker
+# Start broker + sidecar stack
 export AA_ADMIN_SECRET=my-secret
-export AA_PORT=8080
-go run ./cmd/broker &
+./scripts/stack_up.sh
 ```
 
 ### Step 1: Health check

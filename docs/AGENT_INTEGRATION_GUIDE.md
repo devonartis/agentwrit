@@ -12,6 +12,10 @@ If you follow this guide end-to-end, you will:
 5. validate and renew tokens
 6. know common failure modes and exact fixes
 
+Runtime policy for this guide:
+1. always run broker + sidecar using Docker Compose (`./scripts/stack_up.sh`)
+2. do not run the broker directly with `go run ./cmd/broker` for integration work
+
 ## 1. Pattern Questions This Guide Answers
 
 This section explicitly answers the key security-pattern questions so a new developer can verify the implementation is aligned.
@@ -66,9 +70,10 @@ This section explicitly answers the key security-pattern questions so a new deve
 
 ## 3. Prerequisites
 
-1. Broker running locally:
+1. Broker + sidecar running with Docker Compose:
 ```bash
-AA_ADMIN_SECRET="dev-admin-secret-change-me" go run ./cmd/broker
+export AA_ADMIN_SECRET="dev-admin-secret-change-me"
+./scripts/stack_up.sh
 ```
 
 2. Broker health check:
@@ -80,6 +85,11 @@ curl -s http://127.0.0.1:8080/v1/health
 ```bash
 # macOS example
 brew install jq
+```
+
+4. Optional cleanup after you finish this guide:
+```bash
+./scripts/stack_down.sh
 ```
 
 ## 4. Contract You Must Follow

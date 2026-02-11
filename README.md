@@ -1,6 +1,6 @@
 # AgentAuth
 
-AgentAuth is an ephemeral agent credentialing broker that issues short-lived, scope-attenuated tokens to AI agents. It implements the [Ephemeral Agent Credentialing](plans/Security-Pattern-That-Is-Why-We-Built-AgentAuth.md) security pattern: each agent proves identity via Ed25519 challenge-response, receives a SPIFFE-format identifier, and operates with only the permissions its task requires. Tokens expire in minutes, not hours, eliminating the credential exposure window that plagues traditional IAM approaches to AI agent security.
+AgentAuth is an ephemeral agent credentialing broker that issues short-lived, scope-attenuated tokens to AI agents. It implements the [Ephemeral Agent Credentialing](plans/archive/Security-Pattern-That-Is-Why-We-Built-AgentAuth.md) security pattern: each agent proves identity via Ed25519 challenge-response, receives a SPIFFE-format identifier, and operates with only the permissions its task requires. Tokens expire in minutes, not hours, eliminating the credential exposure window that plagues traditional IAM approaches to AI agent security.
 
 ## Release Status
 
@@ -10,25 +10,23 @@ This release validates that AgentAuth is a working implementation of the target 
 
 This is intentionally **not** a production-hardening release. Production controls (transport hardening, deployment architecture, and operations posture) are handled in a follow-on build-out phase.
 
-For full release framing and handoff scope, see [plans/AgentAuth-MVP-Release-Writeup-v1.0.md](plans/AgentAuth-MVP-Release-Writeup-v1.0.md).
+For full release framing and handoff scope, see [plans/archive/AgentAuth-MVP-Release-Writeup-v1.0.md](plans/archive/AgentAuth-MVP-Release-Writeup-v1.0.md).
 
 ## Quick Start
 
 ```bash
-# 1. Build
-go build ./...
-
-# 2. Configure (required -- AA_ADMIN_SECRET must be set)
+# 1. Configure (required)
 export AA_ADMIN_SECRET="change-me-in-production"
 
-# 3. Run
-go run ./cmd/broker
+# 2. Start broker + sidecar with Docker Compose (required runtime path)
+./scripts/stack_up.sh
 
-# 4. Test health
+# 3. Test health
 curl http://localhost:8080/v1/health
 ```
 
-The broker starts on port 8080 by default. Set `AA_PORT` to change it.
+The broker binds to port `8080` by default (override with `AA_HOST_PORT` for docker-compose port mapping).
+For integration and demo flows in this repository, use Docker Compose (`./scripts/stack_up.sh`) rather than running `go run ./cmd/broker` directly.
 
 ## Architecture
 
@@ -149,7 +147,7 @@ One-command teardown:
 Run live E2E (always deploys compose stack first):
 
 ```bash
-./scripts/live_test.sh
+./scripts/live_test.sh --docker
 ```
 
 ## Documentation
@@ -159,7 +157,7 @@ Run live E2E (always deploys compose stack first):
 - [Developer Guide](docs/DEVELOPER_GUIDE.md) -- architecture, conventions, contributing
 - [User Guide](docs/USER_GUIDE.md) -- workflows and integration patterns
 - [OpenAPI Spec](docs/api/openapi.yaml) -- machine-readable API contract
-- [Security Pattern](plans/Security-Pattern-That-Is-Why-We-Built-AgentAuth.md) -- the "why" behind AgentAuth
+- [Security Pattern](plans/archive/Security-Pattern-That-Is-Why-We-Built-AgentAuth.md) -- the "why" behind AgentAuth
 - [Changelog](CHANGELOG.md) -- release history
 
 ## License

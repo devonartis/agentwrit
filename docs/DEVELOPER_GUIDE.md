@@ -1133,7 +1133,7 @@ if s.auditLog != nil {
 
 ### Step 3: Update the tech spec
 
-Add the new event type to the event types table in `plans/AgentAuth-Technical-Spec-v2.0.md` Section 3.
+Add the new event type to the event types table in `plans/archive/AgentAuth-Technical-Spec-v2.0.md` Section 3.
 
 ### Step 4: Add tests
 
@@ -1160,7 +1160,7 @@ The hash chain is automatic. Each new event's hash includes the previous event's
 
 ## 17. Known Limitations
 
-The following are known gaps relative to the full [Ephemeral Agent Credentialing](../plans/Security-Pattern-That-Is-Why-We-Built-AgentAuth.md) security pattern. They are documented here for transparency and are planned for future iterations.
+The following are known gaps relative to the full [Ephemeral Agent Credentialing](../plans/archive/Security-Pattern-That-Is-Why-We-Built-AgentAuth.md) security pattern. They are documented here for transparency and are planned for future iterations.
 
 ### No native TLS / mTLS
 

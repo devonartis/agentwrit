@@ -43,13 +43,16 @@ go build ./...
 ### 2. Start the broker
 
 ```bash
-AA_ADMIN_SECRET=my-secret-change-me AA_LOG_LEVEL=standard go run ./cmd/broker
+export AA_ADMIN_SECRET=my-secret-change-me
+export AA_LOG_LEVEL=standard
+./scripts/stack_up.sh
 ```
 
 You should see:
 
 ```
-AgentAuth broker v2.0.0 listening on :8080
+Stack is up.
+Broker health: curl http://127.0.0.1:8080/v1/health
 ```
 
 ### 3. Verify health
@@ -104,21 +107,22 @@ go build -o agentauth-broker ./cmd/broker
 
 The binary is statically linked (CGO_ENABLED=0 by default on Go 1.24+) and has no runtime dependencies.
 
-### Run Directly
+### Run with Docker Compose (required for this guide)
 
-If you prefer not to build a binary:
+Start the supported runtime stack (broker + sidecar):
 
 ```bash
-go run ./cmd/broker
+export AA_ADMIN_SECRET=my-secret-change-me
+./scripts/stack_up.sh
 ```
 
 ### Verify the Build
 
 ```bash
-./agentauth-broker &
+./scripts/stack_up.sh
 curl -s http://localhost:8080/v1/health | jq .status
 # Expected: "ok"
-kill %1
+./scripts/stack_down.sh
 ```
 
 ---
@@ -158,13 +162,13 @@ All configuration is via environment variables prefixed with `AA_`. The broker r
 ### Example: Production Configuration
 
 ```bash
-export AA_PORT=8080
+export AA_HOST_PORT=8080
 export AA_LOG_LEVEL=standard
 export AA_TRUST_DOMAIN=agentauth.example.com
 export AA_DEFAULT_TTL=300
 export AA_ADMIN_SECRET=$(openssl rand -hex 32)
 
-./agentauth-broker
+./scripts/stack_up.sh
 ```
 
 ---
@@ -175,10 +179,11 @@ This section walks through the complete agent credential lifecycle using curl co
 
 ### Prerequisites
 
-Start the broker with an admin secret:
+Start the broker with an admin secret (Docker Compose runtime):
 
 ```bash
-AA_ADMIN_SECRET=demo-secret-do-not-use-in-prod go run ./cmd/broker &
+export AA_ADMIN_SECRET=demo-secret-do-not-use-in-prod
+./scripts/stack_up.sh
 BROKER=http://localhost:8080
 ```
 
@@ -917,7 +922,8 @@ The admin secret can be rotated with a brief restart:
 3. Restart the broker with the new secret:
 
    ```bash
-   AA_ADMIN_SECRET=$NEW_SECRET ./agentauth-broker
+   ./scripts/stack_down.sh
+   AA_ADMIN_SECRET=$NEW_SECRET ./scripts/stack_up.sh
    ```
 
 4. Update all orchestrators to use the new secret.
@@ -974,7 +980,9 @@ If you suspect credential compromise:
 1. **Check broker logs.** Set `AA_LOG_LEVEL=trace` to see all authentication decisions:
 
    ```bash
-   AA_LOG_LEVEL=trace AA_ADMIN_SECRET=... ./agentauth-broker
+   ./scripts/stack_down.sh
+   AA_LOG_LEVEL=trace AA_ADMIN_SECRET=... ./scripts/stack_up.sh
+   docker compose logs -f broker
    ```
 
 2. **Validate the token directly:**
@@ -1063,27 +1071,24 @@ The broker uses structured logging via the `obs` package. All log lines follow t
 Separate OK/WARN/TRACE (stdout) from FAIL (stderr):
 
 ```bash
-# Only errors
-./agentauth-broker 2>errors.log 1>/dev/null
+# Save combined broker logs to a file
+docker compose logs broker > broker.log
 
-# Only success/warnings
-./agentauth-broker 1>access.log 2>/dev/null
-
-# Both to separate files
-./agentauth-broker 1>access.log 2>errors.log
+# Stream only new broker logs
+docker compose logs -f broker
 ```
 
 Filter by module with grep:
 
 ```bash
 # Only identity-related logs
-./agentauth-broker 2>&1 | grep '\[AA:IDENTITY:'
+docker compose logs broker | grep '\[AA:IDENTITY:'
 
 # Only failures
-./agentauth-broker 2>&1 | grep ':FAIL\]'
+docker compose logs broker | grep ':FAIL\]'
 
 # Only admin operations
-./agentauth-broker 2>&1 | grep '\[AA:ADMIN:'
+docker compose logs broker | grep '\[AA:ADMIN:'
 ```
 
 ---
@@ -1092,5 +1097,5 @@ Filter by module with grep:
 
 - **API Reference:** See `docs/API_REFERENCE.md` for complete endpoint documentation.
 - **Developer Guide:** See `docs/DEVELOPER_GUIDE.md` for architecture details and contribution guidelines.
-- **Security Pattern:** See `plans/Security-Pattern-That-Is-Why-We-Built-AgentAuth.md` for the security research behind AgentAuth.
-- **Technical Specification:** See `plans/AgentAuth-Technical-Spec-v2.0.md` for the authoritative specification.
+- **Security Pattern:** See `plans/archive/Security-Pattern-That-Is-Why-We-Built-AgentAuth.md` for the security research behind AgentAuth.
+- **Technical Specification:** See `plans/archive/AgentAuth-Technical-Spec-v2.0.md` for the authoritative specification.
