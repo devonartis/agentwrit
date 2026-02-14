@@ -1,6 +1,8 @@
 services:
   broker:
-    build: .
+    build:
+      context: .
+      target: broker
     ports:
       - "${AA_HOST_PORT:-8080}:8080"
     environment:
@@ -8,14 +10,28 @@ services:
       - AA_ADMIN_SECRET=${AA_ADMIN_SECRET:-change-me-in-production}
       - AA_SEED_TOKENS=${AA_SEED_TOKENS:-false}
       - AA_LOG_LEVEL=${AA_LOG_LEVEL:-standard}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/v1/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
     networks:
       - agentauth-net
 
   sidecar:
-    image: curlimages/curl:8.11.1
-    command: ["sleep", "infinity"]
+    build:
+      context: .
+      target: sidecar
+    ports:
+      - "${AA_SIDECAR_HOST_PORT:-8081}:8081"
+    environment:
+      - AA_BROKER_URL=http://broker:8080
+      - AA_ADMIN_SECRET=${AA_ADMIN_SECRET:-change-me-in-production}
+      - AA_SIDECAR_SCOPE_CEILING=${AA_SIDECAR_SCOPE_CEILING:-read:data:*,write:data:*}
+      - AA_SIDECAR_PORT=8081
     depends_on:
-      - broker
+      broker:
+        condition: service_healthy
     networks:
       - agentauth-net
 
