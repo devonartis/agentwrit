@@ -25,13 +25,16 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if len(cfg.ScopeCeiling) != 1 || cfg.ScopeCeiling[0] != "read:data:*" {
 		t.Errorf("ScopeCeiling = %v, want [read:data:*]", cfg.ScopeCeiling)
 	}
+	if cfg.LogLevel != "standard" {
+		t.Errorf("LogLevel = %q, want standard", cfg.LogLevel)
+	}
 }
 
 func TestLoadConfig_CustomEnv(t *testing.T) {
 	os.Setenv("AA_BROKER_URL", "http://broker:9090")
 	os.Setenv("AA_SIDECAR_PORT", "9091")
 	os.Setenv("AA_ADMIN_SECRET", "custom-secret")
-	os.Setenv("AA_SIDECAR_SCOPE_CEILING", "read:data:*,write:orders:*")
+	os.Setenv("AA_SIDECAR_SCOPE_CEILING", " read:data:* , write:orders:* , , ")
 	defer func() {
 		os.Unsetenv("AA_BROKER_URL")
 		os.Unsetenv("AA_SIDECAR_PORT")
@@ -48,7 +51,13 @@ func TestLoadConfig_CustomEnv(t *testing.T) {
 		t.Errorf("Port = %q, want 9091", cfg.Port)
 	}
 	if len(cfg.ScopeCeiling) != 2 {
-		t.Errorf("ScopeCeiling has %d entries, want 2", len(cfg.ScopeCeiling))
+		t.Fatalf("ScopeCeiling has %d entries, want 2: %v", len(cfg.ScopeCeiling), cfg.ScopeCeiling)
+	}
+	if cfg.ScopeCeiling[0] != "read:data:*" {
+		t.Errorf("ScopeCeiling[0] = %q, want read:data:*", cfg.ScopeCeiling[0])
+	}
+	if cfg.ScopeCeiling[1] != "write:orders:*" {
+		t.Errorf("ScopeCeiling[1] = %q, want write:orders:*", cfg.ScopeCeiling[1])
 	}
 }
 
