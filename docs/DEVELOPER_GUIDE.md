@@ -248,7 +248,7 @@ PII sanitization runs on the `detail` field before storage. It masks values afte
 
 `Query(filters)` supports filtering by agent_id, task_id, event_type, since/until timestamps, plus limit/offset pagination (default limit 100, max 1000).
 
-Twelve event type constants are defined (see [Section 9](#9-audit-system)).
+Seventeen event type constants are defined (see [Section 9](#9-audit-system)).
 
 ### `deleg` -- Delegation
 **File:** `internal/deleg/deleg_svc.go`
@@ -272,7 +272,7 @@ Twelve event type constants are defined (see [Section 9](#9-audit-system)).
 - `CreateSidecarActivationToken(req, createdBy)` -- issues short-lived single-use sidecar activation JWT (`aud=sidecar_activation`, scope `sidecar:activate:<prefix>`)
 - `ActivateSidecar(req)` -- exchanges activation token once, enforces replay protection, and issues sidecar token with `sidecar:manage:*` + `sidecar:scope:<...>` and broker-derived `sid`
 
-`AdminHdl` registers two routes via `RegisterRoutes(mux)`:
+`AdminHdl` registers four routes via `RegisterRoutes(mux)`:
 - `POST /v1/admin/auth` -- no auth required (this IS the auth endpoint)
 - `POST /v1/admin/launch-tokens` -- wrapped with `valMw.Wrap` + `WithRequiredScope("admin:launch-tokens:*")`
 - `POST /v1/admin/sidecar-activations` -- wrapped with `valMw.Wrap` + `WithRequiredScope("admin:launch-tokens:*")`
@@ -296,15 +296,9 @@ Each handler is a struct implementing `http.Handler`. Pattern: decode JSON, call
 | `HealthHdl` | `GET /v1/health` | None |
 | `MetricsHdl` | `GET /v1/metrics` | None (Prometheus) |
 
-The `WriteProblem` helper in `problem.go` produces RFC 7807 JSON with `Content-Type: application/problem+json`.
+The `WriteProblem` helper in `internal/problemdetails/problemdetails.go` produces RFC 7807 JSON with `Content-Type: application/problem+json`.
 
-The `admin` package defines its own unexported `writeProblem` variant in `internal/admin/admin_hdl.go` with an additional `title` parameter:
-
-```go
-func writeProblem(w http.ResponseWriter, status int, errType, title, detail, instance string)
-```
-
-Unlike the handler package's `WriteProblem` (which derives `title` from `http.StatusText(status)`), the admin variant accepts an explicit `title` string, allowing admin endpoints to provide custom error titles (e.g., `"Invalid Request"`, `"Unauthorized"`).
+Admin handlers also call `problemdetails.WriteProblem` / `problemdetails.WriteProblemExtended`; there is no package-local admin-specific `writeProblem` helper.
 
 ---
 
@@ -319,7 +313,7 @@ Client                  net/http.ServeMux        RegHdl           IdSvc
   |  Content-Type: app/json   |                    |                |
   |-------------------------->|                    |                |
   |                           | route match        |                |
-  |                           |  (no middleware)    |                |
+  |                           |  (MaxBytesBody)     |                |
   |                           |------------------->|                |
   |                           |                    | json.Decode    |
   |                           |                    | req body       |
@@ -874,9 +868,9 @@ Services return sentinel errors (declared with `errors.New`). Handlers use `erro
 ```go
 switch {
 case errors.Is(err, identity.ErrMissingField):
-    WriteProblem(w, http.StatusBadRequest, "invalid_request", err.Error(), r.URL.Path)
+    problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", err.Error(), r.URL.Path)
 case errors.Is(err, identity.ErrScopeViolation):
-    WriteProblem(w, http.StatusForbidden, "scope_violation", err.Error(), r.URL.Path)
+    problemdetails.WriteProblem(r.Context(), w, http.StatusForbidden, "scope_violation", err.Error(), r.URL.Path)
 // ...
 }
 ```
@@ -1045,7 +1039,7 @@ type exampleResp struct {
 func (h *ExampleHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     var req exampleReq
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        WriteProblem(w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
+        problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
         return
     }
 

@@ -50,7 +50,7 @@ AgentAuth uses three authentication levels:
 |-------|-----------|-----------|
 | **Public** | No auth required | `GET /v1/challenge`, `GET /v1/health`, `GET /v1/metrics`, `POST /v1/token/validate` |
 | **Launch token** | Opaque token in request body | `POST /v1/register` |
-| **Bearer JWT** | `Authorization: Bearer <token>` header | All other endpoints |
+| **Bearer JWT** | `Authorization: Bearer <token>` header | `POST /v1/token/renew`, `POST /v1/token/exchange`, `POST /v1/delegate`, `POST /v1/revoke`, `GET /v1/audit/events`, `POST /v1/admin/launch-tokens`, `POST /v1/admin/sidecar-activations` |
 
 Admin endpoints additionally require specific scopes in the JWT:
 
