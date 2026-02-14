@@ -150,7 +150,7 @@ All configuration is via environment variables prefixed with `AA_`. The broker r
 |-------|---------------|
 | `quiet` | Only FAIL messages (stderr) |
 | `standard` | OK + WARN + FAIL |
-| `verbose` | Everything except TRACE |
+| `verbose` | Same output as `standard` (current behavior) |
 | `trace` | All messages including debug traces |
 
 **AA_TRUST_DOMAIN** -- Appears in all SPIFFE IDs: `spiffe://<trust_domain>/agent/<orch_id>/<task_id>/<instance_id>`. Set this to your organization's domain in production (e.g., `agentauth.example.com`).
@@ -1051,7 +1051,7 @@ The broker uses structured logging via the `obs` package. All log lines follow t
 |-------|--------|------|
 | `OK` | stdout | Standard level and above |
 | `WARN` | stdout | Standard level and above |
-| `FAIL` | **stderr** | All levels except quiet |
+| `FAIL` | **stderr** | All levels including quiet |
 | `TRACE` | stdout | Trace level only |
 
 ### Examples

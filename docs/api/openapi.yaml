@@ -80,6 +80,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /v1/token/validate:
     post:
@@ -163,6 +165,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
@@ -215,6 +219,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /v1/revoke:
     post:
@@ -244,6 +250,12 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /v1/audit/events:
     get:
@@ -326,6 +338,8 @@ paths:
                 $ref: "#/components/schemas/AuditResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /v1/admin/auth:
     post:
@@ -395,6 +409,10 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /v1/admin/sidecar-activations:
     post:
@@ -423,6 +441,10 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /v1/sidecar/activate:
     post:
@@ -454,6 +476,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
+        "500":
+          $ref: "#/components/responses/InternalError"
         "429":
           description: Rate limit exceeded (5 req/s per IP, burst 10)
           headers:
@@ -524,6 +548,12 @@ components:
             $ref: "#/components/schemas/ProblemDetail"
     Forbidden:
       description: Insufficient scope
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
+    InternalError:
+      description: Internal server error
       content:
         application/problem+json:
           schema:

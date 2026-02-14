@@ -133,7 +133,7 @@ Two responsibilities: structured logging and Prometheus metrics.
 |----------|-------|--------|
 | `obs.Ok` | Standard+ | stdout |
 | `obs.Warn` | Standard+ | stdout |
-| `obs.Fail` | All (except quiet) | stderr |
+| `obs.Fail` | All (including quiet) | stderr |
 | `obs.Trace` | Trace only | stdout |
 
 Log format: `[AA:MODULE:LEVEL] TIMESTAMP | COMPONENT | MESSAGE | CONTEXT`
