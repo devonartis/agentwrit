@@ -14,10 +14,10 @@
 5. [Bootstrap Walkthrough](#bootstrap-walkthrough)
 6. [Sidecar Bootstrap flow](#sidecar-bootstrap-flow)
 7. [Monitoring](#monitoring)
-7. [Security Hardening](#security-hardening)
-8. [Troubleshooting](#troubleshooting)
-9. [Operational Runbook](#operational-runbook)
-10. [Log Format](#log-format)
+8. [Security Hardening](#security-hardening)
+9. [Troubleshooting](#troubleshooting)
+10. [Operational Runbook](#operational-runbook)
+11. [Log Format](#log-format)
 
 ---
 
@@ -837,7 +837,7 @@ The broker provides these security guarantees:
 echo $AA_ADMIN_SECRET
 ```
 
-If `AA_ADMIN_SECRET` is empty, the broker will reject all admin auth attempts.
+If `AA_ADMIN_SECRET` is empty at startup, the broker exits immediately with `FATAL: AA_ADMIN_SECRET must be set (non-empty)` and does not accept requests.
 
 #### 401 Unauthorized on POST /v1/register
 
