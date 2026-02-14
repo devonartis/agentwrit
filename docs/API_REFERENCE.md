@@ -39,6 +39,10 @@
   - [SPIFFE ID Format](#spiffe-id-format)
   - [Prometheus Metrics](#prometheus-metrics)
 - [End-to-End Walkthrough](#end-to-end-walkthrough)
+- [Sidecar API](#sidecar-api)
+  - [POST /v1/token (sidecar)](#post-v1token-sidecar)
+  - [POST /v1/token/renew (sidecar)](#post-v1tokenrenew-sidecar)
+  - [GET /v1/health (sidecar)](#get-v1health-sidecar)
 
 ---
 
@@ -1355,4 +1359,146 @@ curl -s -X POST http://localhost:8080/v1/token/renew \
 ```bash
 curl -s "http://localhost:8080/v1/audit/events?limit=50" \
   -H "Authorization: Bearer $ADMIN_TOKEN" | jq '.events[] | {id, event_type, detail}'
+```
+
+---
+
+## Sidecar API
+
+The sidecar is a standalone HTTP service that auto-bootstraps with the broker and exposes a simplified developer-facing API. It handles admin auth, sidecar activation, and scope ceiling enforcement internally so that 3rd party developers only need to make simple HTTP calls to get scoped tokens.
+
+**Base URL:** `http://localhost:8081` (Docker Compose default; override with `AA_SIDECAR_HOST_PORT`)
+**Content-Type:** All requests and responses use `application/json`
+
+### POST /v1/token (sidecar)
+
+Request a scoped agent token. The sidecar validates the request, checks scope against its configured ceiling locally, and delegates to the broker's token exchange endpoint.
+
+**Auth:** None (the sidecar is trusted within the local network)
+
+**Request:**
+
+```json
+{
+  "agent_name": "my-agent",
+  "task_id": "task-1",
+  "scope": ["read:data:*"],
+  "ttl": 300
+}
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `agent_name` | string | Yes | -- | Human-readable agent name |
+| `task_id` | string | No | -- | Task identifier (combined with `agent_name` to form the broker agent ID) |
+| `scope` | string[] | Yes | -- | Requested scopes; must be a subset of the sidecar's configured scope ceiling |
+| `ttl` | int | No | `300` | Requested token TTL in seconds (values <= 0 default to 300) |
+
+**Response `200 OK`:**
+
+```json
+{
+  "access_token": "eyJhbGciOiJFZERTQSIs...",
+  "expires_in": 300,
+  "scope": ["read:data:*"]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `access_token` | string | EdDSA-signed JWT token |
+| `expires_in` | int | Token TTL in seconds |
+| `scope` | string[] | The granted scopes (echoed from request) |
+
+**Error responses:**
+
+| Status | Condition |
+|--------|-----------|
+| `400` | Missing `agent_name` or empty `scope` array |
+| `400` | Malformed JSON body |
+| `403` | Requested scope exceeds sidecar scope ceiling (`AA_SIDECAR_SCOPE_CEILING`) |
+| `405` | Non-POST method |
+| `502` | Broker token exchange failed (broker unreachable, agent not found, or scope escalation at broker level) |
+
+**Example:**
+
+```bash
+curl -X POST http://localhost:8081/v1/token \
+  -H "Content-Type: application/json" \
+  -d '{"agent_name":"my-agent","task_id":"task-1","scope":["read:data:*"]}'
+```
+
+---
+
+### POST /v1/token/renew (sidecar)
+
+Renew an existing token. The sidecar proxies the request to the broker's `POST /v1/token/renew` endpoint.
+
+**Auth:** Bearer JWT (the token to renew, passed in the `Authorization` header)
+
+**Request body:** None. The token to renew is taken from the `Authorization: Bearer` header.
+
+**Response `200 OK`:**
+
+```json
+{
+  "access_token": "eyJhbGciOiJFZERTQSIs...",
+  "expires_in": 300
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `access_token` | string | New EdDSA-signed JWT with fresh timestamps |
+| `expires_in` | int | TTL of the renewed token in seconds |
+
+**Error responses:**
+
+| Status | Condition |
+|--------|-----------|
+| `401` | Missing or invalid `Authorization: Bearer` header |
+| `405` | Non-POST method |
+| `502` | Broker renew failed (token expired, revoked, or broker unreachable) |
+
+**Example:**
+
+```bash
+curl -X POST http://localhost:8081/v1/token/renew \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
+### GET /v1/health (sidecar)
+
+Sidecar readiness check. Reports whether the sidecar has successfully bootstrapped with the broker.
+
+**Auth:** None
+
+**Response `200 OK`:**
+
+```json
+{
+  "status": "ok",
+  "broker_connected": true,
+  "scope_ceiling": ["read:data:*", "write:data:*"]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | string | Always `"ok"` when the sidecar is running |
+| `broker_connected` | bool | `true` if the sidecar holds a valid sidecar bearer token (bootstrap succeeded) |
+| `scope_ceiling` | string[] | The configured scope ceiling from `AA_SIDECAR_SCOPE_CEILING` |
+
+**Error responses:**
+
+| Status | Condition |
+|--------|-----------|
+| `405` | Non-GET method |
+
+**Example:**
+
+```bash
+curl http://localhost:8081/v1/health
 ```

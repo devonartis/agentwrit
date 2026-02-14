@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Sidecar**: Go sidecar binary (`cmd/sidecar/`) that auto-bootstraps with the broker and exposes a simple developer-facing API (`POST /v1/token`, `POST /v1/token/renew`, `GET /v1/health`)
+- **Sidecar**: Scope ceiling enforcement — sidecar locally checks requested scope against its configured ceiling before calling the broker
+- **Sidecar**: Auto-activation sequence — health check, admin auth, activation token, single-use exchange
+- **Sidecar**: End-to-end integration test validating full developer flow against a real in-process broker
+- **Docker**: Updated multi-stage Dockerfile with separate `broker` and `sidecar` targets
+- **Docker**: Updated docker-compose.yml replacing placeholder sidecar with real binary, health-check dependency
 - **Deployment**: Multi-stage Dockerfile for small, secure production images
 - **Deployment**: Docker Compose configuration for local development and orchestration
 - **Infrastructure**: Global Request-ID middleware for request correlation across logs and diagnostics
