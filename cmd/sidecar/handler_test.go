@@ -548,11 +548,9 @@ func TestRenewHandler_BrokerError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestHealthHandler(t *testing.T) {
-	state := &sidecarState{
-		sidecarToken: "sidecar-bearer-token",
-		sidecarID:    "sc-test-001",
-		expiresIn:    900,
-	}
+	state := &sidecarState{}
+	state.setToken("sidecar-bearer-token", 900)
+	state.sidecarID = "sc-test-001"
 	ceiling := []string{"read:data:*", "write:data:*"}
 
 	h := newHealthHandler(state, ceiling)
@@ -577,6 +575,9 @@ func TestHealthHandler(t *testing.T) {
 	if resp["broker_connected"] != true {
 		t.Errorf("broker_connected = %v, want true", resp["broker_connected"])
 	}
+	if resp["healthy"] != true {
+		t.Errorf("healthy = %v, want true", resp["healthy"])
+	}
 
 	scopeRaw, ok := resp["scope_ceiling"].([]any)
 	if !ok || len(scopeRaw) != 2 {
@@ -588,11 +589,9 @@ func TestHealthHandler(t *testing.T) {
 }
 
 func TestHealthHandler_MethodNotAllowed(t *testing.T) {
-	state := &sidecarState{
-		sidecarToken: "sidecar-bearer-token",
-		sidecarID:    "sc-test-001",
-		expiresIn:    900,
-	}
+	state := &sidecarState{}
+	state.setToken("sidecar-bearer-token", 900)
+	state.sidecarID = "sc-test-001"
 	ceiling := []string{"read:data:*"}
 
 	h := newHealthHandler(state, ceiling)
@@ -604,5 +603,37 @@ func TestHealthHandler_MethodNotAllowed(t *testing.T) {
 
 	if rr.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, want 405; body = %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestHealthHandler_Degraded(t *testing.T) {
+	state := &sidecarState{}
+	// Don't set token — healthy defaults to false.
+	ceiling := []string{"read:data:*"}
+
+	h := newHealthHandler(state, ceiling)
+
+	req := httptest.NewRequest("GET", "/v1/health", nil)
+	rr := httptest.NewRecorder()
+
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503; body = %s", rr.Code, rr.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp["status"] != "degraded" {
+		t.Errorf("status = %v, want degraded", resp["status"])
+	}
+	if resp["healthy"] != false {
+		t.Errorf("healthy = %v, want false", resp["healthy"])
+	}
+	if resp["broker_connected"] != false {
+		t.Errorf("broker_connected = %v, want false", resp["broker_connected"])
 	}
 }

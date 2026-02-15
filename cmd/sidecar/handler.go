@@ -252,13 +252,20 @@ func (h *healthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The sidecar is considered connected to the broker when it holds a
-	// valid sidecar token (bootstrap succeeded).
+	healthy := h.state != nil && h.state.isHealthy()
 	connected := h.state != nil && h.state.getToken() != ""
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status":           "ok",
+	status := "ok"
+	httpStatus := http.StatusOK
+	if !healthy {
+		status = "degraded"
+		httpStatus = http.StatusServiceUnavailable
+	}
+
+	writeJSON(w, httpStatus, map[string]any{
+		"status":           status,
 		"broker_connected": connected,
+		"healthy":          healthy,
 		"scope_ceiling":    h.scopeCeiling,
 	})
 }
