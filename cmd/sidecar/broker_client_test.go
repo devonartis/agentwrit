@@ -346,6 +346,81 @@ func TestBrokerClient_TokenRenew(t *testing.T) {
 	}
 }
 
+func TestBrokerClient_GetChallenge(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/challenge" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"nonce": "abc123", "expires_in": 30})
+	}))
+	defer srv.Close()
+
+	bc := newBrokerClient(srv.URL)
+	nonce, err := bc.getChallenge()
+	if err != nil {
+		t.Fatalf("getChallenge() error: %v", err)
+	}
+	if nonce != "abc123" {
+		t.Errorf("nonce = %q, want %q", nonce, "abc123")
+	}
+}
+
+func TestBrokerClient_CreateLaunchToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/admin/launch-tokens" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer admin-jwt" {
+			t.Error("missing admin bearer token")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]any{
+			"launch_token": "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef12345678",
+		})
+	}))
+	defer srv.Close()
+
+	bc := newBrokerClient(srv.URL)
+	lt, err := bc.createLaunchToken("admin-jwt", "test-agent", []string{"read:data:*"}, 600)
+	if err != nil {
+		t.Fatalf("createLaunchToken() error: %v", err)
+	}
+	if lt == "" {
+		t.Error("expected non-empty launch token")
+	}
+}
+
+func TestBrokerClient_RegisterAgent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/register" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["launch_token"] == nil || body["public_key"] == nil {
+			t.Error("missing required fields")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"agent_id":     "spiffe://test/agent/orch/task/inst",
+			"access_token": "agent-jwt",
+			"expires_in":   300,
+		})
+	}))
+	defer srv.Close()
+
+	bc := newBrokerClient(srv.URL)
+	agentID, err := bc.registerAgent("launch-token", "nonce-hex", "pubkey-b64", "sig-b64", "orch-1", "task-1", []string{"read:data:*"})
+	if err != nil {
+		t.Fatalf("registerAgent() error: %v", err)
+	}
+	if agentID != "spiffe://test/agent/orch/task/inst" {
+		t.Errorf("agentID = %q, want spiffe://...", agentID)
+	}
+}
+
 func TestBrokerClient_doJSON_ErrorStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")

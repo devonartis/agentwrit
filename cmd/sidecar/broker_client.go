@@ -188,6 +188,68 @@ func (c *brokerClient) tokenRenew(token string) (string, int, error) {
 	return newToken, expiresIn, nil
 }
 
+// getChallenge fetches a nonce from the broker. Calls GET /v1/challenge.
+func (c *brokerClient) getChallenge() (string, error) {
+	resp, err := c.doJSON("GET", "/v1/challenge", nil, "")
+	if err != nil {
+		return "", fmt.Errorf("get challenge: %w", err)
+	}
+	nonce, ok := resp["nonce"].(string)
+	if !ok || nonce == "" {
+		return "", fmt.Errorf("get challenge: missing nonce in response")
+	}
+	return nonce, nil
+}
+
+// createLaunchToken creates a launch token via the admin API.
+// Calls POST /v1/admin/launch-tokens with admin Bearer auth.
+func (c *brokerClient) createLaunchToken(adminToken, agentName string, scope []string, ttl int) (string, error) {
+	body, err := json.Marshal(map[string]any{
+		"agent_name":    agentName,
+		"allowed_scope": scope,
+		"max_ttl":       ttl,
+		"ttl":           ttl,
+	})
+	if err != nil {
+		return "", fmt.Errorf("marshal launch token request: %w", err)
+	}
+	resp, err := c.doJSON("POST", "/v1/admin/launch-tokens", body, adminToken)
+	if err != nil {
+		return "", fmt.Errorf("create launch token: %w", err)
+	}
+	lt, ok := resp["launch_token"].(string)
+	if !ok || lt == "" {
+		return "", fmt.Errorf("create launch token: missing launch_token in response")
+	}
+	return lt, nil
+}
+
+// registerAgent registers an agent with the broker via challenge-response.
+// Calls POST /v1/register.
+func (c *brokerClient) registerAgent(launchToken, nonce, pubKeyB64, sigB64, orchID, taskID string, scope []string) (string, error) {
+	body, err := json.Marshal(map[string]any{
+		"launch_token":    launchToken,
+		"nonce":           nonce,
+		"public_key":      pubKeyB64,
+		"signature":       sigB64,
+		"orch_id":         orchID,
+		"task_id":         taskID,
+		"requested_scope": scope,
+	})
+	if err != nil {
+		return "", fmt.Errorf("marshal register request: %w", err)
+	}
+	resp, err := c.doJSON("POST", "/v1/register", body, "")
+	if err != nil {
+		return "", fmt.Errorf("register agent: %w", err)
+	}
+	agentID, ok := resp["agent_id"].(string)
+	if !ok || agentID == "" {
+		return "", fmt.Errorf("register agent: missing agent_id in response")
+	}
+	return agentID, nil
+}
+
 // doJSON is the shared HTTP helper for all broker calls. It builds the
 // request, sets Content-Type and Authorization headers as needed, executes
 // the call, and parses the JSON response body into a generic map.
