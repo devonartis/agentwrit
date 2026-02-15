@@ -314,7 +314,7 @@ func TestIntegration_DeveloperFlow(t *testing.T) {
 	// ---------------------------------------------------------------
 	reg := newAgentRegistry()
 	reg.store(agentID, &agentEntry{spiffeID: agentID})
-	th := newTokenHandler(bc, state, sidecarCfg.ScopeCeiling, reg, adminSecret)
+	th := newTokenHandler(bc, state, sidecarCfg.ScopeCeiling, reg, adminSecret, nil)
 
 	// Use the full SPIFFE agent_id as agent_name, leave task_id empty
 	// so the handler passes it through to the broker as-is.
@@ -429,7 +429,7 @@ func TestIntegration_Phase2_LazyRegistration(t *testing.T) {
 	}
 
 	registry := newAgentRegistry()
-	th := newTokenHandler(bc, state, sidecarCfg.ScopeCeiling, registry, adminSecret)
+	th := newTokenHandler(bc, state, sidecarCfg.ScopeCeiling, registry, adminSecret, nil)
 
 	// Step 3: First POST /v1/token — should trigger lazy registration.
 	body1, _ := json.Marshal(map[string]any{
@@ -601,7 +601,7 @@ func TestIntegration_Phase2_BYOKRegistration(t *testing.T) {
 	}
 
 	// Step 4: Token request using cached BYOK registration.
-	th := newTokenHandler(bc, state, sidecarCfg.ScopeCeiling, registry, adminSecret)
+	th := newTokenHandler(bc, state, sidecarCfg.ScopeCeiling, registry, adminSecret, nil)
 
 	tokBody, _ := json.Marshal(map[string]any{
 		"agent_name": "byok-agent",

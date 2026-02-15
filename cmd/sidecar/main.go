@@ -49,7 +49,7 @@ func main() {
 
 	// Set up routes.
 	mux := http.NewServeMux()
-	mux.Handle("/v1/token", newTokenHandler(bc, state, cfg.ScopeCeiling, registry, cfg.AdminSecret))
+	mux.Handle("/v1/token", newTokenHandler(bc, state, cfg.ScopeCeiling, registry, cfg.AdminSecret, nil))
 	mux.Handle("/v1/token/renew", newRenewHandler(bc))
 	mux.Handle("/v1/health", newHealthHandler(state, cfg.ScopeCeiling, registry))
 	mux.Handle("/v1/challenge", newChallengeProxyHandler(bc))

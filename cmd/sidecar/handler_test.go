@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ---------------------------------------------------------------------------
@@ -108,7 +109,7 @@ func TestTokenHandler_HappyPath(t *testing.T) {
 	reg := newAgentRegistry()
 	reg.store("data-reader:task-789", &agentEntry{spiffeID: "spiffe://test/agent/data-reader/task-789/inst"})
 
-	h := newTokenHandler(bc, state, ceiling, reg, "test-secret")
+	h := newTokenHandler(bc, state, ceiling, reg, "test-secret", nil)
 
 	body := `{"agent_name":"data-reader","task_id":"task-789","scope":["read:data:*"],"ttl":300}`
 	req := httptest.NewRequest("POST", "/v1/token", strings.NewReader(body))
@@ -151,7 +152,7 @@ func TestTokenHandler_ScopeExceedsCeiling(t *testing.T) {
 	ceiling := []string{"read:data:*"} // only read:data allowed
 	reg := newAgentRegistry()
 
-	h := newTokenHandler(bc, state, ceiling, reg, "test-secret")
+	h := newTokenHandler(bc, state, ceiling, reg, "test-secret", nil)
 
 	body := `{"agent_name":"data-writer","task_id":"task-789","scope":["write:data:*"],"ttl":300}`
 	req := httptest.NewRequest("POST", "/v1/token", strings.NewReader(body))
@@ -180,7 +181,7 @@ func TestTokenHandler_MissingFields(t *testing.T) {
 	ceiling := []string{"read:data:*"}
 	reg := newAgentRegistry()
 
-	h := newTokenHandler(bc, state, ceiling, reg, "test-secret")
+	h := newTokenHandler(bc, state, ceiling, reg, "test-secret", nil)
 
 	// Missing scope field entirely.
 	body := `{"agent_name":"data-reader","task_id":"task-789","ttl":300}`
@@ -202,7 +203,7 @@ func TestTokenHandler_MethodNotAllowed(t *testing.T) {
 	ceiling := []string{"read:data:*"}
 	reg := newAgentRegistry()
 
-	h := newTokenHandler(bc, state, ceiling, reg, "test-secret")
+	h := newTokenHandler(bc, state, ceiling, reg, "test-secret", nil)
 
 	req := httptest.NewRequest("GET", "/v1/token", nil)
 	rr := httptest.NewRecorder()
@@ -231,7 +232,7 @@ func TestTokenHandler_BrokerError(t *testing.T) {
 	reg := newAgentRegistry()
 	reg.store("data-reader:task-789", &agentEntry{spiffeID: "spiffe://test/agent/data-reader/task-789/inst"})
 
-	h := newTokenHandler(bc, state, ceiling, reg, "test-secret")
+	h := newTokenHandler(bc, state, ceiling, reg, "test-secret", nil)
 
 	body := `{"agent_name":"data-reader","task_id":"task-789","scope":["read:data:*"],"ttl":300}`
 	req := httptest.NewRequest("POST", "/v1/token", strings.NewReader(body))
@@ -301,7 +302,7 @@ func TestTokenHandler_LazyRegistration_FirstRequest(t *testing.T) {
 	ceiling := []string{"read:data:*"}
 	reg := newAgentRegistry()
 
-	h := newTokenHandler(bc, state, ceiling, reg, "test-secret")
+	h := newTokenHandler(bc, state, ceiling, reg, "test-secret", nil)
 
 	body := `{"agent_name":"data-reader","task_id":"task-001","scope":["read:data:*"],"ttl":300}`
 	req := httptest.NewRequest("POST", "/v1/token", strings.NewReader(body))
@@ -381,7 +382,7 @@ func TestTokenHandler_LazyRegistration_SecondRequestSkipsRegistration(t *testing
 		spiffeID: "spiffe://test.local/agent/data-reader/task-001/inst-abc",
 	})
 
-	h := newTokenHandler(bc, state, ceiling, reg, "test-secret")
+	h := newTokenHandler(bc, state, ceiling, reg, "test-secret", nil)
 
 	body := `{"agent_name":"data-reader","task_id":"task-001","scope":["read:data:*"],"ttl":300}`
 	req := httptest.NewRequest("POST", "/v1/token", strings.NewReader(body))
@@ -424,7 +425,7 @@ func TestTokenHandler_LazyRegistration_BrokerFailure502(t *testing.T) {
 	ceiling := []string{"read:data:*"}
 	reg := newAgentRegistry() // empty — will trigger lazy registration
 
-	h := newTokenHandler(bc, state, ceiling, reg, "test-secret")
+	h := newTokenHandler(bc, state, ceiling, reg, "test-secret", nil)
 
 	body := `{"agent_name":"data-reader","task_id":"task-001","scope":["read:data:*"],"ttl":300}`
 	req := httptest.NewRequest("POST", "/v1/token", strings.NewReader(body))
@@ -445,6 +446,79 @@ func TestTokenHandler_LazyRegistration_BrokerFailure502(t *testing.T) {
 	detail, _ := resp["detail"].(string)
 	if detail == "" {
 		t.Error("expected non-empty detail field in error response")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestTokenHandler — Circuit Breaker integration
+// ---------------------------------------------------------------------------
+
+func TestTokenHandler_CircuitOpen_ServesCachedToken(t *testing.T) {
+	bc := newBrokerClient("http://127.0.0.1:1") // unreachable
+	state := &sidecarState{}
+	state.setToken("sidecar-token", 900)
+	ceiling := []string{"read:data:*"}
+	reg := newAgentRegistry()
+
+	reg.store("data-reader:task-1", &agentEntry{spiffeID: "spiffe://test/agent/data-reader/task-1/inst"})
+	reg.cacheToken("data-reader:task-1", "cached-jwt-abc", []string{"read:data:*"}, 300)
+
+	cb := newCircuitBreaker(30*time.Second, 0.5, 5*time.Second, 5)
+	for i := 0; i < 5; i++ {
+		cb.RecordFailure()
+	}
+
+	h := newTokenHandler(bc, state, ceiling, reg, "test-secret", cb)
+
+	body := `{"agent_name":"data-reader","task_id":"task-1","scope":["read:data:*"],"ttl":300}`
+	req := httptest.NewRequest("POST", "/v1/token", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rr.Code, rr.Body.String())
+	}
+
+	if rr.Header().Get("X-AgentAuth-Cached") != "true" {
+		t.Error("missing X-AgentAuth-Cached header")
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["access_token"] != "cached-jwt-abc" {
+		t.Errorf("access_token = %v, want cached-jwt-abc", resp["access_token"])
+	}
+}
+
+func TestTokenHandler_CircuitOpen_NoCachedToken_Returns503(t *testing.T) {
+	bc := newBrokerClient("http://127.0.0.1:1")
+	state := &sidecarState{}
+	state.setToken("sidecar-token", 900)
+	ceiling := []string{"read:data:*"}
+	reg := newAgentRegistry()
+
+	reg.store("data-reader:task-1", &agentEntry{spiffeID: "spiffe://test/agent/data-reader/task-1/inst"})
+
+	cb := newCircuitBreaker(30*time.Second, 0.5, 5*time.Second, 5)
+	for i := 0; i < 5; i++ {
+		cb.RecordFailure()
+	}
+
+	h := newTokenHandler(bc, state, ceiling, reg, "test-secret", cb)
+
+	body := `{"agent_name":"data-reader","task_id":"task-1","scope":["read:data:*"],"ttl":300}`
+	req := httptest.NewRequest("POST", "/v1/token", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503; body = %s", rr.Code, rr.Body.String())
 	}
 }
 
