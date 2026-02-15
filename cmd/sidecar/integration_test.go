@@ -396,3 +396,236 @@ func TestIntegration_DeveloperFlow(t *testing.T) {
 	}
 	t.Log("scope escalation correctly denied with 403")
 }
+
+// TestIntegration_Phase2_LazyRegistration verifies that the sidecar's
+// POST /v1/token automatically registers an agent at the broker on the
+// first request (lazy registration), caches it, and denies scope escalation.
+func TestIntegration_Phase2_LazyRegistration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	origTimeout := defaultHealthTimeout
+	defaultHealthTimeout = 5 * time.Second
+	defer func() { defaultHealthTimeout = origTimeout }()
+
+	const adminSecret = "integration-test-secret"
+
+	// Step 1: Start broker.
+	broker := startTestBroker(t, adminSecret)
+	defer broker.Close()
+
+	// Step 2: Bootstrap sidecar.
+	bc := newBrokerClient(broker.URL)
+	sidecarCfg := sidecarConfig{
+		AdminSecret:   adminSecret,
+		ScopeCeiling:  []string{"read:data:*"},
+		RenewalBuffer: 0.8,
+	}
+
+	state, err := bootstrap(bc, sidecarCfg)
+	if err != nil {
+		t.Fatalf("bootstrap failed: %v", err)
+	}
+
+	registry := newAgentRegistry()
+	th := newTokenHandler(bc, state, sidecarCfg.ScopeCeiling, registry, adminSecret)
+
+	// Step 3: First POST /v1/token — should trigger lazy registration.
+	body1, _ := json.Marshal(map[string]any{
+		"agent_name": "lazy-agent",
+		"task_id":    "task-1",
+		"scope":      []string{"read:data:*"},
+	})
+
+	rr1 := httptest.NewRecorder()
+	req1 := httptest.NewRequest(http.MethodPost, "/v1/token", bytes.NewReader(body1))
+	req1.Header.Set("Content-Type", "application/json")
+	th.ServeHTTP(rr1, req1)
+
+	if rr1.Code != http.StatusOK {
+		t.Fatalf("first request: expected 200, got %d: %s", rr1.Code, rr1.Body.String())
+	}
+
+	var resp1 map[string]any
+	json.NewDecoder(rr1.Body).Decode(&resp1)
+
+	token1 := resp1["access_token"].(string)
+	agentID := resp1["agent_id"].(string)
+	t.Logf("lazy registration: agent_id=%s, token_len=%d", agentID, len(token1))
+
+	if agentID == "" {
+		t.Fatal("agent_id should be non-empty (SPIFFE ID from broker)")
+	}
+
+	// Verify agent is in registry.
+	entry, ok := registry.lookup("lazy-agent:task-1")
+	if !ok {
+		t.Fatal("agent should be cached in registry")
+	}
+	if entry.spiffeID != agentID {
+		t.Errorf("cached spiffeID = %q, want %q", entry.spiffeID, agentID)
+	}
+	if entry.privKey == nil {
+		t.Error("lazy-registered agent should have sidecar-managed keypair")
+	}
+
+	// Validate token at broker.
+	valResult := brokerValidateToken(t, broker.URL, token1)
+	if valid, _ := valResult["valid"].(bool); !valid {
+		t.Fatalf("broker says token is invalid: %v", valResult)
+	}
+
+	// Step 4: Second request — should use cached agent (no re-registration).
+	body2, _ := json.Marshal(map[string]any{
+		"agent_name": "lazy-agent",
+		"task_id":    "task-1",
+		"scope":      []string{"read:data:*"},
+	})
+
+	rr2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/token", bytes.NewReader(body2))
+	req2.Header.Set("Content-Type", "application/json")
+	th.ServeHTTP(rr2, req2)
+
+	if rr2.Code != http.StatusOK {
+		t.Fatalf("second request: expected 200, got %d: %s", rr2.Code, rr2.Body.String())
+	}
+
+	var resp2 map[string]any
+	json.NewDecoder(rr2.Body).Decode(&resp2)
+	if resp2["agent_id"] != agentID {
+		t.Errorf("second request agent_id = %v, want %v", resp2["agent_id"], agentID)
+	}
+	t.Log("second request used cached registration (no re-register)")
+
+	// Step 5: Scope escalation still denied.
+	bodyEsc, _ := json.Marshal(map[string]any{
+		"agent_name": "lazy-agent",
+		"task_id":    "task-1",
+		"scope":      []string{"write:data:*"},
+	})
+
+	rrEsc := httptest.NewRecorder()
+	reqEsc := httptest.NewRequest(http.MethodPost, "/v1/token", bytes.NewReader(bodyEsc))
+	reqEsc.Header.Set("Content-Type", "application/json")
+	th.ServeHTTP(rrEsc, reqEsc)
+
+	if rrEsc.Code != http.StatusForbidden {
+		t.Errorf("scope escalation: expected 403, got %d", rrEsc.Code)
+	}
+}
+
+// TestIntegration_Phase2_BYOKRegistration verifies the full BYOK (Bring Your
+// Own Key) flow: developer gets a challenge via the sidecar proxy, signs it
+// with their own key, registers via the sidecar's BYOK endpoint, then
+// requests a token.
+func TestIntegration_Phase2_BYOKRegistration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	origTimeout := defaultHealthTimeout
+	defaultHealthTimeout = 5 * time.Second
+	defer func() { defaultHealthTimeout = origTimeout }()
+
+	const adminSecret = "integration-test-secret"
+
+	broker := startTestBroker(t, adminSecret)
+	defer broker.Close()
+
+	bc := newBrokerClient(broker.URL)
+	sidecarCfg := sidecarConfig{
+		AdminSecret:   adminSecret,
+		ScopeCeiling:  []string{"read:data:*"},
+		RenewalBuffer: 0.8,
+	}
+
+	state, err := bootstrap(bc, sidecarCfg)
+	if err != nil {
+		t.Fatalf("bootstrap failed: %v", err)
+	}
+
+	registry := newAgentRegistry()
+
+	// Step 1: Get challenge via sidecar proxy.
+	ch := newChallengeProxyHandler(bc)
+	rrCh := httptest.NewRecorder()
+	reqCh := httptest.NewRequest(http.MethodGet, "/v1/challenge", nil)
+	ch.ServeHTTP(rrCh, reqCh)
+
+	if rrCh.Code != http.StatusOK {
+		t.Fatalf("challenge: expected 200, got %d", rrCh.Code)
+	}
+	var chResp map[string]any
+	json.NewDecoder(rrCh.Body).Decode(&chResp)
+	nonce := chResp["nonce"].(string)
+
+	// Step 2: Developer signs the nonce with their own key.
+	devPub, devPriv, _ := ed25519.GenerateKey(rand.Reader)
+	nonceBytes, _ := hex.DecodeString(nonce)
+	sig := ed25519.Sign(devPriv, nonceBytes)
+
+	// Step 3: Register via sidecar BYOK endpoint.
+	rh := newRegisterHandler(bc, registry, adminSecret, sidecarCfg.ScopeCeiling)
+
+	regBody, _ := json.Marshal(map[string]any{
+		"agent_name": "byok-agent",
+		"task_id":    "task-byok",
+		"public_key": base64.StdEncoding.EncodeToString(devPub),
+		"signature":  base64.StdEncoding.EncodeToString(sig),
+		"nonce":      nonce,
+	})
+
+	rrReg := httptest.NewRecorder()
+	reqReg := httptest.NewRequest(http.MethodPost, "/v1/register", bytes.NewReader(regBody))
+	reqReg.Header.Set("Content-Type", "application/json")
+	rh.ServeHTTP(rrReg, reqReg)
+
+	if rrReg.Code != http.StatusOK {
+		t.Fatalf("register: expected 200, got %d: %s", rrReg.Code, rrReg.Body.String())
+	}
+
+	var regResp map[string]any
+	json.NewDecoder(rrReg.Body).Decode(&regResp)
+	agentID := regResp["agent_id"].(string)
+	t.Logf("BYOK registered: agent_id=%s", agentID)
+
+	// Verify BYOK entry in registry (nil privKey).
+	entry, ok := registry.lookup("byok-agent:task-byok")
+	if !ok {
+		t.Fatal("BYOK agent should be in registry")
+	}
+	if entry.privKey != nil {
+		t.Error("BYOK entry should have nil privKey")
+	}
+
+	// Step 4: Token request using cached BYOK registration.
+	th := newTokenHandler(bc, state, sidecarCfg.ScopeCeiling, registry, adminSecret)
+
+	tokBody, _ := json.Marshal(map[string]any{
+		"agent_name": "byok-agent",
+		"task_id":    "task-byok",
+		"scope":      []string{"read:data:*"},
+	})
+
+	rrTok := httptest.NewRecorder()
+	reqTok := httptest.NewRequest(http.MethodPost, "/v1/token", bytes.NewReader(tokBody))
+	reqTok.Header.Set("Content-Type", "application/json")
+	th.ServeHTTP(rrTok, reqTok)
+
+	if rrTok.Code != http.StatusOK {
+		t.Fatalf("token after BYOK: expected 200, got %d: %s", rrTok.Code, rrTok.Body.String())
+	}
+
+	var tokResp map[string]any
+	json.NewDecoder(rrTok.Body).Decode(&tokResp)
+	accessToken := tokResp["access_token"].(string)
+
+	// Validate at broker.
+	valResult := brokerValidateToken(t, broker.URL, accessToken)
+	if valid, _ := valResult["valid"].(bool); !valid {
+		t.Fatalf("broker says BYOK token invalid: %v", valResult)
+	}
+	t.Log("BYOK token validated at broker")
+}
