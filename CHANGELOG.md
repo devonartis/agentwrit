@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Sidecar Resilience — Failsafe Mode**: Circuit breaker with sliding-window failure tracking (Closed → Open → Probing states)
+- **Sidecar Resilience**: Cached token fallback — serves previously-issued tokens during broker outage (`X-AgentAuth-Cached: true` header)
+- **Sidecar Resilience**: Background health probe for automatic circuit breaker recovery
+- **Sidecar Resilience**: Bootstrap retry with exponential backoff — sidecar no longer exits on broker unavailability at startup
+- **Sidecar Resilience**: HTTP server starts pre-bootstrap — health endpoint responds during startup
+- **Sidecar Resilience**: 3 new Prometheus metrics: `circuit_state`, `circuit_trips_total`, `cached_tokens_served_total`
+- **Sidecar Resilience**: 4 new config vars: `AA_SIDECAR_CB_WINDOW`, `AA_SIDECAR_CB_THRESHOLD`, `AA_SIDECAR_CB_PROBE_INTERVAL`, `AA_SIDECAR_CB_MIN_REQUESTS`
 - **Sidecar Observability**: Structured logging via `internal/obs` package — replaces all 15 raw `fmt.Printf` calls with leveled, structured log lines (`[AA:SIDECAR:LEVEL] TIMESTAMP | COMPONENT | MESSAGE | context`)
 - **Sidecar Observability**: `AA_SIDECAR_LOG_LEVEL` now wired (was loaded but unused) — supports `quiet`, `standard`, `verbose`, `trace`
 - **Sidecar Observability**: 6 Prometheus metrics in dedicated `cmd/sidecar/metrics.go`: bootstrap, renewals, token exchanges, scope denials, agents registered, request duration

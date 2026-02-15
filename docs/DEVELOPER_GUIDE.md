@@ -712,6 +712,45 @@ The sidecar uses the broker's `internal/obs` package for structured logging:
 
 Metrics are defined in `cmd/sidecar/metrics.go` — each binary owns its own metrics (not monolithic).
 
+### Sidecar Resilience (Failsafe)
+
+The sidecar includes a circuit breaker that protects agents from broker outages.
+
+**ADR-001 (Dev vs. Production):** The cached token fallback and bootstrap retry
+are dev conveniences for single-broker setups. In production, broker HA via
+multiple instances behind a load balancer is the primary resilience strategy.
+The circuit breaker remains useful as a secondary fast-fail mechanism.
+
+**Circuit Breaker States:**
+
+| State | Behavior |
+|-------|----------|
+| Closed | Normal — requests pass through, failures tracked in sliding window |
+| Open | Broker down — serve cached tokens, background probe runs |
+| Probing | Probe succeeded — next real request tests recovery |
+
+**Config:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AA_SIDECAR_CB_WINDOW` | `30` | Sliding window seconds |
+| `AA_SIDECAR_CB_THRESHOLD` | `0.5` | Failure rate to trip |
+| `AA_SIDECAR_CB_PROBE_INTERVAL` | `5` | Probe interval seconds |
+| `AA_SIDECAR_CB_MIN_REQUESTS` | `5` | Min requests before tripping |
+
+**Cached Token Rules:**
+- Same agent + same or subset scope
+- Within original TTL
+- Response includes `X-AgentAuth-Cached: true` header
+
+**New Prometheus Metrics:**
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `agentauth_sidecar_circuit_state` | Gauge | 0=closed, 1=open, 2=probing |
+| `agentauth_sidecar_circuit_trips_total` | Counter | Times circuit tripped |
+| `agentauth_sidecar_cached_tokens_served_total` | Counter | Cache hits during outage |
+
 ---
 
 ## 6. Token Lifecycle

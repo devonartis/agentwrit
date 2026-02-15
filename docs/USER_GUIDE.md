@@ -207,6 +207,33 @@ The sidecar exposes Prometheus metrics at `GET /v1/metrics`:
 curl http://localhost:8081/v1/metrics
 ```
 
+### Sidecar Failsafe (Circuit Breaker)
+
+The sidecar includes a circuit breaker that detects broker outages and serves
+cached tokens during brief interruptions.
+
+**How it works:**
+1. The sidecar tracks broker request success/failure over a 30-second window
+2. If more than 50% of requests fail (minimum 5 requests), the circuit "trips open"
+3. While open, the sidecar serves previously-issued tokens from its cache
+4. A background probe pings the broker every 5 seconds to detect recovery
+5. When the broker recovers, the circuit closes and normal operation resumes
+
+**Cached tokens** include the `X-AgentAuth-Cached: true` response header so
+your application can distinguish fresh vs. cached tokens.
+
+**Configuration:**
+
+```bash
+export AA_SIDECAR_CB_WINDOW=30          # sliding window (seconds)
+export AA_SIDECAR_CB_THRESHOLD=0.5      # failure rate to trip (0.0-1.0)
+export AA_SIDECAR_CB_PROBE_INTERVAL=5   # probe interval (seconds)
+export AA_SIDECAR_CB_MIN_REQUESTS=5     # min requests before tripping
+```
+
+**Note:** This failsafe is designed for single-broker dev environments. In
+production, run multiple broker instances behind a load balancer for true HA.
+
 ### Enhanced Health Endpoint
 
 `GET /v1/health` now includes operational details:
