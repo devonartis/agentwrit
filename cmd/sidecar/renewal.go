@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"time"
+
+	"github.com/divineartis/agentauth/internal/obs"
 )
 
 // renewFunc is the function signature for renewing a token.
@@ -39,11 +40,12 @@ func startRenewal(ctx context.Context, state *sidecarState, renew renewFunc, ren
 		currentToken := state.getToken()
 		newToken, newTTL, err := renew(currentToken)
 		if err != nil {
-			fmt.Printf("[sidecar] renewal failed: %v (retry in %v)\n", err, backoff)
+			obs.Warn("SIDECAR", "RENEWAL", "renewal failed", err.Error(), "retry_in="+backoff.String())
+			RecordRenewal("failure")
 
 			if time.Now().After(tokenDeadline) {
 				state.setHealthy(false)
-				fmt.Println("[sidecar] token expired, marking unhealthy")
+				obs.Warn("SIDECAR", "RENEWAL", "token expired, marking unhealthy")
 			}
 
 			sleepDur = backoff
@@ -62,6 +64,7 @@ func startRenewal(ctx context.Context, state *sidecarState, renew renewFunc, ren
 		}
 		backoff = 1 * time.Second
 
-		fmt.Printf("[sidecar] token renewed, next in %v\n", sleepDur)
+		obs.Trace("SIDECAR", "RENEWAL", "token renewed", "next_in="+sleepDur.String())
+		RecordRenewal("success")
 	}
 }
