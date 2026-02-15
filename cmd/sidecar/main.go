@@ -51,7 +51,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/v1/token", newTokenHandler(bc, state, cfg.ScopeCeiling, registry, cfg.AdminSecret))
 	mux.Handle("/v1/token/renew", newRenewHandler(bc))
-	mux.Handle("/v1/health", newHealthHandler(state, cfg.ScopeCeiling))
+	mux.Handle("/v1/health", newHealthHandler(state, cfg.ScopeCeiling, registry))
 	mux.Handle("/v1/challenge", newChallengeProxyHandler(bc))
 	mux.Handle("/v1/register", newRegisterHandler(bc, registry, cfg.AdminSecret, cfg.ScopeCeiling))
 	mux.Handle("/v1/metrics", promhttp.Handler())

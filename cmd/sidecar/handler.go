@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/divineartis/agentauth/internal/obs"
 )
 
 // ---------------------------------------------------------------------------
@@ -72,6 +74,8 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Check requested scope against ceiling.
 	if !scopeIsSubset(req.Scope, h.scopeCeiling) {
+		RecordScopeDenial()
+		obs.Warn("SIDECAR", "TOKEN", "scope ceiling exceeded", "requested="+strings.Join(req.Scope, ","), "ceiling="+strings.Join(h.scopeCeiling, ","))
 		writeError(w, http.StatusForbidden, "requested scope exceeds sidecar ceiling")
 		return
 	}
@@ -97,10 +101,12 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Delegate to broker token exchange using the agent's SPIFFE ID.
 	exResp, err := h.broker.tokenExchange(h.state.getToken(), agentID, req.Scope, ttl)
 	if err != nil {
+		RecordExchange("failure")
 		writeError(w, http.StatusBadGateway, "broker token exchange failed: "+err.Error())
 		return
 	}
 
+	RecordExchange("success")
 	writeJSON(w, http.StatusOK, map[string]any{
 		"access_token": exResp.AccessToken,
 		"expires_in":   exResp.ExpiresIn,
@@ -130,6 +136,7 @@ func (h *tokenHandler) resolveAgent(key, agentName, taskID string, scope []strin
 		privKey:      privKey,
 		registeredAt: time.Now(),
 	})
+	SidecarAgentsRegistered.Inc()
 	return spiffeID, nil
 }
 
@@ -181,7 +188,7 @@ func (h *tokenHandler) lazyRegister(agentName, taskID string, scope []string) (s
 		return "", nil, nil, fmt.Errorf("register: %w", err)
 	}
 
-	fmt.Printf("[sidecar] lazy-registered agent %s → %s\n", agentName, agentID)
+	obs.Ok("SIDECAR", "REGISTRY", "agent registered", "agent="+agentName, "agent_id="+agentID)
 	return agentID, pubKey, privKey, nil
 }
 
@@ -236,13 +243,15 @@ func (h *renewHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 type healthHandler struct {
 	state        *sidecarState
 	scopeCeiling []string
+	registry     *agentRegistry
 }
 
-// newHealthHandler creates a healthHandler with the given state and ceiling.
-func newHealthHandler(state *sidecarState, ceiling []string) *healthHandler {
+// newHealthHandler creates a healthHandler with the given state, ceiling, and registry.
+func newHealthHandler(state *sidecarState, ceiling []string, registry *agentRegistry) *healthHandler {
 	return &healthHandler{
 		state:        state,
 		scopeCeiling: ceiling,
+		registry:     registry,
 	}
 }
 
@@ -262,12 +271,27 @@ func (h *healthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		httpStatus = http.StatusServiceUnavailable
 	}
 
-	writeJSON(w, httpStatus, map[string]any{
+	resp := map[string]any{
 		"status":           status,
 		"broker_connected": connected,
 		"healthy":          healthy,
 		"scope_ceiling":    h.scopeCeiling,
-	})
+	}
+
+	if h.registry != nil {
+		resp["agents_registered"] = h.registry.count()
+	}
+
+	if h.state != nil {
+		if lr := h.state.getLastRenewal(); !lr.IsZero() {
+			resp["last_renewal"] = lr.Format(time.RFC3339)
+		}
+		if st := h.state.getStartTime(); !st.IsZero() {
+			resp["uptime_seconds"] = time.Since(st).Seconds()
+		}
+	}
+
+	writeJSON(w, httpStatus, resp)
 }
 
 // ---------------------------------------------------------------------------

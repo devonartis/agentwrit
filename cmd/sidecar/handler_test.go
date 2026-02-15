@@ -553,7 +553,7 @@ func TestHealthHandler(t *testing.T) {
 	state.sidecarID = "sc-test-001"
 	ceiling := []string{"read:data:*", "write:data:*"}
 
-	h := newHealthHandler(state, ceiling)
+	h := newHealthHandler(state, ceiling, nil)
 
 	req := httptest.NewRequest("GET", "/v1/health", nil)
 	rr := httptest.NewRecorder()
@@ -594,7 +594,7 @@ func TestHealthHandler_MethodNotAllowed(t *testing.T) {
 	state.sidecarID = "sc-test-001"
 	ceiling := []string{"read:data:*"}
 
-	h := newHealthHandler(state, ceiling)
+	h := newHealthHandler(state, ceiling, nil)
 
 	req := httptest.NewRequest("POST", "/v1/health", nil)
 	rr := httptest.NewRecorder()
@@ -611,7 +611,7 @@ func TestHealthHandler_Degraded(t *testing.T) {
 	// Don't set token — healthy defaults to false.
 	ceiling := []string{"read:data:*"}
 
-	h := newHealthHandler(state, ceiling)
+	h := newHealthHandler(state, ceiling, nil)
 
 	req := httptest.NewRequest("GET", "/v1/health", nil)
 	rr := httptest.NewRecorder()
