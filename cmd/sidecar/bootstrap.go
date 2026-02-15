@@ -19,6 +19,8 @@ type sidecarState struct {
 	sidecarID    string
 	expiresIn    int
 	healthy      bool
+	lastRenewal  time.Time
+	startTime    time.Time
 }
 
 // getToken returns the current sidecar bearer token (read-locked).
@@ -43,6 +45,7 @@ func (s *sidecarState) setToken(token string, expiresIn int) {
 	s.sidecarToken = token
 	s.expiresIn = expiresIn
 	s.healthy = true
+	s.lastRenewal = time.Now()
 }
 
 // isHealthy reports whether the sidecar is in a healthy state (read-locked).
@@ -57,6 +60,20 @@ func (s *sidecarState) setHealthy(h bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.healthy = h
+}
+
+// getLastRenewal returns when the token was last renewed (read-locked).
+func (s *sidecarState) getLastRenewal() time.Time {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.lastRenewal
+}
+
+// getStartTime returns the sidecar start time (read-locked).
+func (s *sidecarState) getStartTime() time.Time {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.startTime
 }
 
 // waitForBroker retries the broker health check until it succeeds or the
@@ -111,7 +128,7 @@ func bootstrap(bc *brokerClient, cfg sidecarConfig) (*sidecarState, error) {
 	}
 	fmt.Println("[sidecar] sidecar activated")
 
-	st := &sidecarState{sidecarID: resp.sidecarID}
+	st := &sidecarState{sidecarID: resp.sidecarID, startTime: time.Now()}
 	st.setToken(resp.accessToken, resp.expiresIn)
 	return st, nil
 }
