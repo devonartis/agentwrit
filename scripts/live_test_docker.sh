@@ -44,10 +44,10 @@ fi
 echo "=== Live Test: docker compose up (broker + sidecar) ==="
 (
   cd "$PROJECT_ROOT"
-  AA_ADMIN_SECRET="$ADMIN_SECRET" \
-  AA_HOST_PORT="$HOST_PORT" \
-  AA_SEED_TOKENS=false \
-  AA_LOG_LEVEL=standard \
+  export AA_ADMIN_SECRET="$ADMIN_SECRET"
+  export AA_HOST_PORT="$HOST_PORT"
+  export AA_SEED_TOKENS=false
+  export AA_LOG_LEVEL=standard
   docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" build --no-cache broker sidecar
   docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d broker sidecar
 )
