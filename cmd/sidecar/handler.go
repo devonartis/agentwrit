@@ -77,7 +77,12 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Check requested scope against ceiling.
 	if !scopeIsSubset(req.Scope, h.scopeCeiling) {
 		RecordScopeDenial()
-		obs.Warn("SIDECAR", "TOKEN", "scope ceiling exceeded", "requested="+strings.Join(req.Scope, ","), "ceiling="+strings.Join(h.scopeCeiling, ","))
+		obs.Warn("SIDECAR", "TOKEN", "scope ceiling exceeded",
+			"event_type=scope_ceiling_exceeded",
+			"agent_name="+req.AgentName,
+			"task_id="+req.TaskID,
+			"requested="+strings.Join(req.Scope, ","),
+			"ceiling="+strings.Join(h.scopeCeiling, ","))
 		writeError(w, http.StatusForbidden, "requested scope exceeds sidecar ceiling")
 		return
 	}
