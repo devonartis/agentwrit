@@ -4,9 +4,10 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/divineartis/agentauth/internal/obs"
 )
 
 // ---------------------------------------------------------------------------
@@ -154,7 +155,8 @@ func (h *registerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		registeredAt: time.Now(),
 	})
 
-	fmt.Printf("[sidecar] BYOK registered agent %s → %s\n", req.AgentName, agentID)
+	obs.Ok("SIDECAR", "REGISTRY", "BYOK agent registered", "agent="+req.AgentName, "agent_id="+agentID)
+	SidecarAgentsRegistered.Inc()
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"agent_id": agentID,
