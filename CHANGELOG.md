@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Docs**: v2 documentation restructure — replaced monolithic v1 docs (`DEVELOPER_GUIDE.md`, `API_REFERENCE.md`, `USER_GUIDE.md`) with role-based v2 docs: `architecture.md`, `concepts.md`, `api.md`, `getting-started-developer.md`, `getting-started-operator.md`, `getting-started-user.md`, `common-tasks.md`, `troubleshooting.md`
+- **Docs**: 4 real-world multi-agent example walkthroughs in `docs/examples/`: Data Pipeline (scope attenuation + delegation), Code Generation (branch-scoped write access), Customer Support (PII containment + audit), DevOps Automation (least-privilege deployment)
 - **Audit**: 5 new enforcement audit event types: `token_auth_failed`, `token_revoked_access`, `scope_violation`, `scope_ceiling_exceeded`, `delegation_attenuation_violation`
 - **Audit**: All `ValMw` middleware denial paths now produce audit events (missing auth header, invalid scheme, verification failed, revoked token access)
 - **Audit**: Delegation scope attenuation violations now produce `delegation_attenuation_violation` audit events with delegator, target, requested, and allowed scope details
