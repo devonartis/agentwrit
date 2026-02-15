@@ -681,6 +681,37 @@ The `startRenewal` goroutine in `renewal.go` runs in the background:
 | `AA_SIDECAR_RENEWAL_BUFFER` | `0.8` | Fraction of TTL at which to renew (0.5-0.95) |
 | `AA_SIDECAR_LOG_LEVEL` | `standard` | Log verbosity |
 
+### Sidecar Observability
+
+The sidecar uses the broker's `internal/obs` package for structured logging:
+
+```
+[AA:SIDECAR:OK] 2026-02-14T21:30:00Z | BOOTSTRAP | broker ready
+[AA:SIDECAR:WARN] 2026-02-14T21:35:00Z | RENEWAL | renewal failed | connection refused, retry_in=2s
+[AA:SIDECAR:TRACE] 2026-02-14T21:35:05Z | RENEWAL | token renewed | next_in=4m0s
+```
+
+**Components:** `MAIN`, `BOOTSTRAP`, `RENEWAL`, `REGISTRY`, `TOKEN`, `HEALTH`
+
+**Log levels** (controlled by `AA_SIDECAR_LOG_LEVEL`):
+- `quiet` — only FAIL messages
+- `standard` — OK, WARN, FAIL
+- `verbose` — same as standard (default)
+- `trace` — all including TRACE
+
+**Prometheus metrics** (available at `GET /v1/metrics`):
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `agentauth_sidecar_bootstrap_total` | counter | `status` | Bootstrap attempts |
+| `agentauth_sidecar_renewals_total` | counter | `status` | Token renewal outcomes |
+| `agentauth_sidecar_token_exchanges_total` | counter | `status` | Agent token exchanges |
+| `agentauth_sidecar_scope_denials_total` | counter | — | Scope ceiling denials |
+| `agentauth_sidecar_agents_registered` | gauge | — | Current registered agents |
+| `agentauth_sidecar_request_duration_seconds` | histogram | `endpoint` | Per-endpoint latency |
+
+Metrics are defined in `cmd/sidecar/metrics.go` — each binary owns its own metrics (not monolithic).
+
 ---
 
 ## 6. Token Lifecycle

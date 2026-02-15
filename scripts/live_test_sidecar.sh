@@ -88,12 +88,13 @@ fi
 echo "=== Sidecar Live Test: docker compose up (broker:$BROKER_PORT, sidecar:$SIDECAR_PORT) ==="
 (
   cd "$PROJECT_ROOT"
-  AA_ADMIN_SECRET="$ADMIN_SECRET" \
-  AA_HOST_PORT="$BROKER_PORT" \
-  AA_SIDECAR_HOST_PORT="$SIDECAR_PORT" \
-  AA_SEED_TOKENS=false \
-  AA_LOG_LEVEL=standard \
-  docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d --build broker sidecar
+  export AA_ADMIN_SECRET="$ADMIN_SECRET"
+  export AA_HOST_PORT="$BROKER_PORT"
+  export AA_SIDECAR_HOST_PORT="$SIDECAR_PORT"
+  export AA_SEED_TOKENS=false
+  export AA_LOG_LEVEL=standard
+  docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" build --no-cache broker sidecar
+  docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d broker sidecar
 )
 
 SIDECAR_BASE="http://127.0.0.1:${SIDECAR_PORT}"

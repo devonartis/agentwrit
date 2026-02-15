@@ -182,6 +182,47 @@ curl -X POST http://localhost:8081/v1/register \
 # 4. Now POST /v1/token works as normal — uses your registered identity
 ```
 
+### Sidecar Logging
+
+Set the log level with `AA_SIDECAR_LOG_LEVEL`:
+
+```bash
+AA_SIDECAR_LOG_LEVEL=trace    # Show all messages including debug
+AA_SIDECAR_LOG_LEVEL=standard # Default — OK, WARN, FAIL
+AA_SIDECAR_LOG_LEVEL=quiet    # Only errors
+```
+
+The sidecar uses the same structured log format as the broker:
+
+```
+[AA:SIDECAR:OK] 2026-02-14T21:30:00Z | BOOTSTRAP | broker ready
+[AA:SIDECAR:WARN] 2026-02-14T21:35:00Z | RENEWAL | renewal failed | connection refused, retry_in=2s
+```
+
+### Sidecar Metrics
+
+The sidecar exposes Prometheus metrics at `GET /v1/metrics`:
+
+```bash
+curl http://localhost:8081/v1/metrics
+```
+
+### Enhanced Health Endpoint
+
+`GET /v1/health` now includes operational details:
+
+```json
+{
+  "status": "ok",
+  "healthy": true,
+  "broker_connected": true,
+  "scope_ceiling": ["read:data:*"],
+  "agents_registered": 3,
+  "last_renewal": "2026-02-14T21:30:00Z",
+  "uptime_seconds": 3600.5
+}
+```
+
 ---
 
 ## Installation

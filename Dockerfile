@@ -23,7 +23,7 @@ ENTRYPOINT ["./broker"]
 # Stage 3: Sidecar image
 FROM alpine:3.18 AS sidecar
 
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates curl
 WORKDIR /root/
 COPY --from=builder /app/sidecar .
 EXPOSE 8081

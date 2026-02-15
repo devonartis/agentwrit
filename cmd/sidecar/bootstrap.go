@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/divineartis/agentauth/internal/obs"
 )
 
 // defaultHealthTimeout is the maximum time bootstrap will wait for the broker
@@ -19,6 +21,8 @@ type sidecarState struct {
 	sidecarID    string
 	expiresIn    int
 	healthy      bool
+	lastRenewal  time.Time
+	startTime    time.Time
 }
 
 // getToken returns the current sidecar bearer token (read-locked).
@@ -43,6 +47,7 @@ func (s *sidecarState) setToken(token string, expiresIn int) {
 	s.sidecarToken = token
 	s.expiresIn = expiresIn
 	s.healthy = true
+	s.lastRenewal = time.Now()
 }
 
 // isHealthy reports whether the sidecar is in a healthy state (read-locked).
@@ -57,6 +62,20 @@ func (s *sidecarState) setHealthy(h bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.healthy = h
+}
+
+// getLastRenewal returns when the token was last renewed (read-locked).
+func (s *sidecarState) getLastRenewal() time.Time {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.lastRenewal
+}
+
+// getStartTime returns the sidecar start time (read-locked).
+func (s *sidecarState) getStartTime() time.Time {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.startTime
 }
 
 // waitForBroker retries the broker health check until it succeeds or the
@@ -83,35 +102,42 @@ func waitForBroker(bc *brokerClient, timeout time.Duration) error {
 //
 // On success it returns a sidecarState containing the bearer token, sidecar
 // ID, and TTL. Any step failure aborts the sequence and returns an error.
-func bootstrap(bc *brokerClient, cfg sidecarConfig) (*sidecarState, error) {
+func bootstrap(bc *brokerClient, cfg sidecarConfig) (st *sidecarState, err error) {
+	defer func() {
+		if err != nil {
+			RecordBootstrap("failure")
+		}
+	}()
+
 	// Step 1: Wait for broker to become healthy.
 	if err := waitForBroker(bc, defaultHealthTimeout); err != nil {
 		return nil, fmt.Errorf("bootstrap: %w", err)
 	}
-	fmt.Println("[sidecar] broker is ready")
+	obs.Ok("SIDECAR", "BOOTSTRAP", "broker ready")
 
 	// Step 2: Authenticate as admin.
 	adminToken, err := bc.adminAuth(cfg.AdminSecret)
 	if err != nil {
 		return nil, fmt.Errorf("bootstrap: admin auth: %w", err)
 	}
-	fmt.Println("[sidecar] admin authenticated")
+	obs.Ok("SIDECAR", "BOOTSTRAP", "admin authenticated")
 
 	// Step 3: Create sidecar activation token.
 	activationToken, err := bc.createSidecarActivation(adminToken, cfg.ScopeCeiling, 600)
 	if err != nil {
 		return nil, fmt.Errorf("bootstrap: create activation: %w", err)
 	}
-	fmt.Println("[sidecar] activation token created")
+	obs.Ok("SIDECAR", "BOOTSTRAP", "activation token created")
 
 	// Step 4: Activate sidecar (single-use exchange).
 	resp, err := bc.activateSidecar(activationToken)
 	if err != nil {
 		return nil, fmt.Errorf("bootstrap: activate sidecar: %w", err)
 	}
-	fmt.Println("[sidecar] sidecar activated")
+	obs.Ok("SIDECAR", "BOOTSTRAP", "sidecar activated", "sidecar_id="+resp.sidecarID)
+	RecordBootstrap("success")
 
-	st := &sidecarState{sidecarID: resp.sidecarID}
+	st = &sidecarState{sidecarID: resp.sidecarID, startTime: time.Now()}
 	st.setToken(resp.accessToken, resp.expiresIn)
 	return st, nil
 }

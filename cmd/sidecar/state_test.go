@@ -3,6 +3,7 @@ package main
 import (
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestSidecarState_GetToken_ReturnsCurrentToken(t *testing.T) {
@@ -109,5 +110,27 @@ func TestSidecarState_Healthy_DefaultTrue(t *testing.T) {
 	st.setHealthy(true)
 	if !st.isHealthy() {
 		t.Error("isHealthy() = false after setHealthy(true), want true")
+	}
+}
+
+func TestSidecarState_LastRenewal(t *testing.T) {
+	st := &sidecarState{startTime: time.Now()}
+	st.setToken("tok1", 300)
+
+	lr := st.getLastRenewal()
+	if lr.IsZero() {
+		t.Error("lastRenewal should be set after setToken")
+	}
+	if time.Since(lr) > 1*time.Second {
+		t.Error("lastRenewal should be recent")
+	}
+}
+
+func TestSidecarState_StartTime(t *testing.T) {
+	now := time.Now()
+	st := &sidecarState{startTime: now}
+
+	if got := st.getStartTime(); !got.Equal(now) {
+		t.Errorf("getStartTime() = %v, want %v", got, now)
 	}
 }

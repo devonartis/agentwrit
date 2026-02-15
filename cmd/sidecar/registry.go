@@ -46,6 +46,13 @@ func (r *agentRegistry) store(key string, entry *agentEntry) {
 	r.agents[key] = entry
 }
 
+// count returns the number of registered agents.
+func (r *agentRegistry) count() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.agents)
+}
+
 // getOrLock checks if an agent is already registered. If found, returns
 // the entry and a nil unlock function. If NOT found, acquires a per-agent
 // lock to serialize registration and returns nil entry + an unlock function.
