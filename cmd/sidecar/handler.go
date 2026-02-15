@@ -292,8 +292,16 @@ func (h *healthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	healthy := h.state != nil && h.state.isHealthy()
-	connected := h.state != nil && h.state.getToken() != ""
+	if h.state == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"status":  "bootstrapping",
+			"healthy": false,
+		})
+		return
+	}
+
+	healthy := h.state.isHealthy()
+	connected := h.state.getToken() != ""
 
 	status := "ok"
 	httpStatus := http.StatusOK

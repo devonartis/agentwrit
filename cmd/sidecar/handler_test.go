@@ -711,3 +711,29 @@ func TestHealthHandler_Degraded(t *testing.T) {
 		t.Errorf("broker_connected = %v, want false", resp["broker_connected"])
 	}
 }
+
+// ---------------------------------------------------------------------------
+// TestHealthHandler — Bootstrapping
+// ---------------------------------------------------------------------------
+
+func TestHealthHandler_Bootstrapping(t *testing.T) {
+	// State is nil — sidecar is still bootstrapping.
+	h := newHealthHandler(nil, []string{"read:data:*"}, nil)
+
+	req := httptest.NewRequest("GET", "/v1/health", nil)
+	rr := httptest.NewRecorder()
+
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503; body = %s", rr.Code, rr.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["status"] != "bootstrapping" {
+		t.Errorf("status = %v, want bootstrapping", resp["status"])
+	}
+}
