@@ -4,7 +4,7 @@
 
 **Goal:** Replace all 15 raw `fmt.Printf/Println` calls in the sidecar with structured `obs` logging, add Prometheus metrics, and enhance the health endpoint — aligned with the security pattern's Component 5 (Immutable Audit Logging).
 
-**Architecture:** Reuse the broker's `internal/obs` package directly (Approach A). The sidecar uses module string `"SIDECAR"` with component-level granularity (`MAIN`, `BOOTSTRAP`, `RENEWAL`, `REGISTRY`, `TOKEN`, `HEALTH`). Sidecar Prometheus metrics are added to the same `obs` package, prefixed `agentauth_sidecar_`.
+**Architecture:** Reuse the broker's `internal/obs` package for structured logging only. Sidecar Prometheus metrics live in a NEW `cmd/sidecar/metrics.go` — each binary owns its own metrics. The sidecar uses module string `"SIDECAR"` with component-level granularity (`MAIN`, `BOOTSTRAP`, `RENEWAL`, `REGISTRY`, `TOKEN`, `HEALTH`).
 
 **Tech Stack:** Go 1.24, `internal/obs` package, `prometheus/client_golang` (already a dependency)
 
@@ -32,8 +32,8 @@
 - `internal/obs` is already accessible to `cmd/sidecar/` (same Go module)
 - Identical log format: `[AA:SIDECAR:OK] 2026-02-14T... | BOOTSTRAP | broker ready`
 - Single `obs.Configure()` call wires `AA_SIDECAR_LOG_LEVEL`
-- Add sidecar Prometheus metrics to `obs` package (prefixed `agentauth_sidecar_`)
 - Zero code duplication, no format drift
+- Sidecar Prometheus metrics live in `cmd/sidecar/metrics.go` (not in `obs`) — each binary owns its own metrics
 
 ---
 
@@ -67,7 +67,7 @@ Wire `obs.Configure(cfg.LogLevel)` at sidecar startup. Replace every `fmt.Printf
 
 ### 2. Sidecar Prometheus Metrics
 
-Add to `internal/obs/obs.go` in a new section:
+NEW file `cmd/sidecar/metrics.go` — sidecar owns its own metrics (not monolithic `obs`):
 
 | Metric | Type | Labels | Purpose |
 |--------|------|--------|---------|
@@ -111,14 +111,13 @@ Key events logged at WARN level:
 
 | File | Change |
 |------|--------|
-| `internal/obs/obs.go` | Add 6 sidecar Prometheus metric vars |
+| `cmd/sidecar/metrics.go` | **NEW**: All 6 sidecar Prometheus metrics + convenience helpers |
 | `cmd/sidecar/main.go` | Wire `obs.Configure()`, replace 8 fmt calls, add `/v1/metrics` route |
-| `cmd/sidecar/bootstrap.go` | Replace 4 fmt calls, add bootstrap metric |
-| `cmd/sidecar/renewal.go` | Replace 3 fmt calls, add renewal metric |
-| `cmd/sidecar/handler.go` | Replace 1 fmt call, add exchange/denial metrics |
+| `cmd/sidecar/bootstrap.go` | Replace 4 fmt calls, add `lastRenewal`/`startTime` to state, increment bootstrap metric |
+| `cmd/sidecar/renewal.go` | Replace 3 fmt calls, increment renewal metric, update lastRenewal |
+| `cmd/sidecar/handler.go` | Replace 1 fmt call, add exchange/denial metric calls, enhance health response |
 | `cmd/sidecar/register_handler.go` | Replace 1 fmt call, increment agents_registered gauge |
-| `cmd/sidecar/health.go` | Add agents_registered, last_renewal, uptime_seconds to response |
-| `cmd/sidecar/state.go` | Add LastRenewal timestamp field to sidecarState |
+| `cmd/sidecar/registry.go` | Add `count()` method |
 
 ## What This Does NOT Include (YAGNI)
 
