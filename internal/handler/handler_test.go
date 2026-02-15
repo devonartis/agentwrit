@@ -82,12 +82,12 @@ func newTestBroker(t *testing.T) *testBroker {
 	mux.Handle("POST /v1/register", problemdetails.MaxBytesBody(regHdl))
 	mux.Handle("POST /v1/token/renew", problemdetails.MaxBytesBody(valMw.Wrap(renewHdl)))
 	mux.Handle("POST /v1/token/exchange",
-		problemdetails.MaxBytesBody(valMw.Wrap(authz.WithRequiredScope("sidecar:manage:*", tokenExchangeHdl))))
+		problemdetails.MaxBytesBody(valMw.Wrap(valMw.RequireScope("sidecar:manage:*", tokenExchangeHdl))))
 	mux.Handle("POST /v1/delegate", problemdetails.MaxBytesBody(valMw.Wrap(delegHdl)))
 	mux.Handle("POST /v1/revoke",
-		problemdetails.MaxBytesBody(valMw.Wrap(authz.WithRequiredScope("admin:revoke:*", revokeHdl))))
+		problemdetails.MaxBytesBody(valMw.Wrap(valMw.RequireScope("admin:revoke:*", revokeHdl))))
 	mux.Handle("GET /v1/audit/events",
-		valMw.Wrap(authz.WithRequiredScope("admin:audit:*", auditHdl)))
+		valMw.Wrap(valMw.RequireScope("admin:audit:*", auditHdl)))
 	adminHdl.RegisterRoutes(mux)
 
 	// Wrap with global middleware matching cmd/broker/main.go ordering.

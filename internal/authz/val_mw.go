@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/problemdetails"
 	"github.com/divineartis/agentauth/internal/token"
 )
@@ -64,11 +65,17 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
+			if m.auditLog != nil {
+				m.auditLog.Record(audit.EventTokenAuthFailed, "", "", "", "missing authorization header | path="+r.URL.Path)
+			}
 			problemdetails.WriteProblem(r.Context(), w, 401, "unauthorized", "missing authorization header", r.URL.Path)
 			return
 		}
 
 		if !strings.HasPrefix(authHeader, "Bearer ") {
+			if m.auditLog != nil {
+				m.auditLog.Record(audit.EventTokenAuthFailed, "", "", "", "invalid authorization scheme | path="+r.URL.Path)
+			}
 			problemdetails.WriteProblem(r.Context(), w, 401, "unauthorized", "invalid authorization scheme", r.URL.Path)
 			return
 		}
@@ -76,11 +83,17 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 		tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 		claims, err := m.tknSvc.Verify(tokenStr)
 		if err != nil {
+			if m.auditLog != nil {
+				m.auditLog.Record(audit.EventTokenAuthFailed, "", "", "", "token verification failed: "+err.Error()+" | path="+r.URL.Path)
+			}
 			problemdetails.WriteProblem(r.Context(), w, 401, "unauthorized", "token verification failed: "+err.Error(), r.URL.Path)
 			return
 		}
 
 		if m.revSvc != nil && m.revSvc.IsRevoked(claims) {
+			if m.auditLog != nil {
+				m.auditLog.Record(audit.EventTokenRevokedAccess, claims.Sub, claims.TaskId, claims.OrchId, "revoked token used | path="+r.URL.Path)
+			}
 			problemdetails.WriteProblem(r.Context(), w, 403, "insufficient_scope", "token has been revoked", r.URL.Path)
 			return
 		}
@@ -90,11 +103,12 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 	})
 }
 
-// WithRequiredScope returns a handler that checks that the authenticated
+// RequireScope returns a handler that checks that the authenticated
 // token's scopes cover the given scope string. It must be used after
 // [ValMw.Wrap] so that claims are present in the context. If the scope
-// check fails it responds with a 403 RFC 7807 problem response.
-func WithRequiredScope(scope string, next http.Handler) http.Handler {
+// check fails it responds with a 403 RFC 7807 problem response and
+// records a scope_violation audit event.
+func (m *ValMw) RequireScope(scope string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		claims := ClaimsFromContext(r.Context())
 		if claims == nil {
@@ -103,6 +117,10 @@ func WithRequiredScope(scope string, next http.Handler) http.Handler {
 		}
 
 		if !ScopeIsSubset([]string{scope}, claims.Scope) {
+			if m.auditLog != nil {
+				m.auditLog.Record(audit.EventScopeViolation, claims.Sub, claims.TaskId, claims.OrchId,
+					"scope_violation | required="+scope+" | actual="+strings.Join(claims.Scope, ",")+" | path="+r.URL.Path)
+			}
 			problemdetails.WriteProblem(r.Context(), w, 403, "insufficient_scope", "token lacks required scope: "+scope, r.URL.Path)
 			return
 		}

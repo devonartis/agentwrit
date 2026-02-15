@@ -45,10 +45,10 @@ func (h *AdminHdl) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /v1/admin/auth",
 		h.rateLimiter.Wrap(http.HandlerFunc(h.handleAuth)))
 	mux.Handle("POST /v1/admin/launch-tokens",
-		h.valMw.Wrap(authz.WithRequiredScope("admin:launch-tokens:*",
+		h.valMw.Wrap(h.valMw.RequireScope("admin:launch-tokens:*",
 			http.HandlerFunc(h.handleCreateLaunchToken))))
 	mux.Handle("POST /v1/admin/sidecar-activations",
-		h.valMw.Wrap(authz.WithRequiredScope("admin:launch-tokens:*",
+		h.valMw.Wrap(h.valMw.RequireScope("admin:launch-tokens:*",
 			http.HandlerFunc(h.handleCreateSidecarActivation))))
 	mux.Handle("POST /v1/sidecar/activate",
 		h.rateLimiter.Wrap(http.HandlerFunc(h.handleActivateSidecar)))

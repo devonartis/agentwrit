@@ -255,6 +255,21 @@ func TestQuery_LimitCappedAt1000(t *testing.T) {
 	}
 }
 
+func TestNewEventTypeConstants_Exist(t *testing.T) {
+	constants := []string{
+		EventTokenAuthFailed,
+		EventTokenRevokedAccess,
+		EventScopeViolation,
+		EventScopeCeilingExceeded,
+		EventDelegationAttenuationViolation,
+	}
+	for _, c := range constants {
+		if c == "" {
+			t.Errorf("event type constant should not be empty")
+		}
+	}
+}
+
 func TestEvents_ReturnsCopy(t *testing.T) {
 	al := NewAuditLog()
 	al.Record(EventTokenIssued, "a", "t", "o", "detail")

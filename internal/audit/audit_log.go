@@ -42,6 +42,12 @@ const (
 	EventResourceAccessed         = "resource_accessed"
 	EventSidecarExchangeSuccess   = "sidecar_exchange_success"
 	EventSidecarExchangeDenied    = "sidecar_exchange_denied"
+
+	EventTokenAuthFailed                = "token_auth_failed"
+	EventTokenRevokedAccess             = "token_revoked_access"
+	EventScopeViolation                 = "scope_violation"
+	EventScopeCeilingExceeded           = "scope_ceiling_exceeded"
+	EventDelegationAttenuationViolation = "delegation_attenuation_violation"
 )
 
 // AuditEvent is a single immutable entry in the audit trail. The Hash

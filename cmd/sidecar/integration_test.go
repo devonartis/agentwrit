@@ -60,7 +60,7 @@ func startTestBroker(t *testing.T, secret string) *httptest.Server {
 	mux.Handle("POST /v1/token/validate", problemdetails.MaxBytesBody(handler.NewValHdl(tknSvc, revSvc)))
 	mux.Handle("POST /v1/token/renew", problemdetails.MaxBytesBody(valMw.Wrap(handler.NewRenewHdl(tknSvc, auditLog))))
 	mux.Handle("POST /v1/token/exchange",
-		problemdetails.MaxBytesBody(valMw.Wrap(authz.WithRequiredScope("sidecar:manage:*", handler.NewTokenExchangeHdl(tknSvc, sqlStore, auditLog)))))
+		problemdetails.MaxBytesBody(valMw.Wrap(valMw.RequireScope("sidecar:manage:*", handler.NewTokenExchangeHdl(tknSvc, sqlStore, auditLog)))))
 	mux.Handle("GET /v1/health", handler.NewHealthHdl("test"))
 	admin.NewAdminHdl(adminSvc, valMw, auditLog).RegisterRoutes(mux)
 

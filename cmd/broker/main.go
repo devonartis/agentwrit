@@ -111,14 +111,14 @@ func main() {
 	// Authenticated endpoints (Bearer token)
 	mux.Handle("POST /v1/token/renew", problemdetails.MaxBytesBody(valMw.Wrap(renewHdl)))
 	mux.Handle("POST /v1/token/exchange",
-		problemdetails.MaxBytesBody(valMw.Wrap(authz.WithRequiredScope("sidecar:manage:*", tokenExchangeHdl))))
+		problemdetails.MaxBytesBody(valMw.Wrap(valMw.RequireScope("sidecar:manage:*", tokenExchangeHdl))))
 	mux.Handle("POST /v1/delegate", problemdetails.MaxBytesBody(valMw.Wrap(delegHdl)))
 
 	// Admin endpoints (Bearer + admin scope)
 	mux.Handle("POST /v1/revoke",
-		problemdetails.MaxBytesBody(valMw.Wrap(authz.WithRequiredScope("admin:revoke:*", revokeHdl))))
+		problemdetails.MaxBytesBody(valMw.Wrap(valMw.RequireScope("admin:revoke:*", revokeHdl))))
 	mux.Handle("GET /v1/audit/events",
-		valMw.Wrap(authz.WithRequiredScope("admin:audit:*", auditHdl)))
+		valMw.Wrap(valMw.RequireScope("admin:audit:*", auditHdl)))
 
 	// Admin auth and launch token routes (registered by AdminHdl)
 	adminHdl.RegisterRoutes(mux)
