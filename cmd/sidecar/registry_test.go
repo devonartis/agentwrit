@@ -148,6 +148,28 @@ func TestAgentRegistry_ConcurrentAccess(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// TestAgentRegistry_Count — Count returns the number of registered agents
+// ---------------------------------------------------------------------------
+
+func TestAgentRegistry_Count(t *testing.T) {
+	reg := newAgentRegistry()
+
+	if got := reg.count(); got != 0 {
+		t.Errorf("empty registry count = %d, want 0", got)
+	}
+
+	reg.store("agent-a", &agentEntry{spiffeID: "spiffe://test/a"})
+	if got := reg.count(); got != 1 {
+		t.Errorf("after 1 store, count = %d, want 1", got)
+	}
+
+	reg.store("agent-b", &agentEntry{spiffeID: "spiffe://test/b"})
+	if got := reg.count(); got != 2 {
+		t.Errorf("after 2 stores, count = %d, want 2", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // TestAgentRegistry_GetOrLock_SerializesRegistration — First getOrLock returns
 // nil + unlock; store + unlock; second getOrLock returns entry + nil unlock
 // ---------------------------------------------------------------------------
