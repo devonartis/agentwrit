@@ -448,7 +448,7 @@ func TestIntegration_Phase2_LazyRegistration(t *testing.T) {
 	}
 
 	var resp1 map[string]any
-	json.NewDecoder(rr1.Body).Decode(&resp1)
+	_ = json.NewDecoder(rr1.Body).Decode(&resp1)
 
 	token1 := resp1["access_token"].(string)
 	agentID := resp1["agent_id"].(string)
@@ -493,7 +493,7 @@ func TestIntegration_Phase2_LazyRegistration(t *testing.T) {
 	}
 
 	var resp2 map[string]any
-	json.NewDecoder(rr2.Body).Decode(&resp2)
+	_ = json.NewDecoder(rr2.Body).Decode(&resp2)
 	if resp2["agent_id"] != agentID {
 		t.Errorf("second request agent_id = %v, want %v", resp2["agent_id"], agentID)
 	}
@@ -558,7 +558,7 @@ func TestIntegration_Phase2_BYOKRegistration(t *testing.T) {
 		t.Fatalf("challenge: expected 200, got %d", rrCh.Code)
 	}
 	var chResp map[string]any
-	json.NewDecoder(rrCh.Body).Decode(&chResp)
+	_ = json.NewDecoder(rrCh.Body).Decode(&chResp)
 	nonce := chResp["nonce"].(string)
 
 	// Step 2: Developer signs the nonce with their own key.
@@ -587,7 +587,7 @@ func TestIntegration_Phase2_BYOKRegistration(t *testing.T) {
 	}
 
 	var regResp map[string]any
-	json.NewDecoder(rrReg.Body).Decode(&regResp)
+	_ = json.NewDecoder(rrReg.Body).Decode(&regResp)
 	agentID := regResp["agent_id"].(string)
 	t.Logf("BYOK registered: agent_id=%s", agentID)
 
@@ -619,7 +619,7 @@ func TestIntegration_Phase2_BYOKRegistration(t *testing.T) {
 	}
 
 	var tokResp map[string]any
-	json.NewDecoder(rrTok.Body).Decode(&tokResp)
+	_ = json.NewDecoder(rrTok.Body).Decode(&tokResp)
 	accessToken := tokResp["access_token"].(string)
 
 	// Validate at broker.

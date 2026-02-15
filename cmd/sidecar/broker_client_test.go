@@ -352,7 +352,7 @@ func TestBrokerClient_GetChallenge(t *testing.T) {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"nonce": "abc123", "expires_in": 30})
+		_ = json.NewEncoder(w).Encode(map[string]any{"nonce": "abc123", "expires_in": 30})
 	}))
 	defer srv.Close()
 
@@ -376,7 +376,7 @@ func TestBrokerClient_CreateLaunchToken(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"launch_token": "deadbeef1234567890abcdef1234567890abcdef1234567890abcdef12345678",
 		})
 	}))
@@ -398,12 +398,12 @@ func TestBrokerClient_RegisterAgent(t *testing.T) {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 		var body map[string]any
-		json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body["launch_token"] == nil || body["public_key"] == nil {
 			t.Error("missing required fields")
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"agent_id":     "spiffe://test/agent/orch/task/inst",
 			"access_token": "agent-jwt",
 			"expires_in":   300,
