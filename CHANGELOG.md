@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Sidecar Phase 2**: Background auto-renewal goroutine for sidecar bearer token (80% TTL default, configurable via `AA_SIDECAR_RENEWAL_BUFFER`)
+- **Sidecar Phase 2**: Per-agent registration — lazy on first `POST /v1/token` with sidecar-managed Ed25519 keypairs
+- **Sidecar Phase 2**: BYOK registration: `GET /v1/challenge` proxy + `POST /v1/register` for developer-provided keys
+- **Sidecar Phase 2**: In-memory ephemeral agent registry with per-agent locking for concurrent safety
+- **Sidecar Phase 2**: Health endpoint now reports `status: "degraded"` (503) when token renewal fails
+- **Sidecar Phase 2**: Graceful shutdown via SIGINT/SIGTERM with context cancellation
+- **Sidecar Phase 2**: Thread-safe `sidecarState` with `sync.RWMutex` for renewal/handler concurrency
 - **Sidecar**: Go sidecar binary (`cmd/sidecar/`) that auto-bootstraps with the broker and exposes a simple developer-facing API (`POST /v1/token`, `POST /v1/token/renew`, `GET /v1/health`)
 - **Sidecar**: Scope ceiling enforcement — sidecar locally checks requested scope against its configured ceiling before calling the broker
 - **Sidecar**: Auto-activation sequence — health check, admin auth, activation token, single-use exchange

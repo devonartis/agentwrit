@@ -118,7 +118,7 @@ curl -X POST http://localhost:8081/v1/token \
 Response:
 
 ```json
-{"access_token": "<jwt>", "expires_in": 300, "scope": ["read:data:*"]}
+{"access_token": "<jwt>", "expires_in": 300, "scope": ["read:data:*"], "agent_id": "spiffe://..."}
 ```
 
 ### 3. Use the token
@@ -144,10 +144,43 @@ curl http://localhost:8081/v1/health
 Response:
 
 ```json
-{"status": "ok", "broker_connected": true, "scope_ceiling": ["read:data:*", "write:data:*"]}
+{"status": "ok", "broker_connected": true, "healthy": true, "scope_ceiling": ["read:data:*", "write:data:*"]}
 ```
 
-You never need to touch: admin secrets, launch tokens, Ed25519 keys, challenge-response, or the broker directly.
+When the sidecar's token expires and renewal fails, health returns `503` with `status: "degraded"`.
+
+You never need to touch: admin secrets, launch tokens, Ed25519 keys, challenge-response, registration, or the broker directly. The sidecar handles all of this automatically.
+
+### What Happens Under the Hood
+
+When you call `POST /v1/token` for the first time, the sidecar **automatically registers** your agent with the broker (lazy registration). It generates an Ed25519 keypair, performs the full challenge-response flow, and caches the agent's SPIFFE identity. Subsequent requests for the same `agent_name:task_id` skip registration entirely.
+
+The sidecar also **auto-renews** its own bearer token in the background, so you never need to worry about sidecar token expiry.
+
+### Advanced: Bring Your Own Key (BYOK)
+
+If you need to control your own Ed25519 keypair (e.g., for mutual auth in Phase 3), use the explicit registration flow:
+
+```bash
+# 1. Get a challenge nonce
+NONCE=$(curl -s http://localhost:8081/v1/challenge | jq -r '.nonce')
+
+# 2. Sign the nonce with your own Ed25519 key (hex-decode first, then sign)
+# (See Bootstrap Walkthrough Step 4 for signing details)
+
+# 3. Register with your public key
+curl -X POST http://localhost:8081/v1/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_name": "my-agent",
+    "task_id": "task-1",
+    "public_key": "<base64-ed25519-pubkey>",
+    "signature": "<base64-signature>",
+    "nonce": "'$NONCE'"
+  }'
+
+# 4. Now POST /v1/token works as normal — uses your registered identity
+```
 
 ---
 

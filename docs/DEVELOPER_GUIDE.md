@@ -546,10 +546,13 @@ The sidecar lives entirely in `cmd/sidecar/` with no dependencies on `internal/`
 | File | Purpose |
 |------|---------|
 | `config.go` | Reads `AA_SIDECAR_*` and `AA_ADMIN_SECRET` env vars into `sidecarConfig` |
-| `broker_client.go` | HTTP client wrapping all broker API calls (health, admin auth, activation, exchange, renew) |
-| `bootstrap.go` | 4-step auto-activation sequence with health-check retry loop |
-| `handler.go` | Developer-facing HTTP handlers (`POST /v1/token`, `POST /v1/token/renew`, `GET /v1/health`) plus local scope ceiling enforcement |
-| `main.go` | Entrypoint: loads config, validates required vars, bootstraps, and starts HTTP server |
+| `broker_client.go` | HTTP client wrapping all broker API calls (health, admin auth, activation, exchange, renew, challenge, launch tokens, register) |
+| `bootstrap.go` | 4-step auto-activation sequence with health-check retry loop; thread-safe `sidecarState` with RWMutex |
+| `handler.go` | Developer-facing HTTP handlers (`POST /v1/token`, `POST /v1/token/renew`, `GET /v1/health`) plus local scope ceiling enforcement and lazy agent registration |
+| `renewal.go` | Background goroutine that auto-renews the sidecar bearer token at 80% of TTL with exponential backoff |
+| `registry.go` | In-memory ephemeral agent registry with per-agent locking for concurrent registration serialization |
+| `register_handler.go` | BYOK registration endpoints (`GET /v1/challenge` proxy, `POST /v1/register` for developer-provided keys) |
+| `main.go` | Entrypoint: loads config, validates, bootstraps, starts renewal goroutine, wires routes, graceful shutdown |
 
 ### Isolation from Broker Internals
 
@@ -618,6 +621,55 @@ Developer             Sidecar                         Broker
 
 The sidecar performs a **local scope check** before calling the broker, rejecting requests that exceed its configured ceiling (`AA_SIDECAR_SCOPE_CEILING`) without incurring a network round-trip. The broker performs its own independent scope check as a second line of defense.
 
+### Lazy Agent Registration Flow
+
+Phase 2 adds per-agent identity. When `POST /v1/token` arrives for an unregistered agent, the sidecar performs lazy registration:
+
+```
+Developer             Sidecar                            Broker
+    |                    |                                  |
+    | POST /v1/token     |                                  |
+    | {agent_name,       |                                  |
+    |  task_id, scope}   |                                  |
+    |------------------->|                                  |
+    |                    | Check registry: not found         |
+    |                    |                                  |
+    |                    | 1. POST /v1/admin/auth            |
+    |                    |--------------------------------->|
+    |                    | 2. POST /v1/admin/launch-tokens   |
+    |                    |--------------------------------->|
+    |                    | 3. GET /v1/challenge              |
+    |                    |--------------------------------->|
+    |                    | 4. Generate Ed25519 keypair       |
+    |                    |    Sign hex-decoded nonce         |
+    |                    | 5. POST /v1/register              |
+    |                    |--------------------------------->|
+    |                    | {agent_id: spiffe://...}          |
+    |                    |<---------------------------------|
+    |                    |                                  |
+    |                    | Cache: registry[name:task] = entry|
+    |                    |                                  |
+    |                    | 6. POST /v1/token/exchange        |
+    |                    |--------------------------------->|
+    |                    | {access_token}                    |
+    |                    |<---------------------------------|
+    |<-------------------|                                  |
+```
+
+Subsequent requests for the same `agent_name:task_id` skip steps 1-5 and go directly to token exchange.
+
+### Auto-Renewal
+
+The `startRenewal` goroutine in `renewal.go` runs in the background:
+
+- Sleeps for `TTL * RenewalBuffer` seconds (default 80% of TTL)
+- Calls `POST /v1/token/renew` with the current sidecar bearer token
+- On success: atomically swaps the token via `sidecarState.setToken()`
+- On failure: exponential backoff (1s, 2s, 4s, ..., 30s cap)
+- If the token actually expires: sets `state.healthy = false`, health endpoint returns 503
+- Auto-recovers when renewal succeeds after degraded state
+- Shuts down cleanly via context cancellation (SIGINT/SIGTERM)
+
 ### Sidecar Environment Variables
 
 | Variable | Default | Description |
@@ -626,6 +678,7 @@ The sidecar performs a **local scope check** before calling the broker, rejectin
 | `AA_ADMIN_SECRET` | **(required)** | Shared secret with broker for bootstrap |
 | `AA_SIDECAR_SCOPE_CEILING` | **(required)** | Comma-separated scope ceiling (e.g., `read:data:*,write:data:*`) |
 | `AA_SIDECAR_PORT` | `8081` | HTTP listen port |
+| `AA_SIDECAR_RENEWAL_BUFFER` | `0.8` | Fraction of TTL at which to renew (0.5-0.95) |
 | `AA_SIDECAR_LOG_LEVEL` | `standard` | Log verbosity |
 
 ---

@@ -43,6 +43,8 @@
   - [POST /v1/token (sidecar)](#post-v1token-sidecar)
   - [POST /v1/token/renew (sidecar)](#post-v1tokenrenew-sidecar)
   - [GET /v1/health (sidecar)](#get-v1health-sidecar)
+  - [GET /v1/challenge (sidecar)](#get-v1challenge-sidecar)
+  - [POST /v1/register (sidecar)](#post-v1register-sidecar)
 
 ---
 
@@ -1372,7 +1374,7 @@ The sidecar is a standalone HTTP service that auto-bootstraps with the broker an
 
 ### POST /v1/token (sidecar)
 
-Request a scoped agent token. The sidecar validates the request, checks scope against its configured ceiling locally, and delegates to the broker's token exchange endpoint.
+Request a scoped agent token. On first request for a given `agent_name:task_id`, the sidecar automatically registers the agent with the broker (lazy registration). Subsequent requests use the cached registration.
 
 **Auth:** None (the sidecar is trusted within the local network)
 
@@ -1400,7 +1402,8 @@ Request a scoped agent token. The sidecar validates the request, checks scope ag
 {
   "access_token": "eyJhbGciOiJFZERTQSIs...",
   "expires_in": 300,
-  "scope": ["read:data:*"]
+  "scope": ["read:data:*"],
+  "agent_id": "spiffe://agentauth.local/agent/my-agent/task-1/a1b2c3d4"
 }
 ```
 
@@ -1409,6 +1412,7 @@ Request a scoped agent token. The sidecar validates the request, checks scope ag
 | `access_token` | string | EdDSA-signed JWT token |
 | `expires_in` | int | Token TTL in seconds |
 | `scope` | string[] | The granted scopes (echoed from request) |
+| `agent_id` | string | SPIFFE ID of the agent (assigned at registration) |
 
 **Error responses:**
 
@@ -1471,24 +1475,37 @@ curl -X POST http://localhost:8081/v1/token/renew \
 
 ### GET /v1/health (sidecar)
 
-Sidecar readiness check. Reports whether the sidecar has successfully bootstrapped with the broker.
+Sidecar readiness check. Reports whether the sidecar has successfully bootstrapped with the broker and whether token renewal is healthy.
 
 **Auth:** None
 
-**Response `200 OK`:**
+**Response `200 OK` (healthy):**
 
 ```json
 {
   "status": "ok",
   "broker_connected": true,
+  "healthy": true,
+  "scope_ceiling": ["read:data:*", "write:data:*"]
+}
+```
+
+**Response `503 Service Unavailable` (degraded):**
+
+```json
+{
+  "status": "degraded",
+  "broker_connected": false,
+  "healthy": false,
   "scope_ceiling": ["read:data:*", "write:data:*"]
 }
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `status` | string | Always `"ok"` when the sidecar is running |
-| `broker_connected` | bool | `true` if the sidecar holds a valid sidecar bearer token (bootstrap succeeded) |
+| `status` | string | `"ok"` when healthy, `"degraded"` when renewal has failed |
+| `broker_connected` | bool | `true` if the sidecar holds a valid bearer token |
+| `healthy` | bool | `true` when the sidecar token is valid and renewal is working |
 | `scope_ceiling` | string[] | The configured scope ceiling from `AA_SIDECAR_SCOPE_CEILING` |
 
 **Error responses:**
@@ -1501,4 +1518,100 @@ Sidecar readiness check. Reports whether the sidecar has successfully bootstrapp
 
 ```bash
 curl http://localhost:8081/v1/health
+```
+
+---
+
+### GET /v1/challenge (sidecar)
+
+Proxy the broker's challenge endpoint. Used by BYOK developers who manage their own Ed25519 keys.
+
+**Auth:** None
+
+**Response `200 OK`:**
+
+```json
+{
+  "nonce": "a3f2b1c4e5d6...",
+  "expires_in": 30
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `nonce` | string | Hex-encoded random nonce from the broker |
+| `expires_in` | int | Nonce validity in seconds |
+
+**Error responses:**
+
+| Status | Condition |
+|--------|-----------|
+| `405` | Non-GET method |
+| `502` | Broker challenge unavailable |
+
+**Example:**
+
+```bash
+curl http://localhost:8081/v1/challenge
+```
+
+---
+
+### POST /v1/register (sidecar)
+
+Explicit BYOK agent registration. The developer provides their own Ed25519 public key and a signed challenge nonce. The sidecar handles launch token creation and broker registration.
+
+**Auth:** None
+
+**Request:**
+
+```json
+{
+  "agent_name": "my-agent",
+  "task_id": "task-1",
+  "public_key": "<base64-encoded Ed25519 public key (32 bytes)>",
+  "signature": "<base64-encoded Ed25519 signature of nonce bytes>",
+  "nonce": "<hex nonce from GET /v1/challenge>"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `agent_name` | string | Yes | Agent name |
+| `task_id` | string | No | Task identifier |
+| `public_key` | string | Yes | Base64-encoded 32-byte Ed25519 public key |
+| `signature` | string | Yes | Base64-encoded Ed25519 signature of the hex-decoded nonce bytes |
+| `nonce` | string | Yes | Hex nonce from `GET /v1/challenge` |
+
+**Response `200 OK`:**
+
+```json
+{
+  "agent_id": "spiffe://agentauth.local/agent/my-agent/task-1/a1b2c3d4"
+}
+```
+
+If the agent is already registered, returns the cached SPIFFE ID with `"cached": true`.
+
+**Error responses:**
+
+| Status | Condition |
+|--------|-----------|
+| `400` | Missing required fields (`agent_name`, `public_key`, `signature`, `nonce`) |
+| `400` | Invalid public key (not 32 bytes after base64 decode) |
+| `405` | Non-POST method |
+| `502` | Broker registration failed |
+
+**Example:**
+
+```bash
+curl -X POST http://localhost:8081/v1/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_name": "my-agent",
+    "task_id": "task-1",
+    "public_key": "<base64-pubkey>",
+    "signature": "<base64-sig>",
+    "nonce": "<hex-nonce>"
+  }'
 ```
