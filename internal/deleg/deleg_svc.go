@@ -106,6 +106,12 @@ func (s *DelegSvc) Delegate(delegatorClaims *token.TknClaims, req DelegReq) (*De
 
 	// Check scope attenuation — delegated scope MUST be subset of delegator's scope
 	if !authz.ScopeIsSubset(req.Scope, delegatorClaims.Scope) {
+		if s.auditLog != nil {
+			s.auditLog.Record(audit.EventDelegationAttenuationViolation,
+				delegatorClaims.Sub, delegatorClaims.TaskId, delegatorClaims.OrchId,
+				fmt.Sprintf("delegation_attenuation_violation | delegator=%s | target=%s | requested=%v | allowed=%v",
+					delegatorClaims.Sub, req.DelegateTo, req.Scope, delegatorClaims.Scope))
+		}
 		return nil, ErrScopeViolation
 	}
 

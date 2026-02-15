@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/cfg"
 	"github.com/divineartis/agentauth/internal/store"
 	"github.com/divineartis/agentauth/internal/token"
@@ -430,5 +431,47 @@ func TestDelegate_ChainSignaturesGrowWithChain(t *testing.T) {
 	claims1, _ := tknSvc.Verify(resp1.AccessToken)
 	if claims3.ChainHash == claims1.ChainHash {
 		t.Error("chain_hash should differ between delegation depths")
+	}
+}
+
+func TestDelegate_ScopeViolation_AuditsEvent(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
+	st := store.NewSqlStore()
+	al := audit.NewAuditLog()
+	delegSvc := NewDelegSvc(tknSvc, st, al, priv)
+
+	delegator := "spiffe://test/agent/o/t/delegator"
+	delegate := "spiffe://test/agent/o/t/delegate"
+	registerAgent(t, st, delegator)
+	registerAgent(t, st, delegate)
+
+	delegatorClaims := &token.TknClaims{
+		Sub:    delegator,
+		Scope:  []string{"read:data:*"},
+		TaskId: "task-1",
+		OrchId: "orch-1",
+	}
+
+	_, err = delegSvc.Delegate(delegatorClaims, DelegReq{
+		DelegateTo: delegate,
+		Scope:      []string{"write:data:*"},
+	})
+	if !errors.Is(err, ErrScopeViolation) {
+		t.Fatalf("expected ErrScopeViolation, got %v", err)
+	}
+
+	events := al.Events()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 audit event, got %d", len(events))
+	}
+	if events[0].EventType != audit.EventDelegationAttenuationViolation {
+		t.Errorf("expected event_type=%s, got %s", audit.EventDelegationAttenuationViolation, events[0].EventType)
+	}
+	if events[0].AgentID != delegator {
+		t.Errorf("expected agent_id=%s, got %s", delegator, events[0].AgentID)
 	}
 }
