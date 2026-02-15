@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 )
@@ -99,8 +98,7 @@ func bootstrap(bc *brokerClient, cfg sidecarConfig) (*sidecarState, error) {
 	fmt.Println("[sidecar] admin authenticated")
 
 	// Step 3: Create sidecar activation token.
-	scopePrefix := strings.Join(cfg.ScopeCeiling, ",")
-	activationToken, err := bc.createSidecarActivation(adminToken, scopePrefix, 600)
+	activationToken, err := bc.createSidecarActivation(adminToken, cfg.ScopeCeiling, 600)
 	if err != nil {
 		return nil, fmt.Errorf("bootstrap: create activation: %w", err)
 	}

@@ -389,8 +389,8 @@ func TestCreateSidecarActivationToken_Success(t *testing.T) {
 	svc := newTestAdminSvc(t)
 
 	resp, err := svc.CreateSidecarActivationToken(CreateSidecarActivationReq{
-		AllowedScopePrefix: "read:Customers",
-		TTL:                120,
+		AllowedScopes: []string{"read:Customers"},
+		TTL:           120,
 	}, adminSub)
 	if err != nil {
 		t.Fatalf("expected success, got err: %v", err)
@@ -427,8 +427,8 @@ func TestActivateSidecar_Success(t *testing.T) {
 	svc := newTestAdminSvc(t)
 
 	act, err := svc.CreateSidecarActivationToken(CreateSidecarActivationReq{
-		AllowedScopePrefix: "read:Customers",
-		TTL:                120,
+		AllowedScopes: []string{"read:Customers"},
+		TTL:           120,
 	}, adminSub)
 	if err != nil {
 		t.Fatalf("create activation token: %v", err)
@@ -460,8 +460,8 @@ func TestActivateSidecar_Replay(t *testing.T) {
 	svc := newTestAdminSvc(t)
 
 	act, err := svc.CreateSidecarActivationToken(CreateSidecarActivationReq{
-		AllowedScopePrefix: "read:Customers",
-		TTL:                120,
+		AllowedScopes: []string{"read:Customers"},
+		TTL:           120,
 	}, adminSub)
 	if err != nil {
 		t.Fatalf("create activation token: %v", err)

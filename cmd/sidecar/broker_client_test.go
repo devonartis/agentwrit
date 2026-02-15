@@ -88,7 +88,7 @@ func TestBrokerClient_CreateSidecarActivation(t *testing.T) {
 	defer srv.Close()
 
 	bc := newBrokerClient(srv.URL)
-	actToken, err := bc.createSidecarActivation("admin-jwt", "read:data:*", 600)
+	actToken, err := bc.createSidecarActivation("admin-jwt", []string{"read:data:*"}, 600)
 	if err != nil {
 		t.Fatalf("createSidecarActivation returned error: %v", err)
 	}
@@ -108,9 +108,10 @@ func TestBrokerClient_CreateSidecarActivation(t *testing.T) {
 		t.Errorf("Authorization = %q, want Bearer admin-jwt", gotAuth)
 	}
 
-	// Verify request body fields
-	if gotBody["allowed_scope_prefix"] != "read:data:*" {
-		t.Errorf("allowed_scope_prefix = %v, want read:data:*", gotBody["allowed_scope_prefix"])
+	// Verify request body fields — allowed_scopes is now a JSON array.
+	scopes, ok := gotBody["allowed_scopes"].([]any)
+	if !ok || len(scopes) != 1 || scopes[0] != "read:data:*" {
+		t.Errorf("allowed_scopes = %v, want [read:data:*]", gotBody["allowed_scopes"])
 	}
 	if gotBody["ttl"] != float64(600) {
 		t.Errorf("ttl = %v, want 600", gotBody["ttl"])

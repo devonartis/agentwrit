@@ -51,7 +51,7 @@ var (
 	ErrInvalidSecret           = errors.New("invalid client secret")
 	ErrAgentNameEmpty          = errors.New("agent_name is required")
 	ErrScopeEmpty              = errors.New("allowed_scope must not be empty")
-	ErrActivationScopeEmpty    = errors.New("allowed_scope_prefix is required")
+	ErrActivationScopeEmpty    = errors.New("allowed_scopes is required")
 	ErrActivationTokenInvalid  = errors.New("invalid activation token")
 	ErrActivationTokenReplayed = errors.New("activation token replayed")
 )
@@ -70,8 +70,8 @@ type CreateLaunchTokenReq struct {
 // CreateSidecarActivationReq is the JSON request body for
 // POST /v1/admin/sidecar-activations.
 type CreateSidecarActivationReq struct {
-	AllowedScopePrefix string `json:"allowed_scope_prefix"`
-	TTL                int    `json:"ttl"`
+	AllowedScopes []string `json:"allowed_scopes"`
+	TTL           int      `json:"ttl"`
 }
 
 // CreateSidecarActivationResp is the JSON response for a successful
@@ -248,10 +248,15 @@ func (s *AdminSvc) CreateLaunchToken(req CreateLaunchTokenReq, createdBy string)
 // CreateSidecarActivationToken issues a short-lived activation JWT that can
 // be exchanged exactly once at POST /v1/sidecar/activate.
 func (s *AdminSvc) CreateSidecarActivationToken(req CreateSidecarActivationReq, createdBy string) (*CreateSidecarActivationResp, error) {
-	if req.AllowedScopePrefix == "" {
+	if len(req.AllowedScopes) == 0 {
 		return nil, ErrActivationScopeEmpty
 	}
-	scope := "sidecar:activate:" + req.AllowedScopePrefix
+
+	// One sidecar:activate:X scope entry per allowed scope.
+	scopes := make([]string, len(req.AllowedScopes))
+	for i, sc := range req.AllowedScopes {
+		scopes[i] = "sidecar:activate:" + sc
+	}
 
 	ttl := req.TTL
 	if ttl <= 0 {
@@ -261,7 +266,7 @@ func (s *AdminSvc) CreateSidecarActivationToken(req CreateSidecarActivationReq, 
 	resp, err := s.tknSvc.Issue(token.IssueReq{
 		Sub:   adminSub,
 		Aud:   []string{"sidecar_activation"},
-		Scope: []string{scope},
+		Scope: scopes,
 		TTL:   ttl,
 	})
 	if err != nil {
@@ -275,14 +280,14 @@ func (s *AdminSvc) CreateSidecarActivationToken(req CreateSidecarActivationReq, 
 			createdBy,
 			"",
 			"",
-			fmt.Sprintf("issued sidecar activation token scope=%s exp=%s", scope, expiresAt.Format(time.RFC3339)),
+			fmt.Sprintf("issued sidecar activation token scopes=%v exp=%s", scopes, expiresAt.Format(time.RFC3339)),
 		)
 	}
 
 	return &CreateSidecarActivationResp{
 		ActivationToken: resp.AccessToken,
 		ExpiresAt:       expiresAt.Format(time.RFC3339),
-		Scope:           scope,
+		Scope:           strings.Join(scopes, " "),
 	}, nil
 }
 
@@ -301,8 +306,8 @@ func (s *AdminSvc) ActivateSidecar(req ActivateSidecarReq) (*ActivateSidecarResp
 		return nil, ErrActivationTokenInvalid
 	}
 
-	scopePrefix, ok := extractActivationScopePrefix(claims.Scope)
-	if !ok {
+	scopePrefixes := extractActivationScopes(claims.Scope)
+	if len(scopePrefixes) == 0 {
 		return nil, ErrActivationTokenInvalid
 	}
 
@@ -325,11 +330,16 @@ func (s *AdminSvc) ActivateSidecar(req ActivateSidecarReq) (*ActivateSidecarResp
 		ttl = sidecarTTL
 	}
 
+	// One sidecar:scope:X entry per scope prefix.
 	sidecarID := claims.Jti
-	sidecarScopeCeiling := "sidecar:scope:" + scopePrefix
+	sidecarScopes := make([]string, 0, len(scopePrefixes)+1)
+	sidecarScopes = append(sidecarScopes, "sidecar:manage:*")
+	for _, sp := range scopePrefixes {
+		sidecarScopes = append(sidecarScopes, "sidecar:scope:"+sp)
+	}
 	issResp, err := s.tknSvc.Issue(token.IssueReq{
 		Sub:   "sidecar:" + sidecarID,
-		Scope: []string{"sidecar:manage:*", sidecarScopeCeiling},
+		Scope: sidecarScopes,
 		Sid:   sidecarID,
 		TTL:   ttl,
 	})
@@ -343,7 +353,7 @@ func (s *AdminSvc) ActivateSidecar(req ActivateSidecarReq) (*ActivateSidecarResp
 			"sidecar:"+sidecarID,
 			"",
 			"",
-			fmt.Sprintf("sidecar activated with scope_ceiling=%s", sidecarScopeCeiling),
+			fmt.Sprintf("sidecar activated with scope_ceiling=%v", sidecarScopes),
 		)
 	}
 
@@ -376,17 +386,17 @@ func (s *AdminSvc) ConsumeLaunchToken(tokenStr string) error {
 	return s.store.ConsumeLaunchToken(tokenStr)
 }
 
-func extractActivationScopePrefix(scopes []string) (string, bool) {
+func extractActivationScopes(scopes []string) []string {
+	out := make([]string, 0)
 	for _, scope := range scopes {
 		if strings.HasPrefix(scope, "sidecar:activate:") {
 			prefix := strings.TrimPrefix(scope, "sidecar:activate:")
-			if prefix == "" {
-				return "", false
+			if prefix != "" {
+				out = append(out, prefix)
 			}
-			return prefix, true
 		}
 	}
-	return "", false
+	return out
 }
 
 func containsAudience(aud []string, target string) bool {

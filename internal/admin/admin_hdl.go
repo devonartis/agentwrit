@@ -163,7 +163,7 @@ func (h *AdminHdl) handleCreateSidecarActivation(w http.ResponseWriter, r *http.
 		}
 		switch {
 		case errors.Is(err, ErrActivationScopeEmpty):
-			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "allowed_scope_prefix is required", r.URL.Path)
+			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "allowed_scopes is required", r.URL.Path)
 		default:
 			problemdetails.WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "failed to create sidecar activation token", r.URL.Path)
 		}

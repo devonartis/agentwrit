@@ -106,7 +106,7 @@ fi
 if [[ -n "$ADMIN_TOKEN" ]]; then
   ACT_RESP=$(scurl -X POST "$BASE/v1/admin/sidecar-activations" \
     -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
-    -d '{"allowed_scope_prefix":"read:data:*","ttl":120}') || true
+    -d '{"allowed_scopes":["read:data:*"],"ttl":120}') || true
   if [[ "$ACT_RESP" == *'"activation_token"'* ]]; then
     PASS=$((PASS + 1)); echo "  PASS: activation token issued"
     ACTIVATION_TOKEN=$(printf '%s' "$ACT_RESP" | sed -n 's/.*"activation_token":"\([^"]*\)".*/\1/p')

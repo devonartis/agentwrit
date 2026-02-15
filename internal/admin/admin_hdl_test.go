@@ -268,8 +268,8 @@ func TestHandleCreateSidecarActivation_Success(t *testing.T) {
 	adminToken := getAdminToken(t, mux)
 
 	body, _ := json.Marshal(CreateSidecarActivationReq{
-		AllowedScopePrefix: "read:Customers",
-		TTL:                120,
+		AllowedScopes: []string{"read:Customers"},
+		TTL:           120,
 	})
 	req := httptest.NewRequest(http.MethodPost, "/v1/admin/sidecar-activations", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -296,8 +296,8 @@ func TestHandleActivateSidecar_SuccessAndReplay(t *testing.T) {
 	adminToken := getAdminToken(t, mux)
 
 	createBody, _ := json.Marshal(CreateSidecarActivationReq{
-		AllowedScopePrefix: "read:Customers",
-		TTL:                120,
+		AllowedScopes: []string{"read:Customers"},
+		TTL:           120,
 	})
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/admin/sidecar-activations", bytes.NewReader(createBody))
 	createReq.Header.Set("Content-Type", "application/json")

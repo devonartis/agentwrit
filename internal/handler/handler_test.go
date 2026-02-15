@@ -1208,8 +1208,8 @@ func TestTokenExchange_FullIntegration_AdminToExchange(t *testing.T) {
 
 	// Step 3: Create sidecar activation token
 	actBody := jsonBody(t, map[string]any{
-		"allowed_scope_prefix": "read:data:*",
-		"ttl":                  120,
+		"allowed_scopes": []string{"read:data:*"},
+		"ttl":            120,
 	})
 	actReq := httptest.NewRequest("POST", "/v1/admin/sidecar-activations", actBody)
 	actReq.Header.Set("Authorization", "Bearer "+adminToken)
@@ -1321,8 +1321,8 @@ func TestSidecarActivation_ReplayDenied(t *testing.T) {
 
 	// Create sidecar activation token
 	actBody := jsonBody(t, map[string]any{
-		"allowed_scope_prefix": "read:data:*",
-		"ttl":                  120,
+		"allowed_scopes": []string{"read:data:*"},
+		"ttl":            120,
 	})
 	actReq := httptest.NewRequest("POST", "/v1/admin/sidecar-activations", actBody)
 	actReq.Header.Set("Authorization", "Bearer "+adminToken)

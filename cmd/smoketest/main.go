@@ -165,8 +165,8 @@ func main() {
 	activationToken := ""
 	{
 		body := jsonEnc(map[string]any{
-			"allowed_scope_prefix": "read:data:*",
-			"ttl":                  120,
+			"allowed_scopes": []string{"read:data:*"},
+			"ttl":            120,
 		})
 		resp := doJSON(client, "Step 7: POST /v1/admin/sidecar-activations", "POST", "/v1/admin/sidecar-activations", body, &adminToken, 201)
 		if t, ok := resp["activation_token"].(string); ok && t != "" {

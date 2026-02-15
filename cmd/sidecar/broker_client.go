@@ -74,10 +74,10 @@ func (c *brokerClient) adminAuth(secret string) (string, error) {
 
 // createSidecarActivation requests a sidecar activation token from the
 // broker. Requires an admin Bearer token. Calls POST /v1/admin/sidecar-activations.
-func (c *brokerClient) createSidecarActivation(adminToken, scopePrefix string, ttl int) (string, error) {
+func (c *brokerClient) createSidecarActivation(adminToken string, scopes []string, ttl int) (string, error) {
 	body, err := json.Marshal(map[string]any{
-		"allowed_scope_prefix": scopePrefix,
-		"ttl":                  ttl,
+		"allowed_scopes": scopes,
+		"ttl":            ttl,
 	})
 	if err != nil {
 		return "", fmt.Errorf("marshal sidecar activation request: %w", err)
