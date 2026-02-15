@@ -312,7 +312,9 @@ func TestIntegration_DeveloperFlow(t *testing.T) {
 	// ---------------------------------------------------------------
 	// Step 6: Request a scoped token via the sidecar's POST /v1/token.
 	// ---------------------------------------------------------------
-	th := newTokenHandler(bc, state, sidecarCfg.ScopeCeiling)
+	reg := newAgentRegistry()
+	reg.store(agentID, &agentEntry{spiffeID: agentID})
+	th := newTokenHandler(bc, state, sidecarCfg.ScopeCeiling, reg, adminSecret)
 
 	// Use the full SPIFFE agent_id as agent_name, leave task_id empty
 	// so the handler passes it through to the broker as-is.

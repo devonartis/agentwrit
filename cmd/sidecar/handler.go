@@ -1,9 +1,15 @@
 package main
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // ---------------------------------------------------------------------------
@@ -26,15 +32,19 @@ type tokenHandler struct {
 	broker       *brokerClient
 	state        *sidecarState
 	scopeCeiling []string
+	registry     *agentRegistry
+	adminSecret  string
 }
 
 // newTokenHandler creates a tokenHandler wired to the given broker client,
-// sidecar state, and scope ceiling.
-func newTokenHandler(bc *brokerClient, state *sidecarState, ceiling []string) *tokenHandler {
+// sidecar state, scope ceiling, agent registry, and admin secret.
+func newTokenHandler(bc *brokerClient, state *sidecarState, ceiling []string, reg *agentRegistry, adminSecret string) *tokenHandler {
 	return &tokenHandler{
 		broker:       bc,
 		state:        state,
 		scopeCeiling: ceiling,
+		registry:     reg,
+		adminSecret:  adminSecret,
 	}
 }
 
@@ -72,13 +82,19 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ttl = 300
 	}
 
-	// Build an agent identifier for the broker: combine agent_name and task_id.
-	agentID := req.AgentName
+	// Resolve agent identity: check registry or lazy-register.
+	agentKey := req.AgentName
 	if req.TaskID != "" {
-		agentID = req.AgentName + ":" + req.TaskID
+		agentKey = req.AgentName + ":" + req.TaskID
 	}
 
-	// Delegate to broker token exchange.
+	agentID, err := h.resolveAgent(agentKey, req.AgentName, req.TaskID, req.Scope)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "agent registration failed: "+err.Error())
+		return
+	}
+
+	// Delegate to broker token exchange using the agent's SPIFFE ID.
 	exResp, err := h.broker.tokenExchange(h.state.getToken(), agentID, req.Scope, ttl)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "broker token exchange failed: "+err.Error())
@@ -89,7 +105,84 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"access_token": exResp.AccessToken,
 		"expires_in":   exResp.ExpiresIn,
 		"scope":        req.Scope,
+		"agent_id":     agentID,
 	})
+}
+
+// resolveAgent checks the registry for a cached agent entry. If found, it
+// returns the SPIFFE ID immediately. Otherwise it acquires a per-agent lock
+// and runs the full challenge-response registration flow against the broker.
+func (h *tokenHandler) resolveAgent(key, agentName, taskID string, scope []string) (string, error) {
+	entry, unlock := h.registry.getOrLock(key)
+	if entry != nil {
+		return entry.spiffeID, nil
+	}
+	defer unlock()
+
+	spiffeID, pubKey, privKey, err := h.lazyRegister(agentName, taskID, scope)
+	if err != nil {
+		return "", err
+	}
+
+	h.registry.store(key, &agentEntry{
+		spiffeID:     spiffeID,
+		pubKey:       pubKey,
+		privKey:      privKey,
+		registeredAt: time.Now(),
+	})
+	return spiffeID, nil
+}
+
+// lazyRegister performs the full agent registration sequence: admin auth,
+// launch token creation, challenge-response, and agent registration.
+func (h *tokenHandler) lazyRegister(agentName, taskID string, scope []string) (string, ed25519.PublicKey, ed25519.PrivateKey, error) {
+	// Step 1: Admin auth.
+	adminToken, err := h.broker.adminAuth(h.adminSecret)
+	if err != nil {
+		return "", nil, nil, fmt.Errorf("admin auth: %w", err)
+	}
+
+	// Step 2: Create launch token.
+	launchToken, err := h.broker.createLaunchToken(adminToken, agentName, scope, 600)
+	if err != nil {
+		return "", nil, nil, fmt.Errorf("create launch token: %w", err)
+	}
+
+	// Step 3: Get challenge nonce.
+	nonce, err := h.broker.getChallenge()
+	if err != nil {
+		return "", nil, nil, fmt.Errorf("get challenge: %w", err)
+	}
+
+	// Step 4: Generate Ed25519 keypair and sign the nonce.
+	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return "", nil, nil, fmt.Errorf("generate keypair: %w", err)
+	}
+
+	nonceBytes, err := hex.DecodeString(nonce)
+	if err != nil {
+		return "", nil, nil, fmt.Errorf("decode nonce: %w", err)
+	}
+	sig := ed25519.Sign(privKey, nonceBytes)
+
+	pubKeyB64 := base64.StdEncoding.EncodeToString(pubKey)
+	sigB64 := base64.StdEncoding.EncodeToString(sig)
+
+	// Step 5: Register at broker.
+	orchID := agentName
+	tid := taskID
+	if tid == "" {
+		tid = "default"
+	}
+
+	agentID, err := h.broker.registerAgent(launchToken, nonce, pubKeyB64, sigB64, orchID, tid, scope)
+	if err != nil {
+		return "", nil, nil, fmt.Errorf("register: %w", err)
+	}
+
+	fmt.Printf("[sidecar] lazy-registered agent %s → %s\n", agentName, agentID)
+	return agentID, pubKey, privKey, nil
 }
 
 // ---------------------------------------------------------------------------

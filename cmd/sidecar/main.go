@@ -31,8 +31,9 @@ func main() {
 
 	// Set up routes. Handlers already enforce method checks internally,
 	// so plain path patterns avoid redundant double-checking.
+	reg := newAgentRegistry()
 	mux := http.NewServeMux()
-	mux.Handle("/v1/token", newTokenHandler(bc, state, cfg.ScopeCeiling))
+	mux.Handle("/v1/token", newTokenHandler(bc, state, cfg.ScopeCeiling, reg, cfg.AdminSecret))
 	mux.Handle("/v1/token/renew", newRenewHandler(bc))
 	mux.Handle("/v1/health", newHealthHandler(state, cfg.ScopeCeiling))
 
