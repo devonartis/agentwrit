@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -11,10 +12,52 @@ import (
 var defaultHealthTimeout = 30 * time.Second
 
 // sidecarState holds the result of a successful bootstrap sequence.
+// Fields guarded by mu are updated by the renewal goroutine (writer) and
+// read by HTTP handlers (readers), so all access goes through accessors.
 type sidecarState struct {
+	mu           sync.RWMutex
 	sidecarToken string
 	sidecarID    string
 	expiresIn    int
+	healthy      bool
+}
+
+// getToken returns the current sidecar bearer token (read-locked).
+func (s *sidecarState) getToken() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.sidecarToken
+}
+
+// getExpiresIn returns the current token TTL in seconds (read-locked).
+func (s *sidecarState) getExpiresIn() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.expiresIn
+}
+
+// setToken atomically updates the bearer token, TTL, and marks the sidecar
+// as healthy (write-locked).
+func (s *sidecarState) setToken(token string, expiresIn int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sidecarToken = token
+	s.expiresIn = expiresIn
+	s.healthy = true
+}
+
+// isHealthy reports whether the sidecar is in a healthy state (read-locked).
+func (s *sidecarState) isHealthy() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.healthy
+}
+
+// setHealthy sets the sidecar health flag (write-locked).
+func (s *sidecarState) setHealthy(h bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.healthy = h
 }
 
 // waitForBroker retries the broker health check until it succeeds or the
@@ -70,9 +113,7 @@ func bootstrap(bc *brokerClient, cfg sidecarConfig) (*sidecarState, error) {
 	}
 	fmt.Println("[sidecar] sidecar activated")
 
-	return &sidecarState{
-		sidecarToken: resp.accessToken,
-		sidecarID:    resp.sidecarID,
-		expiresIn:    resp.expiresIn,
-	}, nil
+	st := &sidecarState{sidecarID: resp.sidecarID}
+	st.setToken(resp.accessToken, resp.expiresIn)
+	return st, nil
 }

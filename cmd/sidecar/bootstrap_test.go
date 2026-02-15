@@ -73,15 +73,15 @@ func TestBootstrap_HappyPath(t *testing.T) {
 		}
 	}
 
-	// Verify returned state fields.
-	if state.sidecarToken != "sidecar-bearer-token" {
-		t.Errorf("sidecarToken = %q, want sidecar-bearer-token", state.sidecarToken)
+	// Verify returned state fields via thread-safe accessors.
+	if got := state.getToken(); got != "sidecar-bearer-token" {
+		t.Errorf("getToken() = %q, want sidecar-bearer-token", got)
 	}
 	if state.sidecarID != "sc-test-001" {
 		t.Errorf("sidecarID = %q, want sc-test-001", state.sidecarID)
 	}
-	if state.expiresIn != 900 {
-		t.Errorf("expiresIn = %d, want 900", state.expiresIn)
+	if got := state.getExpiresIn(); got != 900 {
+		t.Errorf("getExpiresIn() = %d, want 900", got)
 	}
 }
 

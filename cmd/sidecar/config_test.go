@@ -61,6 +61,40 @@ func TestLoadConfig_CustomEnv(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_RenewalBuffer(t *testing.T) {
+	// Clean up env vars after each sub-test.
+	defer os.Unsetenv("AA_SIDECAR_RENEWAL_BUFFER")
+
+	tests := []struct {
+		name    string
+		envVal  string
+		setEnv  bool
+		want    float64
+	}{
+		{"default when unset", "", false, 0.8},
+		{"valid 0.5", "0.5", true, 0.5},
+		{"valid 0.7", "0.7", true, 0.7},
+		{"valid 0.95", "0.95", true, 0.95},
+		{"below minimum clamps to default", "0.3", true, 0.8},
+		{"above maximum clamps to default", "0.99", true, 0.8},
+		{"invalid string clamps to default", "abc", true, 0.8},
+		{"empty string uses default", "", true, 0.8},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			os.Unsetenv("AA_SIDECAR_RENEWAL_BUFFER")
+			if tt.setEnv {
+				os.Setenv("AA_SIDECAR_RENEWAL_BUFFER", tt.envVal)
+			}
+			cfg := loadConfig()
+			if cfg.RenewalBuffer != tt.want {
+				t.Errorf("RenewalBuffer = %v, want %v", cfg.RenewalBuffer, tt.want)
+			}
+		})
+	}
+}
+
 func TestLoadConfig_MissingRequired(t *testing.T) {
 	os.Unsetenv("AA_ADMIN_SECRET")
 	os.Unsetenv("AA_SIDECAR_SCOPE_CEILING")

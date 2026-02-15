@@ -2,15 +2,17 @@ package main
 
 import (
 	"os"
+	"strconv"
 	"strings"
 )
 
 type sidecarConfig struct {
-	BrokerURL    string
-	Port         string
-	AdminSecret  string
-	ScopeCeiling []string
-	LogLevel     string
+	BrokerURL     string
+	Port          string
+	AdminSecret   string
+	ScopeCeiling  []string
+	LogLevel      string
+	RenewalBuffer float64
 }
 
 func loadConfig() sidecarConfig {
@@ -20,6 +22,13 @@ func loadConfig() sidecarConfig {
 		AdminSecret: os.Getenv("AA_ADMIN_SECRET"),
 		LogLevel:    envOr("AA_SIDECAR_LOG_LEVEL", "standard"),
 	}
+
+	renewalRaw := envOr("AA_SIDECAR_RENEWAL_BUFFER", "0.8")
+	renewalBuf := 0.8
+	if v, err := strconv.ParseFloat(renewalRaw, 64); err == nil && v >= 0.5 && v <= 0.95 {
+		renewalBuf = v
+	}
+	cfg.RenewalBuffer = renewalBuf
 
 	raw := os.Getenv("AA_SIDECAR_SCOPE_CEILING")
 	if raw != "" {

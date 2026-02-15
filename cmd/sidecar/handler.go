@@ -79,7 +79,7 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Delegate to broker token exchange.
-	exResp, err := h.broker.tokenExchange(h.state.sidecarToken, agentID, req.Scope, ttl)
+	exResp, err := h.broker.tokenExchange(h.state.getToken(), agentID, req.Scope, ttl)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "broker token exchange failed: "+err.Error())
 		return
@@ -161,7 +161,7 @@ func (h *healthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// The sidecar is considered connected to the broker when it holds a
 	// valid sidecar token (bootstrap succeeded).
-	connected := h.state != nil && h.state.sidecarToken != ""
+	connected := h.state != nil && h.state.getToken() != ""
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":           "ok",
