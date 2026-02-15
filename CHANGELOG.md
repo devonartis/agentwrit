@@ -11,12 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Bug [P0]**: Multi-scope sidecar activation — `AllowedScopePrefix` (string) → `AllowedScopes` ([]string). Comma-joined scope entries were stored as a single JWT claim, causing all multi-scope token exchanges to fail with `scope_escalation_denied`. Each scope now gets its own `sidecar:activate:X` and `sidecar:scope:X` claim entry. **Breaking change** to `POST /v1/admin/sidecar-activations` request body.
 - **Security [P1]**: Removed dead `TknSvc.Exchange()` and `isScopeAllowed()` methods that used a weaker prefix-based scope check instead of `authz.ScopeIsSubset()`. Deleted associated sentinel errors and stale test.
 - **Security [P2]**: Token exchange TTL=0 now clamps to `maxExchangeTTL` (900s) instead of delegating to `cfg.DefaultTTL`, preventing silent TTL cap bypass when `AA_DEFAULT_TTL` > 900.
+- **Docker**: All Docker build scripts (`live_test_docker.sh`, `live_test_sidecar.sh`, `stack_up.sh`) now use `--no-cache` to prevent stale cached layers from masking code changes during E2E testing
 - **Lint**: Resolved 18 errcheck findings across production and test code (token exchange handler, problem details, admin handler, store tests, revoke tests, handler tests, admin handler tests, logging test)
 - **Lint**: Fixed ineffassign in `mut_auth_hdl_test.go` (unused `hdl` variable overwritten immediately)
 - **Production code**: `json.Encode` errors now logged via `obs.Warn` or `log.Printf` in `token_exchange_hdl.go`, `admin_hdl.go`, and `problemdetails.go`
 
 ### Added
 
+- **Sidecar Observability**: Structured logging via `internal/obs` package — replaces all 15 raw `fmt.Printf` calls with leveled, structured log lines (`[AA:SIDECAR:LEVEL] TIMESTAMP | COMPONENT | MESSAGE | context`)
+- **Sidecar Observability**: `AA_SIDECAR_LOG_LEVEL` now wired (was loaded but unused) — supports `quiet`, `standard`, `verbose`, `trace`
+- **Sidecar Observability**: 6 Prometheus metrics in dedicated `cmd/sidecar/metrics.go`: bootstrap, renewals, token exchanges, scope denials, agents registered, request duration
+- **Sidecar Observability**: `GET /v1/metrics` endpoint on sidecar for Prometheus scraping
+- **Sidecar Observability**: Health endpoint now reports `agents_registered`, `last_renewal`, `uptime_seconds`
 - **Testing**: Docker E2E live tests (`live_test_sidecar.sh`, `live_test_docker.sh`) are now mandatory module gates in `gates.sh` — blocks merge if any live test fails
 - **Testing**: New `scripts/live_test_sidecar.sh` — 9-step Docker-based E2E covering all 5 sidecar endpoints (health, lazy reg, cache hit, scope ceiling, renew, challenge, BYOK register, BYOK token, broker validate)
 - **Sidecar Phase 2**: Background auto-renewal goroutine for sidecar bearer token (80% TTL default, configurable via `AA_SIDECAR_RENEWAL_BUFFER`)
