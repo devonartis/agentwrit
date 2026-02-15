@@ -9,15 +9,16 @@
 
 1. [What Is AgentAuth](#what-is-agentauth)
 2. [Quick Start](#quick-start)
-3. [Installation](#installation)
-4. [Configuration](#configuration)
-5. [Bootstrap Walkthrough](#bootstrap-walkthrough)
-6. [Sidecar Bootstrap flow](#sidecar-bootstrap-flow)
-7. [Monitoring](#monitoring)
-8. [Security Hardening](#security-hardening)
-9. [Troubleshooting](#troubleshooting)
-10. [Operational Runbook](#operational-runbook)
-11. [Log Format](#log-format)
+3. [Developer Quick Start (Sidecar)](#developer-quick-start-sidecar)
+4. [Installation](#installation)
+5. [Configuration](#configuration)
+6. [Bootstrap Walkthrough](#bootstrap-walkthrough)
+7. [Sidecar Bootstrap flow](#sidecar-bootstrap-flow)
+8. [Monitoring](#monitoring)
+9. [Security Hardening](#security-hardening)
+10. [Troubleshooting](#troubleshooting)
+11. [Operational Runbook](#operational-runbook)
+12. [Log Format](#log-format)
 
 ---
 
@@ -90,6 +91,63 @@ Expected response:
 ```
 
 You now have a working broker. Continue to the [Bootstrap Walkthrough](#bootstrap-walkthrough) for the full agent registration flow.
+
+---
+
+## Developer Quick Start (Sidecar)
+
+If you are a 3rd party developer integrating an agent with AgentAuth, the sidecar handles all broker complexity for you.
+
+### 1. Start the stack
+
+```bash
+echo "AA_ADMIN_SECRET=change-this-to-a-real-secret" > .env
+docker compose up
+```
+
+The sidecar waits for the broker health check to pass, then auto-bootstraps (admin auth, activation token, single-use exchange) without any manual steps.
+
+### 2. Request a token
+
+```bash
+curl -X POST http://localhost:8081/v1/token \
+  -H "Content-Type: application/json" \
+  -d '{"agent_name": "my-agent", "task_id": "task-1", "scope": ["read:data:*"]}'
+```
+
+Response:
+
+```json
+{"access_token": "<jwt>", "expires_in": 300, "scope": ["read:data:*"]}
+```
+
+### 3. Use the token
+
+```bash
+curl http://resource-server:9090/data/report-42 \
+  -H "Authorization: Bearer <token>"
+```
+
+### 4. Renew before expiry
+
+```bash
+curl -X POST http://localhost:8081/v1/token/renew \
+  -H "Authorization: Bearer <current-token>"
+```
+
+### 5. Check sidecar health
+
+```bash
+curl http://localhost:8081/v1/health
+```
+
+Response:
+
+```json
+{"status": "ok", "broker_connected": true, "scope_ceiling": ["read:data:*", "write:data:*"]}
+```
+
+You never need to touch: admin secrets, launch tokens, Ed25519 keys, challenge-response, or the broker directly.
 
 ---
 

@@ -14,6 +14,7 @@ If you need a step-by-step app integration walkthrough (Python/TypeScript), star
 4. [Request Lifecycle](#4-request-lifecycle)
 5. [Bootstrap Flow](#5-bootstrap-flow)
 5b. [Sidecar Bootstrap Flow](#5b-sidecar-bootstrap-flow)
+5c. [Sidecar Architecture](#5c-sidecar-architecture)
 6. [Token Lifecycle](#6-token-lifecycle)
 7. [Scope System](#7-scope-system)
 8. [SPIFFE ID Generation](#8-spiffe-id-generation)
@@ -531,6 +532,101 @@ All sidecar operations are audit-logged:
 | `sidecar_activation_failed` | Activation denied (invalid token, replay, or creation failure) |
 | `sidecar_exchange_success` | Agent token minted via sidecar exchange |
 | `sidecar_exchange_denied` | Exchange denied (scope escalation, missing ceiling, agent not found, unauthenticated, derivation failure, issuance failure) |
+
+---
+
+## 5c. Sidecar Architecture
+
+The sidecar is a standalone Go binary (`cmd/sidecar/`) that auto-bootstraps with the broker and exposes a simplified developer-facing HTTP API. It is designed for 3rd party developers who need scoped tokens without understanding admin auth, launch tokens, or Ed25519 cryptography.
+
+### Package Layout
+
+The sidecar lives entirely in `cmd/sidecar/` with no dependencies on `internal/` packages:
+
+| File | Purpose |
+|------|---------|
+| `config.go` | Reads `AA_SIDECAR_*` and `AA_ADMIN_SECRET` env vars into `sidecarConfig` |
+| `broker_client.go` | HTTP client wrapping all broker API calls (health, admin auth, activation, exchange, renew) |
+| `bootstrap.go` | 4-step auto-activation sequence with health-check retry loop |
+| `handler.go` | Developer-facing HTTP handlers (`POST /v1/token`, `POST /v1/token/renew`, `GET /v1/health`) plus local scope ceiling enforcement |
+| `main.go` | Entrypoint: loads config, validates required vars, bootstraps, and starts HTTP server |
+
+### Isolation from Broker Internals
+
+The sidecar communicates with the broker exclusively via HTTP. It imports no `internal/` packages from the broker. This means:
+
+- The sidecar can be deployed independently of the broker binary
+- Protocol changes are caught at the HTTP boundary, not at compile time
+- The sidecar can be replaced with an implementation in any language
+
+### Auto-Bootstrap Sequence
+
+When the sidecar starts, `bootstrap()` executes a 4-step sequence before the HTTP server begins accepting requests:
+
+```
+Step 1: Wait for broker health
+    GET /v1/health (retry every 500ms, 30s timeout)
+    --> Broker responds 200 OK
+
+Step 2: Authenticate as admin
+    POST /v1/admin/auth
+    {"client_id":"sidecar","client_secret":"<AA_ADMIN_SECRET>"}
+    --> Receives admin JWT (300s TTL)
+
+Step 3: Create sidecar activation token
+    POST /v1/admin/sidecar-activations
+    Authorization: Bearer <admin-jwt>
+    {"allowed_scope_prefix":"<AA_SIDECAR_SCOPE_CEILING>","ttl":600}
+    --> Receives single-use activation JWT
+
+Step 4: Activate sidecar (single-use exchange)
+    POST /v1/sidecar/activate
+    {"sidecar_activation_token":"<activation-jwt>"}
+    --> Receives sidecar bearer token + sidecar_id
+```
+
+If any step fails, the sidecar exits with a fatal error. The admin JWT is discarded after step 3 -- only the sidecar bearer token is retained for ongoing operations.
+
+### Token Request Flow
+
+When a developer calls `POST /v1/token` on the sidecar, the request flows through these stages:
+
+```
+Developer             Sidecar                         Broker
+    |                    |                               |
+    | POST /v1/token     |                               |
+    | {agent_name,       |                               |
+    |  task_id, scope}   |                               |
+    |------------------->|                               |
+    |                    | 1. Validate required fields    |
+    |                    | 2. scopeIsSubset(scope,        |
+    |                    |    ceiling) — LOCAL check      |
+    |                    |                               |
+    |                    | POST /v1/token/exchange        |
+    |                    | Authorization: Bearer <sidecar>|
+    |                    | {agent_id, scope, ttl}         |
+    |                    |------------------------------>|
+    |                    |                               | Verify sidecar token
+    |                    |                               | Check scope ceiling
+    |                    |                               | Issue agent JWT
+    |                    |<------------------------------|
+    |                    | {access_token, expires_in}     |
+    |<-------------------|                               |
+    | {access_token,     |                               |
+    |  expires_in, scope}|                               |
+```
+
+The sidecar performs a **local scope check** before calling the broker, rejecting requests that exceed its configured ceiling (`AA_SIDECAR_SCOPE_CEILING`) without incurring a network round-trip. The broker performs its own independent scope check as a second line of defense.
+
+### Sidecar Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AA_BROKER_URL` | `http://localhost:8080` | Broker base URL |
+| `AA_ADMIN_SECRET` | **(required)** | Shared secret with broker for bootstrap |
+| `AA_SIDECAR_SCOPE_CEILING` | **(required)** | Comma-separated scope ceiling (e.g., `read:data:*,write:data:*`) |
+| `AA_SIDECAR_PORT` | `8081` | HTTP listen port |
+| `AA_SIDECAR_LOG_LEVEL` | `standard` | Log verbosity |
 
 ---
 
