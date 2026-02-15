@@ -93,7 +93,8 @@ echo "=== Sidecar Live Test: docker compose up (broker:$BROKER_PORT, sidecar:$SI
   AA_SIDECAR_HOST_PORT="$SIDECAR_PORT" \
   AA_SEED_TOKENS=false \
   AA_LOG_LEVEL=standard \
-  docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d --build broker sidecar
+  docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" build --no-cache broker sidecar
+  docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d broker sidecar
 )
 
 SIDECAR_BASE="http://127.0.0.1:${SIDECAR_PORT}"

@@ -48,7 +48,8 @@ echo "=== Live Test: docker compose up (broker + sidecar) ==="
   AA_HOST_PORT="$HOST_PORT" \
   AA_SEED_TOKENS=false \
   AA_LOG_LEVEL=standard \
-  docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d --build broker sidecar
+  docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" build --no-cache broker sidecar
+  docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d broker sidecar
 )
 
 scurl() {

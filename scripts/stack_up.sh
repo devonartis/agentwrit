@@ -15,6 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$PROJECT_ROOT"
-docker compose up -d --build broker sidecar
+docker compose build --no-cache broker sidecar
+docker compose up -d broker sidecar
 echo "Stack is up."
 echo "Broker health: curl http://127.0.0.1:${AA_HOST_PORT:-8080}/v1/health"
