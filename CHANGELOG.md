@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Audit**: 5 new enforcement audit event types: `token_auth_failed`, `token_revoked_access`, `scope_violation`, `scope_ceiling_exceeded`, `delegation_attenuation_violation`
+- **Audit**: All `ValMw` middleware denial paths now produce audit events (missing auth header, invalid scheme, verification failed, revoked token access)
+- **Audit**: Delegation scope attenuation violations now produce `delegation_attenuation_violation` audit events with delegator, target, requested, and allowed scope details
+- **Audit**: Sidecar scope ceiling denials now include structured audit fields (`event_type`, `agent_name`, `task_id`) in log output
+- **Docs**: "Enforcing Scopes in Your Resource Server" section added to `docs/getting-started-developer.md` with Python, Go, and TypeScript examples of the validate→check scope→act pattern
 - **Sidecar Resilience — Failsafe Mode**: Circuit breaker with sliding-window failure tracking (Closed → Open → Probing states)
 - **Sidecar Resilience**: Cached token fallback — serves previously-issued tokens during broker outage (`X-AgentAuth-Cached: true` header)
 - **Sidecar Resilience**: Background health probe for automatic circuit breaker recovery
@@ -77,6 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Authorization**: `WithRequiredScope()` standalone function replaced by `ValMw.RequireScope()` method — scope checking now has access to `auditLog` for recording `scope_violation` events on denial
 - **Errors**: Standardized all error responses to include `error_code` and `request_id` fields
 - **Admin**: Refactored admin handlers to use shared standardized error helpers
 - **Admin/Sidecar**: Added validation and replay-protection error semantics for activation flow:

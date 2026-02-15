@@ -301,6 +301,11 @@ paths:
               - token_revoked
               - delegation_created
               - resource_accessed
+              - token_auth_failed
+              - token_revoked_access
+              - scope_violation
+              - scope_ceiling_exceeded
+              - delegation_attenuation_violation
           description: Filter by event type
         - name: since
           in: query
