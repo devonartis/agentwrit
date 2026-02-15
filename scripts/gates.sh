@@ -3,7 +3,7 @@ set -euo pipefail
 
 # gates.sh — quality gate runner for AgentAuth
 # Usage: ./scripts/gates.sh task   (build + vet/lint + unit tests + security)
-#        ./scripts/gates.sh module (task gates + full test suite)
+#        ./scripts/gates.sh module (task gates + full test suite + Docker E2E)
 
 MODE="${1:-}"
 if [[ -z "$MODE" ]]; then
@@ -90,9 +90,21 @@ if [[ "$MODE" == "module" ]]; then
   # Live/E2E: start the broker and run HTTP smoke tests
   SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
   if [[ -x "$SCRIPT_DIR/live_test.sh" ]]; then
-    run_gate "live tests" "$SCRIPT_DIR/live_test.sh"
+    run_gate "live tests (broker)" "$SCRIPT_DIR/live_test.sh"
   else
-    skip_gate "live tests" "scripts/live_test.sh not found or not executable"
+    skip_gate "live tests (broker)" "scripts/live_test.sh not found or not executable"
+  fi
+
+  # Docker live tests: deterministic gates — if Docker is available, these MUST pass.
+  if docker info >/dev/null 2>&1; then
+    if [[ -x "$SCRIPT_DIR/live_test_docker.sh" ]]; then
+      run_gate "live tests (broker docker)" "$SCRIPT_DIR/live_test_docker.sh"
+    fi
+    if [[ -x "$SCRIPT_DIR/live_test_sidecar.sh" ]]; then
+      run_gate "live tests (sidecar docker)" "$SCRIPT_DIR/live_test_sidecar.sh"
+    fi
+  else
+    skip_gate "live tests (docker)" "Docker daemon not running — skipping Docker E2E gates"
   fi
 fi
 

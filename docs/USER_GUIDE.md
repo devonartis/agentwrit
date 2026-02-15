@@ -687,7 +687,7 @@ For scenarios where multiple agents run on a single host (e.g., a developer lapt
 
 ### How Scope Ceilings Work
 
-The sidecar receives a **scope ceiling** at activation time. This ceiling limits what agent tokens the sidecar can issue. Scope ceiling entries are stored in the sidecar token's `scope` array with the prefix `sidecar:scope:`. For example, if the admin sets `allowed_scope_prefix` to `read:data:*`, the sidecar token will contain `sidecar:scope:read:data:*`. When the sidecar calls `POST /v1/token/exchange`, the broker strips the `sidecar:scope:` prefix and checks that every requested agent scope is a subset of the ceiling. Agent tokens can only narrow scope, never exceed the ceiling.
+The sidecar receives a **scope ceiling** at activation time. This ceiling limits what agent tokens the sidecar can issue. Scope ceiling entries are stored in the sidecar token's `scope` array with the prefix `sidecar:scope:`. For example, if the admin sets `allowed_scopes` to `["read:data:*", "write:data:*"]`, the sidecar token will contain `sidecar:scope:read:data:*` and `sidecar:scope:write:data:*`. When the sidecar calls `POST /v1/token/exchange`, the broker strips the `sidecar:scope:` prefix and checks that every requested agent scope is a subset of the ceiling. Agent tokens can only narrow scope, never exceed the ceiling.
 
 ### 1. Admin generates activation token
 
@@ -697,7 +697,7 @@ Authenticate as admin first (see [Bootstrap Walkthrough](#bootstrap-walkthrough)
 ACT_RESP=$(curl -s -X POST http://localhost:8080/v1/admin/sidecar-activations \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -d '{"allowed_scope_prefix":"read:data:*","ttl":900}')
+  -d '{"allowed_scopes":["read:data:*"],"ttl":900}')
 
 echo "$ACT_RESP" | jq .
 
@@ -789,7 +789,7 @@ Notes:
 | `activation_token_replayed` | 401 | Activation token already consumed | Create a new activation token |
 | `invalid_activation_token` | 401 | Activation token expired, invalid signature, wrong audience, or missing scope | Create a fresh activation token with correct parameters |
 | `scope_escalation_denied` | 403 | Requested scope exceeds sidecar scope ceiling | Request only scopes within the ceiling set at activation |
-| `sidecar_scope_missing` | 403 | Sidecar token has no `sidecar:scope:*` entries | Re-activate sidecar with an `allowed_scope_prefix` |
+| `sidecar_scope_missing` | 403 | Sidecar token has no `sidecar:scope:*` entries | Re-activate sidecar with `allowed_scopes` containing at least one scope |
 | `invalid_scope_format` | 400 | Scope entry not in `action:resource:identifier` format | Fix malformed scope entries |
 | `invalid_ttl` | 400 | TTL negative or exceeds 900 seconds | Use TTL between 0 and 900 |
 | `agent_not_found` | 404 | Target `agent_id` not registered | Register the agent first via the challenge-response flow |

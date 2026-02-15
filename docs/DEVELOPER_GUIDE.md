@@ -426,7 +426,7 @@ The sidecar flow is an alternative to per-agent launch tokens. A sidecar process
 Step 1: Admin issues sidecar activation token
     POST /v1/admin/sidecar-activations
     Authorization: Bearer <admin-jwt>
-    {"allowed_scope_prefix":"read:data:*","ttl":900}
+    {"allowed_scopes":["read:data:*"],"ttl":900}
     --> ValMw + WithRequiredScope("admin:launch-tokens:*")
     --> AdminSvc.CreateSidecarActivationToken
         --> TknSvc.Issue (sub="admin", aud=["sidecar_activation"],
@@ -579,7 +579,7 @@ Step 2: Authenticate as admin
 Step 3: Create sidecar activation token
     POST /v1/admin/sidecar-activations
     Authorization: Bearer <admin-jwt>
-    {"allowed_scope_prefix":"<AA_SIDECAR_SCOPE_CEILING>","ttl":600}
+    {"allowed_scopes":["<scope1>","<scope2>"],"ttl":600}
     --> Receives single-use activation JWT
 
 Step 4: Activate sidecar (single-use exchange)

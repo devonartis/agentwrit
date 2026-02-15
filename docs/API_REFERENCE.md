@@ -397,14 +397,14 @@ Create a short-lived single-use sidecar activation token. This token is used to 
 
 ```json
 {
-  "allowed_scope_prefix": "read:data:*",
+  "allowed_scopes": ["read:data:*", "write:data:*"],
   "ttl": 900
 }
 ```
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `allowed_scope_prefix` | string | Yes | -- | Scope prefix the sidecar is allowed to manage |
+| `allowed_scopes` | string[] | Yes | -- | Scope entries the sidecar is allowed to manage |
 | `ttl` | int | No | `900` | Activation token TTL in seconds |
 
 **Response `201 Created`:**
@@ -413,7 +413,7 @@ Create a short-lived single-use sidecar activation token. This token is used to 
 {
   "activation_token": "eyJhbG...",
   "expires_at": "2026-02-09T13:45:00Z",
-  "scope": "sidecar:activate:read:data:*"
+  "scope": "sidecar:activate:read:data:* sidecar:activate:write:data:*"
 }
 ```
 
@@ -423,7 +423,7 @@ Create a short-lived single-use sidecar activation token. This token is used to 
 
 | Status | Condition |
 |--------|-----------|
-| `400` | Missing `allowed_scope_prefix` or malformed JSON body |
+| `400` | Missing `allowed_scopes` or malformed JSON body |
 | `401` | Missing or invalid Bearer token |
 | `403` | Token lacks `admin:launch-tokens:*` scope |
 | `500` | Internal error during activation token creation |
@@ -434,7 +434,7 @@ Create a short-lived single-use sidecar activation token. This token is used to 
 curl -X POST http://localhost:8080/v1/admin/sidecar-activations \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -d '{"allowed_scope_prefix":"read:data:*","ttl":900}'
+  -d '{"allowed_scopes":["read:data:*"],"ttl":900}'
 ```
 
 ---

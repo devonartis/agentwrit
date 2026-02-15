@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Fixed
 
+- **Bug [P0]**: Multi-scope sidecar activation — `AllowedScopePrefix` (string) → `AllowedScopes` ([]string). Comma-joined scope entries were stored as a single JWT claim, causing all multi-scope token exchanges to fail with `scope_escalation_denied`. Each scope now gets its own `sidecar:activate:X` and `sidecar:scope:X` claim entry. **Breaking change** to `POST /v1/admin/sidecar-activations` request body.
 - **Security [P1]**: Removed dead `TknSvc.Exchange()` and `isScopeAllowed()` methods that used a weaker prefix-based scope check instead of `authz.ScopeIsSubset()`. Deleted associated sentinel errors and stale test.
 - **Security [P2]**: Token exchange TTL=0 now clamps to `maxExchangeTTL` (900s) instead of delegating to `cfg.DefaultTTL`, preventing silent TTL cap bypass when `AA_DEFAULT_TTL` > 900.
 - **Lint**: Resolved 18 errcheck findings across production and test code (token exchange handler, problem details, admin handler, store tests, revoke tests, handler tests, admin handler tests, logging test)
@@ -16,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Testing**: Docker E2E live tests (`live_test_sidecar.sh`, `live_test_docker.sh`) are now mandatory module gates in `gates.sh` — blocks merge if any live test fails
+- **Testing**: New `scripts/live_test_sidecar.sh` — 9-step Docker-based E2E covering all 5 sidecar endpoints (health, lazy reg, cache hit, scope ceiling, renew, challenge, BYOK register, BYOK token, broker validate)
 - **Sidecar Phase 2**: Background auto-renewal goroutine for sidecar bearer token (80% TTL default, configurable via `AA_SIDECAR_RENEWAL_BUFFER`)
 - **Sidecar Phase 2**: Per-agent registration — lazy on first `POST /v1/token` with sidecar-managed Ed25519 keypairs
 - **Sidecar Phase 2**: BYOK registration: `GET /v1/challenge` proxy + `POST /v1/register` for developer-provided keys

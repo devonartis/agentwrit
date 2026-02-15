@@ -904,12 +904,14 @@ components:
 
     CreateSidecarActivationRequest:
       type: object
-      required: [allowed_scope_prefix]
+      required: [allowed_scopes]
       properties:
-        allowed_scope_prefix:
-          type: string
-          description: Scope prefix the sidecar is allowed to grant to agents
-          example: "read:data:*"
+        allowed_scopes:
+          type: array
+          items:
+            type: string
+          description: Scope entries the sidecar is allowed to grant to agents
+          example: ["read:data:*", "write:data:*"]
         ttl:
           type: integer
           description: Activation token validity in seconds
