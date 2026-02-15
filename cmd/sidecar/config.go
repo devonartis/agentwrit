@@ -7,12 +7,16 @@ import (
 )
 
 type sidecarConfig struct {
-	BrokerURL     string
-	Port          string
-	AdminSecret   string
-	ScopeCeiling  []string
-	LogLevel      string
-	RenewalBuffer float64
+	BrokerURL       string
+	Port            string
+	AdminSecret     string
+	ScopeCeiling    []string
+	LogLevel        string
+	RenewalBuffer   float64
+	CBWindow        int     // sliding window duration in seconds
+	CBThreshold     float64 // failure rate 0.0-1.0 to trip circuit
+	CBProbeInterval int     // seconds between health probes when open
+	CBMinRequests   int     // min requests in window before tripping
 }
 
 func loadConfig() sidecarConfig {
@@ -30,6 +34,11 @@ func loadConfig() sidecarConfig {
 	}
 	cfg.RenewalBuffer = renewalBuf
 
+	cfg.CBWindow = envOrInt("AA_SIDECAR_CB_WINDOW", 30)
+	cfg.CBThreshold = envOrFloat("AA_SIDECAR_CB_THRESHOLD", 0.5, 0.0, 1.0)
+	cfg.CBProbeInterval = envOrInt("AA_SIDECAR_CB_PROBE_INTERVAL", 5)
+	cfg.CBMinRequests = envOrInt("AA_SIDECAR_CB_MIN_REQUESTS", 5)
+
 	raw := os.Getenv("AA_SIDECAR_SCOPE_CEILING")
 	if raw != "" {
 		for _, s := range strings.Split(raw, ",") {
@@ -46,6 +55,24 @@ func loadConfig() sidecarConfig {
 func envOr(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return fallback
+}
+
+func envOrInt(key string, fallback int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return fallback
+}
+
+func envOrFloat(key string, fallback, min, max float64) float64 {
+	if v := os.Getenv(key); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f >= min && f <= max {
+			return f
+		}
 	}
 	return fallback
 }

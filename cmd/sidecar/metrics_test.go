@@ -40,3 +40,15 @@ func TestRecordSidecarExchange(t *testing.T) {
 func TestRecordSidecarScopeDenial(t *testing.T) {
 	RecordScopeDenial()
 }
+
+func TestCircuitBreakerMetrics_NotNil(t *testing.T) {
+	if SidecarCircuitState == nil {
+		t.Error("SidecarCircuitState is nil")
+	}
+	if SidecarCircuitTripsTotal == nil {
+		t.Error("SidecarCircuitTripsTotal is nil")
+	}
+	if SidecarCachedTokensServedTotal == nil {
+		t.Error("SidecarCachedTokensServedTotal is nil")
+	}
+}

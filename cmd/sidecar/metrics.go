@@ -49,6 +49,24 @@ var SidecarRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 	Buckets: prometheus.DefBuckets,
 }, []string{"endpoint"})
 
+// SidecarCircuitState reports the current circuit breaker state (0=closed, 1=open, 2=probing).
+var SidecarCircuitState = promauto.NewGauge(prometheus.GaugeOpts{
+	Name: "agentauth_sidecar_circuit_state",
+	Help: "Circuit breaker state: 0=closed, 1=open, 2=probing",
+})
+
+// SidecarCircuitTripsTotal counts how many times the circuit has tripped open.
+var SidecarCircuitTripsTotal = promauto.NewCounter(prometheus.CounterOpts{
+	Name: "agentauth_sidecar_circuit_trips_total",
+	Help: "Total times circuit breaker has tripped open",
+})
+
+// SidecarCachedTokensServedTotal counts tokens served from cache during open circuit.
+var SidecarCachedTokensServedTotal = promauto.NewCounter(prometheus.CounterOpts{
+	Name: "agentauth_sidecar_cached_tokens_served_total",
+	Help: "Total tokens served from cache during open circuit",
+})
+
 // ---------------------------------------------------------------------------
 // Convenience helpers — thin wrappers so call sites stay clean.
 // ---------------------------------------------------------------------------

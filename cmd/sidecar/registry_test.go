@@ -267,3 +267,70 @@ func TestAgentRegistry_GetOrLock_SerializesRegistration(t *testing.T) {
 		t.Errorf("expected exactly 1 found, got %d", found)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// TestAgentRegistry_CacheToken_HappyPath — Cache + retrieve within TTL
+// ---------------------------------------------------------------------------
+
+func TestAgentRegistry_CacheToken_HappyPath(t *testing.T) {
+	reg := newAgentRegistry()
+	reg.store("agent-a:task-1", &agentEntry{spiffeID: "spiffe://test/a"})
+
+	reg.cacheToken("agent-a:task-1", "jwt-token-abc", []string{"read:data:*"}, 300)
+
+	token, remaining, ok := reg.cachedToken("agent-a:task-1", []string{"read:data:*"})
+	if !ok {
+		t.Fatal("cachedToken returned false, want true")
+	}
+	if token != "jwt-token-abc" {
+		t.Errorf("token = %q, want jwt-token-abc", token)
+	}
+	if remaining <= 0 || remaining > 300 {
+		t.Errorf("remaining = %d, want 1-300", remaining)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestAgentRegistry_CacheToken_Expired — TTL=0 means already expired
+// ---------------------------------------------------------------------------
+
+func TestAgentRegistry_CacheToken_Expired(t *testing.T) {
+	reg := newAgentRegistry()
+	reg.store("agent-a:task-1", &agentEntry{spiffeID: "spiffe://test/a"})
+
+	reg.cacheToken("agent-a:task-1", "expired-jwt", []string{"read:data:*"}, 0)
+
+	_, _, ok := reg.cachedToken("agent-a:task-1", []string{"read:data:*"})
+	if ok {
+		t.Error("cachedToken returned true for expired token, want false")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestAgentRegistry_CacheToken_ScopeMismatch — Different scope not covered
+// ---------------------------------------------------------------------------
+
+func TestAgentRegistry_CacheToken_ScopeMismatch(t *testing.T) {
+	reg := newAgentRegistry()
+	reg.store("agent-a:task-1", &agentEntry{spiffeID: "spiffe://test/a"})
+
+	reg.cacheToken("agent-a:task-1", "jwt-token", []string{"read:data:*"}, 300)
+
+	_, _, ok := reg.cachedToken("agent-a:task-1", []string{"write:data:*"})
+	if ok {
+		t.Error("cachedToken returned true for mismatched scope, want false")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestAgentRegistry_CacheToken_MissingAgent — Agent not in registry
+// ---------------------------------------------------------------------------
+
+func TestAgentRegistry_CacheToken_MissingAgent(t *testing.T) {
+	reg := newAgentRegistry()
+
+	_, _, ok := reg.cachedToken("nonexistent:task-1", []string{"read:data:*"})
+	if ok {
+		t.Error("cachedToken returned true for missing agent, want false")
+	}
+}

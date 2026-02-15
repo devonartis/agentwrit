@@ -36,17 +36,19 @@ type tokenHandler struct {
 	scopeCeiling []string
 	registry     *agentRegistry
 	adminSecret  string
+	cb           *circuitBreaker
 }
 
 // newTokenHandler creates a tokenHandler wired to the given broker client,
-// sidecar state, scope ceiling, agent registry, and admin secret.
-func newTokenHandler(bc *brokerClient, state *sidecarState, ceiling []string, reg *agentRegistry, adminSecret string) *tokenHandler {
+// sidecar state, scope ceiling, agent registry, admin secret, and circuit breaker.
+func newTokenHandler(bc *brokerClient, state *sidecarState, ceiling []string, reg *agentRegistry, adminSecret string, cb *circuitBreaker) *tokenHandler {
 	return &tokenHandler{
 		broker:       bc,
 		state:        state,
 		scopeCeiling: ceiling,
 		registry:     reg,
 		adminSecret:  adminSecret,
+		cb:           cb,
 	}
 }
 
@@ -98,15 +100,44 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check circuit breaker before calling broker.
+	if h.cb != nil && !h.cb.Allow() {
+		// Circuit is open — try to serve cached token.
+		if token, remaining, ok := h.registry.cachedToken(agentKey, req.Scope); ok {
+			SidecarCachedTokensServedTotal.Inc()
+			obs.Warn("SIDECAR", "TOKEN", "serving cached token (circuit open)", "agent="+agentKey)
+			w.Header().Set("X-AgentAuth-Cached", "true")
+			writeJSON(w, http.StatusOK, map[string]any{
+				"access_token": token,
+				"expires_in":   remaining,
+				"scope":        req.Scope,
+				"agent_id":     agentID,
+			})
+			return
+		}
+		writeError(w, http.StatusServiceUnavailable, "broker unavailable and no cached token")
+		return
+	}
+
 	// Delegate to broker token exchange using the agent's SPIFFE ID.
 	exResp, err := h.broker.tokenExchange(h.state.getToken(), agentID, req.Scope, ttl)
 	if err != nil {
 		RecordExchange("failure")
+		if h.cb != nil {
+			h.cb.RecordFailure()
+		}
 		writeError(w, http.StatusBadGateway, "broker token exchange failed: "+err.Error())
 		return
 	}
 
 	RecordExchange("success")
+	if h.cb != nil {
+		h.cb.RecordSuccess()
+	}
+
+	// Cache the token for failsafe fallback.
+	h.registry.cacheToken(agentKey, exResp.AccessToken, req.Scope, exResp.ExpiresIn)
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"access_token": exResp.AccessToken,
 		"expires_in":   exResp.ExpiresIn,
@@ -261,8 +292,16 @@ func (h *healthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	healthy := h.state != nil && h.state.isHealthy()
-	connected := h.state != nil && h.state.getToken() != ""
+	if h.state == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"status":  "bootstrapping",
+			"healthy": false,
+		})
+		return
+	}
+
+	healthy := h.state.isHealthy()
+	connected := h.state.getToken() != ""
 
 	status := "ok"
 	httpStatus := http.StatusOK
