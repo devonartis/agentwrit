@@ -11,26 +11,31 @@ import (
 // mockRenewer is a configurable mock for renewFunc. It tracks call count
 // and returns errors for the first failCount calls, then succeeds.
 type mockRenewer struct {
-	calls     atomic.Int64
-	failCount int64
-	newTTL    int
+	calls         atomic.Int64
+	failCount     int64
+	newTTL        int
+	scopeCeiling  []string // if set, included in successful responses
 }
 
-func (m *mockRenewer) renew(token string) (string, int, error) {
+func (m *mockRenewer) renew(token string) (*renewResp, error) {
 	n := m.calls.Add(1)
 	if n <= m.failCount {
-		return "", 0, fmt.Errorf("mock renew error #%d", n)
+		return nil, fmt.Errorf("mock renew error #%d", n)
 	}
 	ttl := m.newTTL
 	if ttl == 0 {
 		ttl = 2
 	}
-	return fmt.Sprintf("renewed-token-%d", n), ttl, nil
+	return &renewResp{
+		AccessToken:  fmt.Sprintf("renewed-token-%d", n),
+		ExpiresIn:    ttl,
+		ScopeCeiling: m.scopeCeiling,
+	}, nil
 }
 
 // alwaysFailRenewer always returns an error.
-func alwaysFailRenewer(_ string) (string, int, error) {
-	return "", 0, fmt.Errorf("permanent failure")
+func alwaysFailRenewer(_ string) (*renewResp, error) {
+	return nil, fmt.Errorf("permanent failure")
 }
 
 func TestStartRenewal_RenewsBeforeExpiry(t *testing.T) {
@@ -44,7 +49,7 @@ func TestStartRenewal_RenewsBeforeExpiry(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		startRenewal(ctx, st, mock.renew, 0.5)
+		startRenewal(ctx, st, mock.renew, 0.5, nil)
 		close(done)
 	}()
 
@@ -86,7 +91,7 @@ func TestStartRenewal_BackoffOnFailure(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		startRenewal(ctx, st, mock.renew, 0.5)
+		startRenewal(ctx, st, mock.renew, 0.5, nil)
 		close(done)
 	}()
 
@@ -128,7 +133,7 @@ func TestStartRenewal_SetsUnhealthyOnExpiry(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		startRenewal(ctx, st, alwaysFailRenewer, 0.5)
+		startRenewal(ctx, st, alwaysFailRenewer, 0.5, nil)
 		close(done)
 	}()
 
@@ -165,7 +170,7 @@ func TestStartRenewal_StopsOnContextCancel(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		startRenewal(ctx, st, mock.renew, 0.8)
+		startRenewal(ctx, st, mock.renew, 0.8, nil)
 		close(done)
 	}()
 
@@ -184,4 +189,89 @@ func TestStartRenewal_StopsOnContextCancel(t *testing.T) {
 	if mock.calls.Load() != 0 {
 		t.Errorf("expected 0 renewal calls, got %d", mock.calls.Load())
 	}
+}
+
+func TestStartRenewal_UpdatesCeilingFromResponse(t *testing.T) {
+	// Setup: 1s TTL, 0.5 buffer. Mock returns a scope_ceiling in the response.
+	st := &sidecarState{}
+	st.setToken("initial-token", 1)
+
+	ceiling := newCeilingCache([]string{"read:data:*"})
+
+	mock := &mockRenewer{
+		newTTL:       2,
+		scopeCeiling: []string{"read:data:*", "write:data:*"},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		startRenewal(ctx, st, mock.renew, 0.5, ceiling)
+		close(done)
+	}()
+
+	// Wait for at least one successful renewal.
+	deadline := time.After(2 * time.Second)
+	for {
+		if mock.calls.Load() >= 1 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("timed out waiting for renewal call")
+		default:
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+
+	// Ceiling should have been updated.
+	got := ceiling.get()
+	if len(got) != 2 {
+		t.Fatalf("ceiling = %v, want [read:data:* write:data:*]", got)
+	}
+	if got[0] != "read:data:*" || got[1] != "write:data:*" {
+		t.Errorf("ceiling = %v, want [read:data:* write:data:*]", got)
+	}
+
+	cancel()
+	<-done
+}
+
+func TestStartRenewal_NilCeilingDoesNotPanic(t *testing.T) {
+	// Verify that passing nil ceiling works when broker returns scope_ceiling.
+	st := &sidecarState{}
+	st.setToken("initial-token", 1)
+
+	mock := &mockRenewer{
+		newTTL:       2,
+		scopeCeiling: []string{"read:data:*"},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		startRenewal(ctx, st, mock.renew, 0.5, nil) // nil ceiling
+		close(done)
+	}()
+
+	deadline := time.After(2 * time.Second)
+	for {
+		if mock.calls.Load() >= 1 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("timed out waiting for renewal call")
+		default:
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+
+	// Should not panic — just a sanity check.
+	cancel()
+	<-done
 }

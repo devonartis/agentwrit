@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/cfg"
 	"github.com/divineartis/agentauth/internal/store"
 	"github.com/divineartis/agentauth/internal/token"
@@ -24,6 +25,18 @@ func newTestAdminSvc(t *testing.T) *AdminSvc {
 	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
 	st := store.NewSqlStore()
 	return NewAdminSvc(testSecret, tknSvc, st, nil)
+}
+
+func newTestAdminSvcWithAudit(t *testing.T) (*AdminSvc, *audit.AuditLog) {
+	t.Helper()
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
+	st := store.NewSqlStore()
+	al := audit.NewAuditLog()
+	return NewAdminSvc(testSecret, tknSvc, st, al), al
 }
 
 // --- Authenticate ---
@@ -490,5 +503,128 @@ func TestActivateSidecar_InvalidToken(t *testing.T) {
 	})
 	if !errors.Is(err, ErrActivationTokenInvalid) {
 		t.Fatalf("expected invalid token error, got %v", err)
+	}
+}
+
+// --- GetSidecarCeiling ---
+
+func TestGetSidecarCeiling_Success(t *testing.T) {
+	svc := newTestAdminSvc(t)
+
+	// Activate a sidecar to persist a ceiling.
+	act, err := svc.CreateSidecarActivationToken(CreateSidecarActivationReq{
+		AllowedScopes: []string{"read:Customers"},
+		TTL:           120,
+	}, adminSub)
+	if err != nil {
+		t.Fatalf("create activation: %v", err)
+	}
+	resp, err := svc.ActivateSidecar(ActivateSidecarReq{
+		SidecarActivationToken: act.ActivationToken,
+	})
+	if err != nil {
+		t.Fatalf("activate sidecar: %v", err)
+	}
+
+	ceiling, err := svc.GetSidecarCeiling(resp.SidecarID)
+	if err != nil {
+		t.Fatalf("get ceiling: %v", err)
+	}
+	if len(ceiling) != 1 || ceiling[0] != "read:Customers" {
+		t.Fatalf("unexpected ceiling: %v", ceiling)
+	}
+}
+
+func TestGetSidecarCeiling_NotFound(t *testing.T) {
+	svc := newTestAdminSvc(t)
+
+	_, err := svc.GetSidecarCeiling("nonexistent-sidecar")
+	if !errors.Is(err, store.ErrCeilingNotFound) {
+		t.Fatalf("expected ErrCeilingNotFound, got %v", err)
+	}
+}
+
+// --- UpdateSidecarCeiling ---
+
+func TestUpdateSidecarCeiling_Success(t *testing.T) {
+	svc, al := newTestAdminSvcWithAudit(t)
+
+	// Seed a ceiling.
+	_ = svc.store.SaveCeiling("sc-1", []string{"read:Customers:*", "write:Orders:*"})
+
+	result, err := svc.UpdateSidecarCeiling("sc-1", []string{"read:Customers:*"}, "admin")
+	if err != nil {
+		t.Fatalf("update ceiling: %v", err)
+	}
+	if len(result.OldCeiling) != 2 {
+		t.Fatalf("expected 2 old scopes, got %d", len(result.OldCeiling))
+	}
+	if len(result.NewCeiling) != 1 || result.NewCeiling[0] != "read:Customers:*" {
+		t.Fatalf("unexpected new ceiling: %v", result.NewCeiling)
+	}
+	if !result.Narrowed {
+		t.Fatal("expected narrowed=true when removing a scope")
+	}
+
+	// Verify the ceiling was persisted.
+	got, err := svc.GetSidecarCeiling("sc-1")
+	if err != nil {
+		t.Fatalf("get after update: %v", err)
+	}
+	if len(got) != 1 || got[0] != "read:Customers:*" {
+		t.Fatalf("persisted ceiling mismatch: %v", got)
+	}
+
+	// Verify audit event was recorded.
+	events := al.Events()
+	found := false
+	for _, e := range events {
+		if e.EventType == audit.EventScopesCeilingUpdated {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected audit event for ceiling update")
+	}
+}
+
+func TestUpdateSidecarCeiling_Widening(t *testing.T) {
+	svc := newTestAdminSvc(t)
+
+	_ = svc.store.SaveCeiling("sc-2", []string{"read:Customers:*"})
+
+	result, err := svc.UpdateSidecarCeiling("sc-2", []string{"read:Customers:*", "write:Orders:*"}, "admin")
+	if err != nil {
+		t.Fatalf("update ceiling: %v", err)
+	}
+	if result.Narrowed {
+		t.Fatal("expected narrowed=false when widening scope")
+	}
+}
+
+func TestUpdateSidecarCeiling_InvalidScope(t *testing.T) {
+	svc := newTestAdminSvc(t)
+
+	_ = svc.store.SaveCeiling("sc-3", []string{"read:Customers:*"})
+
+	_, err := svc.UpdateSidecarCeiling("sc-3", []string{"bad-scope"}, "admin")
+	if !errors.Is(err, ErrInvalidScopeFormat) {
+		t.Fatalf("expected ErrInvalidScopeFormat, got %v", err)
+	}
+}
+
+func TestUpdateSidecarCeiling_NoPreviousCeiling(t *testing.T) {
+	svc := newTestAdminSvc(t)
+
+	result, err := svc.UpdateSidecarCeiling("sc-new", []string{"read:Data:*"}, "admin")
+	if err != nil {
+		t.Fatalf("update ceiling: %v", err)
+	}
+	if len(result.OldCeiling) != 0 {
+		t.Fatalf("expected empty old ceiling, got %v", result.OldCeiling)
+	}
+	if result.Narrowed {
+		t.Fatal("expected narrowed=false when no previous ceiling")
 	}
 }

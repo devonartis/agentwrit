@@ -166,12 +166,21 @@ func (c *brokerClient) tokenExchange(sidecarToken, agentID string, scope []strin
 	}, nil
 }
 
+// renewResp holds the parsed response from POST /v1/token/renew.
+type renewResp struct {
+	AccessToken  string
+	ExpiresIn    int
+	ScopeCeiling []string // nil if not present in response
+}
+
 // tokenRenew renews the sidecar's own bearer token before it expires.
-// Calls POST /v1/token/renew with Bearer auth.
-func (c *brokerClient) tokenRenew(token string) (string, int, error) {
+// Calls POST /v1/token/renew with Bearer auth. If the broker includes a
+// scope_ceiling field in the response, it is returned so the sidecar can
+// update its ceiling cache.
+func (c *brokerClient) tokenRenew(token string) (*renewResp, error) {
 	resp, err := c.doJSON("POST", "/v1/token/renew", nil, token)
 	if err != nil {
-		return "", 0, fmt.Errorf("token renew: %w", err)
+		return nil, fmt.Errorf("token renew: %w", err)
 	}
 
 	newToken, _ := resp["access_token"].(string)
@@ -182,10 +191,23 @@ func (c *brokerClient) tokenRenew(token string) (string, int, error) {
 	}
 
 	if newToken == "" {
-		return "", 0, fmt.Errorf("token renew: missing access_token in response")
+		return nil, fmt.Errorf("token renew: missing access_token in response")
 	}
 
-	return newToken, expiresIn, nil
+	var scopeCeiling []string
+	if raw, ok := resp["scope_ceiling"].([]any); ok {
+		for _, v := range raw {
+			if s, ok := v.(string); ok {
+				scopeCeiling = append(scopeCeiling, s)
+			}
+		}
+	}
+
+	return &renewResp{
+		AccessToken:  newToken,
+		ExpiresIn:    expiresIn,
+		ScopeCeiling: scopeCeiling,
+	}, nil
 }
 
 // getChallenge fetches a nonce from the broker. Calls GET /v1/challenge.

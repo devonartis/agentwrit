@@ -48,6 +48,7 @@ const (
 	EventScopeViolation                 = "scope_violation"
 	EventScopeCeilingExceeded           = "scope_ceiling_exceeded"
 	EventDelegationAttenuationViolation = "delegation_attenuation_violation"
+	EventScopesCeilingUpdated           = "scopes_ceiling_updated"
 )
 
 // AuditEvent is a single immutable entry in the audit trail. The Hash

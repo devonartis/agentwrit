@@ -48,8 +48,9 @@ func main() {
 	var state *sidecarState
 
 	// Set up routes. Health works pre-bootstrap; token routes require state.
+	ceiling := newCeilingCache(cfg.ScopeCeiling)
 	mux := http.NewServeMux()
-	healthH := newHealthHandler(nil, cfg.ScopeCeiling, registry)
+	healthH := newHealthHandler(nil, ceiling, registry)
 	mux.Handle("/v1/health", healthH)
 	mux.Handle("/v1/metrics", promhttp.Handler())
 
@@ -108,12 +109,12 @@ func main() {
 
 	// Bootstrap succeeded — wire remaining routes.
 	healthH.state = state
-	mux.Handle("/v1/token", newTokenHandler(bc, state, cfg.ScopeCeiling, registry, cfg.AdminSecret, cb))
+	mux.Handle("/v1/token", newTokenHandler(bc, state, ceiling, registry, cfg.AdminSecret, cb))
 	mux.Handle("/v1/token/renew", newRenewHandler(bc))
 	mux.Handle("/v1/challenge", newChallengeProxyHandler(bc))
-	mux.Handle("/v1/register", newRegisterHandler(bc, registry, cfg.AdminSecret, cfg.ScopeCeiling))
+	mux.Handle("/v1/register", newRegisterHandler(bc, registry, cfg.AdminSecret, ceiling))
 
-	go startRenewal(ctx, state, bc.tokenRenew, cfg.RenewalBuffer)
+	go startRenewal(ctx, state, bc.tokenRenew, cfg.RenewalBuffer, ceiling)
 	obs.Ok("SIDECAR", "MAIN", "renewal goroutine started", fmt.Sprintf("buffer=%.0f%%", cfg.RenewalBuffer*100))
 
 	go startProbe(ctx, cb, bc)

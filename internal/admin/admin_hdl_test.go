@@ -11,6 +11,7 @@ import (
 
 	"github.com/divineartis/agentauth/internal/authz"
 	"github.com/divineartis/agentauth/internal/cfg"
+	"github.com/divineartis/agentauth/internal/revoke"
 	"github.com/divineartis/agentauth/internal/store"
 	"github.com/divineartis/agentauth/internal/token"
 )
@@ -25,7 +26,7 @@ func newTestHandler(t *testing.T) (*AdminHdl, *AdminSvc, *token.TknSvc) {
 	st := store.NewSqlStore()
 	adminSvc := NewAdminSvc(testSecret, tknSvc, st, nil)
 	valMw := authz.NewValMw(tknSvc, nil, nil)
-	hdl := NewAdminHdl(adminSvc, valMw, nil)
+	hdl := NewAdminHdl(adminSvc, valMw, nil, nil)
 	return hdl, adminSvc, tknSvc
 }
 
@@ -361,5 +362,254 @@ func TestHandleActivateSidecar_InvalidToken(t *testing.T) {
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// --- GET /v1/admin/sidecars/{id}/ceiling ---
+
+func TestHandleGetCeiling_Success(t *testing.T) {
+	mux, svc, _ := newTestMux(t)
+	adminToken := getAdminToken(t, mux)
+
+	// Seed a ceiling in the store.
+	_ = svc.store.SaveCeiling("sc-test-1", []string{"read:Customers:*"})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/admin/sidecars/sc-test-1/ceiling", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp ceilingResp
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.SidecarID != "sc-test-1" {
+		t.Fatalf("expected sidecar_id=sc-test-1, got %s", resp.SidecarID)
+	}
+	if len(resp.ScopeCeiling) != 1 || resp.ScopeCeiling[0] != "read:Customers:*" {
+		t.Fatalf("unexpected ceiling: %v", resp.ScopeCeiling)
+	}
+}
+
+func TestHandleGetCeiling_NotFound(t *testing.T) {
+	mux, _, _ := newTestMux(t)
+	adminToken := getAdminToken(t, mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/admin/sidecars/nonexistent/ceiling", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleGetCeiling_NoAuth(t *testing.T) {
+	mux, _, _ := newTestMux(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/admin/sidecars/sc-1/ceiling", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// --- PUT /v1/admin/sidecars/{id}/ceiling ---
+
+func TestHandleUpdateCeiling_Success(t *testing.T) {
+	mux, svc, _ := newTestMux(t)
+	adminToken := getAdminToken(t, mux)
+
+	_ = svc.store.SaveCeiling("sc-upd-1", []string{"read:Customers:*", "write:Orders:*"})
+
+	body, _ := json.Marshal(updateCeilingReq{
+		ScopeCeiling: []string{"read:Customers:*"},
+	})
+	req := httptest.NewRequest(http.MethodPut, "/v1/admin/sidecars/sc-upd-1/ceiling", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var result CeilingUpdateResult
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(result.OldCeiling) != 2 {
+		t.Fatalf("expected 2 old scopes, got %d", len(result.OldCeiling))
+	}
+	if !result.Narrowed {
+		t.Fatal("expected narrowed=true")
+	}
+}
+
+func TestHandleUpdateCeiling_EmptyScope(t *testing.T) {
+	mux, _, _ := newTestMux(t)
+	adminToken := getAdminToken(t, mux)
+
+	body, _ := json.Marshal(updateCeilingReq{
+		ScopeCeiling: []string{},
+	})
+	req := httptest.NewRequest(http.MethodPut, "/v1/admin/sidecars/sc-1/ceiling", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleUpdateCeiling_InvalidScopeFormat(t *testing.T) {
+	mux, svc, _ := newTestMux(t)
+	adminToken := getAdminToken(t, mux)
+
+	_ = svc.store.SaveCeiling("sc-bad", []string{"read:Customers:*"})
+
+	body, _ := json.Marshal(updateCeilingReq{
+		ScopeCeiling: []string{"bad-scope"},
+	})
+	req := httptest.NewRequest(http.MethodPut, "/v1/admin/sidecars/sc-bad/ceiling", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleUpdateCeiling_NoAuth(t *testing.T) {
+	mux, _, _ := newTestMux(t)
+
+	body, _ := json.Marshal(updateCeilingReq{
+		ScopeCeiling: []string{"read:Customers:*"},
+	})
+	req := httptest.NewRequest(http.MethodPut, "/v1/admin/sidecars/sc-1/ceiling", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleUpdateCeiling_NarrowingTriggersRevocation(t *testing.T) {
+	// Build handler with a real RevSvc so we can verify revocation.
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
+	st := store.NewSqlStore()
+	adminSvc := NewAdminSvc(testSecret, tknSvc, st, nil)
+	valMw := authz.NewValMw(tknSvc, nil, nil)
+	revSvc := revoke.NewRevSvc()
+	hdl := NewAdminHdl(adminSvc, valMw, nil, revSvc)
+
+	mux := http.NewServeMux()
+	hdl.RegisterRoutes(mux)
+	adminToken := getAdminToken(t, mux)
+
+	// Seed a ceiling.
+	_ = st.SaveCeiling("sc-rev-1", []string{"read:Customers:*", "write:Orders:*"})
+
+	// Narrow the ceiling.
+	body, _ := json.Marshal(updateCeilingReq{
+		ScopeCeiling: []string{"read:Customers:*"},
+	})
+	req := httptest.NewRequest(http.MethodPut, "/v1/admin/sidecars/sc-rev-1/ceiling", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var result CeilingUpdateResult
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !result.Narrowed {
+		t.Fatal("expected narrowed=true")
+	}
+	if !result.Revoked {
+		t.Fatal("expected revoked=true after narrowing")
+	}
+	if result.RevokedCount != 1 {
+		t.Fatalf("expected revoked_count=1, got %d", result.RevokedCount)
+	}
+
+	// Verify the sidecar token is actually revoked.
+	sidecarClaims := &token.TknClaims{Sub: "sidecar:sc-rev-1"}
+	if !revSvc.IsRevoked(sidecarClaims) {
+		t.Fatal("expected sidecar token to be revoked")
+	}
+}
+
+func TestHandleUpdateCeiling_WideningNoRevocation(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
+	st := store.NewSqlStore()
+	adminSvc := NewAdminSvc(testSecret, tknSvc, st, nil)
+	valMw := authz.NewValMw(tknSvc, nil, nil)
+	revSvc := revoke.NewRevSvc()
+	hdl := NewAdminHdl(adminSvc, valMw, nil, revSvc)
+
+	mux := http.NewServeMux()
+	hdl.RegisterRoutes(mux)
+	adminToken := getAdminToken(t, mux)
+
+	// Seed a ceiling with one scope.
+	_ = st.SaveCeiling("sc-wide-1", []string{"read:Customers:*"})
+
+	// Widen the ceiling (add a scope).
+	body, _ := json.Marshal(updateCeilingReq{
+		ScopeCeiling: []string{"read:Customers:*", "write:Orders:*"},
+	})
+	req := httptest.NewRequest(http.MethodPut, "/v1/admin/sidecars/sc-wide-1/ceiling", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var result CeilingUpdateResult
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if result.Narrowed {
+		t.Fatal("expected narrowed=false for widening")
+	}
+	if result.Revoked {
+		t.Fatal("expected revoked=false when not narrowed")
+	}
+
+	// Verify the sidecar token is NOT revoked.
+	sidecarClaims := &token.TknClaims{Sub: "sidecar:sc-wide-1"}
+	if revSvc.IsRevoked(sidecarClaims) {
+		t.Fatal("sidecar token should not be revoked on widening")
 	}
 }

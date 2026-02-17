@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -262,5 +263,48 @@ func TestSaveAgent_Overwrite(t *testing.T) {
 	got, _ := st.GetAgent("spiffe://test/agent/o/t/ow")
 	if len(got.Scope) != 1 || got.Scope[0] != "write:data:*" {
 		t.Errorf("expected overwritten scope [write:data:*], got %v", got.Scope)
+	}
+}
+
+// --- Sidecar ceiling ---
+
+func TestSaveCeiling_AndGet(t *testing.T) {
+	st := NewSqlStore()
+
+	err := st.SaveCeiling("sc-001", []string{"read:tickets:*", "write:tickets:metadata"})
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	got, err := st.GetCeiling("sc-001")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(got) != 2 || got[0] != "read:tickets:*" {
+		t.Errorf("expected [read:tickets:* write:tickets:metadata], got %v", got)
+	}
+}
+
+func TestGetCeiling_NotFound(t *testing.T) {
+	st := NewSqlStore()
+
+	_, err := st.GetCeiling("nonexistent")
+	if !errors.Is(err, ErrCeilingNotFound) {
+		t.Errorf("expected ErrCeilingNotFound, got %v", err)
+	}
+}
+
+func TestSaveCeiling_Overwrite(t *testing.T) {
+	st := NewSqlStore()
+
+	_ = st.SaveCeiling("sc-001", []string{"read:tickets:*"})
+	_ = st.SaveCeiling("sc-001", []string{"read:tickets:*", "write:tickets:metadata"})
+
+	got, err := st.GetCeiling("sc-001")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("expected overwrite to 2 scopes, got %d", len(got))
 	}
 }

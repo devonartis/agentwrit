@@ -31,24 +31,24 @@ type tokenReq struct {
 // against the sidecar's configured ceiling, and delegates to the broker's
 // token exchange endpoint.
 type tokenHandler struct {
-	broker       *brokerClient
-	state        *sidecarState
-	scopeCeiling []string
-	registry     *agentRegistry
-	adminSecret  string
-	cb           *circuitBreaker
+	broker      *brokerClient
+	state       *sidecarState
+	ceiling     *ceilingCache
+	registry    *agentRegistry
+	adminSecret string
+	cb          *circuitBreaker
 }
 
 // newTokenHandler creates a tokenHandler wired to the given broker client,
 // sidecar state, scope ceiling, agent registry, admin secret, and circuit breaker.
-func newTokenHandler(bc *brokerClient, state *sidecarState, ceiling []string, reg *agentRegistry, adminSecret string, cb *circuitBreaker) *tokenHandler {
+func newTokenHandler(bc *brokerClient, state *sidecarState, ceiling *ceilingCache, reg *agentRegistry, adminSecret string, cb *circuitBreaker) *tokenHandler {
 	return &tokenHandler{
-		broker:       bc,
-		state:        state,
-		scopeCeiling: ceiling,
-		registry:     reg,
-		adminSecret:  adminSecret,
-		cb:           cb,
+		broker:      bc,
+		state:       state,
+		ceiling:     ceiling,
+		registry:    reg,
+		adminSecret: adminSecret,
+		cb:          cb,
 	}
 }
 
@@ -75,14 +75,14 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check requested scope against ceiling.
-	if !scopeIsSubset(req.Scope, h.scopeCeiling) {
+	if !scopeIsSubset(req.Scope, h.ceiling.get()) {
 		RecordScopeDenial()
 		obs.Warn("SIDECAR", "TOKEN", "scope ceiling exceeded",
 			"event_type=scope_ceiling_exceeded",
 			"agent_name="+req.AgentName,
 			"task_id="+req.TaskID,
 			"requested="+strings.Join(req.Scope, ","),
-			"ceiling="+strings.Join(h.scopeCeiling, ","))
+			"ceiling="+strings.Join(h.ceiling.get(), ","))
 		writeError(w, http.StatusForbidden, "requested scope exceeds sidecar ceiling")
 		return
 	}
@@ -257,15 +257,15 @@ func (h *renewHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newToken, expiresIn, err := h.broker.tokenRenew(token)
+	resp, err := h.broker.tokenRenew(token)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "broker token renew failed: "+err.Error())
 		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"access_token": newToken,
-		"expires_in":   expiresIn,
+		"access_token": resp.AccessToken,
+		"expires_in":   resp.ExpiresIn,
 	})
 }
 
@@ -277,17 +277,17 @@ func (h *renewHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // endpoint. It reports sidecar status, broker connectivity, and the
 // configured scope ceiling.
 type healthHandler struct {
-	state        *sidecarState
-	scopeCeiling []string
-	registry     *agentRegistry
+	state    *sidecarState
+	ceiling  *ceilingCache
+	registry *agentRegistry
 }
 
 // newHealthHandler creates a healthHandler with the given state, ceiling, and registry.
-func newHealthHandler(state *sidecarState, ceiling []string, registry *agentRegistry) *healthHandler {
+func newHealthHandler(state *sidecarState, ceiling *ceilingCache, registry *agentRegistry) *healthHandler {
 	return &healthHandler{
-		state:        state,
-		scopeCeiling: ceiling,
-		registry:     registry,
+		state:    state,
+		ceiling:  ceiling,
+		registry: registry,
 	}
 }
 
@@ -319,7 +319,7 @@ func (h *healthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"status":           status,
 		"broker_connected": connected,
 		"healthy":          healthy,
-		"scope_ceiling":    h.scopeCeiling,
+		"scope_ceiling":    h.ceiling.get(),
 	}
 
 	if h.registry != nil {

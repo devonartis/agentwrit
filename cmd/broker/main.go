@@ -85,14 +85,14 @@ func main() {
 	challengeHdl := handler.NewChallengeHdl(sqlStore)
 	regHdl := handler.NewRegHdl(idSvc)
 	valHdl := handler.NewValHdl(tknSvc, revSvc)
-	renewHdl := handler.NewRenewHdl(tknSvc, auditLog)
+	renewHdl := handler.NewRenewHdl(tknSvc, auditLog, sqlStore)
 	revokeHdl := handler.NewRevokeHdl(revSvc, auditLog)
 	delegHdl := handler.NewDelegHdl(delegSvc)
 	tokenExchangeHdl := handler.NewTokenExchangeHdl(tknSvc, sqlStore, auditLog)
 	auditHdl := handler.NewAuditHdl(auditLog)
 	healthHdl := handler.NewHealthHdl(version)
 	metricsHdl := handler.NewMetricsHdl()
-	adminHdl := admin.NewAdminHdl(adminSvc, valMw, auditLog)
+	adminHdl := admin.NewAdminHdl(adminSvc, valMw, auditLog, revSvc)
 
 	// Route table per Tech Spec Section 2
 	mux := http.NewServeMux()

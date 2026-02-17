@@ -105,7 +105,7 @@ func TestTokenHandler_HappyPath(t *testing.T) {
 	bc := newBrokerClient(srv.URL)
 	state := &sidecarState{}
 	state.setToken("sidecar-bearer-token", 900)
-	ceiling := []string{"read:data:*", "write:data:*"}
+	ceiling := newCeilingCache([]string{"read:data:*", "write:data:*"})
 	reg := newAgentRegistry()
 	reg.store("data-reader:task-789", &agentEntry{spiffeID: "spiffe://test/agent/data-reader/task-789/inst"})
 
@@ -149,7 +149,7 @@ func TestTokenHandler_ScopeExceedsCeiling(t *testing.T) {
 	bc := newBrokerClient("http://127.0.0.1:1") // unused
 	state := &sidecarState{}
 	state.setToken("sidecar-bearer-token", 900)
-	ceiling := []string{"read:data:*"} // only read:data allowed
+	ceiling := newCeilingCache([]string{"read:data:*"}) // only read:data allowed
 	reg := newAgentRegistry()
 
 	h := newTokenHandler(bc, state, ceiling, reg, "test-secret", nil)
@@ -178,7 +178,7 @@ func TestTokenHandler_MissingFields(t *testing.T) {
 	bc := newBrokerClient("http://127.0.0.1:1") // unused
 	state := &sidecarState{}
 	state.setToken("sidecar-bearer-token", 900)
-	ceiling := []string{"read:data:*"}
+	ceiling := newCeilingCache([]string{"read:data:*"})
 	reg := newAgentRegistry()
 
 	h := newTokenHandler(bc, state, ceiling, reg, "test-secret", nil)
@@ -200,7 +200,7 @@ func TestTokenHandler_MethodNotAllowed(t *testing.T) {
 	bc := newBrokerClient("http://127.0.0.1:1") // unused
 	state := &sidecarState{}
 	state.setToken("sidecar-bearer-token", 900)
-	ceiling := []string{"read:data:*"}
+	ceiling := newCeilingCache([]string{"read:data:*"})
 	reg := newAgentRegistry()
 
 	h := newTokenHandler(bc, state, ceiling, reg, "test-secret", nil)
@@ -228,7 +228,7 @@ func TestTokenHandler_BrokerError(t *testing.T) {
 	bc := newBrokerClient(srv.URL)
 	state := &sidecarState{}
 	state.setToken("sidecar-bearer-token", 900)
-	ceiling := []string{"read:data:*"}
+	ceiling := newCeilingCache([]string{"read:data:*"})
 	reg := newAgentRegistry()
 	reg.store("data-reader:task-789", &agentEntry{spiffeID: "spiffe://test/agent/data-reader/task-789/inst"})
 
@@ -299,7 +299,7 @@ func TestTokenHandler_LazyRegistration_FirstRequest(t *testing.T) {
 	bc := newBrokerClient(srv.URL)
 	state := &sidecarState{}
 	state.setToken("sidecar-token", 900)
-	ceiling := []string{"read:data:*"}
+	ceiling := newCeilingCache([]string{"read:data:*"})
 	reg := newAgentRegistry()
 
 	h := newTokenHandler(bc, state, ceiling, reg, "test-secret", nil)
@@ -375,7 +375,7 @@ func TestTokenHandler_LazyRegistration_SecondRequestSkipsRegistration(t *testing
 	bc := newBrokerClient(srv.URL)
 	state := &sidecarState{}
 	state.setToken("sidecar-token", 900)
-	ceiling := []string{"read:data:*"}
+	ceiling := newCeilingCache([]string{"read:data:*"})
 	reg := newAgentRegistry()
 	// Pre-populate registry — agent is already registered.
 	reg.store("data-reader:task-001", &agentEntry{
@@ -422,7 +422,7 @@ func TestTokenHandler_LazyRegistration_BrokerFailure502(t *testing.T) {
 	bc := newBrokerClient(srv.URL)
 	state := &sidecarState{}
 	state.setToken("sidecar-token", 900)
-	ceiling := []string{"read:data:*"}
+	ceiling := newCeilingCache([]string{"read:data:*"})
 	reg := newAgentRegistry() // empty — will trigger lazy registration
 
 	h := newTokenHandler(bc, state, ceiling, reg, "test-secret", nil)
@@ -457,7 +457,7 @@ func TestTokenHandler_CircuitOpen_ServesCachedToken(t *testing.T) {
 	bc := newBrokerClient("http://127.0.0.1:1") // unreachable
 	state := &sidecarState{}
 	state.setToken("sidecar-token", 900)
-	ceiling := []string{"read:data:*"}
+	ceiling := newCeilingCache([]string{"read:data:*"})
 	reg := newAgentRegistry()
 
 	reg.store("data-reader:task-1", &agentEntry{spiffeID: "spiffe://test/agent/data-reader/task-1/inst"})
@@ -498,7 +498,7 @@ func TestTokenHandler_CircuitOpen_NoCachedToken_Returns503(t *testing.T) {
 	bc := newBrokerClient("http://127.0.0.1:1")
 	state := &sidecarState{}
 	state.setToken("sidecar-token", 900)
-	ceiling := []string{"read:data:*"}
+	ceiling := newCeilingCache([]string{"read:data:*"})
 	reg := newAgentRegistry()
 
 	reg.store("data-reader:task-1", &agentEntry{spiffeID: "spiffe://test/agent/data-reader/task-1/inst"})
@@ -625,7 +625,7 @@ func TestHealthHandler(t *testing.T) {
 	state := &sidecarState{}
 	state.setToken("sidecar-bearer-token", 900)
 	state.sidecarID = "sc-test-001"
-	ceiling := []string{"read:data:*", "write:data:*"}
+	ceiling := newCeilingCache([]string{"read:data:*", "write:data:*"})
 
 	h := newHealthHandler(state, ceiling, nil)
 
@@ -666,7 +666,7 @@ func TestHealthHandler_MethodNotAllowed(t *testing.T) {
 	state := &sidecarState{}
 	state.setToken("sidecar-bearer-token", 900)
 	state.sidecarID = "sc-test-001"
-	ceiling := []string{"read:data:*"}
+	ceiling := newCeilingCache([]string{"read:data:*"})
 
 	h := newHealthHandler(state, ceiling, nil)
 
@@ -683,7 +683,7 @@ func TestHealthHandler_MethodNotAllowed(t *testing.T) {
 func TestHealthHandler_Degraded(t *testing.T) {
 	state := &sidecarState{}
 	// Don't set token — healthy defaults to false.
-	ceiling := []string{"read:data:*"}
+	ceiling := newCeilingCache([]string{"read:data:*"})
 
 	h := newHealthHandler(state, ceiling, nil)
 
@@ -718,7 +718,7 @@ func TestHealthHandler_Degraded(t *testing.T) {
 
 func TestHealthHandler_Bootstrapping(t *testing.T) {
 	// State is nil — sidecar is still bootstrapping.
-	h := newHealthHandler(nil, []string{"read:data:*"}, nil)
+	h := newHealthHandler(nil, newCeilingCache([]string{"read:data:*"}), nil)
 
 	req := httptest.NewRequest("GET", "/v1/health", nil)
 	rr := httptest.NewRecorder()
@@ -735,5 +735,50 @@ func TestHealthHandler_Bootstrapping(t *testing.T) {
 	}
 	if resp["status"] != "bootstrapping" {
 		t.Errorf("status = %v, want bootstrapping", resp["status"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestHealthHandler — Dynamic ceiling reflected in response
+// ---------------------------------------------------------------------------
+
+func TestHealthHandler_ReflectsDynamicCeiling(t *testing.T) {
+	state := &sidecarState{}
+	state.setToken("sidecar-bearer-token", 900)
+	ceiling := newCeilingCache([]string{"read:data:*"})
+
+	h := newHealthHandler(state, ceiling, nil)
+
+	// Initial request — ceiling is ["read:data:*"].
+	rr1 := httptest.NewRecorder()
+	req1 := httptest.NewRequest("GET", "/v1/health", nil)
+	h.ServeHTTP(rr1, req1)
+
+	if rr1.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr1.Code)
+	}
+	var resp1 map[string]any
+	_ = json.Unmarshal(rr1.Body.Bytes(), &resp1)
+	sc1, _ := resp1["scope_ceiling"].([]any)
+	if len(sc1) != 1 || sc1[0] != "read:data:*" {
+		t.Fatalf("initial scope_ceiling = %v, want [read:data:*]", sc1)
+	}
+
+	// Update ceiling dynamically.
+	ceiling.set([]string{"read:data:*", "write:data:*"})
+
+	// Second request — should reflect updated ceiling.
+	rr2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest("GET", "/v1/health", nil)
+	h.ServeHTTP(rr2, req2)
+
+	if rr2.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr2.Code)
+	}
+	var resp2 map[string]any
+	_ = json.Unmarshal(rr2.Body.Bytes(), &resp2)
+	sc2, _ := resp2["scope_ceiling"].([]any)
+	if len(sc2) != 2 || sc2[0] != "read:data:*" || sc2[1] != "write:data:*" {
+		t.Errorf("updated scope_ceiling = %v, want [read:data:* write:data:*]", sc2)
 	}
 }

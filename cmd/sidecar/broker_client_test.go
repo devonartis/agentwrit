@@ -318,7 +318,7 @@ func TestBrokerClient_TokenRenew(t *testing.T) {
 	defer srv.Close()
 
 	bc := newBrokerClient(srv.URL)
-	newToken, expiresIn, err := bc.tokenRenew("old-sidecar-token")
+	resp, err := bc.tokenRenew("old-sidecar-token")
 	if err != nil {
 		t.Fatalf("tokenRenew returned error: %v", err)
 	}
@@ -339,11 +339,43 @@ func TestBrokerClient_TokenRenew(t *testing.T) {
 	}
 
 	// Verify response parsing
-	if newToken != "renewed-token-xyz" {
-		t.Errorf("newToken = %q, want renewed-token-xyz", newToken)
+	if resp.AccessToken != "renewed-token-xyz" {
+		t.Errorf("AccessToken = %q, want renewed-token-xyz", resp.AccessToken)
 	}
-	if expiresIn != 600 {
-		t.Errorf("expiresIn = %d, want 600", expiresIn)
+	if resp.ExpiresIn != 600 {
+		t.Errorf("ExpiresIn = %d, want 600", resp.ExpiresIn)
+	}
+	if resp.ScopeCeiling != nil {
+		t.Errorf("ScopeCeiling = %v, want nil (not present in response)", resp.ScopeCeiling)
+	}
+}
+
+func TestBrokerClient_TokenRenew_WithScopeCeiling(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token":  "renewed-token-xyz",
+			"expires_in":    600,
+			"scope_ceiling": []string{"read:data:*", "write:data:*"},
+		})
+	}))
+	defer srv.Close()
+
+	bc := newBrokerClient(srv.URL)
+	resp, err := bc.tokenRenew("old-sidecar-token")
+	if err != nil {
+		t.Fatalf("tokenRenew returned error: %v", err)
+	}
+
+	if resp.AccessToken != "renewed-token-xyz" {
+		t.Errorf("AccessToken = %q, want renewed-token-xyz", resp.AccessToken)
+	}
+	if len(resp.ScopeCeiling) != 2 {
+		t.Fatalf("ScopeCeiling = %v, want [read:data:* write:data:*]", resp.ScopeCeiling)
+	}
+	if resp.ScopeCeiling[0] != "read:data:*" || resp.ScopeCeiling[1] != "write:data:*" {
+		t.Errorf("ScopeCeiling = %v, want [read:data:* write:data:*]", resp.ScopeCeiling)
 	}
 }
 

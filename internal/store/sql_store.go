@@ -24,7 +24,8 @@ var (
 	ErrTokenNotFound = errors.New("launch token not found")
 	ErrTokenExpired  = errors.New("launch token expired")
 	ErrTokenConsumed = errors.New("launch token already consumed")
-	ErrAgentNotFound = errors.New("agent not found")
+	ErrAgentNotFound    = errors.New("agent not found")
+	ErrCeilingNotFound  = errors.New("sidecar ceiling not found")
 )
 
 // LaunchTokenRecord represents a pre-authorized launch token created by an
@@ -69,6 +70,7 @@ type SqlStore struct {
 	launchTokens   map[string]*LaunchTokenRecord
 	agents         map[string]*AgentRecord
 	jtiConsumption map[string]time.Time
+	ceilings       map[string][]string // sidecar ID → scope ceiling
 }
 
 // NewSqlStore returns an initialized, empty in-memory store ready for use.
@@ -78,6 +80,7 @@ func NewSqlStore() *SqlStore {
 		launchTokens:   make(map[string]*LaunchTokenRecord),
 		agents:         make(map[string]*AgentRecord),
 		jtiConsumption: make(map[string]time.Time),
+		ceilings:       make(map[string][]string),
 	}
 }
 
@@ -223,4 +226,29 @@ func (s *SqlStore) ConsumeActivationToken(jti string, exp int64) error {
 
 	s.jtiConsumption[jti] = time.Unix(exp, 0)
 	return nil
+}
+
+// SaveCeiling persists a scope ceiling for the given sidecar ID,
+// overwriting any existing ceiling.
+func (s *SqlStore) SaveCeiling(sidecarID string, ceiling []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cp := make([]string, len(ceiling))
+	copy(cp, ceiling)
+	s.ceilings[sidecarID] = cp
+	return nil
+}
+
+// GetCeiling retrieves the stored scope ceiling for the given sidecar ID.
+// Returns [ErrCeilingNotFound] if no ceiling has been stored.
+func (s *SqlStore) GetCeiling(sidecarID string) ([]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	c, ok := s.ceilings[sidecarID]
+	if !ok {
+		return nil, ErrCeilingNotFound
+	}
+	cp := make([]string, len(c))
+	copy(cp, c)
+	return cp, nil
 }

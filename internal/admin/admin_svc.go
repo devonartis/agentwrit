@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/divineartis/agentauth/internal/audit"
+	"github.com/divineartis/agentauth/internal/authz"
 	"github.com/divineartis/agentauth/internal/obs"
 	"github.com/divineartis/agentauth/internal/store"
 	"github.com/divineartis/agentauth/internal/token"
@@ -54,6 +55,7 @@ var (
 	ErrActivationScopeEmpty    = errors.New("allowed_scopes is required")
 	ErrActivationTokenInvalid  = errors.New("invalid activation token")
 	ErrActivationTokenReplayed = errors.New("activation token replayed")
+	ErrInvalidScopeFormat      = errors.New("invalid scope format")
 )
 
 // CreateLaunchTokenReq is the JSON request body for
@@ -111,6 +113,15 @@ type CreateLaunchTokenResp struct {
 type LaunchTokenPolicy struct {
 	AllowedScope []string `json:"allowed_scope"`
 	MaxTTL       int      `json:"max_ttl"`
+}
+
+// CeilingUpdateResult describes the outcome of a scope ceiling update.
+type CeilingUpdateResult struct {
+	OldCeiling   []string `json:"old_ceiling"`
+	NewCeiling   []string `json:"new_ceiling"`
+	Narrowed     bool     `json:"narrowed"`
+	Revoked      bool     `json:"revoked"`
+	RevokedCount int      `json:"revoked_count,omitempty"`
 }
 
 // AdminSvc handles administrator authentication (shared secret) and
@@ -347,6 +358,11 @@ func (s *AdminSvc) ActivateSidecar(req ActivateSidecarReq) (*ActivateSidecarResp
 		return nil, fmt.Errorf("issue sidecar token: %w", err)
 	}
 
+	// Persist scope ceiling keyed by sidecar ID for later admin lookups/updates.
+	if err := s.store.SaveCeiling(sidecarID, scopePrefixes); err != nil {
+		obs.Fail(mod, cmp, "failed to persist sidecar ceiling", "err="+err.Error())
+	}
+
 	if s.auditLog != nil {
 		s.auditLog.Record(
 			audit.EventSidecarActivated,
@@ -362,6 +378,57 @@ func (s *AdminSvc) ActivateSidecar(req ActivateSidecarReq) (*ActivateSidecarResp
 		ExpiresIn:   issResp.ExpiresIn,
 		TokenType:   "Bearer",
 		SidecarID:   sidecarID,
+	}, nil
+}
+
+// GetSidecarCeiling retrieves the scope ceiling for the given sidecar ID.
+// Returns [store.ErrCeilingNotFound] if no ceiling has been stored.
+func (s *AdminSvc) GetSidecarCeiling(sidecarID string) ([]string, error) {
+	return s.store.GetCeiling(sidecarID)
+}
+
+// UpdateSidecarCeiling validates and persists a new scope ceiling for the
+// given sidecar. It detects whether the update narrows the previous ceiling
+// and records an audit event.
+func (s *AdminSvc) UpdateSidecarCeiling(sidecarID string, newCeiling []string, updatedBy string) (*CeilingUpdateResult, error) {
+	// Validate each scope in the new ceiling.
+	for _, sc := range newCeiling {
+		if _, _, _, err := authz.ParseScope(sc); err != nil {
+			return nil, fmt.Errorf("%w: %s", ErrInvalidScopeFormat, sc)
+		}
+	}
+
+	// Fetch old ceiling (may not exist for newly activated sidecars).
+	oldCeiling, err := s.store.GetCeiling(sidecarID)
+	if err != nil && !errors.Is(err, store.ErrCeilingNotFound) {
+		return nil, fmt.Errorf("get current ceiling: %w", err)
+	}
+	if oldCeiling == nil {
+		oldCeiling = []string{}
+	}
+
+	// Detect narrowing: new ceiling is a subset of old ceiling.
+	narrowed := len(oldCeiling) > 0 && authz.ScopeIsSubset(newCeiling, oldCeiling)
+
+	if err := s.store.SaveCeiling(sidecarID, newCeiling); err != nil {
+		return nil, fmt.Errorf("save ceiling: %w", err)
+	}
+
+	if s.auditLog != nil {
+		s.auditLog.Record(
+			audit.EventScopesCeilingUpdated,
+			"",
+			"",
+			"",
+			fmt.Sprintf("sidecar=%s old_ceiling=%v new_ceiling=%v narrowed=%t updated_by=%s",
+				sidecarID, oldCeiling, newCeiling, narrowed, updatedBy),
+		)
+	}
+
+	return &CeilingUpdateResult{
+		OldCeiling: oldCeiling,
+		NewCeiling: newCeiling,
+		Narrowed:   narrowed,
 	}, nil
 }
 

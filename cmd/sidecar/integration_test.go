@@ -58,11 +58,11 @@ func startTestBroker(t *testing.T, secret string) *httptest.Server {
 	mux.Handle("GET /v1/challenge", handler.NewChallengeHdl(sqlStore))
 	mux.Handle("POST /v1/register", problemdetails.MaxBytesBody(handler.NewRegHdl(idSvc)))
 	mux.Handle("POST /v1/token/validate", problemdetails.MaxBytesBody(handler.NewValHdl(tknSvc, revSvc)))
-	mux.Handle("POST /v1/token/renew", problemdetails.MaxBytesBody(valMw.Wrap(handler.NewRenewHdl(tknSvc, auditLog))))
+	mux.Handle("POST /v1/token/renew", problemdetails.MaxBytesBody(valMw.Wrap(handler.NewRenewHdl(tknSvc, auditLog, sqlStore))))
 	mux.Handle("POST /v1/token/exchange",
 		problemdetails.MaxBytesBody(valMw.Wrap(valMw.RequireScope("sidecar:manage:*", handler.NewTokenExchangeHdl(tknSvc, sqlStore, auditLog)))))
 	mux.Handle("GET /v1/health", handler.NewHealthHdl("test"))
-	admin.NewAdminHdl(adminSvc, valMw, auditLog).RegisterRoutes(mux)
+	admin.NewAdminHdl(adminSvc, valMw, auditLog, revSvc).RegisterRoutes(mux)
 
 	var rootHandler http.Handler = mux
 	rootHandler = problemdetails.RequestIDMiddleware(rootHandler)
@@ -314,7 +314,8 @@ func TestIntegration_DeveloperFlow(t *testing.T) {
 	// ---------------------------------------------------------------
 	reg := newAgentRegistry()
 	reg.store(agentID, &agentEntry{spiffeID: agentID})
-	th := newTokenHandler(bc, state, sidecarCfg.ScopeCeiling, reg, adminSecret, nil)
+	ceiling := newCeilingCache(sidecarCfg.ScopeCeiling)
+	th := newTokenHandler(bc, state, ceiling, reg, adminSecret, nil)
 
 	// Use the full SPIFFE agent_id as agent_name, leave task_id empty
 	// so the handler passes it through to the broker as-is.
@@ -429,7 +430,8 @@ func TestIntegration_Phase2_LazyRegistration(t *testing.T) {
 	}
 
 	registry := newAgentRegistry()
-	th := newTokenHandler(bc, state, sidecarCfg.ScopeCeiling, registry, adminSecret, nil)
+	ceiling := newCeilingCache(sidecarCfg.ScopeCeiling)
+	th := newTokenHandler(bc, state, ceiling, registry, adminSecret, nil)
 
 	// Step 3: First POST /v1/token — should trigger lazy registration.
 	body1, _ := json.Marshal(map[string]any{
@@ -547,6 +549,7 @@ func TestIntegration_Phase2_BYOKRegistration(t *testing.T) {
 	}
 
 	registry := newAgentRegistry()
+	ceiling := newCeilingCache(sidecarCfg.ScopeCeiling)
 
 	// Step 1: Get challenge via sidecar proxy.
 	ch := newChallengeProxyHandler(bc)
@@ -567,7 +570,7 @@ func TestIntegration_Phase2_BYOKRegistration(t *testing.T) {
 	sig := ed25519.Sign(devPriv, nonceBytes)
 
 	// Step 3: Register via sidecar BYOK endpoint.
-	rh := newRegisterHandler(bc, registry, adminSecret, sidecarCfg.ScopeCeiling)
+	rh := newRegisterHandler(bc, registry, adminSecret, ceiling)
 
 	regBody, _ := json.Marshal(map[string]any{
 		"agent_name": "byok-agent",
@@ -601,7 +604,7 @@ func TestIntegration_Phase2_BYOKRegistration(t *testing.T) {
 	}
 
 	// Step 4: Token request using cached BYOK registration.
-	th := newTokenHandler(bc, state, sidecarCfg.ScopeCeiling, registry, adminSecret, nil)
+	th := newTokenHandler(bc, state, ceiling, registry, adminSecret, nil)
 
 	tokBody, _ := json.Marshal(map[string]any{
 		"agent_name": "byok-agent",

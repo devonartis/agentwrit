@@ -104,7 +104,7 @@ func TestRegisterHandler_BYOK_HappyPath(t *testing.T) {
 
 	bc := newBrokerClient(srv.URL)
 	reg := newAgentRegistry()
-	ceiling := []string{"read:data:*", "write:data:*"}
+	ceiling := newCeilingCache([]string{"read:data:*", "write:data:*"})
 
 	h := newRegisterHandler(bc, reg, "test-admin-secret", ceiling)
 
@@ -158,7 +158,7 @@ func TestRegisterHandler_BYOK_HappyPath(t *testing.T) {
 func TestRegisterHandler_MissingFields_400(t *testing.T) {
 	bc := newBrokerClient("http://127.0.0.1:1") // unused
 	reg := newAgentRegistry()
-	ceiling := []string{"read:data:*"}
+	ceiling := newCeilingCache([]string{"read:data:*"})
 
 	h := newRegisterHandler(bc, reg, "test-secret", ceiling)
 
@@ -186,7 +186,7 @@ func TestRegisterHandler_MissingFields_400(t *testing.T) {
 func TestRegisterHandler_MethodNotAllowed(t *testing.T) {
 	bc := newBrokerClient("http://127.0.0.1:1") // unused
 	reg := newAgentRegistry()
-	ceiling := []string{"read:data:*"}
+	ceiling := newCeilingCache([]string{"read:data:*"})
 
 	h := newRegisterHandler(bc, reg, "test-secret", ceiling)
 

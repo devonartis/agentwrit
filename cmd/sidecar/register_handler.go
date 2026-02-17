@@ -65,12 +65,12 @@ type registerHandler struct {
 	broker       *brokerClient
 	registry     *agentRegistry
 	adminSecret  string
-	scopeCeiling []string
+	scopeCeiling *ceilingCache
 }
 
 // newRegisterHandler creates a registerHandler wired to the given broker
 // client, agent registry, admin secret, and scope ceiling.
-func newRegisterHandler(bc *brokerClient, reg *agentRegistry, adminSecret string, ceiling []string) *registerHandler {
+func newRegisterHandler(bc *brokerClient, reg *agentRegistry, adminSecret string, ceiling *ceilingCache) *registerHandler {
 	return &registerHandler{
 		broker:       bc,
 		registry:     reg,
@@ -128,7 +128,7 @@ func (h *registerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	launchToken, err := h.broker.createLaunchToken(adminToken, req.AgentName, h.scopeCeiling, 600)
+	launchToken, err := h.broker.createLaunchToken(adminToken, req.AgentName, h.scopeCeiling.get(), 600)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "create launch token failed: "+err.Error())
 		return
@@ -141,7 +141,7 @@ func (h *registerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		taskID = "default"
 	}
 
-	agentID, err := h.broker.registerAgent(launchToken, req.Nonce, req.PublicKey, req.Signature, orchID, taskID, h.scopeCeiling)
+	agentID, err := h.broker.registerAgent(launchToken, req.Nonce, req.PublicKey, req.Signature, orchID, taskID, h.scopeCeiling.get())
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "broker registration failed: "+err.Error())
 		return

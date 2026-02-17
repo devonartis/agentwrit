@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/authz"
 	"github.com/divineartis/agentauth/internal/obs"
 	"github.com/divineartis/agentauth/internal/problemdetails"
+	"github.com/divineartis/agentauth/internal/revoke"
+	"github.com/divineartis/agentauth/internal/store"
 )
 
 const hdlCmp = "AdminHdl"
@@ -21,6 +24,7 @@ const hdlCmp = "AdminHdl"
 type AdminHdl struct {
 	adminSvc    *AdminSvc
 	valMw       *authz.ValMw
+	revSvc      *revoke.RevSvc
 	auditLog    *audit.AuditLog
 	rateLimiter *authz.RateLimiter
 }
@@ -29,11 +33,12 @@ type AdminHdl struct {
 // the launch-token creation endpoint with Bearer token authentication.
 // A rate limiter is applied to the admin auth endpoint to prevent brute
 // force attacks. The auditLog parameter may be nil to disable audit
-// recording.
-func NewAdminHdl(adminSvc *AdminSvc, valMw *authz.ValMw, auditLog *audit.AuditLog) *AdminHdl {
+// recording. The revSvc parameter may be nil if revocation is not needed.
+func NewAdminHdl(adminSvc *AdminSvc, valMw *authz.ValMw, auditLog *audit.AuditLog, revSvc *revoke.RevSvc) *AdminHdl {
 	return &AdminHdl{
 		adminSvc:    adminSvc,
 		valMw:       valMw,
+		revSvc:      revSvc,
 		auditLog:    auditLog,
 		rateLimiter: authz.NewRateLimiter(5, 10), // 5 req/s, burst 10
 	}
@@ -52,6 +57,12 @@ func (h *AdminHdl) RegisterRoutes(mux *http.ServeMux) {
 			http.HandlerFunc(h.handleCreateSidecarActivation))))
 	mux.Handle("POST /v1/sidecar/activate",
 		h.rateLimiter.Wrap(http.HandlerFunc(h.handleActivateSidecar)))
+	mux.Handle("GET /v1/admin/sidecars/{id}/ceiling",
+		h.valMw.Wrap(h.valMw.RequireScope("admin:launch-tokens:*",
+			http.HandlerFunc(h.handleGetCeiling))))
+	mux.Handle("PUT /v1/admin/sidecars/{id}/ceiling",
+		h.valMw.Wrap(h.valMw.RequireScope("admin:launch-tokens:*",
+			http.HandlerFunc(h.handleUpdateCeiling))))
 }
 
 // authReq is the JSON body for POST /v1/admin/auth.
@@ -206,5 +217,112 @@ func (h *AdminHdl) handleActivateSidecar(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		obs.Warn(mod, hdlCmp, "failed to encode activate sidecar response", "err="+err.Error())
+	}
+}
+
+// ceilingResp is the JSON response for GET /v1/admin/sidecars/{id}/ceiling.
+type ceilingResp struct {
+	SidecarID    string   `json:"sidecar_id"`
+	ScopeCeiling []string `json:"scope_ceiling"`
+}
+
+func (h *AdminHdl) handleGetCeiling(w http.ResponseWriter, r *http.Request) {
+	sidecarID := r.PathValue("id")
+	if sidecarID == "" {
+		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "sidecar id is required", r.URL.Path)
+		return
+	}
+
+	ceiling, err := h.adminSvc.GetSidecarCeiling(sidecarID)
+	if err != nil {
+		if errors.Is(err, store.ErrCeilingNotFound) {
+			problemdetails.WriteProblem(r.Context(), w, http.StatusNotFound, "not_found", "sidecar ceiling not found", r.URL.Path)
+			return
+		}
+		problemdetails.WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "failed to get sidecar ceiling", r.URL.Path)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(ceilingResp{
+		SidecarID:    sidecarID,
+		ScopeCeiling: ceiling,
+	}); err != nil {
+		obs.Warn(mod, hdlCmp, "failed to encode ceiling response", "err="+err.Error())
+	}
+}
+
+// updateCeilingReq is the JSON body for PUT /v1/admin/sidecars/{id}/ceiling.
+type updateCeilingReq struct {
+	ScopeCeiling []string `json:"scope_ceiling"`
+}
+
+func (h *AdminHdl) handleUpdateCeiling(w http.ResponseWriter, r *http.Request) {
+	claims := authz.ClaimsFromContext(r.Context())
+	if claims == nil {
+		problemdetails.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "missing authentication", r.URL.Path)
+		return
+	}
+
+	sidecarID := r.PathValue("id")
+	if sidecarID == "" {
+		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "sidecar id is required", r.URL.Path)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+	var req updateCeilingReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
+		return
+	}
+
+	if len(req.ScopeCeiling) == 0 {
+		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "scope_ceiling must not be empty", r.URL.Path)
+		return
+	}
+
+	result, err := h.adminSvc.UpdateSidecarCeiling(sidecarID, req.ScopeCeiling, claims.Sub)
+	if err != nil {
+		if errors.Is(err, ErrInvalidScopeFormat) {
+			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request",
+				"invalid scope format: "+strings.TrimPrefix(err.Error(), ErrInvalidScopeFormat.Error()+": "), r.URL.Path)
+			return
+		}
+		obs.Fail(mod, hdlCmp, "ceiling update failed", "err="+err.Error())
+		problemdetails.WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "failed to update sidecar ceiling", r.URL.Path)
+		return
+	}
+
+	// When the ceiling narrows, revoke the sidecar's token so agents
+	// re-authenticate under the tighter ceiling.
+	if result.Narrowed && h.revSvc != nil {
+		target := "sidecar:" + sidecarID
+		count, revErr := h.revSvc.Revoke("agent", target)
+		if revErr != nil {
+			obs.Fail(mod, hdlCmp, "revocation after ceiling narrowing failed",
+				"sidecar_id="+sidecarID, "err="+revErr.Error())
+		} else {
+			result.Revoked = true
+			result.RevokedCount = count
+			obs.Ok(mod, hdlCmp, "revoked sidecar token after ceiling narrowing",
+				"sidecar_id="+sidecarID, fmt.Sprintf("revoked_count=%d", count))
+			if h.auditLog != nil {
+				h.auditLog.Record(
+					audit.EventTokenRevoked,
+					target,
+					"",
+					"",
+					fmt.Sprintf("auto-revoked on ceiling narrowing sidecar=%s by=%s", sidecarID, claims.Sub),
+				)
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		obs.Warn(mod, hdlCmp, "failed to encode ceiling update response", "err="+err.Error())
 	}
 }
