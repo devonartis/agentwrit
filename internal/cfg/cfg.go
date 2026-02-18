@@ -13,6 +13,7 @@
 //	AA_DEFAULT_TTL   – token TTL in seconds         (default 300)
 //	AA_ADMIN_SECRET  – shared secret for admin auth (required in production)
 //	AA_SEED_TOKENS   – print seed tokens on startup (default "false", dev only)
+//	AA_DB_PATH       – SQLite database file path    (default "./agentauth.db")
 package cfg
 
 import (
@@ -29,6 +30,7 @@ type Cfg struct {
 	DefaultTTL  int    // AA_DEFAULT_TTL (default 300 seconds)
 	AdminSecret string // AA_ADMIN_SECRET (required for admin auth)
 	SeedTokens  bool   // AA_SEED_TOKENS (dev only, default false)
+	DBPath      string // AA_DB_PATH (default "./agentauth.db")
 }
 
 // Load reads AA_* environment variables and returns a Cfg with defaults
@@ -42,6 +44,7 @@ func Load() Cfg {
 		DefaultTTL:  envIntOr("AA_DEFAULT_TTL", 300),
 		AdminSecret: os.Getenv("AA_ADMIN_SECRET"),
 		SeedTokens:  envOr("AA_SEED_TOKENS", "false") == "true",
+		DBPath:      envOr("AA_DB_PATH", "./agentauth.db"),
 	}
 	return c
 }

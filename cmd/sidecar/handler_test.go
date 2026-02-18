@@ -742,6 +742,36 @@ func TestHealthHandler_Bootstrapping(t *testing.T) {
 // TestHealthHandler — Dynamic ceiling reflected in response
 // ---------------------------------------------------------------------------
 
+func TestHealthHandler_IncludesSidecarID(t *testing.T) {
+	state := &sidecarState{}
+	state.sidecarID = "sc-test-123"
+	state.setHealthy(true)
+	state.setToken("some-token", 900)
+	ceiling := newCeilingCache([]string{"read:customer:*"})
+	registry := newAgentRegistry()
+
+	h := newHealthHandler(state, ceiling, registry)
+	req := httptest.NewRequest(http.MethodGet, "/v1/health", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	sid, ok := resp["sidecar_id"]
+	if !ok {
+		t.Fatal("expected sidecar_id in health response")
+	}
+	if sid != "sc-test-123" {
+		t.Fatalf("expected sc-test-123, got %v", sid)
+	}
+}
+
 func TestHealthHandler_ReflectsDynamicCeiling(t *testing.T) {
 	state := &sidecarState{}
 	state.setToken("sidecar-bearer-token", 900)

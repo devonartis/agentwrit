@@ -20,6 +20,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/divineartis/agentauth/internal/obs"
 )
 
 // Event type constants used as the eventType argument to [AuditLog.Record].
@@ -78,6 +80,12 @@ type QueryFilters struct {
 	Offset    int
 }
 
+// AuditStore is the persistence interface for audit events. Implementations
+// must be safe for concurrent use.
+type AuditStore interface {
+	SaveAuditEvent(AuditEvent) error
+}
+
 // AuditLog maintains an append-only, hash-chained sequence of
 // [AuditEvent] entries in memory. Create one with [NewAuditLog].
 type AuditLog struct {
@@ -85,15 +93,39 @@ type AuditLog struct {
 	events   []AuditEvent
 	prevHash string
 	counter  int
+	store    AuditStore
 }
 
-// NewAuditLog returns an empty audit log. The genesis PrevHash is
+// NewAuditLog returns an empty audit log with an optional persistence store.
+// Pass nil for store to use memory-only mode. The genesis PrevHash is
 // initialized to 64 zero characters.
-func NewAuditLog() *AuditLog {
+func NewAuditLog(store AuditStore) *AuditLog {
 	return &AuditLog{
 		events:   make([]AuditEvent, 0),
 		prevHash: "0000000000000000000000000000000000000000000000000000000000000000",
+		store:    store,
 	}
+}
+
+// NewAuditLogWithEvents rebuilds an audit log from a set of existing events,
+// typically loaded from SQLite on broker startup. The counter and prevHash are
+// derived from the last event in the slice, so new events continue the chain
+// seamlessly. Pass nil for store to use memory-only mode.
+func NewAuditLogWithEvents(store AuditStore, events []AuditEvent) *AuditLog {
+	al := &AuditLog{
+		events: make([]AuditEvent, len(events)),
+		store:  store,
+	}
+	copy(al.events, events)
+
+	if len(events) > 0 {
+		last := events[len(events)-1]
+		al.prevHash = last.Hash
+		al.counter = len(events)
+	} else {
+		al.prevHash = "0000000000000000000000000000000000000000000000000000000000000000"
+	}
+	return al
 }
 
 // Record appends a new event to the audit log. The detail string is
@@ -122,6 +154,16 @@ func (a *AuditLog) Record(eventType, agentID, taskID, orchID, detail string) {
 	evt.Hash = computeHash(evt)
 	a.prevHash = evt.Hash
 	a.events = append(a.events, evt)
+
+	// Count event by type in Prometheus
+	obs.AuditEventsTotal.WithLabelValues(eventType).Inc()
+
+	// Write-through persistence (non-blocking on error)
+	if a.store != nil {
+		if err := a.store.SaveAuditEvent(evt); err != nil {
+			obs.Fail("audit", "persist", "failed to persist audit event", "id="+evt.ID, "error="+err.Error())
+		}
+	}
 }
 
 // Query returns audit events matching the given [QueryFilters] and the

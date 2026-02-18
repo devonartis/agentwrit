@@ -35,7 +35,7 @@ func newTestAdminSvcWithAudit(t *testing.T) (*AdminSvc, *audit.AuditLog) {
 	}
 	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
 	st := store.NewSqlStore()
-	al := audit.NewAuditLog()
+	al := audit.NewAuditLog(nil)
 	return NewAdminSvc(testSecret, tknSvc, st, al), al
 }
 

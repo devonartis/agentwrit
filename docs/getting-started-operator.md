@@ -22,11 +22,11 @@ export AA_ADMIN_SECRET="$(openssl rand -hex 32)"
 
 # 3. Verify the broker is healthy
 curl http://localhost:8080/v1/health
-# {"status":"ok","version":"2.0.0","uptime":5}
+# {"status":"ok","version":"2.0.0","uptime":5,"db_connected":true,"audit_events_count":0}
 
 # 4. Verify the sidecar is healthy
 curl http://localhost:8081/v1/health
-# {"status":"ok","broker_connected":true,"healthy":true,...}
+# {"status":"ok","broker_connected":true,"healthy":true,"sidecar_id":"a2b25ecc...",...}
 ```
 
 To tear down the stack:
@@ -66,6 +66,7 @@ All broker configuration is via environment variables prefixed `AA_`. There are 
 | `AA_TRUST_DOMAIN` | string | `"agentauth.local"` | No | SPIFFE trust domain used in agent identity URIs (e.g., `spiffe://agentauth.local/agent/...`). |
 | `AA_DEFAULT_TTL` | int | `300` | No | Default token TTL in seconds (5 minutes). |
 | `AA_SEED_TOKENS` | bool | `false` | No | Print seed launch and admin tokens to stdout on startup. **Development only** -- never enable in production. |
+| `AA_DB_PATH` | string | `"./agentauth.db"` | No | Path to the SQLite database file for audit event persistence. The broker creates the file and table on first startup. Set to `""` to disable persistence (memory-only mode). See [Audit Persistence](#audit-persistence-aa_db_path) below. |
 
 ### Security notes
 
@@ -103,6 +104,116 @@ Design principles:
 3. **Use wildcards carefully.** `read:data:*` allows reading any data resource. `read:data:users` restricts to a specific resource.
 
 Scope format: `action:resource:identifier` (e.g., `read:data:*`, `write:config:app1`).
+
+---
+
+## Runtime Ceiling Management
+
+`AA_SIDECAR_SCOPE_CEILING` is the **bootstrap seed only**. It sets the initial ceiling when the sidecar first activates, but the ceiling can be updated at runtime without restarting the sidecar or editing environment variables.
+
+### Updating the ceiling via the broker API
+
+Use the admin API to change a sidecar's scope ceiling while it is running:
+
+```bash
+# Step 1: Get an admin token
+ADMIN_TOKEN=$(curl -s -X POST http://localhost:8080/v1/admin/auth \
+  -H "Content-Type: application/json" \
+  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+# Step 2: Discover the sidecar ID from the sidecar health endpoint
+SIDECAR_ID=$(curl -s http://localhost:8081/v1/health \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['sidecar_id'])")
+
+# Step 3: Update the ceiling
+curl -s -X PUT "http://localhost:8080/v1/admin/sidecars/$SIDECAR_ID/ceiling" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{
+    "scope_ceiling": ["read:data:*"]
+  }'
+```
+
+Response (200 OK):
+
+```json
+{
+  "sidecar_id": "sc-abc123",
+  "scope_ceiling": ["read:data:*"],
+  "updated_at": "2026-02-18T10:00:00Z"
+}
+```
+
+### When changes take effect
+
+The sidecar picks up ceiling changes on its **next renewal cycle**. Because the sidecar renews its broker bearer token at 80% of TTL (default: 900s TTL, renewal at 720s), ceiling changes propagate within **4 to 12 minutes** depending on where the sidecar is in its renewal cycle.
+
+There is no need to restart the sidecar. After the next renewal, any new `POST /v1/token` requests are evaluated against the updated ceiling. Agents that request scopes outside the new ceiling receive a 403 at the sidecar.
+
+### Emergency narrowing
+
+If you need to immediately revoke access, set a narrower ceiling and separately revoke affected tokens:
+
+```bash
+# Narrow the ceiling immediately
+curl -s -X PUT "http://localhost:8080/v1/admin/sidecars/$SIDECAR_ID/ceiling" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"scope_ceiling": ["read:data:users"]}'
+
+# Revoke all tokens for any agent whose scopes exceeded the new ceiling
+curl -s -X POST http://localhost:8080/v1/revoke \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"level": "agent", "target": "spiffe://agentauth.local/agent/orch/task/instance"}'
+```
+
+When the broker processes a ceiling update that narrows the allowed scopes, it automatically revokes any currently active tokens whose scope exceeds the new ceiling. The revocation is immediate -- those tokens will be rejected on the next validation even before the sidecar renews.
+
+### Auditing ceiling changes
+
+Every ceiling update is recorded as a `scope_ceiling_updated` audit event that includes the old ceiling, the new ceiling, and the timestamp. Query the audit trail to see the full history:
+
+```bash
+curl -s "http://localhost:8080/v1/audit/events?event_type=scope_ceiling_updated" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  | python3 -m json.tool
+```
+
+---
+
+## Audit Persistence (AA_DB_PATH)
+
+By default, audit events are stored in memory and are lost when the broker restarts. To persist the audit trail across restarts, configure a SQLite database path:
+
+| Variable | Type | Default | Required | Description |
+|----------|------|---------|----------|-------------|
+| `AA_DB_PATH` | string | `"./agentauth.db"` | No | Path to the SQLite database file. The broker creates the file if it does not exist. The directory must be writable by the broker process. |
+
+Set `AA_DB_PATH` to a stable location on the host:
+
+```bash
+export AA_DB_PATH="/var/lib/agentauth/agentauth.db"
+AA_ADMIN_SECRET="..." go run ./cmd/broker
+```
+
+In Docker Compose, mount a volume so the database survives container replacement:
+
+```yaml
+broker:
+  environment:
+    - AA_DB_PATH=/data/agentauth.db
+  volumes:
+    - agentauth-data:/data
+
+volumes:
+  agentauth-data:
+```
+
+On startup, the broker loads all existing audit events from SQLite to rebuild the hash chain in memory. The number of events loaded is logged and exposed as the `agentauth_audit_events_loaded` Prometheus gauge.
+
+**Note:** The broker still generates a fresh Ed25519 signing key pair on every startup. Audit events persist, but previously issued tokens remain invalid after a restart. If you need tokens to survive restarts, that requires a separate key persistence mechanism (not currently supported).
 
 ---
 

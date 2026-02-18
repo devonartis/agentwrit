@@ -177,6 +177,32 @@ var ClockSkewTotal = promauto.NewCounter(prometheus.CounterOpts{
 	Help: "Number of clock skew events detected",
 })
 
+// AuditEventsTotal counts audit events recorded, partitioned by event type.
+var AuditEventsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "agentauth_audit_events_total",
+	Help: "Total number of audit events recorded",
+}, []string{"event_type"})
+
+// AuditWriteDuration observes the time to persist an audit event to SQLite.
+var AuditWriteDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+	Name:    "agentauth_audit_write_duration_seconds",
+	Help:    "Time to write an audit event to SQLite",
+	Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1},
+})
+
+// DBErrorsTotal counts database operation errors, partitioned by operation.
+var DBErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "agentauth_db_errors_total",
+	Help: "Total number of database errors",
+}, []string{"operation"})
+
+// AuditEventsLoaded is set once at startup with the count of events loaded
+// from SQLite to rebuild the hash chain.
+var AuditEventsLoaded = promauto.NewGauge(prometheus.GaugeOpts{
+	Name: "agentauth_audit_events_loaded",
+	Help: "Number of audit events loaded from SQLite at startup",
+})
+
 // RecordIssuance records a token issuance duration. The caller provides
 // the elapsed time in milliseconds; it is converted to seconds before
 // being observed in the [RequestDuration] histogram.

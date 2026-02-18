@@ -504,7 +504,7 @@ These are explicit trust boundaries and limitations of the current implementatio
 
 - **X-Forwarded-For trusted unconditionally.** The `clientIP()` function in `internal/authz/rate_mw.go` trusts the first entry in `X-Forwarded-For` without validation. In production, the broker must sit behind a trusted reverse proxy that sets this header correctly. Without a trusted proxy, rate limiting can be bypassed via header spoofing.
 
-- **In-memory state is not persistent.** A broker restart clears all nonces, agent records, launch tokens, revocation entries, and audit events. All previously issued tokens become unverifiable (new signing keys). This is by design for an ephemeral system but means operational state is lost on restart.
+- **In-memory state is mostly not persistent.** A broker restart clears nonces, agent records, launch tokens, and revocation entries. All previously issued tokens become unverifiable (new signing keys). **Exception:** Audit events are now persisted to SQLite when `AA_DB_PATH` is configured. On startup, the broker reloads all audit events from SQLite and rebuilds the in-memory hash chain. This means the audit trail survives restarts, but all other operational state is lost.
 
 - **Single broker instance.** There is no replication, consensus, or shared state mechanism. The broker is a single process. Running multiple instances would result in split-brain token verification (each instance has its own signing key).
 
@@ -521,6 +521,7 @@ These are explicit trust boundaries and limitations of the current implementatio
 | `github.com/prometheus/client_golang` | v1.23.2 | Prometheus metrics exposition |
 | `github.com/prometheus/client_model` | v0.6.2 | Prometheus data model |
 | `github.com/spiffe/go-spiffe/v2` | v2.6.0 | SPIFFE ID validation |
+| `modernc.org/sqlite` | v1.35.0 | Pure-Go SQLite driver for audit event persistence (zero CGo) |
 | Go stdlib `crypto/ed25519` | -- | Token signing and nonce signature verification |
 | Go stdlib `crypto/sha256` | -- | Audit hash chain, delegation chain hash |
 | Go stdlib `net/http` | -- | HTTP server (Go 1.22+ method routing) |

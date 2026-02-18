@@ -53,7 +53,7 @@ func newTestBroker(t *testing.T) *testBroker {
 	}
 
 	sqlStore := store.NewSqlStore()
-	auditLog := audit.NewAuditLog()
+	auditLog := audit.NewAuditLog(nil)
 	tknSvc := token.NewTknSvc(priv, pub, c)
 	revSvc := revoke.NewRevSvc()
 	idSvc := identity.NewIdSvc(sqlStore, tknSvc, c.TrustDomain, auditLog)
@@ -70,7 +70,7 @@ func newTestBroker(t *testing.T) *testBroker {
 	delegHdl := handler.NewDelegHdl(delegSvc)
 	tokenExchangeHdl := handler.NewTokenExchangeHdl(tknSvc, sqlStore, auditLog)
 	auditHdl := handler.NewAuditHdl(auditLog)
-	healthHdl := handler.NewHealthHdl("test")
+	healthHdl := handler.NewHealthHdl("test", auditLog, sqlStore)
 	metricsHdl := handler.NewMetricsHdl()
 	adminHdl := admin.NewAdminHdl(adminSvc, valMw, auditLog, revSvc)
 
@@ -135,6 +135,48 @@ func TestHealth(t *testing.T) {
 	_ = json.NewDecoder(rr.Body).Decode(&resp) //nolint:errcheck // test assertion
 	if resp["status"] != "ok" {
 		t.Errorf("expected status=ok, got %v", resp["status"])
+	}
+}
+
+func TestHealth_DBConnectedAndAuditCount(t *testing.T) {
+	b := newTestBroker(t)
+
+	// Record a couple of audit events to verify audit_events_count
+	b.auditLog.Record("test_event", "agent-1", "task-1", "orch-1", "detail 1")
+	b.auditLog.Record("test_event", "agent-1", "task-1", "orch-1", "detail 2")
+
+	req := httptest.NewRequest("GET", "/v1/health", nil)
+	rr := b.do(req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	// db_connected should be present
+	if _, ok := resp["db_connected"]; !ok {
+		t.Fatal("expected db_connected in health response")
+	}
+	// In test broker, store has no DB initialized, so db_connected should be false
+	if resp["db_connected"] != false {
+		t.Errorf("expected db_connected=false in test broker, got %v", resp["db_connected"])
+	}
+
+	// audit_events_count should be present and reflect recorded events
+	rawCount, ok := resp["audit_events_count"]
+	if !ok {
+		t.Fatal("expected audit_events_count in health response")
+	}
+	count, ok := rawCount.(float64)
+	if !ok {
+		t.Fatalf("expected audit_events_count to be a number, got %T", rawCount)
+	}
+	if int(count) != 2 {
+		t.Errorf("expected audit_events_count=2, got %v", count)
 	}
 }
 

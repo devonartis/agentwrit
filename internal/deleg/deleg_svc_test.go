@@ -441,7 +441,7 @@ func TestDelegate_ScopeViolation_AuditsEvent(t *testing.T) {
 	}
 	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
 	st := store.NewSqlStore()
-	al := audit.NewAuditLog()
+	al := audit.NewAuditLog(nil)
 	delegSvc := NewDelegSvc(tknSvc, st, al, priv)
 
 	delegator := "spiffe://test/agent/o/t/delegator"

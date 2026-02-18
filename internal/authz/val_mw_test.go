@@ -32,7 +32,7 @@ var okHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 })
 
 func TestWrap_MissingAuthHeader_AuditsEvent(t *testing.T) {
-	al := audit.NewAuditLog()
+	al := audit.NewAuditLog(nil)
 	mw := NewValMw(&mockVerifier{}, nil, al)
 
 	req := httptest.NewRequest("GET", "/test/path", nil)
@@ -55,7 +55,7 @@ func TestWrap_MissingAuthHeader_AuditsEvent(t *testing.T) {
 }
 
 func TestWrap_InvalidScheme_AuditsEvent(t *testing.T) {
-	al := audit.NewAuditLog()
+	al := audit.NewAuditLog(nil)
 	mw := NewValMw(&mockVerifier{}, nil, al)
 
 	req := httptest.NewRequest("GET", "/test/path", nil)
@@ -76,7 +76,7 @@ func TestWrap_InvalidScheme_AuditsEvent(t *testing.T) {
 }
 
 func TestWrap_VerificationFailed_AuditsEvent(t *testing.T) {
-	al := audit.NewAuditLog()
+	al := audit.NewAuditLog(nil)
 	mw := NewValMw(&mockVerifier{err: token.ErrInvalidToken}, nil, al)
 
 	req := httptest.NewRequest("GET", "/test/path", nil)
@@ -97,7 +97,7 @@ func TestWrap_VerificationFailed_AuditsEvent(t *testing.T) {
 }
 
 func TestWrap_RevokedToken_AuditsEvent(t *testing.T) {
-	al := audit.NewAuditLog()
+	al := audit.NewAuditLog(nil)
 	claims := &token.TknClaims{
 		Sub:    "spiffe://test/agent/o/t/a1",
 		TaskId: "task-1",
@@ -140,7 +140,7 @@ func TestWrap_NilAuditLog_DoesNotPanic(t *testing.T) {
 }
 
 func TestWrap_ValidToken_NoAuditEvent(t *testing.T) {
-	al := audit.NewAuditLog()
+	al := audit.NewAuditLog(nil)
 	claims := &token.TknClaims{Sub: "agent-1", Scope: []string{"read:data:*"}}
 	mw := NewValMw(&mockVerifier{claims: claims}, &mockRevChecker{revoked: false}, al)
 
@@ -158,7 +158,7 @@ func TestWrap_ValidToken_NoAuditEvent(t *testing.T) {
 }
 
 func TestRequireScope_InsufficientScope_AuditsEvent(t *testing.T) {
-	al := audit.NewAuditLog()
+	al := audit.NewAuditLog(nil)
 	claims := &token.TknClaims{
 		Sub:    "spiffe://test/agent/o/t/a1",
 		TaskId: "task-1",
@@ -189,7 +189,7 @@ func TestRequireScope_InsufficientScope_AuditsEvent(t *testing.T) {
 }
 
 func TestRequireScope_SufficientScope_NoAuditEvent(t *testing.T) {
-	al := audit.NewAuditLog()
+	al := audit.NewAuditLog(nil)
 	claims := &token.TknClaims{Sub: "agent-1", Scope: []string{"read:data:*", "write:data:*"}}
 	mw := NewValMw(&mockVerifier{claims: claims}, nil, al)
 	handler := mw.Wrap(mw.RequireScope("read:data:*", okHandler))

@@ -63,9 +63,32 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize foundation services
+	// Initialize SQLite
 	sqlStore := store.NewSqlStore()
-	auditLog := audit.NewAuditLog()
+	if err := sqlStore.InitDB(c.DBPath); err != nil {
+		obs.Fail("BROKER", "main", "database init failed", "error="+err.Error())
+		fmt.Fprintf(os.Stderr, "FATAL: init database: %v\n", err)
+		os.Exit(1)
+	}
+	obs.Ok("BROKER", "main", "database initialized", "path="+c.DBPath)
+
+	// Load existing audit events from SQLite to rebuild hash chain
+	existingEvents, err := sqlStore.LoadAllAuditEvents()
+	if err != nil {
+		obs.Fail("BROKER", "main", "audit event load failed", "error="+err.Error())
+		fmt.Fprintf(os.Stderr, "FATAL: load audit events: %v\n", err)
+		os.Exit(1)
+	}
+	obs.Ok("BROKER", "main", "audit events loaded", fmt.Sprintf("count=%d", len(existingEvents)))
+	obs.AuditEventsLoaded.Set(float64(len(existingEvents)))
+
+	// Initialize audit log with persistence
+	var auditLog *audit.AuditLog
+	if len(existingEvents) > 0 {
+		auditLog = audit.NewAuditLogWithEvents(sqlStore, existingEvents)
+	} else {
+		auditLog = audit.NewAuditLog(sqlStore)
+	}
 	tknSvc := token.NewTknSvc(privKey, pubKey, c)
 	revSvc := revoke.NewRevSvc()
 	idSvc := identity.NewIdSvc(sqlStore, tknSvc, c.TrustDomain, auditLog)
@@ -90,7 +113,7 @@ func main() {
 	delegHdl := handler.NewDelegHdl(delegSvc)
 	tokenExchangeHdl := handler.NewTokenExchangeHdl(tknSvc, sqlStore, auditLog)
 	auditHdl := handler.NewAuditHdl(auditLog)
-	healthHdl := handler.NewHealthHdl(version)
+	healthHdl := handler.NewHealthHdl(version, auditLog, sqlStore)
 	metricsHdl := handler.NewMetricsHdl()
 	adminHdl := admin.NewAdminHdl(adminSvc, valMw, auditLog, revSvc)
 
