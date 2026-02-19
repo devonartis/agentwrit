@@ -203,6 +203,19 @@ var AuditEventsLoaded = promauto.NewGauge(prometheus.GaugeOpts{
 	Help: "Number of audit events loaded from SQLite at startup",
 })
 
+// SidecarsTotal tracks the number of registered sidecars by status.
+var SidecarsTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
+	Name: "agentauth_sidecars_total",
+	Help: "Number of registered sidecars",
+}, []string{"status"})
+
+// SidecarListDuration observes the time to serve the list sidecars endpoint.
+var SidecarListDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+	Name:    "agentauth_sidecar_list_duration_seconds",
+	Help:    "Time to serve the list sidecars endpoint",
+	Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1},
+})
+
 // RecordIssuance records a token issuance duration. The caller provides
 // the elapsed time in milliseconds; it is converted to seconds before
 // being observed in the [RequestDuration] histogram.

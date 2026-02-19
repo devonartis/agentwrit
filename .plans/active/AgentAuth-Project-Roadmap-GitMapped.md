@@ -2,7 +2,7 @@
 
 Ephemeral Credentialing for AI Agents | 55,550+ Lines of Code | 7 Phases
 
-Updated: February 18, 2026
+Updated: February 19, 2026
 
 ---
 
@@ -122,7 +122,8 @@ Updated: February 18, 2026
 |---|---------|--------|-------------|--------------|
 | 5.1 | Real Authentication (Session/JWT/SSO) | PLANNED | Backlog #8. Current `_authenticate_user()` is a mock. | -- |
 | 5.2 | Ceiling Request Workflow | PLANNED | Backlog #4. Developer requests scopes, operator approves/denies. | -- |
-| 5.3 | List Active Sidecars & Agents | PLANNED | Backlog #5, #6. `GET /v1/admin/sidecars` and `GET /v1/agents`. | -- |
+| 5.3 | List Active Sidecars & Agents | **PARTIAL** | Backlog #5 (sidecars) DONE — endpoint built, tested, live. Backlog #6 (agents) still planned. | agentAuth: feature/list-sidecars-endpoint branch (10 commits) |
+| 5.3a | Go CLI for Admin Endpoints (`cmd/cli/`) | **PLANNED** | Backlog #16. Operator tooling — without this, admin endpoints are unusable. CLI belongs in Go repo, NOT agentauth-app. Third binary alongside broker and sidecar. | -- |
 | 5.4 | RBAC on Admin API | PLANNED | Separate operator, security, and compliance roles. | -- |
 | 5.5 | HA / Clustering | PLANNED | No single point of failure for the broker. | -- |
 | 5.6 | Real Database Adapter | PLANNED | Replace in-memory data with PostgreSQL or MongoDB. | -- |
@@ -133,7 +134,7 @@ Updated: February 18, 2026
 | 5.11 | Ceiling Change Audit History in CLI | PLANNED | Backlog #9. | -- |
 | 5.12 | Operator Docs: Runtime Ceiling Management | PLANNED | Backlog #3. | -- |
 
-**0/12 complete**
+**0/13 complete (5.3 partial — sidecars endpoint done, agents + CLI pending)**
 
 ---
 
@@ -331,10 +332,11 @@ Updated: February 18, 2026
 
 ### Must-Have for Production (Phase 5 critical path)
 
-5. **Real authentication** — The mock `_authenticate_user()` is a security gap. Identity must come from session/JWT, not ticket text.
-6. **Ceiling request workflow** — Without this, scope management is ad-hoc and unaudited.
-7. **List sidecars/agents** — Operators can't manage what they can't see.
-8. **CI/CD pipeline** — No automated quality gate today.
+5. **Go CLI for admin endpoints** — Every admin endpoint is unusable without operator tooling. CLI must live in `cmd/cli/` in the Go repo (not the Python demo app). This is the highest priority production gap.
+6. **Real authentication** — The mock `_authenticate_user()` is a security gap. Identity must come from session/JWT, not ticket text.
+7. **Ceiling request workflow** — Without this, scope management is ad-hoc and unaudited.
+8. **List agents endpoint** — Sidecars done (5.3), agents still needed. Operators can't manage what they can't see.
+9. **CI/CD pipeline** — No automated quality gate today.
 
 ### Nice-to-Have (Phase 5/6)
 

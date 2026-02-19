@@ -1,5 +1,41 @@
 # MEMORY.md
 
+## 2026-02-19 (Session 3)
+
+Session work:
+- Continued from Session 2 (context compaction)
+- Updated MEMORY.md, BACKLOG.md, and Roadmap with CLI gap finding
+
+Critical finding — No CLI in Go repo:
+- Built list sidecars endpoint (GET /v1/admin/sidecars) but there's no CLI to access it
+- Operators can't use admin endpoints without manually crafting curl + JWT
+- CLI does NOT belong in agentauth-app (that's a Python demo app that can change)
+- CLI must live in this Go repo as `cmd/cli/` — third binary alongside broker and sidecar
+- Added as Backlog #16 (P1) and Roadmap 5.3a
+- Docker live test confirmed endpoint works (HTTP 200 with correct JSON, HTTP 401 for unauthed)
+
+User feedback:
+- "there is no cli for this in that repo and it should not be in that repo"
+- "why would we write this without a cli to access it, can you explain how else is this used realistically"
+- Endpoints without operator tooling are not shippable
+
+Branch: feature/list-sidecars-endpoint (from develop) — NOT merged yet
+Docker containers still running on ports 8080/8081
+
+## 2026-02-19 (Session 2)
+
+Session work:
+- Implemented list sidecars endpoint (Backlog #5) — GET /v1/admin/sidecars
+- SQLite sidecar persistence with dual-write pattern (same as audit persistence)
+- Store methods: SaveSidecar, ListSidecars, UpdateSidecarCeiling, UpdateSidecarStatus, LoadAllSidecars
+- Prometheus metrics: agentauth_sidecars_total gauge, agentauth_sidecar_list_duration_seconds histogram
+- Wired SaveSidecar into ActivateSidecar, UpdateSidecarCeiling syncs to SQLite
+- Startup loading: LoadAllSidecars populates ceiling map from SQLite on broker start
+- Integration test: full end-to-end through HTTP (admin auth → activate sidecar → list sidecars)
+- 10-task subagent-driven TDD implementation with spec reviews after each task
+
+Branch: feature/list-sidecars-endpoint (from develop)
+
 ## 2026-02-19
 
 Session work:

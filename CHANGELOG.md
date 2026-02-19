@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+
+- **Sidecar Persistence [P1]**: `GET /v1/admin/sidecars` endpoint lists all known sidecars with their ID, allowed scopes, status, and activation timestamp. Requires `admin:manage` scope.
+- **Sidecar Persistence [P1]**: SQLite sidecar persistence via dual-write pattern (same architecture as audit persistence). Sidecar records written to both in-memory ceiling map and SQLite on activation.
+- **Sidecar Persistence [P1]**: Startup sidecar loading — `LoadAllSidecars()` populates the ceiling map from SQLite on broker start, so sidecar scope ceilings survive restarts.
+- **Sidecar Persistence [P1]**: Store methods: `SaveSidecar()`, `ListSidecars()`, `UpdateSidecarCeiling()`, `UpdateSidecarStatus()`, `LoadAllSidecars()` for full sidecar lifecycle management in SQLite.
+- **Sidecar Persistence [P1]**: `UpdateSidecarCeiling` syncs ceiling changes to SQLite when updated via `PUT /v1/admin/sidecars/{id}/ceiling`.
+- **Observability [P1]**: 2 new Prometheus metrics: `agentauth_sidecars_total` (gauge, tracks active sidecar count), `agentauth_sidecar_list_duration_seconds` (histogram, list endpoint latency).
+- **Testing [P1]**: Integration test `TestListSidecars_Integration` — full end-to-end through HTTP (admin auth, activate sidecar, list sidecars, verify response).
+
 ### Fixed
 
 - **Bug [P0]**: Multi-scope sidecar activation — `AllowedScopePrefix` (string) → `AllowedScopes` ([]string). Comma-joined scope entries were stored as a single JWT claim, causing all multi-scope token exchanges to fail with `scope_escalation_denied`. Each scope now gets its own `sidecar:activate:X` and `sidecar:scope:X` claim entry. **Breaking change** to `POST /v1/admin/sidecar-activations` request body.

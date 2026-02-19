@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 
+	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/authz"
 	"github.com/divineartis/agentauth/internal/cfg"
 	"github.com/divineartis/agentauth/internal/revoke"
@@ -611,5 +613,110 @@ func TestHandleUpdateCeiling_WideningNoRevocation(t *testing.T) {
 	sidecarClaims := &token.TknClaims{Sub: "sidecar:sc-wide-1"}
 	if revSvc.IsRevoked(sidecarClaims) {
 		t.Fatal("sidecar token should not be revoked on widening")
+	}
+}
+
+// --- GET /v1/admin/sidecars (integration) ---
+
+// TestListSidecars_Integration exercises the full list-sidecars flow
+// through HTTP: admin auth -> create activation token -> activate sidecar
+// -> list sidecars. It uses a real SQLite database to verify the entire
+// persistence chain end-to-end.
+func TestListSidecars_Integration(t *testing.T) {
+	// Setup: SQLite-backed store, Ed25519 key pair, all real services.
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	st := store.NewSqlStore()
+	if err := st.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB: %v", err)
+	}
+	defer st.Close()
+
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300, TrustDomain: "test.local"})
+	auditLog := audit.NewAuditLog(st)
+	revSvc := revoke.NewRevSvc()
+	adminSvc := NewAdminSvc(testSecret, tknSvc, st, auditLog)
+	valMw := authz.NewValMw(tknSvc, revSvc, auditLog)
+	hdl := NewAdminHdl(adminSvc, valMw, auditLog, revSvc)
+
+	mux := http.NewServeMux()
+	hdl.RegisterRoutes(mux)
+
+	// 1. Authenticate as admin.
+	adminToken := getAdminToken(t, mux)
+	if adminToken == "" {
+		t.Fatal("expected non-empty admin token")
+	}
+
+	// 2. Create sidecar activation token.
+	actBody, _ := json.Marshal(CreateSidecarActivationReq{
+		AllowedScopes: []string{"read:customer:*", "write:customer:*"},
+		TTL:           120,
+	})
+	actReq := httptest.NewRequest(http.MethodPost, "/v1/admin/sidecar-activations", bytes.NewReader(actBody))
+	actReq.Header.Set("Content-Type", "application/json")
+	actReq.Header.Set("Authorization", "Bearer "+adminToken)
+	actRec := httptest.NewRecorder()
+	mux.ServeHTTP(actRec, actReq)
+	if actRec.Code != http.StatusCreated {
+		t.Fatalf("sidecar activation: expected 201, got %d: %s", actRec.Code, actRec.Body.String())
+	}
+
+	var actResp CreateSidecarActivationResp
+	if err := json.NewDecoder(actRec.Body).Decode(&actResp); err != nil {
+		t.Fatalf("decode activation response: %v", err)
+	}
+	if actResp.ActivationToken == "" {
+		t.Fatal("expected non-empty activation_token")
+	}
+
+	// 3. Exchange activation token for a sidecar.
+	exchBody, _ := json.Marshal(ActivateSidecarReq{
+		SidecarActivationToken: actResp.ActivationToken,
+	})
+	exchReq := httptest.NewRequest(http.MethodPost, "/v1/sidecar/activate", bytes.NewReader(exchBody))
+	exchReq.Header.Set("Content-Type", "application/json")
+	exchRec := httptest.NewRecorder()
+	mux.ServeHTTP(exchRec, exchReq)
+	if exchRec.Code != http.StatusOK {
+		t.Fatalf("sidecar activate: expected 200, got %d: %s", exchRec.Code, exchRec.Body.String())
+	}
+
+	// 4. List sidecars.
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/admin/sidecars", nil)
+	listReq.Header.Set("Authorization", "Bearer "+adminToken)
+	listRec := httptest.NewRecorder()
+	mux.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list sidecars: expected 200, got %d: %s", listRec.Code, listRec.Body.String())
+	}
+
+	var listResp listSidecarsResp
+	if err := json.NewDecoder(listRec.Body).Decode(&listResp); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+
+	// 5. Verify the response.
+	if listResp.Total != 1 {
+		t.Fatalf("expected total=1, got %d", listResp.Total)
+	}
+	sc := listResp.Sidecars[0]
+	if sc.SidecarID == "" {
+		t.Error("expected non-empty sidecar_id")
+	}
+	if sc.Status != "active" {
+		t.Errorf("expected status=active, got %s", sc.Status)
+	}
+	if len(sc.ScopeCeiling) != 2 {
+		t.Errorf("expected 2 scope ceiling entries, got %d", len(sc.ScopeCeiling))
+	}
+	if sc.CreatedAt == "" {
+		t.Error("expected non-empty created_at")
+	}
+	if sc.UpdatedAt == "" {
+		t.Error("expected non-empty updated_at")
 	}
 }

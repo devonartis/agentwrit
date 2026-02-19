@@ -512,6 +512,134 @@ func TestLoadAllAuditEvents_OrderById(t *testing.T) {
 	}
 }
 
+// --- Sidecar SQLite persistence ---
+
+func TestSaveSidecar_AndList(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s := NewSqlStore()
+	if err := s.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB: %v", err)
+	}
+	defer s.Close()
+
+	err := s.SaveSidecar("sc-001", []string{"read:customer:*", "write:customer:*"})
+	if err != nil {
+		t.Fatalf("SaveSidecar: %v", err)
+	}
+
+	sidecars, err := s.ListSidecars()
+	if err != nil {
+		t.Fatalf("ListSidecars: %v", err)
+	}
+	if len(sidecars) != 1 {
+		t.Fatalf("expected 1 sidecar, got %d", len(sidecars))
+	}
+	if sidecars[0].ID != "sc-001" {
+		t.Errorf("expected id=sc-001, got %s", sidecars[0].ID)
+	}
+	if sidecars[0].Status != "active" {
+		t.Errorf("expected status=active, got %s", sidecars[0].Status)
+	}
+	if len(sidecars[0].Ceiling) != 2 || sidecars[0].Ceiling[0] != "read:customer:*" {
+		t.Errorf("unexpected ceiling: %v", sidecars[0].Ceiling)
+	}
+}
+
+func TestUpdateSidecarCeiling(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s := NewSqlStore()
+	if err := s.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB: %v", err)
+	}
+	defer s.Close()
+
+	_ = s.SaveSidecar("sc-001", []string{"read:customer:*"})
+
+	err := s.UpdateSidecarCeiling("sc-001", []string{"read:customer:*", "write:customer:*"})
+	if err != nil {
+		t.Fatalf("UpdateSidecarCeiling: %v", err)
+	}
+
+	sidecars, _ := s.ListSidecars()
+	if len(sidecars[0].Ceiling) != 2 {
+		t.Errorf("expected 2 ceiling scopes after update, got %d", len(sidecars[0].Ceiling))
+	}
+}
+
+func TestUpdateSidecarCeiling_NotFound(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s := NewSqlStore()
+	if err := s.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB: %v", err)
+	}
+	defer s.Close()
+
+	err := s.UpdateSidecarCeiling("nonexistent", []string{"read:customer:*"})
+	if !errors.Is(err, ErrCeilingNotFound) {
+		t.Errorf("expected ErrCeilingNotFound, got %v", err)
+	}
+}
+
+func TestUpdateSidecarStatus(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s := NewSqlStore()
+	if err := s.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB: %v", err)
+	}
+	defer s.Close()
+
+	_ = s.SaveSidecar("sc-001", []string{"read:customer:*"})
+
+	err := s.UpdateSidecarStatus("sc-001", "revoked")
+	if err != nil {
+		t.Fatalf("UpdateSidecarStatus: %v", err)
+	}
+
+	sidecars, _ := s.ListSidecars()
+	if sidecars[0].Status != "revoked" {
+		t.Errorf("expected status=revoked, got %s", sidecars[0].Status)
+	}
+}
+
+func TestUpdateSidecarStatus_NotFound(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s := NewSqlStore()
+	if err := s.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB: %v", err)
+	}
+	defer s.Close()
+
+	err := s.UpdateSidecarStatus("nonexistent", "revoked")
+	if !errors.Is(err, ErrCeilingNotFound) {
+		t.Errorf("expected ErrCeilingNotFound, got %v", err)
+	}
+}
+
+func TestLoadAllSidecars(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s := NewSqlStore()
+	if err := s.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB: %v", err)
+	}
+	defer s.Close()
+
+	_ = s.SaveSidecar("sc-001", []string{"read:customer:*"})
+	_ = s.SaveSidecar("sc-002", []string{"write:customer:*"})
+	_ = s.UpdateSidecarStatus("sc-002", "revoked")
+
+	ceilings, err := s.LoadAllSidecars()
+	if err != nil {
+		t.Fatalf("LoadAllSidecars: %v", err)
+	}
+	// Only active sidecars should be loaded
+	if len(ceilings) != 1 {
+		t.Fatalf("expected 1 active sidecar, got %d", len(ceilings))
+	}
+	if _, ok := ceilings["sc-001"]; !ok {
+		t.Error("expected sc-001 in loaded ceilings")
+	}
+}
+
 func TestQueryAuditEvents_TimestampFilters(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	s := NewSqlStore()

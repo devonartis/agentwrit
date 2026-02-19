@@ -363,6 +363,14 @@ func (s *AdminSvc) ActivateSidecar(req ActivateSidecarReq) (*ActivateSidecarResp
 		obs.Fail(mod, cmp, "failed to persist sidecar ceiling", "err="+err.Error())
 	}
 
+	if s.store.HasDB() {
+		if err := s.store.SaveSidecar(sidecarID, scopePrefixes); err != nil {
+			obs.Fail(mod, cmp, "failed to persist sidecar record", "err="+err.Error())
+		} else {
+			obs.SidecarsTotal.WithLabelValues("active").Inc()
+		}
+	}
+
 	if s.auditLog != nil {
 		s.auditLog.Record(
 			audit.EventSidecarActivated,
@@ -379,6 +387,11 @@ func (s *AdminSvc) ActivateSidecar(req ActivateSidecarReq) (*ActivateSidecarResp
 		TokenType:   "Bearer",
 		SidecarID:   sidecarID,
 	}, nil
+}
+
+// ListSidecars returns all sidecar records from persistent storage.
+func (s *AdminSvc) ListSidecars() ([]store.SidecarRecord, error) {
+	return s.store.ListSidecars()
 }
 
 // GetSidecarCeiling retrieves the scope ceiling for the given sidecar ID.
@@ -412,6 +425,12 @@ func (s *AdminSvc) UpdateSidecarCeiling(sidecarID string, newCeiling []string, u
 
 	if err := s.store.SaveCeiling(sidecarID, newCeiling); err != nil {
 		return nil, fmt.Errorf("save ceiling: %w", err)
+	}
+
+	if s.store.HasDB() {
+		if err := s.store.UpdateSidecarCeiling(sidecarID, newCeiling); err != nil {
+			obs.Fail(mod, cmp, "failed to update sidecar ceiling in SQLite", "err="+err.Error())
+		}
 	}
 
 	if s.auditLog != nil {

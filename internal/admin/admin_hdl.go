@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/authz"
@@ -63,6 +64,9 @@ func (h *AdminHdl) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("PUT /v1/admin/sidecars/{id}/ceiling",
 		h.valMw.Wrap(h.valMw.RequireScope("admin:launch-tokens:*",
 			http.HandlerFunc(h.handleUpdateCeiling))))
+	mux.Handle("GET /v1/admin/sidecars",
+		h.valMw.Wrap(h.valMw.RequireScope("admin:launch-tokens:*",
+			http.HandlerFunc(h.handleListSidecars))))
 }
 
 // authReq is the JSON body for POST /v1/admin/auth.
@@ -226,6 +230,20 @@ type ceilingResp struct {
 	ScopeCeiling []string `json:"scope_ceiling"`
 }
 
+// listSidecarsResp is the JSON response for GET /v1/admin/sidecars.
+type listSidecarsResp struct {
+	Sidecars []sidecarEntry `json:"sidecars"`
+	Total    int            `json:"total"`
+}
+
+type sidecarEntry struct {
+	SidecarID    string   `json:"sidecar_id"`
+	ScopeCeiling []string `json:"scope_ceiling"`
+	Status       string   `json:"status"`
+	CreatedAt    string   `json:"created_at"`
+	UpdatedAt    string   `json:"updated_at"`
+}
+
 func (h *AdminHdl) handleGetCeiling(w http.ResponseWriter, r *http.Request) {
 	sidecarID := r.PathValue("id")
 	if sidecarID == "" {
@@ -250,6 +268,40 @@ func (h *AdminHdl) handleGetCeiling(w http.ResponseWriter, r *http.Request) {
 		ScopeCeiling: ceiling,
 	}); err != nil {
 		obs.Warn(mod, hdlCmp, "failed to encode ceiling response", "err="+err.Error())
+	}
+}
+
+func (h *AdminHdl) handleListSidecars(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+
+	sidecars, err := h.adminSvc.ListSidecars()
+	if err != nil {
+		obs.Fail(mod, hdlCmp, "list sidecars failed", "err="+err.Error())
+		problemdetails.WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "failed to list sidecars", r.URL.Path)
+		return
+	}
+
+	entries := make([]sidecarEntry, len(sidecars))
+	for i, sc := range sidecars {
+		entries[i] = sidecarEntry{
+			SidecarID:    sc.ID,
+			ScopeCeiling: sc.Ceiling,
+			Status:       sc.Status,
+			CreatedAt:    sc.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:    sc.UpdatedAt.Format(time.RFC3339),
+		}
+	}
+
+	obs.SidecarListDuration.Observe(time.Since(start).Seconds())
+	obs.Ok(mod, hdlCmp, "listed sidecars", fmt.Sprintf("count=%d", len(entries)))
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(listSidecarsResp{
+		Sidecars: entries,
+		Total:    len(entries),
+	}); err != nil {
+		obs.Warn(mod, hdlCmp, "failed to encode list sidecars response", "err="+err.Error())
 	}
 }
 
