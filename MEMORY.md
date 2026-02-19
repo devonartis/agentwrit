@@ -1,5 +1,19 @@
 # MEMORY.md
 
+## 2026-02-19 (Session 2)
+
+Session work:
+- Implemented list sidecars endpoint (Backlog #5) — GET /v1/admin/sidecars
+- SQLite sidecar persistence with dual-write pattern (same as audit persistence)
+- Store methods: SaveSidecar, ListSidecars, UpdateSidecarCeiling, UpdateSidecarStatus, LoadAllSidecars
+- Prometheus metrics: agentauth_sidecars_total gauge, agentauth_sidecar_list_duration_seconds histogram
+- Wired SaveSidecar into ActivateSidecar, UpdateSidecarCeiling syncs to SQLite
+- Startup loading: LoadAllSidecars populates ceiling map from SQLite on broker start
+- Integration test: full end-to-end through HTTP (admin auth → activate sidecar → list sidecars)
+- 10-task subagent-driven TDD implementation with spec reviews after each task
+
+Branch: feature/list-sidecars-endpoint (from develop)
+
 ## 2026-02-19
 
 Session work:
