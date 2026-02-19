@@ -16,6 +16,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -508,6 +509,87 @@ func (s *SqlStore) QueryAuditEvents(filters audit.QueryFilters) ([]audit.AuditEv
 		return nil, 0, fmt.Errorf("iterate audit query: %w", err)
 	}
 	return events, total, nil
+}
+
+// SaveSidecar persists a sidecar record to the SQLite sidecars table using
+// an INSERT with ON CONFLICT upsert. The ceiling is stored as a JSON array.
+func (s *SqlStore) SaveSidecar(id string, ceiling []string) error {
+	if s.db == nil {
+		return errors.New("database not initialized: call InitDB first")
+	}
+
+	ceilingJSON, err := json.Marshal(ceiling)
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to marshal ceiling", "id="+id, "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("marshal_ceiling").Inc()
+		return fmt.Errorf("marshal ceiling for sidecar %s: %w", id, err)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+
+	const q = `INSERT INTO sidecars (id, ceiling, status, created_at, updated_at)
+		VALUES (?, ?, 'active', ?, ?)
+		ON CONFLICT(id) DO UPDATE SET ceiling=excluded.ceiling, updated_at=excluded.updated_at`
+
+	if _, err := s.db.Exec(q, id, string(ceilingJSON), now, now); err != nil {
+		obs.Fail("store", "sqlite", "failed to save sidecar", "id="+id, "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("save_sidecar").Inc()
+		return fmt.Errorf("save sidecar %s: %w", id, err)
+	}
+	obs.Ok("store", "sqlite", "sidecar saved", "id="+id)
+	return nil
+}
+
+// ListSidecars returns all sidecar records ordered by created_at ascending.
+func (s *SqlStore) ListSidecars() ([]SidecarRecord, error) {
+	if s.db == nil {
+		return nil, errors.New("database not initialized: call InitDB first")
+	}
+
+	const q = `SELECT id, ceiling, status, created_at, updated_at
+		FROM sidecars ORDER BY created_at ASC`
+
+	rows, err := s.db.Query(q)
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to list sidecars", "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("list_sidecars").Inc()
+		return nil, fmt.Errorf("list sidecars: %w", err)
+	}
+	defer rows.Close()
+
+	var sidecars []SidecarRecord
+	for rows.Next() {
+		var rec SidecarRecord
+		var ceilingStr, createdStr, updatedStr string
+		if err := rows.Scan(&rec.ID, &ceilingStr, &rec.Status, &createdStr, &updatedStr); err != nil {
+			obs.Fail("store", "sqlite", "failed to scan sidecar row", "error="+err.Error())
+			obs.DBErrorsTotal.WithLabelValues("scan_sidecar").Inc()
+			return nil, fmt.Errorf("scan sidecar: %w", err)
+		}
+		if err := json.Unmarshal([]byte(ceilingStr), &rec.Ceiling); err != nil {
+			obs.Fail("store", "sqlite", "failed to unmarshal ceiling", "id="+rec.ID, "error="+err.Error())
+			obs.DBErrorsTotal.WithLabelValues("unmarshal_ceiling").Inc()
+			return nil, fmt.Errorf("unmarshal ceiling for sidecar %s: %w", rec.ID, err)
+		}
+		ca, err := time.Parse(time.RFC3339Nano, createdStr)
+		if err != nil {
+			return nil, fmt.Errorf("parse created_at %q: %w", createdStr, err)
+		}
+		ua, err := time.Parse(time.RFC3339Nano, updatedStr)
+		if err != nil {
+			return nil, fmt.Errorf("parse updated_at %q: %w", updatedStr, err)
+		}
+		rec.CreatedAt = ca
+		rec.UpdatedAt = ua
+		sidecars = append(sidecars, rec)
+	}
+	if err := rows.Err(); err != nil {
+		obs.Fail("store", "sqlite", "row iteration error on sidecars", "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("iterate_sidecars").Inc()
+		return nil, fmt.Errorf("iterate sidecars: %w", err)
+	}
+	obs.Ok("store", "sqlite", "sidecars listed", fmt.Sprintf("count=%d", len(sidecars)))
+	return sidecars, nil
 }
 
 // HasDB reports whether the store has an active SQLite database connection.

@@ -512,6 +512,39 @@ func TestLoadAllAuditEvents_OrderById(t *testing.T) {
 	}
 }
 
+// --- Sidecar SQLite persistence ---
+
+func TestSaveSidecar_AndList(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s := NewSqlStore()
+	if err := s.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB: %v", err)
+	}
+	defer s.Close()
+
+	err := s.SaveSidecar("sc-001", []string{"read:customer:*", "write:customer:*"})
+	if err != nil {
+		t.Fatalf("SaveSidecar: %v", err)
+	}
+
+	sidecars, err := s.ListSidecars()
+	if err != nil {
+		t.Fatalf("ListSidecars: %v", err)
+	}
+	if len(sidecars) != 1 {
+		t.Fatalf("expected 1 sidecar, got %d", len(sidecars))
+	}
+	if sidecars[0].ID != "sc-001" {
+		t.Errorf("expected id=sc-001, got %s", sidecars[0].ID)
+	}
+	if sidecars[0].Status != "active" {
+		t.Errorf("expected status=active, got %s", sidecars[0].Status)
+	}
+	if len(sidecars[0].Ceiling) != 2 || sidecars[0].Ceiling[0] != "read:customer:*" {
+		t.Errorf("unexpected ceiling: %v", sidecars[0].Ceiling)
+	}
+}
+
 func TestQueryAuditEvents_TimestampFilters(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	s := NewSqlStore()
