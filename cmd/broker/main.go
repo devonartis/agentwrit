@@ -14,6 +14,7 @@
 //	POST /v1/delegate            – scope-attenuated delegation (Bearer auth)
 //	POST /v1/revoke              – revoke tokens (admin scope)
 //	GET  /v1/audit/events        – query audit trail (admin scope)
+//	GET  /v1/admin/sidecars       – list registered sidecars (admin scope)
 //	POST /v1/admin/auth          – admin authentication (public)
 //	POST /v1/admin/launch-tokens – create launch token (admin scope)
 //	POST /v1/admin/sidecar-activations – create sidecar activation token (admin scope)
@@ -81,6 +82,21 @@ func main() {
 	}
 	obs.Ok("BROKER", "main", "audit events loaded", fmt.Sprintf("count=%d", len(existingEvents)))
 	obs.AuditEventsLoaded.Set(float64(len(existingEvents)))
+
+	// Load existing sidecars from SQLite to populate ceiling map
+	sidecarCeilings, err := sqlStore.LoadAllSidecars()
+	if err != nil {
+		obs.Fail("BROKER", "main", "sidecar load failed", "error="+err.Error())
+		fmt.Fprintf(os.Stderr, "FATAL: load sidecars: %v\n", err)
+		os.Exit(1)
+	}
+	for id, ceiling := range sidecarCeilings {
+		if err := sqlStore.SaveCeiling(id, ceiling); err != nil {
+			obs.Fail("BROKER", "main", "failed to restore sidecar ceiling", "id="+id)
+		}
+	}
+	obs.Ok("BROKER", "main", "sidecars loaded", fmt.Sprintf("count=%d", len(sidecarCeilings)))
+	obs.SidecarsTotal.WithLabelValues("active").Set(float64(len(sidecarCeilings)))
 
 	// Initialize audit log with persistence
 	var auditLog *audit.AuditLog
