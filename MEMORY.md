@@ -1,5 +1,40 @@
 # MEMORY.md
 
+## 2026-02-19 (Session 5)
+
+Session work:
+- Merged `feature/list-sidecars-endpoint` to `develop`
+- Moved docx files to `misc_docs/`, deleted `docs/plans/`, added docs-only policy to CLAUDE.md
+- Created `FLOW.md` as running decision log (pointed from CLAUDE.md)
+- Brainstormed `aactl` CLI design — cobra, env var auth (demo only), table+json output, core 5 commands first
+- Design approved, moving to implementation planning
+- Wrote 9-task implementation plan → `.plans/active/2026-02-19-aactl-impl-plan.md`
+- Chose subagent-driven execution (fresh subagent per task) over parallel session — user wants isolated subagents to preserve main context. Each task gets an implementer subagent + spec review + code quality review before moving to next.
+- Branch: `feature/aactl-cli` from `develop`
+- Implemented `aactl` CLI (`cmd/aactl/`) — Tasks 1-9 complete, all gates pass, E2E verified against Docker stack
+  - 5 commands: sidecars list, ceiling get/set, revoke, audit events
+  - Godoc comments on all exported symbols
+  - Operator docs updated (getting-started-operator.md, common-tasks.md, architecture.md)
+  - Branch: `feature/aactl-cli` — ready for review/merge
+
+See `FLOW.md` for full decision rationale.
+
+## 2026-02-19 (Session 4)
+
+Session work:
+- Fixed broken `prime` skill — was standalone `prime.md` with wrong frontmatter, restructured to `prime/SKILL.md` directory format with correct fields (`description`, `allowed-tools`)
+- Moved `docs/claude-code-subagent-guide.md` to `misc_docs/`
+- Committed all outstanding doc changes (impl plan, backlog, roadmap, CLAUDE.md, MEMORY.md) as `bb09ef1`
+- Logged insight about Claude Code skill format to daily note + AI-Systems-Building insights log
+
+Branch: feature/list-sidecars-endpoint — NOT merged yet
+Remaining untracked: `docs/*.docx` files and a duplicate roadmap copy
+
+What's next:
+1. Merge `feature/list-sidecars-endpoint` to develop (feature code done, tests passing)
+2. Build `cmd/cli/` — Go CLI for admin endpoints (Backlog #16, P1). This is the blocker that makes admin endpoints shippable. Start with `agentauth-cli sidecars list` to exercise the endpoint we just built.
+3. Clean up untracked `.docx` files in `docs/`
+
 ## 2026-02-19 (Session 3)
 
 Session work:

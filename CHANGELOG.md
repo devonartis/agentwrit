@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Added
 
+- `aactl` operator CLI (`cmd/aactl/`) — cobra-based binary for managing the AgentAuth broker without hand-crafting curl + JWT
+  - `aactl sidecars list` — list all registered sidecars (table or JSON)
+  - `aactl sidecars ceiling get <id>` — get scope ceiling for a sidecar
+  - `aactl sidecars ceiling set <id> --scopes s1,s2` — update scope ceiling
+  - `aactl revoke --level <lvl> --target <t>` — revoke tokens at token/agent/task/chain granularity
+  - `aactl audit events [flags]` — query audit trail with filters (agent-id, task-id, event-type, since, until, limit, offset)
+  - Env-var auth: `AACTL_BROKER_URL` + `AACTL_ADMIN_SECRET` (stateless, no disk state)
+  - Table output by default; `--json` flag for raw JSON (CI-friendly)
 - **Sidecar Persistence [P1]**: `GET /v1/admin/sidecars` endpoint lists all known sidecars with their ID, allowed scopes, status, and activation timestamp. Requires `admin:manage` scope.
 - **Sidecar Persistence [P1]**: SQLite sidecar persistence via dual-write pattern (same architecture as audit persistence). Sidecar records written to both in-memory ceiling map and SQLite on activation.
 - **Sidecar Persistence [P1]**: Startup sidecar loading — `LoadAllSidecars()` populates the ceiling map from SQLite on broker start, so sidecar scope ceilings survive restarts.
