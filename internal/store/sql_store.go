@@ -592,6 +592,71 @@ func (s *SqlStore) ListSidecars() ([]SidecarRecord, error) {
 	return sidecars, nil
 }
 
+// UpdateSidecarCeiling updates the scope ceiling for an existing sidecar.
+// Returns [ErrCeilingNotFound] if no sidecar with the given id exists.
+func (s *SqlStore) UpdateSidecarCeiling(id string, ceiling []string) error {
+	if s.db == nil {
+		return errors.New("database not initialized: call InitDB first")
+	}
+
+	ceilingJSON, err := json.Marshal(ceiling)
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to marshal ceiling", "id="+id, "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("marshal_ceiling").Inc()
+		return fmt.Errorf("marshal ceiling for sidecar %s: %w", id, err)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+
+	const q = `UPDATE sidecars SET ceiling = ?, updated_at = ? WHERE id = ?`
+	res, err := s.db.Exec(q, string(ceilingJSON), now, id)
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to update sidecar ceiling", "id="+id, "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("update_sidecar_ceiling").Inc()
+		return fmt.Errorf("update sidecar ceiling %s: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to get rows affected", "id="+id, "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("update_sidecar_ceiling").Inc()
+		return fmt.Errorf("rows affected for sidecar %s: %w", id, err)
+	}
+	if n == 0 {
+		return ErrCeilingNotFound
+	}
+	obs.Ok("store", "sqlite", "sidecar ceiling updated", "id="+id)
+	return nil
+}
+
+// UpdateSidecarStatus updates the status for an existing sidecar.
+// Returns [ErrCeilingNotFound] if no sidecar with the given id exists.
+func (s *SqlStore) UpdateSidecarStatus(id string, status string) error {
+	if s.db == nil {
+		return errors.New("database not initialized: call InitDB first")
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+
+	const q = `UPDATE sidecars SET status = ?, updated_at = ? WHERE id = ?`
+	res, err := s.db.Exec(q, status, now, id)
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to update sidecar status", "id="+id, "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("update_sidecar_status").Inc()
+		return fmt.Errorf("update sidecar status %s: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to get rows affected", "id="+id, "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("update_sidecar_status").Inc()
+		return fmt.Errorf("rows affected for sidecar %s: %w", id, err)
+	}
+	if n == 0 {
+		return ErrCeilingNotFound
+	}
+	obs.Ok("store", "sqlite", "sidecar status updated", "id="+id, "status="+status)
+	return nil
+}
+
 // HasDB reports whether the store has an active SQLite database connection.
 func (s *SqlStore) HasDB() bool {
 	s.mu.RLock()

@@ -545,6 +545,76 @@ func TestSaveSidecar_AndList(t *testing.T) {
 	}
 }
 
+func TestUpdateSidecarCeiling(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s := NewSqlStore()
+	if err := s.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB: %v", err)
+	}
+	defer s.Close()
+
+	_ = s.SaveSidecar("sc-001", []string{"read:customer:*"})
+
+	err := s.UpdateSidecarCeiling("sc-001", []string{"read:customer:*", "write:customer:*"})
+	if err != nil {
+		t.Fatalf("UpdateSidecarCeiling: %v", err)
+	}
+
+	sidecars, _ := s.ListSidecars()
+	if len(sidecars[0].Ceiling) != 2 {
+		t.Errorf("expected 2 ceiling scopes after update, got %d", len(sidecars[0].Ceiling))
+	}
+}
+
+func TestUpdateSidecarCeiling_NotFound(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s := NewSqlStore()
+	if err := s.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB: %v", err)
+	}
+	defer s.Close()
+
+	err := s.UpdateSidecarCeiling("nonexistent", []string{"read:customer:*"})
+	if !errors.Is(err, ErrCeilingNotFound) {
+		t.Errorf("expected ErrCeilingNotFound, got %v", err)
+	}
+}
+
+func TestUpdateSidecarStatus(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s := NewSqlStore()
+	if err := s.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB: %v", err)
+	}
+	defer s.Close()
+
+	_ = s.SaveSidecar("sc-001", []string{"read:customer:*"})
+
+	err := s.UpdateSidecarStatus("sc-001", "revoked")
+	if err != nil {
+		t.Fatalf("UpdateSidecarStatus: %v", err)
+	}
+
+	sidecars, _ := s.ListSidecars()
+	if sidecars[0].Status != "revoked" {
+		t.Errorf("expected status=revoked, got %s", sidecars[0].Status)
+	}
+}
+
+func TestUpdateSidecarStatus_NotFound(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s := NewSqlStore()
+	if err := s.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB: %v", err)
+	}
+	defer s.Close()
+
+	err := s.UpdateSidecarStatus("nonexistent", "revoked")
+	if !errors.Is(err, ErrCeilingNotFound) {
+		t.Errorf("expected ErrCeilingNotFound, got %v", err)
+	}
+}
+
 func TestQueryAuditEvents_TimestampFilters(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	s := NewSqlStore()
