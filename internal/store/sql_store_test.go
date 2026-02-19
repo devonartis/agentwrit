@@ -2,8 +2,12 @@ package store
 
 import (
 	"errors"
+	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/divineartis/agentauth/internal/audit"
 )
 
 // --- Nonce lifecycle ---
@@ -307,4 +311,245 @@ func TestSaveCeiling_Overwrite(t *testing.T) {
 	if len(got) != 2 {
 		t.Errorf("expected overwrite to 2 scopes, got %d", len(got))
 	}
+}
+
+// --- SQLite audit persistence ---
+
+func TestInitDB_CreatesAuditTable(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s := NewSqlStore()
+	if err := s.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB failed: %v", err)
+	}
+	defer s.Close()
+
+	// Verify table exists by inserting and querying
+	evt := audit.AuditEvent{
+		ID: "evt-000001", Timestamp: time.Now().UTC(),
+		EventType: "test_event", AgentID: "agent-1",
+		TaskID: "task-1", OrchID: "orch-1",
+		Detail: "test detail", Hash: "abc123", PrevHash: "000000",
+	}
+	if err := s.SaveAuditEvent(evt); err != nil {
+		t.Fatalf("SaveAuditEvent failed: %v", err)
+	}
+
+	events, err := s.LoadAllAuditEvents()
+	if err != nil {
+		t.Fatalf("LoadAllAuditEvents failed: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].ID != "evt-000001" {
+		t.Fatalf("expected evt-000001, got %s", events[0].ID)
+	}
+}
+
+func TestInitDB_BadPath(t *testing.T) {
+	s := NewSqlStore()
+	err := s.InitDB("/nonexistent/dir/test.db")
+	if err == nil {
+		t.Fatal("expected error for bad path")
+	}
+}
+
+func TestQueryAuditEvents_Filters(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s := NewSqlStore()
+	if err := s.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB failed: %v", err)
+	}
+	defer s.Close()
+
+	// Insert 3 events with different types and agents
+	now := time.Now().UTC()
+	events := []audit.AuditEvent{
+		{ID: "evt-000001", Timestamp: now, EventType: "token_issued", AgentID: "agent-1", Hash: "h1", PrevHash: "p0"},
+		{ID: "evt-000002", Timestamp: now.Add(time.Second), EventType: "token_revoked", AgentID: "agent-2", Hash: "h2", PrevHash: "h1"},
+		{ID: "evt-000003", Timestamp: now.Add(2 * time.Second), EventType: "token_issued", AgentID: "agent-1", Hash: "h3", PrevHash: "h2"},
+	}
+	for _, e := range events {
+		if err := s.SaveAuditEvent(e); err != nil {
+			t.Fatalf("SaveAuditEvent failed: %v", err)
+		}
+	}
+
+	// Filter by event type
+	results, total, err := s.QueryAuditEvents(audit.QueryFilters{EventType: "token_issued"})
+	if err != nil {
+		t.Fatalf("QueryAuditEvents failed: %v", err)
+	}
+	if total != 2 {
+		t.Fatalf("expected total 2, got %d", total)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+
+	// Filter by agent
+	results, total, err = s.QueryAuditEvents(audit.QueryFilters{AgentID: "agent-2"})
+	if err != nil {
+		t.Fatalf("QueryAuditEvents failed: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("expected total 1, got %d", total)
+	}
+	_ = results
+
+	// Pagination
+	results, total, err = s.QueryAuditEvents(audit.QueryFilters{Limit: 1, Offset: 1})
+	if err != nil {
+		t.Fatalf("QueryAuditEvents failed: %v", err)
+	}
+	if total != 3 {
+		t.Fatalf("expected total 3, got %d", total)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].ID != "evt-000002" {
+		t.Fatalf("expected evt-000002, got %s", results[0].ID)
+	}
+}
+
+func TestHasDB_FalseBeforeInit(t *testing.T) {
+	s := NewSqlStore()
+	if s.HasDB() {
+		t.Fatal("expected HasDB()=false before InitDB")
+	}
+}
+
+func TestHasDB_TrueAfterInit(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s := NewSqlStore()
+	if err := s.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB failed: %v", err)
+	}
+	defer s.Close()
+	if !s.HasDB() {
+		t.Fatal("expected HasDB()=true after InitDB")
+	}
+}
+
+func TestClose_ReleasesDB(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s := NewSqlStore()
+	if err := s.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB failed: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+	// After close, SaveAuditEvent should fail
+	evt := audit.AuditEvent{
+		ID: "evt-000001", Timestamp: time.Now().UTC(),
+		EventType: "test", Hash: "h1", PrevHash: "p0",
+	}
+	if err := s.SaveAuditEvent(evt); err == nil {
+		t.Fatal("expected error after Close, got nil")
+	}
+}
+
+func TestSaveAuditEvent_WithoutInitDB(t *testing.T) {
+	s := NewSqlStore()
+	evt := audit.AuditEvent{
+		ID: "evt-000001", Timestamp: time.Now().UTC(),
+		EventType: "test", Hash: "h1", PrevHash: "p0",
+	}
+	err := s.SaveAuditEvent(evt)
+	if err == nil {
+		t.Fatal("expected error saving without InitDB")
+	}
+}
+
+func TestLoadAllAuditEvents_Empty(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s := NewSqlStore()
+	if err := s.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB failed: %v", err)
+	}
+	defer s.Close()
+
+	events, err := s.LoadAllAuditEvents()
+	if err != nil {
+		t.Fatalf("LoadAllAuditEvents failed: %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("expected 0 events on fresh DB, got %d", len(events))
+	}
+}
+
+func TestLoadAllAuditEvents_OrderById(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s := NewSqlStore()
+	if err := s.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB failed: %v", err)
+	}
+	defer s.Close()
+
+	// Insert in reverse order
+	for _, id := range []string{"evt-000003", "evt-000001", "evt-000002"} {
+		evt := audit.AuditEvent{
+			ID: id, Timestamp: time.Now().UTC(),
+			EventType: "test", Hash: id, PrevHash: "p",
+		}
+		if err := s.SaveAuditEvent(evt); err != nil {
+			t.Fatalf("SaveAuditEvent(%s) failed: %v", id, err)
+		}
+	}
+
+	events, err := s.LoadAllAuditEvents()
+	if err != nil {
+		t.Fatalf("LoadAllAuditEvents failed: %v", err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(events))
+	}
+	// Should be ordered by id ASC
+	if events[0].ID != "evt-000001" || events[1].ID != "evt-000002" || events[2].ID != "evt-000003" {
+		t.Fatalf("expected order evt-000001,2,3, got %s,%s,%s", events[0].ID, events[1].ID, events[2].ID)
+	}
+}
+
+func TestQueryAuditEvents_TimestampFilters(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s := NewSqlStore()
+	if err := s.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB failed: %v", err)
+	}
+	defer s.Close()
+
+	now := time.Now().UTC()
+	for i, ts := range []time.Time{now.Add(-2 * time.Hour), now.Add(-1 * time.Hour), now} {
+		evt := audit.AuditEvent{
+			ID: fmt.Sprintf("evt-%06d", i+1), Timestamp: ts,
+			EventType: "test", Hash: fmt.Sprintf("h%d", i), PrevHash: "p",
+		}
+		if err := s.SaveAuditEvent(evt); err != nil {
+			t.Fatalf("save: %v", err)
+		}
+	}
+
+	// Since filter: only events in last 90 minutes
+	since := now.Add(-90 * time.Minute)
+	results, total, err := s.QueryAuditEvents(audit.QueryFilters{Since: &since})
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if total != 2 {
+		t.Fatalf("expected 2 events since 90min ago, got %d", total)
+	}
+	_ = results
+
+	// Until filter: only events before 90 minutes ago
+	until := now.Add(-90 * time.Minute)
+	results, total, err = s.QueryAuditEvents(audit.QueryFilters{Until: &until})
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("expected 1 event before 90min ago, got %d", total)
+	}
+	_ = results
 }

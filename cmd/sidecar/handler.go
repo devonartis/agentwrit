@@ -327,6 +327,8 @@ func (h *healthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.state != nil {
+		resp["sidecar_id"] = h.state.sidecarID
+		obs.Trace("sidecar", "health", "health check served", "sidecar_id="+h.state.sidecarID)
 		if lr := h.state.getLastRenewal(); !lr.IsZero() {
 			resp["last_renewal"] = lr.Format(time.RFC3339)
 		}

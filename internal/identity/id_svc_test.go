@@ -30,7 +30,7 @@ func setupIdSvc(t *testing.T) (*IdSvc, *store.SqlStore, *audit.AuditLog) {
 		DefaultTTL:  300,
 	}
 	tknSvc := token.NewTknSvc(priv, pub, c)
-	auditLog := audit.NewAuditLog()
+	auditLog := audit.NewAuditLog(nil)
 	idSvc := NewIdSvc(sqlStore, tknSvc, "agentauth.local", auditLog)
 
 	return idSvc, sqlStore, auditLog

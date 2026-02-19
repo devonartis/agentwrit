@@ -129,6 +129,8 @@ Broker health check.
 | `status` | string | Always `"ok"` |
 | `version` | string | Broker version (currently `"2.0.0"`) |
 | `uptime` | int | Seconds since startup |
+| `db_connected` | bool | Whether the SQLite audit database is connected and responsive. `false` if `AA_DB_PATH` is unset or the database is unreachable. |
+| `audit_events_count` | int | Total number of audit events in the in-memory log. Useful for verifying persistence — this count should survive broker restarts when `AA_DB_PATH` is configured. |
 
 ```bash
 curl http://localhost:8080/v1/health
@@ -138,7 +140,9 @@ curl http://localhost:8080/v1/health
 {
   "status": "ok",
   "version": "2.0.0",
-  "uptime": 42
+  "uptime": 42,
+  "db_connected": true,
+  "audit_events_count": 56
 }
 ```
 
@@ -838,6 +842,7 @@ Sidecar health and readiness.
 | `status` | string | `"ok"` or `"degraded"` |
 | `broker_connected` | bool | Whether sidecar has a valid broker token |
 | `healthy` | bool | Overall health status |
+| `sidecar_id` | string | Stable sidecar identifier (derived from activation). Use this value for runtime ceiling management via `PUT /v1/admin/sidecars/{id}/ceiling`. |
 | `scope_ceiling` | string[] | Configured scope ceiling |
 | `agents_registered` | int | Agents in sidecar memory |
 | `last_renewal` | string | RFC3339 timestamp of last token renewal |

@@ -10,6 +10,9 @@ services:
       - AA_ADMIN_SECRET=${AA_ADMIN_SECRET:-change-me-in-production}
       - AA_SEED_TOKENS=${AA_SEED_TOKENS:-false}
       - AA_LOG_LEVEL=${AA_LOG_LEVEL:-standard}
+      - AA_DB_PATH=${AA_DB_PATH:-/data/agentauth.db}
+    volumes:
+      - broker-data:/data
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/v1/health"]
       interval: 2s
@@ -34,6 +37,9 @@ services:
         condition: service_healthy
     networks:
       - agentauth-net
+
+volumes:
+  broker-data:
 
 networks:
   agentauth-net:

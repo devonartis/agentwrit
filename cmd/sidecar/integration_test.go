@@ -47,7 +47,7 @@ func startTestBroker(t *testing.T, secret string) *httptest.Server {
 	}
 
 	sqlStore := store.NewSqlStore()
-	auditLog := audit.NewAuditLog()
+	auditLog := audit.NewAuditLog(nil)
 	tknSvc := token.NewTknSvc(privKey, pubKey, c)
 	revSvc := revoke.NewRevSvc()
 	idSvc := identity.NewIdSvc(sqlStore, tknSvc, c.TrustDomain, auditLog)
@@ -61,7 +61,7 @@ func startTestBroker(t *testing.T, secret string) *httptest.Server {
 	mux.Handle("POST /v1/token/renew", problemdetails.MaxBytesBody(valMw.Wrap(handler.NewRenewHdl(tknSvc, auditLog, sqlStore))))
 	mux.Handle("POST /v1/token/exchange",
 		problemdetails.MaxBytesBody(valMw.Wrap(valMw.RequireScope("sidecar:manage:*", handler.NewTokenExchangeHdl(tknSvc, sqlStore, auditLog)))))
-	mux.Handle("GET /v1/health", handler.NewHealthHdl("test"))
+	mux.Handle("GET /v1/health", handler.NewHealthHdl("test", auditLog, sqlStore))
 	admin.NewAdminHdl(adminSvc, valMw, auditLog, revSvc).RegisterRoutes(mux)
 
 	var rootHandler http.Handler = mux

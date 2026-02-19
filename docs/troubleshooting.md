@@ -602,3 +602,23 @@ This is expected behavior. After a broker restart:
 3. **Plan restarts during low-traffic windows** if possible, to minimize disruption.
 
 4. **In production**, consider running the broker behind a process manager that restarts it automatically but infrequently. Do not restart the broker as part of routine operations.
+
+5. **Audit events survive restarts** when `AA_DB_PATH` is configured. The broker reloads all audit events from SQLite on startup and rebuilds the in-memory hash chain. Verify with `curl http://localhost:8080/v1/health` — the `audit_events_count` field should reflect previously recorded events.
+
+---
+
+### SQLite Database Issues
+
+**Symptom:** Broker starts but `db_connected` is `false` in the health response, or the broker logs `FAIL | STORE | InitDB` on startup.
+
+**Cause:** The broker cannot create or open the SQLite database file at the path specified by `AA_DB_PATH`.
+
+**Fix:**
+
+1. **Check the directory exists and is writable** by the broker process. In Docker, ensure the volume mount target directory exists inside the container.
+
+2. **Check disk space.** SQLite requires free disk to write audit events.
+
+3. **Check file permissions.** The broker process must have read-write access to both the database file and its parent directory (SQLite creates WAL/journal files alongside the main database).
+
+4. **Fallback:** If SQLite is unavailable, the broker still operates normally with in-memory-only audit events. Set `AA_DB_PATH=""` to explicitly disable persistence.

@@ -1,13 +1,14 @@
 package audit
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestRecord_BasicEvent(t *testing.T) {
-	al := NewAuditLog()
+	al := NewAuditLog(nil)
 
 	al.Record(EventAgentRegistered, "agent-1", "task-1", "orch-1", "agent registered successfully")
 
@@ -37,7 +38,7 @@ func TestRecord_BasicEvent(t *testing.T) {
 }
 
 func TestRecord_HashChainIntegrity(t *testing.T) {
-	al := NewAuditLog()
+	al := NewAuditLog(nil)
 
 	al.Record(EventTokenIssued, "a1", "t1", "o1", "first")
 	al.Record(EventTokenRevoked, "a2", "t2", "o2", "second")
@@ -76,7 +77,7 @@ func TestRecord_HashChainIntegrity(t *testing.T) {
 }
 
 func TestRecord_PIISanitization(t *testing.T) {
-	al := NewAuditLog()
+	al := NewAuditLog(nil)
 
 	al.Record(EventAdminAuth, "", "", "", "secret=my-super-secret-value")
 	al.Record(EventAdminAuth, "", "", "", "password: hunter2")
@@ -98,7 +99,7 @@ func TestRecord_PIISanitization(t *testing.T) {
 }
 
 func TestRecord_PIISanitization_NoFalsePositive(t *testing.T) {
-	al := NewAuditLog()
+	al := NewAuditLog(nil)
 
 	al.Record(EventAgentRegistered, "", "", "", "agent registered with scope [read:data:*]")
 
@@ -109,7 +110,7 @@ func TestRecord_PIISanitization_NoFalsePositive(t *testing.T) {
 }
 
 func TestQuery_NoFilters(t *testing.T) {
-	al := NewAuditLog()
+	al := NewAuditLog(nil)
 	al.Record(EventTokenIssued, "a1", "t1", "o1", "first")
 	al.Record(EventTokenRevoked, "a2", "t2", "o2", "second")
 
@@ -123,7 +124,7 @@ func TestQuery_NoFilters(t *testing.T) {
 }
 
 func TestQuery_FilterByEventType(t *testing.T) {
-	al := NewAuditLog()
+	al := NewAuditLog(nil)
 	al.Record(EventTokenIssued, "a1", "t1", "o1", "issued")
 	al.Record(EventTokenRevoked, "a2", "t2", "o2", "revoked")
 	al.Record(EventTokenIssued, "a3", "t3", "o3", "issued again")
@@ -138,7 +139,7 @@ func TestQuery_FilterByEventType(t *testing.T) {
 }
 
 func TestQuery_FilterByAgentID(t *testing.T) {
-	al := NewAuditLog()
+	al := NewAuditLog(nil)
 	al.Record(EventTokenIssued, "agent-A", "t1", "o1", "for A")
 	al.Record(EventTokenIssued, "agent-B", "t2", "o2", "for B")
 
@@ -152,7 +153,7 @@ func TestQuery_FilterByAgentID(t *testing.T) {
 }
 
 func TestQuery_FilterByTaskID(t *testing.T) {
-	al := NewAuditLog()
+	al := NewAuditLog(nil)
 	al.Record(EventTokenIssued, "a1", "task-X", "o1", "task X")
 	al.Record(EventTokenIssued, "a2", "task-Y", "o2", "task Y")
 
@@ -166,7 +167,7 @@ func TestQuery_FilterByTaskID(t *testing.T) {
 }
 
 func TestQuery_FilterBySinceUntil(t *testing.T) {
-	al := NewAuditLog()
+	al := NewAuditLog(nil)
 
 	al.Record(EventTokenIssued, "a1", "t1", "o1", "early")
 	time.Sleep(10 * time.Millisecond)
@@ -192,7 +193,7 @@ func TestQuery_FilterBySinceUntil(t *testing.T) {
 }
 
 func TestQuery_Pagination(t *testing.T) {
-	al := NewAuditLog()
+	al := NewAuditLog(nil)
 	for i := 0; i < 10; i++ {
 		al.Record(EventTokenIssued, "a", "t", "o", "event")
 	}
@@ -215,7 +216,7 @@ func TestQuery_Pagination(t *testing.T) {
 }
 
 func TestQuery_OffsetBeyondTotal(t *testing.T) {
-	al := NewAuditLog()
+	al := NewAuditLog(nil)
 	al.Record(EventTokenIssued, "a", "t", "o", "only one")
 
 	events, total := al.Query(QueryFilters{Offset: 10})
@@ -228,7 +229,7 @@ func TestQuery_OffsetBeyondTotal(t *testing.T) {
 }
 
 func TestQuery_DefaultLimitIs100(t *testing.T) {
-	al := NewAuditLog()
+	al := NewAuditLog(nil)
 	for i := 0; i < 150; i++ {
 		al.Record(EventTokenIssued, "a", "t", "o", "event")
 	}
@@ -243,7 +244,7 @@ func TestQuery_DefaultLimitIs100(t *testing.T) {
 }
 
 func TestQuery_LimitCappedAt1000(t *testing.T) {
-	al := NewAuditLog()
+	al := NewAuditLog(nil)
 	// We'll just check the cap logic with a smaller set.
 	for i := 0; i < 5; i++ {
 		al.Record(EventTokenIssued, "a", "t", "o", "event")
@@ -271,7 +272,7 @@ func TestNewEventTypeConstants_Exist(t *testing.T) {
 }
 
 func TestEvents_ReturnsCopy(t *testing.T) {
-	al := NewAuditLog()
+	al := NewAuditLog(nil)
 	al.Record(EventTokenIssued, "a", "t", "o", "detail")
 
 	events := al.Events()
@@ -280,5 +281,92 @@ func TestEvents_ReturnsCopy(t *testing.T) {
 	original := al.Events()
 	if original[0].Detail == "tampered" {
 		t.Error("Events() should return a copy, not a reference to the internal slice")
+	}
+}
+
+// mockStore implements AuditStore for testing.
+type mockStore struct {
+	events []AuditEvent
+}
+
+func (m *mockStore) SaveAuditEvent(evt AuditEvent) error {
+	m.events = append(m.events, evt)
+	return nil
+}
+
+func TestRecord_WritesToStore(t *testing.T) {
+	ms := &mockStore{}
+	al := NewAuditLog(ms)
+	al.Record("test_event", "agent-1", "task-1", "orch-1", "detail")
+
+	if len(ms.events) != 1 {
+		t.Fatalf("expected 1 event in store, got %d", len(ms.events))
+	}
+	if ms.events[0].EventType != "test_event" {
+		t.Fatalf("expected test_event, got %s", ms.events[0].EventType)
+	}
+}
+
+func TestNewAuditLogWithEvents_RebuildsChain(t *testing.T) {
+	// Create a log with 2 events
+	al1 := NewAuditLog(nil)
+	al1.Record("evt_a", "", "", "", "first")
+	al1.Record("evt_b", "", "", "", "second")
+	existing := al1.Events()
+
+	// Rebuild from existing events
+	al2 := NewAuditLogWithEvents(nil, existing)
+	al2.Record("evt_c", "", "", "", "third")
+
+	all := al2.Events()
+	if len(all) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(all))
+	}
+	// Verify chain integrity: event 3's PrevHash == event 2's Hash
+	if all[2].PrevHash != all[1].Hash {
+		t.Fatal("hash chain broken after rebuild")
+	}
+}
+
+func TestNewAuditLog_NilStore(t *testing.T) {
+	al := NewAuditLog(nil)
+	al.Record("test", "", "", "", "no store")
+	if len(al.Events()) != 1 {
+		t.Fatal("expected 1 event with nil store")
+	}
+}
+
+// failingStore always returns an error from SaveAuditEvent.
+type failingStore struct{}
+
+func (f *failingStore) SaveAuditEvent(_ AuditEvent) error {
+	return errors.New("disk full")
+}
+
+func TestRecord_StoreError_StillRecordsInMemory(t *testing.T) {
+	fs := &failingStore{}
+	al := NewAuditLog(fs)
+	al.Record("test_event", "agent-1", "task-1", "orch-1", "detail")
+
+	// Even though store failed, event should still be in memory
+	if len(al.Events()) != 1 {
+		t.Fatal("expected 1 event in memory despite store error")
+	}
+	if al.Events()[0].EventType != "test_event" {
+		t.Fatalf("expected test_event, got %s", al.Events()[0].EventType)
+	}
+}
+
+func TestNewAuditLogWithEvents_EmptySlice(t *testing.T) {
+	al := NewAuditLogWithEvents(nil, []AuditEvent{})
+	al.Record("test", "", "", "", "first after empty rebuild")
+
+	events := al.Events()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	// PrevHash should be genesis hash (64 zeros)
+	if len(events[0].PrevHash) != 64 {
+		t.Fatalf("expected 64-char genesis prevHash, got %d chars", len(events[0].PrevHash))
 	}
 }
