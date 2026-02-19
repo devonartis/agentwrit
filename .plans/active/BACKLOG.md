@@ -4,128 +4,56 @@ Everything we've run into during cowork sessions, what we actually saw, and what
 needs to happen next. This is the living document — update it as things get fixed
 or new issues surface.
 
-Last updated: 2026-02-17
+Last updated: 2026-02-19
 
 ---
 
 ## P0 — Blocking for Demo / Testing
 
-### 0. Audit log is in-memory only — events lost on broker restart
+### ~~0. Audit log is in-memory only — events lost on broker restart~~
 
-**What we found:** The broker's audit system (`broker/internal/audit/audit_log.go`)
-stores ALL audit events in a Go slice (`[]AuditEvent`) protected by a mutex. There is
-NO persistence to disk, database, or external service. When the broker restarts, every
-audit event is gone.
+**Status: DONE** | Commit: `4c2733d` | Merged: `9290e9d` | Date: 2026-02-18
 
-**What this means:**
-- `agentauth security audit list` returns nothing after a broker restart
-- `agentauth security audit verify-chain` can't verify anything
-- The hash-chained tamper-evidence is useless if events disappear
-- The dashboard audit table (`/htmx/security/audit`) is empty after restart
-- For the demo: if you restart docker compose between runs, all audit history is lost
-
-**Where it lives in code:**
-- `broker/internal/audit/audit_log.go` — `events []AuditEvent` (line ~30)
-- No call to any store/database for persistence
-- The `SqlStore` in `broker/internal/store/` handles tokens, agents, ceilings — but NOT audit
-
-**What needs to happen:**
-1. Add `SaveAuditEvent()` and `QueryAuditEvents()` to `SqlStore`
-2. Create SQLite table: `audit_events (id, timestamp, event_type, agent_id, task_id, orch_id, detail, hash, prev_hash)`
-3. `AuditLog.Record()` should write to both memory (for fast query) and SQLite (for durability)
-4. On broker startup, load existing events from SQLite to rebuild the hash chain
-
-**Repo:** agentAuth (Go change)
-**Impact:** Without this, the audit system is a facade. It looks professional but loses
-everything on restart. For the demo this is tolerable (restart between shows). For
-production use, this is a hard blocker.
+Implemented SQLite-backed audit persistence with write-through (`AuditStore` interface).
+`AA_DB_PATH` configurable (default `./agentauth.db`). On startup, broker loads existing
+events from SQLite to rebuild the hash chain. Health endpoint returns `db_connected` and
+`audit_events_count`. Prometheus metrics: `agentauth_audit_events_total`,
+`agentauth_audit_write_duration_seconds`, `agentauth_db_errors_total`,
+`agentauth_audit_events_loaded`.
 
 ---
 
-### 1. Sidecar health endpoint doesn't return its own ID
+### ~~1. Sidecar health endpoint doesn't return its own ID~~
 
-**What we saw:** When we built the CLI ceiling management commands (`agentauth operator
-sidecar update-ceiling`), we realized the command requires `--sidecar-id`. But there's
-no programmatic way to discover the sidecar ID. The health endpoint (`GET /v1/health`
-on the sidecar) returns `scope_ceiling`, `broker_connected`, `agents_registered`,
-`uptime_seconds` — but NOT `sidecar_id`.
+**Status: DONE** | Commit: `50a2809` | Date: 2026-02-18
 
-**How we found the ID today:** We had to search the sidecar's stdout logs for the
-startup message: `[SIDECAR] [MAIN] ready addr=:8081 sidecar_id=sc-xxx`. That's not
-acceptable for production use.
-
-**Where the ID lives in code:** The sidecar stores it in `sidecarState.sidecarID`
-(file: `broker/cmd/sidecar/bootstrap.go`, line 21). The health handler has access
-to it via `h.state` (file: `broker/cmd/sidecar/handler.go`, line 280) but doesn't
-include it in the response (line 318-336).
-
-**Exact fix:**
-```go
-// broker/cmd/sidecar/handler.go, around line 326
-// Add after the existing resp map:
-if h.state != nil {
-    resp["sidecar_id"] = h.state.sidecarID  // <-- ADD THIS
-    if lr := h.state.getLastRenewal(); !lr.IsZero() {
-        resp["last_renewal"] = lr.Format(time.RFC3339)
-    }
-    // ...existing code...
-}
-```
-
-**Repo:** agentAuth (Go change)
-**Impact:** Without this, the CLI `update-ceiling` and `get-ceiling` commands are
-unusable without log-diving. The operator has no way to manage ceilings programmatically.
+Sidecar `GET /v1/health` now returns `sidecar_id` in the response JSON. Also added
+`lastRenewal` and `startTime` to sidecar state (`9eaf773`), and structured logging +
+Prometheus metrics (`3a0677a`).
 
 ---
 
 ### 2. CLI `update-ceiling` should auto-discover sidecar ID (depends on #1)
 
+**Status: NEEDS VERIFICATION** — Go dependency (#1) is done. Check if agentauth-app
+has the Python-side change.
+
 **What we want:** If the operator doesn't pass `--sidecar-id`, the CLI should query
 the sidecar health endpoint and get the ID automatically. Single-sidecar deployments
 (which is the common case) shouldn't require the operator to know the ID at all.
 
-**Exact fix:**
-```python
-# app/cli/operator.py — in sidecar_update_ceiling()
-# Change sidecar_id from required to optional:
-sidecar_id: str = typer.Option(None, "--sidecar-id", help="Sidecar ID (auto-discovered if omitted)")
-
-# If not provided, discover it:
-if not sidecar_id:
-    health = client.operator.get_sidecar_health()
-    sidecar_id = health.get("sidecar_id")
-    if not sidecar_id:
-        typer.echo("Error: Sidecar health endpoint doesn't return sidecar_id. "
-                    "Upgrade the sidecar or pass --sidecar-id manually.")
-        raise typer.Exit(1)
-    typer.echo(f"Auto-discovered sidecar: {sidecar_id}")
-```
-
-**Repo:** agentauth-app (Python change, but depends on Go fix #1)
+**Repo:** agentauth-app (Python change)
 **Impact:** Makes the CLI actually usable for the common single-sidecar case.
 
 ---
 
-### 3. Operator docs don't mention runtime ceiling management
+### ~~3. Operator docs don't mention runtime ceiling management~~
 
-**What we saw:** `docs/getting-started-operator.md` (line 85) documents the env var
-`AA_SIDECAR_SCOPE_CEILING` and says it's required. But it never mentions:
-- That the env var is just the bootstrap seed
-- That the ceiling can be updated at runtime via the broker admin API
-- That the sidecar picks up changes on its renewal cycle (no restart needed)
-- How to use the CLI commands we just built
+**Status: DONE** | Date: 2026-02-18
 
-This is why the previous developer was managing ceilings by editing docker-compose.yml
-and restarting containers — the docs told them that's how it works.
-
-**What needs to be added to `docs/getting-started-operator.md`:**
-1. Section: "Runtime Ceiling Management" after the current env var section
-2. CLI examples: `show-ceiling`, `get-ceiling`, `update-ceiling`
-3. Explanation of the renewal cycle (4-12 minutes for changes to take effect)
-4. Emergency narrowing and auto-revocation behavior
-5. Reference to the User Stories doc for full persona walkthroughs
-
-**Repo:** agentauth-app
+Operator docs updated with runtime ceiling management section, `AA_DB_PATH` env var,
+renewal cycle explanation, and emergency narrowing behavior. Updated in
+`docs/getting-started-operator.md`.
 
 ---
 
@@ -398,12 +326,18 @@ was immediately revoked.
 
 ---
 
-## Already Built (This Session)
+## Already Built
 
-- **Runtime scope narrowing** — commit c79df77
-- **CLI ceiling management** — commit 33fb0b2
-- **SDK ceiling methods** — commit 33fb0b2
-- **Wildcard ceiling** — commit 33fb0b2
+- **Runtime scope narrowing** — agentauth-app: `c79df77`; agentAuth: `c9e3eae`, `c024cad`
+- **CLI ceiling management** — agentauth-app: `33fb0b2`; agentAuth: `c024cad`
+- **SDK ceiling methods** — agentauth-app: `33fb0b2`
+- **Wildcard ceiling fix** — agentauth-app: `33fb0b2`; agentAuth: `8970a02`
+- **Audit persistence to SQLite** — agentAuth: `4c2733d` (P0-0)
+- **Sidecar ID in health endpoint** — agentAuth: `50a2809` (P0-1)
+- **Operator docs for ceiling management** — agentAuth: docs updated (P0-3)
+- **Doc reorganization** — agentAuth: `c67f7c9` (moved old docs to internal_use_docs/)
+- **CONTRIBUTING.md + SECURITY.md** — agentAuth: `c67f7c9`
+- **Godoc comments** — agentAuth: `571203f` (sidecar config, problemdetails)
 - **User stories doc** — 5 personas with CLI examples
 - **CHANGELOG.md** — full history from design through all commits
 - **Backlog** — this document

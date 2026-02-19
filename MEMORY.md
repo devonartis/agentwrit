@@ -1,5 +1,23 @@
 # MEMORY.md
 
+## 2026-02-19
+
+Session work:
+- Recovered uncommitted doc changes from previous session (doc reorg, CONTRIBUTING.md, SECURITY.md, godoc comments) — committed as `c67f7c9` and `571203f`, merged to develop (`9a6e13c`)
+- Restored `.plans/` directory to repo root from `internal_use_docs/dot_plans/` (`c9f2d29`)
+- Deleted 33 stale branches (all feature/*, backup-*, codex/*, docs/*, planning/*) — only `develop` and `main` remain
+- Removed git worktree at `.worktrees/pattern-components-6-7`
+- Created git-mapped roadmap (`.plans/active/AgentAuth-Project-Roadmap-GitMapped.md`) tracking commits from both agentAuth and agentauth-app repos (`92f0c53`)
+- Moved completed P0 plans to `.plans/completed/` (design + implementation)
+- Updated BACKLOG.md — marked #0 (audit persistence), #1 (sidecar ID), #3 (operator docs) as DONE; #2 (CLI auto-discover) needs verification in agentauth-app
+
+Key findings:
+- Previous session left significant uncommitted work in the working tree
+- Python showcase (Phase 2) code originated in this repo (M11-M14 milestones) but was extracted to `agentauth-app` — roadmap now tracks both repos
+- agentauth-app has `upstream` remote pointing to this repo
+
+Branch state: `develop` only (all feature branches deleted, code already on develop)
+
 ## 2026-02-18
 
 Built P0 audit persistence — SQLite-backed so audit events survive broker restarts. Merged to `develop` (`9290e9d`). Branch `docs/coWork-EnhanceDocs` is active for doc improvements.
