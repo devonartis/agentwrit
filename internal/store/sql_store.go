@@ -67,6 +67,15 @@ type AgentRecord struct {
 	LastSeen     time.Time
 }
 
+// SidecarRecord stores the persistent state of an activated sidecar.
+type SidecarRecord struct {
+	ID        string
+	Ceiling   []string
+	Status    string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type nonceRecord struct {
 	value     string
 	expiresAt time.Time
@@ -287,6 +296,16 @@ CREATE INDEX IF NOT EXISTS idx_audit_agent_id   ON audit_events(agent_id);
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp  ON audit_events(timestamp);
 `
 
+const createSidecarsTable = `
+CREATE TABLE IF NOT EXISTS sidecars (
+	id         TEXT PRIMARY KEY,
+	ceiling    TEXT NOT NULL,
+	status     TEXT NOT NULL DEFAULT 'active',
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL
+);
+`
+
 // InitDB opens the SQLite database at path and creates the audit_events table
 // and indexes if they do not already exist. It must be called before any audit
 // persistence methods are used.
@@ -302,6 +321,12 @@ func (s *SqlStore) InitDB(path string) error {
 		obs.Fail("store", "sqlite", "failed to create audit table", "error="+err.Error())
 		obs.DBErrorsTotal.WithLabelValues("create_table").Inc()
 		return fmt.Errorf("create audit table: %w", err)
+	}
+	if _, err = db.Exec(createSidecarsTable); err != nil {
+		db.Close()
+		obs.Fail("store", "sqlite", "failed to create sidecars table", "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("create_table").Inc()
+		return fmt.Errorf("create sidecars table: %w", err)
 	}
 	s.db = db
 	obs.Ok("store", "sqlite", "database initialized", "path="+path)
