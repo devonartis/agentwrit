@@ -1,3 +1,16 @@
+// Package problemdetails implements RFC 7807 "application/problem+json"
+// error responses and HTTP request infrastructure for the AgentAuth broker.
+//
+// All broker error responses use the AgentAuth URN namespace
+// "urn:agentauth:error:{errType}" for machine-readable error categorization.
+// Responses include a unique request ID for log correlation, an optional
+// error code for programmatic handling, and an optional diagnostic hint.
+//
+// This package also provides request-scoped middleware:
+//   - RequestIDMiddleware generates or propagates a unique X-Request-ID for
+//     every incoming request, stored in context for downstream handlers.
+//   - MaxBytesBody limits request body size to prevent resource exhaustion
+//     (default 1 MB).
 package problemdetails
 
 import (
