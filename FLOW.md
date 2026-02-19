@@ -60,3 +60,9 @@ Format:
 9-task TDD plan executed via fresh subagents. All tasks complete: scaffold → HTTP client → output helpers → sidecars list → ceiling get/set → revoke → audit events → E2E Docker test → docs/changelog. Godoc retrofitted after Tasks 1-5 (standing rule added). Operator docs updated across 3 docs files. All gates pass (3 PASS, 1 WARN non-blocking). E2E confirmed all 5 command types against live Docker stack.
 
 → Artifact: `cmd/aactl/`
+
+### Finishing-a-Development-Branch: feature/aactl-cli
+
+Chose Option 1 (merge locally) over creating a PR — branch is feature-complete, gates pass, and no separate review team was requested. Merged `feature/aactl-cli` into `develop` via fast-forward (clean history, no merge commit). Verified gates on merged `develop` (3 PASS, 1 WARN non-blocking). Deleted feature branch. Pushed `develop` to origin at `1cb28e2`.
+
+→ Artifact: `develop` branch, origin `1cb28e2`
