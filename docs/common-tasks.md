@@ -24,6 +24,11 @@ Enterprise-grade step-by-step instructions for AgentAuth workflows, organized by
 | Revoke Tokens | `POST /v1/revoke` | Operator | Broker |
 | Query Audit Trail | `GET /v1/audit/events` | Operator | Broker |
 | Get Sidecar Metrics | `GET /v1/metrics` | Operator | Sidecar |
+| List Sidecars (aactl) | `aactl sidecars list` | Operator | CLI |
+| Get Ceiling (aactl) | `aactl sidecars ceiling get <id>` | Operator | CLI |
+| Set Ceiling (aactl) | `aactl sidecars ceiling set <id> --scopes ...` | Operator | CLI |
+| Revoke Tokens (aactl) | `aactl revoke --level <level> --target <target>` | Operator | CLI |
+| Query Audit Trail (aactl) | `aactl audit events [--filters]` | Operator | CLI |
 
 ---
 
@@ -1082,6 +1087,20 @@ Every admin operation requires a Bearer token obtained from the admin auth endpo
 
 **What's happening:** Admin authentication is separate from agent authentication. You provide your admin secret, get back a short-lived admin token, and use that Bearer token for all subsequent admin operations. Cache and reuse the token within its TTL.
 
+**Using aactl (recommended):**
+
+> **Note:** aactl is available for demo and development use. Production auth will be added in a future release.
+
+aactl reads `AACTL_BROKER_URL` and `AACTL_ADMIN_SECRET` from environment variables and authenticates automatically before every command. No explicit login step is needed:
+
+```bash
+export AACTL_BROKER_URL=http://localhost:8080
+export AACTL_ADMIN_SECRET=change-me-in-production
+
+# aactl then auto-authenticates on each invocation
+aactl sidecars list
+```
+
 **Bash/curl example:**
 
 ```bash
@@ -1328,6 +1347,24 @@ AgentAuth provides four revocation levels, each with a different blast radius. U
 
 **What's happening:** Revocation is cryptographically verified: revoked tokens are immediately rejected on the next validation. The four levels allow you to target the exact scope of compromise—single token, all tokens for one agent, all tokens for one task, or an entire delegation chain.
 
+**Using aactl (recommended):**
+
+> **Note:** aactl is available for demo and development use. Production auth will be added in a future release.
+
+```bash
+# Token-level: revoke a single token by JTI
+aactl revoke --level token --target a1b2c3d4e5f6...
+
+# Agent-level: revoke all tokens for one agent
+aactl revoke --level agent --target spiffe://agentauth.local/agent/orch/task/instance
+
+# Task-level: revoke all tokens for a task
+aactl revoke --level task --target task-001
+
+# Chain-level: revoke an entire delegation chain
+aactl revoke --level chain --target spiffe://agentauth.local/agent/orch/task/instance
+```
+
 **Bash/curl example (token-level revocation):**
 
 ```bash
@@ -1548,6 +1585,27 @@ What happened?
 The audit trail is an append-only, hash-chained log of every significant operation. Use it for forensics, compliance, and incident investigation.
 
 **What's happening:** Every token acquisition, revocation, delegation, and admin action is logged with a cryptographic hash chain. You can query by agent, task, time range, or event type. Hash chaining allows you to detect if any audit record has been tampered with.
+
+**Using aactl (recommended):**
+
+> **Note:** aactl is available for demo and development use. Production auth will be added in a future release.
+
+```bash
+# All events (table output)
+aactl audit events
+
+# Filter by event type
+aactl audit events --event-type token_revoked
+
+# Filter by agent
+aactl audit events --agent-id spiffe://agentauth.local/agent/orch/task/instance
+
+# Filter by time range with limit
+aactl audit events --since 2026-02-19T00:00:00Z --limit 50
+
+# Raw JSON output
+aactl audit events --json
+```
 
 **Bash/curl examples:**
 
@@ -1777,6 +1835,21 @@ except Exception as e:
 Update the maximum allowed scopes for a sidecar without restarting it.
 
 **What's happening:** The sidecar enforces a scope ceiling—agents cannot request scopes beyond this limit. You can update this ceiling at runtime by making an admin API call to the broker, which propagates the change to all sidecars. No sidecar restart required.
+
+**Using aactl (recommended):**
+
+> **Note:** aactl is available for demo and development use. Production auth will be added in a future release.
+
+```bash
+# List sidecars to find the sidecar ID
+aactl sidecars list
+
+# Check the current ceiling
+aactl sidecars ceiling get <sidecar-id>
+
+# Update the ceiling
+aactl sidecars ceiling set <sidecar-id> --scopes read:data:*,write:data:users
+```
 
 **Bash/curl example:**
 

@@ -26,12 +26,15 @@ flowchart TB
     subgraph AgentAuth["AgentAuth System Boundary"]
         BROKER["Broker\ncmd/broker\nPort 8080"]
         SIDECAR["Sidecar\ncmd/sidecar\nPort 8081"]
+        AACTL["aactl\ncmd/aactl\nOperator CLI"]
     end
 
     DEV -- "POST /v1/token\n(simplified API)" --> SIDECAR
     SIDECAR -- "challenge, register,\nexchange, renew" --> BROKER
     AGENT -- "challenge-response\nregistration" --> BROKER
     ADMIN -- "admin auth,\nlaunch tokens,\nrevocation" --> BROKER
+    ADMIN -- "sidecars, revoke,\naudit" --> AACTL
+    AACTL -- "admin API calls" --> BROKER
     AGENT -- "Bearer token" --> RS
     DEV -- "Bearer token" --> RS
 ```
@@ -39,6 +42,8 @@ flowchart TB
 **Broker** (`cmd/broker`) -- The central authority. Generates Ed25519 key pairs on startup, issues EdDSA-signed JWTs, validates challenge-response registrations, manages scope attenuation, delegation, revocation, and maintains a hash-chained audit trail. All endpoints use `application/json` with RFC 7807 error responses.
 
 **Sidecar** (`cmd/sidecar`) -- A developer-facing proxy. Bootstraps itself with the broker using admin auth and a single-use activation token, then exposes a simplified API. Developers call `POST /v1/token` with an agent name and scope; the sidecar handles key generation, challenge-response registration, and token exchange transparently. Includes circuit breaker resilience and cached token fallback.
+
+**aactl** (`cmd/aactl`) -- The operator CLI. Reads `AACTL_BROKER_URL` and `AACTL_ADMIN_SECRET` from environment variables and auto-authenticates. Provides table and JSON output for sidecar management, token revocation, and audit trail queries. Intended for operators who prefer a CLI over hand-crafting curl + JWT.
 
 ---
 
@@ -115,6 +120,13 @@ agentauth/
 |   |   |-- circuitbreaker.go    # Sliding-window circuit breaker
 |   |   |-- probe.go             # Background health probe for circuit recovery
 |   |   +-- metrics.go           # 9 Prometheus metrics
+|   |-- aactl/                   # Operator CLI (aactl binary)
+|   |   |-- main.go              # Cobra root command, env var config
+|   |   |-- client.go            # HTTP client with auto-auth
+|   |   |-- sidecars.go          # sidecars list / ceiling get / ceiling set
+|   |   |-- revoke.go            # revoke --level --target
+|   |   |-- audit.go             # audit events with filters
+|   |   +-- output.go            # Table and JSON output helpers
 |   +-- smoketest/               # Container smoke test binary
 |-- internal/
 |   |-- admin/                   # Admin auth, launch tokens, sidecar activation

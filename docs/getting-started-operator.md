@@ -57,6 +57,50 @@ The `docker-compose.yml` defines two services on a shared bridge network (`agent
 
 ---
 
+## Operator CLI (aactl)
+
+`aactl` is the operator command-line tool for AgentAuth. It reads broker connection details from environment variables and handles authentication automatically — no manual curl or JWT required.
+
+> **Note:** aactl is available for demo and development use. Production auth will be added in a future release.
+
+### Install / build
+
+```bash
+go build -o aactl ./cmd/aactl/
+```
+
+### Configure
+
+```bash
+export AACTL_BROKER_URL=http://localhost:8080
+export AACTL_ADMIN_SECRET=change-me-in-production
+```
+
+### Quick reference
+
+```bash
+# Sidecars
+aactl sidecars list                                                    # List all sidecars (table)
+aactl sidecars list --json                                             # Raw JSON
+aactl sidecars ceiling get <sidecar-id>                                # Get scope ceiling
+aactl sidecars ceiling set <sidecar-id> --scopes read:data:*,write:data:*  # Set scope ceiling
+
+# Revocation
+aactl revoke --level token  --target <jti>
+aactl revoke --level agent  --target spiffe://...
+aactl revoke --level task   --target task-001
+aactl revoke --level chain  --target spiffe://...
+
+# Audit
+aactl audit events
+aactl audit events --event-type token_revoked
+aactl audit events --agent-id spiffe://...
+aactl audit events --since 2026-02-19T00:00:00Z --limit 50
+aactl audit events --json
+```
+
+---
+
 ## Broker Configuration
 
 All broker configuration is via environment variables prefixed `AA_`. There are no CLI flags or config files.
@@ -114,7 +158,22 @@ Scope format: `action:resource:identifier` (e.g., `read:data:*`, `write:config:a
 
 `AA_SIDECAR_SCOPE_CEILING` is the **bootstrap seed only**. It sets the initial ceiling when the sidecar first activates, but the ceiling can be updated at runtime without restarting the sidecar or editing environment variables.
 
-### Updating the ceiling via the broker API
+> **Note:** aactl is available for demo and development use. Production auth will be added in a future release.
+
+### Updating the ceiling with aactl
+
+```bash
+# List sidecars to find the sidecar ID
+aactl sidecars list
+
+# Get the current ceiling
+aactl sidecars ceiling get <sidecar-id>
+
+# Update the ceiling
+aactl sidecars ceiling set <sidecar-id> --scopes read:data:*
+```
+
+### Using the API directly
 
 Use the admin API to change a sidecar's scope ceiling while it is running:
 
@@ -179,6 +238,10 @@ When the broker processes a ceiling update that narrows the allowed scopes, it a
 Every ceiling update is recorded as a `scope_ceiling_updated` audit event that includes the old ceiling, the new ceiling, and the timestamp. Query the audit trail to see the full history:
 
 ```bash
+# Using aactl
+aactl audit events --event-type scope_ceiling_updated
+
+# Using the API directly
 curl -s "http://localhost:8080/v1/audit/events?event_type=scope_ceiling_updated" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   | python3 -m json.tool
