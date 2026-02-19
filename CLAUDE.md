@@ -13,7 +13,7 @@ Module: `github.com/divineartis/agentauth`
 - `cmd/broker/` — broker entry point
 - `cmd/sidecar/` — sidecar proxy
 - `internal/` — all domain packages (admin, audit, authz, handler, store, token, etc.)
-- `docs/` — enterprise docs (v3)
+- `docs/` — enterprise docs (v3). **Only application documentation belongs here** — no plans, roadmaps, session artifacts, or other non-application content.
 - `scripts/` — gates, live tests, Docker stack
 - `CHANGELOG.md` — all changes
 - `MEMORY.md` — session work log
