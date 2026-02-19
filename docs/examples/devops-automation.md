@@ -1034,4 +1034,4 @@ See the [Getting Started: Operator](../getting-started-operator.md) guide for fu
 - [Concepts: The Ephemeral Agent Credentialing Pattern](../concepts.md) -- why this pattern exists and how all 7 components work together
 - [Getting Started: Developer](../getting-started-developer.md) -- integrate an agent in 15 lines of Python
 - [Getting Started: Operator](../getting-started-operator.md) -- deploy the broker, configure sidecars, create launch tokens
-- [API Reference](../API_REFERENCE.md) -- full API documentation with request/response formats
+- [API Reference](../api.md) -- full API documentation with request/response formats

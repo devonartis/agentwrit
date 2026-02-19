@@ -1,8 +1,14 @@
 # Concepts: Why AgentAuth Exists
 
-> **Audience:** Developers and Operators
-> **Prerequisites:** None -- this is the starting point
-> **Purpose:** Understand the problem AgentAuth solves, the security pattern behind it, and how all 7 components work together
+> **Document Version:** 2.0 | **Last Updated:** February 2026 | **Status:** Current
+>
+> **Audience:** Developers, Operators, and Security Reviewers
+>
+> **Prerequisites:** None — this is the starting point for understanding AgentAuth.
+>
+> **Purpose:** Understand the problem AgentAuth solves, the security pattern behind it, and how all 7 components work together.
+>
+> **Next steps:** [Getting Started](getting-started-user.md) | [Architecture](architecture.md) | [API Reference](api.md)
 
 ---
 

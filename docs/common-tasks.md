@@ -1,13 +1,35 @@
 # Common Tasks
 
-Step-by-step instructions for the most common AgentAuth workflows, split by role.
+Enterprise-grade step-by-step instructions for AgentAuth workflows, organized by role.
+
+**Document metadata:**
+- **Audience:** Developers (building AI agents), Platform Operators (managing AgentAuth deployments)
+- **Version:** 2.0 (Enterprise)
+- **Prerequisites:** Broker running, sidecar configured. See [Getting Started: Developer](getting-started-developer.md) or [Getting Started: Operator](getting-started-operator.md).
+- **Next steps:** For advanced topics, see [Concepts](concepts.md), [API Reference](api.md), [Architecture](architecture.md), or [Troubleshooting](troubleshooting.md).
+
+---
+
+## Quick Reference
+
+| Task | Endpoint | Role | HTTP Method |
+|------|----------|------|-------------|
+| Get a Token | `POST /v1/token` | Developer | Sidecar |
+| Validate a Token | `POST /v1/token/validate` | Developer | Broker |
+| Renew a Token | `POST /v1/token/renew` | Developer | Sidecar |
+| Delegate a Token | `POST /v1/delegate` | Developer | Broker |
+| Check Sidecar Health | `GET /v1/health` | Developer | Sidecar |
+| Authenticate as Admin | `POST /v1/admin/auth` | Operator | Broker |
+| Create Launch Token | `POST /v1/admin/launch-tokens` | Operator | Broker |
+| Revoke Tokens | `POST /v1/revoke` | Operator | Broker |
+| Query Audit Trail | `GET /v1/audit/events` | Operator | Broker |
+| Get Sidecar Metrics | `GET /v1/metrics` | Operator | Sidecar |
 
 ---
 
 ## Developer Tasks
 
-> **Persona:** Developer building an AI agent in Python or TypeScript.
-> You interact with the sidecar. You do not need admin credentials.
+> **Persona:** Developer building an AI agent in Python or TypeScript. You interact with the sidecar. No admin credentials required.
 >
 > **Prerequisite:** [Getting Started: Developer](getting-started-developer.md)
 
@@ -15,27 +37,122 @@ Step-by-step instructions for the most common AgentAuth workflows, split by role
 
 Request a scoped, short-lived token from the sidecar. The sidecar handles all broker communication and key management transparently.
 
+**What's happening:** The sidecar maintains a persistent broker session and can cache/renew agent tokens. Your agent contacts the sidecar (not the broker directly) for quick, low-latency token acquisition. The sidecar applies the configured scope ceiling to prevent excessive scopes.
+
+**Python example:**
+
 ```python
 import requests
+import json
 
 SIDECAR = "http://localhost:8081"
 
-resp = requests.post(f"{SIDECAR}/v1/token", json={
-    "agent_name": "data-processor",
-    "task_id": "task-analyze-q4",
-    "scope": ["read:data:*"],
-    "ttl": 300,
-})
-resp.raise_for_status()
-data = resp.json()
+def get_token(sidecar, agent_name, scope, ttl=300, task_id=None):
+    """Request a scoped token from the sidecar."""
+    payload = {
+        "agent_name": agent_name,
+        "scope": scope,
+        "ttl": ttl,
+    }
+    if task_id:
+        payload["task_id"] = task_id
 
-token = data["access_token"]
-agent_id = data["agent_id"]
-expires_in = data["expires_in"]
+    resp = requests.post(f"{sidecar}/v1/token", json=payload)
+    resp.raise_for_status()
+    return resp.json()
 
-print(f"Agent: {agent_id}")
-print(f"Scope: {data['scope']}")
-print(f"Expires in: {expires_in}s")
+# Acquire a token
+try:
+    data = get_token(
+        SIDECAR,
+        agent_name="data-processor",
+        scope=["read:data:*"],
+        ttl=300,
+        task_id="task-analyze-q4"
+    )
+
+    token = data["access_token"]
+    agent_id = data["agent_id"]
+    expires_in = data["expires_in"]
+
+    print(f"Agent:       {agent_id}")
+    print(f"Scope:       {data['scope']}")
+    print(f"Expires in:  {expires_in}s")
+except requests.exceptions.HTTPError as e:
+    print(f"Token request failed: {e.response.status_code} - {e.response.text}")
+```
+
+**Expected response (200 OK):**
+
+```json
+{
+  "access_token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzcGlmZmU6Ly9hZ2VudGF1dGgubG9jYWwvYWdlbnQvb3JjaC8uLi4iLCJleHAiOjE3NDU0MDU2MzAsImlhdCI6MTc0NTQwNTMzMCwic2NvcGUiOlsicmVhZDpkYXRhOioiXSwiYWdlbnRfbmFtZSI6ImRhdGEtcHJvY2Vzc29yIn0.sIGNATURE",
+  "expires_in": 300,
+  "scope": ["read:data:*"],
+  "agent_id": "spiffe://agentauth.local/agent/orch-001/task-analyze-q4/proc-abc123",
+  "token_type": "Bearer"
+}
+```
+
+**TypeScript/Node.js example:**
+
+```typescript
+import fetch from 'node-fetch';
+
+const SIDECAR = "http://localhost:8081";
+
+interface TokenResponse {
+  access_token: string;
+  expires_in: number;
+  scope: string[];
+  agent_id: string;
+  token_type: string;
+}
+
+async function getToken(
+  sidecar: string,
+  agentName: string,
+  scope: string[],
+  ttl: number = 300,
+  taskId?: string
+): Promise<TokenResponse> {
+  const payload = {
+    agent_name: agentName,
+    scope,
+    ttl,
+    ...(taskId && { task_id: taskId }),
+  };
+
+  const response = await fetch(`${sidecar}/v1/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Token request failed: ${response.status} - ${error}`);
+  }
+
+  return response.json() as Promise<TokenResponse>;
+}
+
+// Usage
+try {
+  const tokenData = await getToken(
+    SIDECAR,
+    "data-processor",
+    ["read:data:*"],
+    300,
+    "task-analyze-q4"
+  );
+
+  console.log(`Agent:       ${tokenData.agent_id}`);
+  console.log(`Scope:       ${tokenData.scope.join(', ')}`);
+  console.log(`Expires in:  ${tokenData.expires_in}s`);
+} catch (error) {
+  console.error(`Error: ${error.message}`);
+}
 ```
 
 **Request fields:**
@@ -45,73 +162,31 @@ print(f"Expires in: {expires_in}s")
 | `agent_name` | string | Yes | Identifies this agent instance |
 | `task_id` | string | No | Associates the token with a specific task |
 | `scope` | string[] | Yes | Requested permissions (`action:resource:identifier`) |
-| `ttl` | int | No | Token lifetime in seconds (default: 300) |
+| `ttl` | int | No | Token lifetime in seconds (default: 300, max: 900) |
 
-**Response fields:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `access_token` | string | Signed JWT for use in `Authorization: Bearer` headers |
-| `expires_in` | int | Seconds until the token expires |
-| `scope` | string[] | Granted scope (matches your request if valid) |
-| `agent_id` | string | Your SPIFFE identity (`spiffe://domain/agent/orch/task/instance`) |
-
-The `scope` must be within the sidecar's configured scope ceiling. If you request a scope outside the ceiling, the sidecar returns 403. Ask your operator what scopes are available.
-
----
-
-### Renew a Token
-
-Renew before the token expires. The renewed token has fresh timestamps but keeps the same identity and scope.
-
-```python
-import requests
-
-SIDECAR = "http://localhost:8081"
-
-def renew_token(sidecar, token):
-    """Renew a token. Returns new token data or raises on failure."""
-    resp = requests.post(
-        f"{sidecar}/v1/token/renew",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    if resp.status_code == 401:
-        raise RuntimeError("Token expired -- re-acquire from sidecar")
-    if resp.status_code == 403:
-        raise RuntimeError("Token revoked -- re-acquire from sidecar")
-    resp.raise_for_status()
-    return resp.json()
-
-# Renew an existing token
-token = "<your current access_token>"
-try:
-    data = renew_token(SIDECAR, token)
-    new_token = data["access_token"]
-    new_ttl = data["expires_in"]
-    print(f"Renewed. New TTL: {new_ttl}s")
-except RuntimeError as e:
-    print(f"Renewal failed: {e}")
-    # Re-acquire a fresh token via POST /v1/token
-```
-
-**When to renew:** At 80% of the TTL. For a 300-second token, renew at 240 seconds.
-
-**When renewal fails:**
+**If this fails:**
 
 | Status | Meaning | Action |
 |--------|---------|--------|
-| 401 | Token expired | Re-acquire via `POST /v1/token` |
-| 403 | Token revoked | Re-acquire via `POST /v1/token` |
-| 502 | Broker unreachable | Retry with backoff |
+| 400 | Invalid request (malformed JSON, missing fields) | Check payload syntax; ensure `agent_name` and `scope` are present |
+| 403 | Requested scope exceeds sidecar ceiling | Request a narrower scope; ask your operator what scopes are available |
+| 502 | Sidecar cannot reach broker | Retry with exponential backoff; check broker health |
+| 503 | Broker unavailable but sidecar has cached token | Retry; sidecar may serve cached token if available |
 
 ---
 
 ### Validate a Token
 
-Check whether a token is valid and inspect its claims. This endpoint does not require authentication.
+Check whether a token is valid and inspect its claims. This endpoint does not require authentication and can be called by any client.
+
+**What's happening:** The broker validates the JWT signature and checks if the token has been revoked. No authentication needed, so you can validate tokens from upstream systems or for audit purposes. The endpoint always returns 200 with a `valid` boolean rather than using HTTP status for validity.
+
+**Python example:**
 
 ```python
 import requests
+import json
+from datetime import datetime
 
 BROKER = "http://localhost:8080"
 
@@ -129,133 +204,661 @@ def validate_token(broker, token):
     else:
         raise ValueError(f"Token invalid: {result.get('error', 'unknown')}")
 
-token = "<token to validate>"
+# Validate a token
+token = "<token_to_validate>"
 try:
     claims = validate_token(BROKER, token)
-    print(f"Subject:  {claims['sub']}")
-    print(f"Scope:    {claims['scope']}")
-    print(f"Task ID:  {claims['task_id']}")
-    print(f"Orch ID:  {claims['orch_id']}")
-    print(f"Expires:  {claims['exp']}")
-    print(f"JTI:      {claims['jti']}")
+
+    exp_timestamp = claims['exp']
+    exp_datetime = datetime.utcfromtimestamp(exp_timestamp).isoformat()
+
+    print(f"Subject:    {claims['sub']}")
+    print(f"Scope:      {', '.join(claims['scope'])}")
+    print(f"Task ID:    {claims.get('task_id', 'N/A')}")
+    print(f"Orch ID:    {claims.get('orch_id', 'N/A')}")
+    print(f"Expires:    {exp_datetime} (UTC)")
+    print(f"JTI:        {claims['jti']}")
+    print(f"Issued at:  {datetime.utcfromtimestamp(claims['iat']).isoformat()} (UTC)")
 except ValueError as e:
     print(f"Validation failed: {e}")
+except requests.exceptions.RequestException as e:
+    print(f"Network error: {e}")
 ```
 
-The validation endpoint returns HTTP 200 in both valid and invalid cases. Always check the `valid` field.
+**Expected response (200 OK, valid token):**
+
+```json
+{
+  "valid": true,
+  "claims": {
+    "iss": "agentauth",
+    "sub": "spiffe://agentauth.local/agent/orch-001/task-analyze-q4/proc-abc123",
+    "exp": 1745405630,
+    "iat": 1745405330,
+    "jti": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
+    "scope": ["read:data:*"],
+    "task_id": "task-analyze-q4",
+    "orch_id": "orch-001"
+  }
+}
+```
+
+**Expected response (200 OK, invalid token):**
+
+```json
+{
+  "valid": false,
+  "error": "token_revoked",
+  "detail": "Token JTI a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6 was revoked at 2026-02-15T10:00:00Z"
+}
+```
+
+**TypeScript/Node.js example:**
+
+```typescript
+import fetch from 'node-fetch';
+
+const BROKER = "http://localhost:8080";
+
+interface ClaimSet {
+  iss: string;
+  sub: string;
+  exp: number;
+  iat: number;
+  jti: string;
+  scope: string[];
+  task_id?: string;
+  orch_id?: string;
+}
+
+interface ValidationResponse {
+  valid: boolean;
+  claims?: ClaimSet;
+  error?: string;
+  detail?: string;
+}
+
+async function validateToken(broker: string, token: string): Promise<ClaimSet> {
+  const response = await fetch(`${broker}/v1/token/validate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Validation request failed: ${response.status}`);
+  }
+
+  const result = (await response.json()) as ValidationResponse;
+
+  if (!result.valid) {
+    throw new Error(`Token invalid: ${result.error} - ${result.detail}`);
+  }
+
+  return result.claims!;
+}
+
+// Usage
+try {
+  const claims = await validateToken(BROKER, "<token_to_validate>");
+
+  const expDateTime = new Date(claims.exp * 1000).toISOString();
+  const iatDateTime = new Date(claims.iat * 1000).toISOString();
+
+  console.log(`Subject:    ${claims.sub}`);
+  console.log(`Scope:      ${claims.scope.join(', ')}`);
+  console.log(`Task ID:    ${claims.task_id || 'N/A'}`);
+  console.log(`Orch ID:    ${claims.orch_id || 'N/A'}`);
+  console.log(`Expires:    ${expDateTime}`);
+  console.log(`JTI:        ${claims.jti}`);
+  console.log(`Issued at:  ${iatDateTime}`);
+} catch (error) {
+  console.error(`Validation failed: ${error.message}`);
+}
+```
 
 **Claims returned when valid:**
 
 | Claim | Type | Description |
 |-------|------|-------------|
 | `iss` | string | Always `"agentauth"` |
-| `sub` | string | Agent SPIFFE ID |
-| `exp` | int | Expiration timestamp (Unix) |
-| `iat` | int | Issued-at timestamp (Unix) |
+| `sub` | string | Agent SPIFFE ID (subject) |
+| `exp` | int | Expiration timestamp (Unix seconds) |
+| `iat` | int | Issued-at timestamp (Unix seconds) |
 | `jti` | string | Unique token identifier (32 hex chars) |
 | `scope` | string[] | Granted permissions |
-| `task_id` | string | Associated task |
-| `orch_id` | string | Associated orchestrator |
+| `task_id` | string | Associated task ID |
+| `orch_id` | string | Associated orchestrator ID |
+
+**If this fails:**
+
+| Issue | Meaning | Action |
+|-------|---------|--------|
+| Broker unreachable | Network connectivity issue | Verify broker is running; check firewall rules |
+| Invalid token format | Token is malformed | Ensure you're passing the full JWT string |
+| `token_expired` | Token timestamp has passed | Re-acquire a fresh token from the sidecar |
+| `token_revoked` | Token was revoked by operator | Re-acquire a fresh token; investigate with operator |
+| `invalid_signature` | JWT signature verification failed | Token may be corrupted or forged; obtain new one |
 
 ---
 
-### Register with Your Own Keys (BYOK)
+### Renew a Token
 
-Use BYOK when you need to control your Ed25519 keys directly -- for audit trails, compliance, or multi-sidecar scenarios.
+Renew a token before it expires. The renewed token has fresh timestamps but maintains the same identity and scope.
+
+**What's happening:** Renewal extends your token's lifetime without needing to go back through the full registration flow. The sidecar validates your current token with the broker and issues a fresh one. This is efficient for long-running tasks. A renewal loop pattern keeps tokens fresh automatically.
+
+**Python example (simple renewal):**
 
 ```python
-import base64
 import requests
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+import time
 
 SIDECAR = "http://localhost:8081"
 
-# 1. Generate Ed25519 keypair
-private_key = Ed25519PrivateKey.generate()
-pub_raw = private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
-pub_b64 = base64.b64encode(pub_raw).decode()
+def renew_token(sidecar, token):
+    """Renew a token. Returns new token data or raises on failure."""
+    resp = requests.post(
+        f"{sidecar}/v1/token/renew",
+        headers={"Authorization": f"Bearer {token}"},
+    )
 
-# 2. Get a challenge nonce
-challenge = requests.get(f"{SIDECAR}/v1/challenge")
-challenge.raise_for_status()
-nonce_hex = challenge.json()["nonce"]
+    if resp.status_code == 401:
+        raise RuntimeError("Token expired -- re-acquire from sidecar")
+    if resp.status_code == 403:
+        raise RuntimeError("Token revoked -- re-acquire from sidecar")
 
-# 3. Sign the nonce bytes (hex-decode first)
-nonce_bytes = bytes.fromhex(nonce_hex)
-signature = private_key.sign(nonce_bytes)
-sig_b64 = base64.b64encode(signature).decode()
+    resp.raise_for_status()
+    return resp.json()
 
-# 4. Register with the sidecar
-reg = requests.post(f"{SIDECAR}/v1/register", json={
-    "agent_name": "byok-agent",
-    "task_id": "task-secure-001",
-    "public_key": pub_b64,
-    "signature": sig_b64,
-    "nonce": nonce_hex,
-})
-reg.raise_for_status()
-agent_id = reg.json()["agent_id"]
-print(f"BYOK registered as {agent_id}")
-
-# 5. Get tokens through the normal sidecar endpoint
-token_resp = requests.post(f"{SIDECAR}/v1/token", json={
-    "agent_name": "byok-agent",
-    "task_id": "task-secure-001",
-    "scope": ["read:data:*"],
-})
-token_resp.raise_for_status()
-print(f"Token acquired: {token_resp.json()['access_token'][:40]}...")
+# Simple renewal
+token = "<your_current_access_token>"
+try:
+    data = renew_token(SIDECAR, token)
+    new_token = data["access_token"]
+    new_ttl = data["expires_in"]
+    print(f"Renewed. New TTL: {new_ttl}s")
+except RuntimeError as e:
+    print(f"Renewal failed: {e}")
 ```
 
-**BYOK registration fields:**
+**Python example (renewal loop for long-running tasks):**
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `agent_name` | string | Yes | Agent identifier |
-| `task_id` | string | No | Task association |
-| `public_key` | string | Yes | Base64 of raw 32-byte Ed25519 public key |
-| `signature` | string | Yes | Base64 of Ed25519 signature over the nonce bytes |
-| `nonce` | string | Yes | Hex nonce from `GET /v1/challenge` |
+```python
+import requests
+import time
+import threading
 
-After BYOK registration, use `POST /v1/token` as normal to get scoped tokens.
+SIDECAR = "http://localhost:8081"
+
+class TokenManager:
+    """Manages token renewal for long-running tasks."""
+
+    def __init__(self, sidecar, agent_name, scope, ttl=300):
+        self.sidecar = sidecar
+        self.agent_name = agent_name
+        self.scope = scope
+        self.ttl = ttl
+        self.token = None
+        self.expires_at = 0
+        self.lock = threading.Lock()
+        self._renew_loop_thread = None
+        self._stop_flag = False
+
+    def acquire(self):
+        """Get or renew the token as needed."""
+        with self.lock:
+            now = time.time()
+
+            # If token doesn't exist or is within 80% TTL, renew/re-acquire
+            if not self.token or now >= self.expires_at * 0.8:
+                self._refresh_token()
+
+            return self.token
+
+    def _refresh_token(self):
+        """Refresh the token (renewal or initial acquisition)."""
+        if self.token:
+            try:
+                resp = requests.post(
+                    f"{self.sidecar}/v1/token/renew",
+                    headers={"Authorization": f"Bearer {self.token}"},
+                    timeout=5
+                )
+                if resp.status_code in (401, 403):
+                    # Token expired or revoked; re-acquire
+                    self._acquire_fresh()
+                else:
+                    resp.raise_for_status()
+                    data = resp.json()
+                    self.token = data["access_token"]
+                    self.expires_at = time.time() + data["expires_in"]
+            except requests.exceptions.RequestException:
+                # Network error; try to re-acquire
+                self._acquire_fresh()
+        else:
+            self._acquire_fresh()
+
+    def _acquire_fresh(self):
+        """Acquire a fresh token from the sidecar."""
+        resp = requests.post(
+            f"{self.sidecar}/v1/token",
+            json={
+                "agent_name": self.agent_name,
+                "scope": self.scope,
+                "ttl": self.ttl,
+            },
+            timeout=5
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        self.token = data["access_token"]
+        self.expires_at = time.time() + data["expires_in"]
+
+    def start_renewal_loop(self):
+        """Start a background thread that renews the token periodically."""
+        if self._renew_loop_thread is not None:
+            return  # Already running
+
+        self._stop_flag = False
+        self._renew_loop_thread = threading.Thread(target=self._renewal_loop, daemon=True)
+        self._renew_loop_thread.start()
+
+    def _renewal_loop(self):
+        """Background loop: renew token at 80% TTL."""
+        while not self._stop_flag:
+            time.sleep(1)  # Check every second
+
+            with self.lock:
+                now = time.time()
+                if self.token and now >= self.expires_at * 0.8:
+                    try:
+                        self._refresh_token()
+                    except Exception as e:
+                        print(f"Renewal loop error: {e}")
+
+    def stop(self):
+        """Stop the renewal loop."""
+        self._stop_flag = True
+        if self._renew_loop_thread:
+            self._renew_loop_thread.join(timeout=2)
+
+# Usage
+manager = TokenManager(SIDECAR, "my-agent", ["read:data:*"], ttl=300)
+manager.start_renewal_loop()
+
+# In your main loop, get the token whenever needed
+current_token = manager.acquire()
+print(f"Using token: {current_token[:40]}...")
+
+# Cleanup
+manager.stop()
+```
+
+**Expected response (200 OK):**
+
+```json
+{
+  "access_token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...",
+  "expires_in": 300,
+  "scope": ["read:data:*"],
+  "token_type": "Bearer"
+}
+```
+
+**TypeScript/Node.js example (renewal loop):**
+
+```typescript
+import fetch from 'node-fetch';
+
+const SIDECAR = "http://localhost:8081";
+
+interface TokenData {
+  access_token: string;
+  expires_in: number;
+  scope: string[];
+  token_type: string;
+}
+
+class TokenManager {
+  private sidecar: string;
+  private agentName: string;
+  private scope: string[];
+  private ttl: number;
+  private token: string | null = null;
+  private expiresAt: number = 0;
+  private renewalTimer: NodeJS.Timeout | null = null;
+
+  constructor(sidecar: string, agentName: string, scope: string[], ttl: number = 300) {
+    this.sidecar = sidecar;
+    this.agentName = agentName;
+    this.scope = scope;
+    this.ttl = ttl;
+  }
+
+  async acquire(): Promise<string> {
+    const now = Date.now() / 1000;
+
+    // If no token or within 80% of TTL, refresh
+    if (!this.token || now >= this.expiresAt * 0.8) {
+      await this.refresh();
+    }
+
+    return this.token!;
+  }
+
+  private async refresh(): Promise<void> {
+    if (this.token) {
+      try {
+        const response = await fetch(`${this.sidecar}/v1/token/renew`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.token}`,
+            'Content-Type': 'application/json',
+          },
+          signal: AbortSignal.timeout(5000),
+        });
+
+        if (response.status === 401 || response.status === 403) {
+          // Token expired or revoked; re-acquire
+          await this.acquireFresh();
+        } else if (response.ok) {
+          const data = (await response.json()) as TokenData;
+          this.token = data.access_token;
+          this.expiresAt = Date.now() / 1000 + data.expires_in;
+        } else {
+          throw new Error(`Renewal failed: ${response.status}`);
+        }
+      } catch (error) {
+        // Network error; try to re-acquire
+        await this.acquireFresh();
+      }
+    } else {
+      await this.acquireFresh();
+    }
+  }
+
+  private async acquireFresh(): Promise<void> {
+    const response = await fetch(`${this.sidecar}/v1/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agent_name: this.agentName,
+        scope: this.scope,
+        ttl: this.ttl,
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Token acquisition failed: ${response.status}`);
+    }
+
+    const data = (await response.json()) as TokenData;
+    this.token = data.access_token;
+    this.expiresAt = Date.now() / 1000 + data.expires_in;
+  }
+
+  startRenewalLoop(): void {
+    if (this.renewalTimer) {
+      return;  // Already running
+    }
+
+    // Renewal every second; check if refresh needed
+    this.renewalTimer = setInterval(async () => {
+      const now = Date.now() / 1000;
+      if (this.token && now >= this.expiresAt * 0.8) {
+        try {
+          await this.refresh();
+        } catch (error) {
+          console.error(`Renewal loop error: ${error}`);
+        }
+      }
+    }, 1000);
+  }
+
+  stop(): void {
+    if (this.renewalTimer) {
+      clearInterval(this.renewalTimer);
+      this.renewalTimer = null;
+    }
+  }
+}
+
+// Usage
+const manager = new TokenManager(SIDECAR, "my-agent", ["read:data:*"], 300);
+manager.startRenewalLoop();
+
+// Get token whenever needed
+const token = await manager.acquire();
+console.log(`Using token: ${token.substring(0, 40)}...`);
+
+// Cleanup
+manager.stop();
+```
+
+**When to renew:** At 80% of the TTL. For a 300-second token, renew at the 240-second mark.
+
+**If renewal fails:**
+
+| Status | Meaning | Action |
+|--------|---------|--------|
+| 401 | Token expired | Re-acquire via `POST /v1/token` |
+| 403 | Token revoked | Re-acquire via `POST /v1/token`; investigate with operator |
+| 502 | Broker unreachable | Retry with exponential backoff; sidecar may serve cached token |
+| 503 | Broker unavailable | Sidecar will attempt to serve cached token if available |
 
 ---
 
-### Delegate to Another Agent
+### Validate and Inspect Token Claims
+
+Programmatically check token expiration and scope before making requests.
+
+**Python example:**
+
+```python
+import requests
+from datetime import datetime, timedelta
+import time
+
+BROKER = "http://localhost:8080"
+
+def token_is_valid_and_has_scope(broker, token, required_scope):
+    """Check if token is valid and has required scope."""
+    resp = requests.post(
+        f"{broker}/v1/token/validate",
+        json={"token": token},
+    )
+    resp.raise_for_status()
+    result = resp.json()
+
+    if not result["valid"]:
+        return False, f"Token invalid: {result.get('error')}"
+
+    claims = result["claims"]
+
+    # Check expiration
+    now = time.time()
+    if claims["exp"] <= now:
+        return False, "Token expired"
+
+    # Check scope
+    token_scopes = set(claims.get("scope", []))
+    if not required_scope.issubset(token_scopes):
+        return False, f"Token lacks required scope: {required_scope}"
+
+    return True, "Token valid"
+
+# Usage
+token = "<token_to_check>"
+required_scope = {"read:data:users"}
+
+valid, message = token_is_valid_and_has_scope(BROKER, token, required_scope)
+if valid:
+    print("✓ Token is valid and has required scope")
+else:
+    print(f"✗ {message}")
+```
+
+---
+
+### Delegate a Token to Another Agent
 
 Delegation lets your agent issue a narrower-scoped token to another registered agent. Scopes can only narrow (attenuate), never expand.
+
+**What's happening:** Delegation creates a new token signed by the broker, with a reference back to your token in the delegation chain. This allows you to hand off work to a less-privileged agent without exposing your full token. The chain is cryptographically verified; each entry must narrow the scope further.
+
+**Python example:**
 
 ```python
 import requests
 
 BROKER = "http://localhost:8080"
 
-# Your token (the delegator)
-my_token = "<your access_token with read:data:*>"
+def delegate_token(broker, my_token, delegate_agent_id, scope, ttl=60):
+    """Delegate a narrower-scoped token to another agent."""
+    resp = requests.post(
+        f"{broker}/v1/delegate",
+        headers={"Authorization": f"Bearer {my_token}"},
+        json={
+            "delegate_to": delegate_agent_id,
+            "scope": scope,
+            "ttl": ttl,
+        },
+    )
 
-# The other agent's SPIFFE ID (the delegate)
+    if resp.status_code == 400:
+        error = resp.json()
+        raise ValueError(f"Invalid delegation request: {error.get('detail')}")
+    if resp.status_code == 403:
+        error = resp.json()
+        raise ValueError(f"Scope escalation attempted: {error.get('detail')}")
+    if resp.status_code == 404:
+        raise ValueError("Delegate agent not found")
+
+    resp.raise_for_status()
+    return resp.json()
+
+# Delegate a token
+my_token = "<your_access_token_with_read:data:*>"
 delegate_agent_id = "spiffe://agentauth.local/agent/orch-001/task-002/abc123"
 
-resp = requests.post(
-    f"{BROKER}/v1/delegate",
-    headers={"Authorization": f"Bearer {my_token}"},
-    json={
-        "delegate_to": delegate_agent_id,
-        "scope": ["read:data:users"],  # must be subset of your scope
-        "ttl": 60,
+try:
+    result = delegate_token(
+        BROKER,
+        my_token,
+        delegate_agent_id,
+        scope=["read:data:users"],  # Narrower than read:data:*
+        ttl=60
+    )
+
+    delegated_token = result["access_token"]
+    chain = result["delegation_chain"]
+
+    print(f"Delegated token acquired (expires in {result['expires_in']}s)")
+    print(f"Delegation chain depth: {len(chain)}")
+    for i, entry in enumerate(chain):
+        print(f"  [{i}] {entry['agent']} -> scope: {entry['scope']}")
+except ValueError as e:
+    print(f"Delegation failed: {e}")
+except requests.exceptions.RequestException as e:
+    print(f"Network error: {e}")
+```
+
+**Expected response (200 OK):**
+
+```json
+{
+  "access_token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...",
+  "expires_in": 60,
+  "delegation_chain": [
+    {
+      "agent": "spiffe://agentauth.local/agent/orch-001/task-001/abc",
+      "scope": ["read:data:*"]
     },
-)
-resp.raise_for_status()
-data = resp.json()
+    {
+      "agent": "spiffe://agentauth.local/agent/orch-001/task-002/def",
+      "scope": ["read:data:users"]
+    }
+  ],
+  "chain_hash": "a1b2c3d4e5f6..."
+}
+```
 
-delegated_token = data["access_token"]
-chain = data["delegation_chain"]
+**TypeScript/Node.js example:**
 
-print(f"Delegated token expires in {data['expires_in']}s")
-print(f"Delegation chain depth: {len(chain)}")
-for entry in chain:
-    print(f"  {entry['agent']} -> scope: {entry['scope']}")
+```typescript
+import fetch from 'node-fetch';
+
+const BROKER = "http://localhost:8080";
+
+interface DelegationChainEntry {
+  agent: string;
+  scope: string[];
+}
+
+interface DelegationResponse {
+  access_token: string;
+  expires_in: number;
+  delegation_chain: DelegationChainEntry[];
+  chain_hash: string;
+}
+
+async function delegateToken(
+  broker: string,
+  myToken: string,
+  delegateAgentId: string,
+  scope: string[],
+  ttl: number = 60
+): Promise<DelegationResponse> {
+  const response = await fetch(`${broker}/v1/delegate`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${myToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      delegate_to: delegateAgentId,
+      scope,
+      ttl,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    if (response.status === 400) {
+      throw new Error(`Invalid delegation request: ${error.detail}`);
+    }
+    if (response.status === 403) {
+      throw new Error(`Scope escalation attempted: ${error.detail}`);
+    }
+    if (response.status === 404) {
+      throw new Error('Delegate agent not found');
+    }
+    throw new Error(`Delegation failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<DelegationResponse>;
+}
+
+// Usage
+try {
+  const result = await delegateToken(
+    BROKER,
+    "<your_access_token_with_read:data:*>",
+    "spiffe://agentauth.local/agent/orch-001/task-002/abc123",
+    ["read:data:users"],
+    60
+  );
+
+  console.log(`Delegated token acquired (expires in ${result.expires_in}s)`);
+  console.log(`Delegation chain depth: ${result.delegation_chain.length}`);
+  result.delegation_chain.forEach((entry, i) => {
+    console.log(`  [${i}] ${entry.agent} -> scope: ${entry.scope.join(', ')}`);
+  });
+} catch (error) {
+  console.error(`Delegation failed: ${error.message}`);
+}
 ```
 
 **Delegation rules:**
@@ -266,23 +869,1331 @@ for entry in chain:
 - Maximum delegation chain depth is 5.
 - The `delegate_to` must be the SPIFFE ID of a registered agent.
 - Default TTL is 60 seconds if not specified.
-- Each chain entry is cryptographically signed. The token includes a `chain_hash` claim for integrity verification.
+- Each chain entry is cryptographically signed; the token includes a `chain_hash` claim for integrity verification.
 
-**Delegation request fields:**
+**If delegation fails:**
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `delegate_to` | string | Yes | SPIFFE ID of the delegate agent |
-| `scope` | string[] | Yes | Permissions to delegate (must be subset of yours) |
-| `ttl` | int | No | Token lifetime in seconds (default: 60) |
+| Status | Meaning | Action |
+|--------|---------|--------|
+| 400 | Invalid request (bad format, missing fields) | Verify `delegate_to` is a valid SPIFFE ID and `scope` is an array |
+| 403 | Scope escalation or widening attempted | Ensure delegated scope is a strict subset of your scope |
+| 404 | Delegate agent not found in broker | Verify the agent's SPIFFE ID is correct and it has registered |
+| 401 | Your token is invalid or expired | Re-acquire your token from the sidecar |
 
 ---
 
-### Handle Errors
+### Handle Token Expiration Gracefully
+
+Implement graceful token expiration with automatic re-acquisition.
+
+**Python example:**
+
+```python
+import requests
+import time
+from functools import wraps
+
+SIDECAR = "http://localhost:8081"
+BROKER = "http://localhost:8080"
+
+def acquire_token(sidecar, agent_name, scope, ttl=300):
+    """Acquire a fresh token from the sidecar."""
+    resp = requests.post(
+        f"{sidecar}/v1/token",
+        json={
+            "agent_name": agent_name,
+            "scope": scope,
+            "ttl": ttl,
+        }
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+def handle_token_expiration(sidecar_url, agent_name, scope):
+    """Decorator: handle token expiration and retry requests."""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            # Get token from kwargs or acquire fresh
+            token = kwargs.get("token")
+            if not token:
+                token_data = acquire_token(sidecar_url, agent_name, scope)
+                token = token_data["access_token"]
+
+            kwargs["token"] = token
+            max_retries = 3
+
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except requests.exceptions.HTTPError as e:
+                    if e.response.status_code == 401:
+                        # Token expired; re-acquire and retry
+                        if attempt < max_retries - 1:
+                            token_data = acquire_token(sidecar_url, agent_name, scope)
+                            kwargs["token"] = token_data["access_token"]
+                            continue
+                    raise
+
+            raise RuntimeError("Max retries exceeded")
+        return wrapper
+    return decorator
+
+@handle_token_expiration(SIDECAR, "my-agent", ["read:data:*"])
+def make_api_call(endpoint, token):
+    """Example API call using token."""
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = requests.get(endpoint, headers=headers)
+    resp.raise_for_status()
+    return resp.json()
+
+# Usage
+try:
+    result = make_api_call("http://api.example.com/data", token=None)
+    print(result)
+except Exception as e:
+    print(f"API call failed: {e}")
+```
+
+---
+
+### Check Sidecar Health
+
+Verify that the sidecar is running and connected to the broker.
+
+**What's happening:** The sidecar health endpoint reports on its broker connection status, registered agent count, and scope ceiling. Use this for startup checks and monitoring.
+
+**Python example:**
+
+```python
+import requests
+import json
+
+SIDECAR = "http://localhost:8081"
+
+def check_sidecar_health(sidecar):
+    """Check sidecar health status."""
+    resp = requests.get(f"{sidecar}/v1/health")
+    resp.raise_for_status()
+    return resp.json()
+
+try:
+    health = check_sidecar_health(SIDECAR)
+
+    print(f"Sidecar healthy:     {health['healthy']}")
+    print(f"Broker connected:    {health['broker_connected']}")
+    print(f"Agents registered:   {health['agents_registered']}")
+    print(f"Scope ceiling:       {', '.join(health['scope_ceiling'])}")
+    print(f"Uptime:              {health['uptime_seconds']}s")
+
+    if not health['healthy']:
+        print(f"⚠ Warning: {health.get('status_message', 'Sidecar unhealthy')}")
+except requests.exceptions.ConnectionError:
+    print("✗ Sidecar unreachable at", SIDECAR)
+except requests.exceptions.HTTPError as e:
+    print(f"✗ Health check failed: {e.response.status_code}")
+```
+
+**Expected response (200 OK):**
+
+```json
+{
+  "healthy": true,
+  "broker_connected": true,
+  "agents_registered": 3,
+  "scope_ceiling": ["read:data:*", "write:data:*"],
+  "uptime_seconds": 1234,
+  "status_message": "Operational"
+}
+```
+
+**TypeScript/Node.js example:**
+
+```typescript
+import fetch from 'node-fetch';
+
+const SIDECAR = "http://localhost:8081";
+
+interface HealthStatus {
+  healthy: boolean;
+  broker_connected: boolean;
+  agents_registered: number;
+  scope_ceiling: string[];
+  uptime_seconds: number;
+  status_message: string;
+}
+
+async function checkSidecarHealth(sidecar: string): Promise<HealthStatus> {
+  try {
+    const response = await fetch(`${sidecar}/v1/health`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Health check failed: ${response.status}`);
+    }
+
+    return response.json() as Promise<HealthStatus>;
+  } catch (error) {
+    throw new Error(`Sidecar unreachable: ${error}`);
+  }
+}
+
+// Usage
+try {
+  const health = await checkSidecarHealth(SIDECAR);
+
+  console.log(`Sidecar healthy:     ${health.healthy}`);
+  console.log(`Broker connected:    ${health.broker_connected}`);
+  console.log(`Agents registered:   ${health.agents_registered}`);
+  console.log(`Scope ceiling:       ${health.scope_ceiling.join(', ')}`);
+  console.log(`Uptime:              ${health.uptime_seconds}s`);
+
+  if (!health.healthy) {
+    console.warn(`⚠ Warning: ${health.status_message}`);
+  }
+} catch (error) {
+  console.error(`✗ ${error.message}`);
+}
+```
+
+**If this fails:**
+
+| Issue | Meaning | Action |
+|-------|---------|--------|
+| Connection refused | Sidecar is not running | Start the sidecar container or process |
+| `broker_connected: false` | Sidecar cannot reach broker | Check broker is running; verify network connectivity |
+| HTTP 503 | Sidecar is starting up | Retry in a few seconds |
+
+---
+
+## Operator Tasks
+
+> **Persona:** Platform Operator managing AgentAuth deployments.
+>
+> These tasks cover administrative operations: authentication, launch token management, revocation, audit, and monitoring. All examples use curl or similar.
+>
+> **Prerequisite:** [Getting Started: Operator](getting-started-operator.md), Broker running, `AA_ADMIN_SECRET` set.
+
+### Authenticate as Admin
+
+Every admin operation requires a Bearer token obtained from the admin auth endpoint. Admin tokens have a 300-second TTL and include all admin scopes.
+
+**What's happening:** Admin authentication is separate from agent authentication. You provide your admin secret, get back a short-lived admin token, and use that Bearer token for all subsequent admin operations. Cache and reuse the token within its TTL.
+
+**Bash/curl example:**
+
+```bash
+#!/bin/bash
+set -e
+
+BROKER="http://localhost:8080"
+
+# Get admin token
+ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
+  -H "Content-Type: application/json" \
+  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+echo "Admin token acquired (first 40 chars): ${ADMIN_TOKEN:0:40}..."
+echo "TTL: 300s"
+```
+
+**Expected response (200 OK):**
+
+```json
+{
+  "access_token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...",
+  "expires_in": 300,
+  "token_type": "Bearer"
+}
+```
+
+**Python example:**
+
+```python
+import requests
+import os
+import time
+
+BROKER = "http://localhost:8080"
+
+class AdminTokenManager:
+    """Manage admin token acquisition and caching."""
+
+    def __init__(self, broker, admin_secret):
+        self.broker = broker
+        self.admin_secret = admin_secret
+        self.token = None
+        self.expires_at = 0
+
+    def get_token(self):
+        """Get a cached admin token or acquire a fresh one."""
+        now = time.time()
+
+        if self.token and now < self.expires_at:
+            return self.token
+
+        # Acquire fresh
+        resp = requests.post(
+            f"{self.broker}/v1/admin/auth",
+            json={
+                "client_id": "admin",
+                "client_secret": self.admin_secret,
+            }
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        self.token = data["access_token"]
+        self.expires_at = now + data["expires_in"] - 10  # 10s buffer
+
+        return self.token
+
+# Usage
+admin_secret = os.getenv("AA_ADMIN_SECRET")
+token_mgr = AdminTokenManager(BROKER, admin_secret)
+
+try:
+    token = token_mgr.get_token()
+    print(f"Admin token acquired: {token[:40]}...")
+except requests.exceptions.RequestException as e:
+    print(f"Authentication failed: {e}")
+```
+
+**Admin token scopes:** `admin:launch-tokens:*`, `admin:revoke:*`, `admin:audit:*`, `admin:metrics:*`
+
+**Rate limit:** 5 requests/second, burst 10, per IP address. Exceeding returns 429 with `Retry-After: 1`.
+
+**If authentication fails:**
+
+| Status | Meaning | Action |
+|--------|---------|--------|
+| 401 | Bad credentials | Verify `AA_ADMIN_SECRET` is correct and matches broker |
+| 400 | Missing `client_id` or `client_secret` | Ensure both fields are present in the request |
+| 429 | Rate limited | Wait for `Retry-After` seconds before retrying |
+
+---
+
+### Create Launch Tokens
+
+Launch tokens are the "secret zero" that bootstraps agent identity. Design the launch token policy carefully—it defines the maximum scope and TTL that any agent using this token can receive.
+
+**What's happening:** When you create a launch token, the broker generates a single-use (or multi-use) bootstrap credential. Agents use this token to register and receive their SPIFFE identity. The policy attached to the launch token is enforced during agent registration, preventing agents from requesting excessive scopes.
+
+**Bash/curl example:**
+
+```bash
+#!/bin/bash
+set -e
+
+BROKER="http://localhost:8080"
+
+# Acquire admin token first
+ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
+  -H "Content-Type: application/json" \
+  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+# Create launch token
+RESPONSE=$(curl -s -X POST "$BROKER/v1/admin/launch-tokens" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{
+    "agent_name": "data-processor",
+    "allowed_scope": ["read:data:*"],
+    "max_ttl": 300,
+    "single_use": true,
+    "ttl": 30
+  }')
+
+echo "$RESPONSE" | python3 -m json.tool
+
+LAUNCH_TOKEN=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['launch_token'])")
+echo ""
+echo "Launch token: $LAUNCH_TOKEN"
+```
+
+**Expected response (201 Created):**
+
+```json
+{
+  "launch_token": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0",
+  "expires_at": "2026-02-15T12:00:30Z",
+  "policy": {
+    "allowed_scope": ["read:data:*"],
+    "max_ttl": 300,
+    "single_use": true
+  }
+}
+```
+
+**Python example:**
+
+```python
+import requests
+import json
+from datetime import datetime
+
+BROKER = "http://localhost:8080"
+
+def create_launch_token(broker, admin_token, agent_name, allowed_scope, max_ttl, single_use=True, ttl=30):
+    """Create a launch token for agent registration."""
+    resp = requests.post(
+        f"{broker}/v1/admin/launch-tokens",
+        headers={
+            "Authorization": f"Bearer {admin_token}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "agent_name": agent_name,
+            "allowed_scope": allowed_scope,
+            "max_ttl": max_ttl,
+            "single_use": single_use,
+            "ttl": ttl,
+        }
+    )
+
+    if resp.status_code == 400:
+        raise ValueError(f"Invalid request: {resp.json().get('detail')}")
+    if resp.status_code == 401:
+        raise ValueError("Admin token invalid or expired")
+
+    resp.raise_for_status()
+    return resp.json()
+
+# Create launch token
+try:
+    result = create_launch_token(
+        BROKER,
+        admin_token="<admin_token>",
+        agent_name="data-processor",
+        allowed_scope=["read:data:*"],
+        max_ttl=300,
+        single_use=True,
+        ttl=30
+    )
+
+    launch_token = result["launch_token"]
+    expires_at = result["expires_at"]
+    policy = result["policy"]
+
+    print(f"Launch token created")
+    print(f"  Token:        {launch_token}")
+    print(f"  Expires at:   {expires_at}")
+    print(f"  Allowed scope: {', '.join(policy['allowed_scope'])}")
+    print(f"  Max TTL:      {policy['max_ttl']}s")
+    print(f"  Single-use:   {policy.get('single_use', False)}")
+except ValueError as e:
+    print(f"Failed to create launch token: {e}")
+except requests.exceptions.RequestException as e:
+    print(f"Network error: {e}")
+```
+
+**Request fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `agent_name` | string | Yes | Agent identifier |
+| `allowed_scope` | string[] | Yes | Maximum scope agents can request (principle of least privilege) |
+| `max_ttl` | int | Yes | Maximum agent token lifetime in seconds (typically 300-900) |
+| `single_use` | boolean | No | If `true`, token is consumed on first registration (default: `true`) |
+| `ttl` | int | No | Launch token lifetime in seconds (default: 30) |
+
+**Policy design guidance:**
+
+| Decision | Recommendation |
+|----------|---------------|
+| **`single_use`** | Set `true` for one-shot agents; set `false` for orchestrators that register multiple agents with the same token |
+| **`ttl`** (launch token lifetime) | Keep short (30s default). This controls how long the token is valid for initiating registration, not the agent token lifetime. |
+| **`max_ttl`** (agent token cap) | Match to expected task duration: 300s (5 min) for short tasks, up to 900s (15 min) for longer workflows. |
+| **`allowed_scope`** | Principle of least privilege. A data-reader agent gets `["read:data:*"]`, not `["read:data:*", "write:data:*"]`. |
+
+**Key distinction:** `ttl` controls how long the launch token itself is valid (default 30s). `max_ttl` caps the TTL of the agent token issued during registration (default 300s). These are independent.
+
+**If creation fails:**
+
+| Status | Meaning | Action |
+|--------|---------|--------|
+| 400 | Invalid policy (e.g., empty allowed_scope) | Verify `allowed_scope` is not empty and contains valid scope strings |
+| 401 | Admin token invalid or expired | Re-authenticate and get a fresh admin token |
+| 403 | Policy violates constraints | Check that `max_ttl` is not excessive (max: 900s) |
+
+---
+
+### Revoke Tokens at Different Levels
+
+AgentAuth provides four revocation levels, each with a different blast radius. Use the narrowest level that addresses the incident.
+
+**What's happening:** Revocation is cryptographically verified: revoked tokens are immediately rejected on the next validation. The four levels allow you to target the exact scope of compromise—single token, all tokens for one agent, all tokens for one task, or an entire delegation chain.
+
+**Bash/curl example (token-level revocation):**
+
+```bash
+#!/bin/bash
+set -e
+
+BROKER="http://localhost:8080"
+
+# Authenticate
+ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
+  -H "Content-Type: application/json" \
+  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+# Validate the token to get its JTI
+JTI=$(curl -s -X POST "$BROKER/v1/token/validate" \
+  -H "Content-Type: application/json" \
+  -d '{"token": "TOKEN_TO_REVOKE"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['claims']['jti'])")
+
+# Revoke by JTI (token-level)
+curl -s -X POST "$BROKER/v1/revoke" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d "{\"level\": \"token\", \"target\": \"$JTI\"}" \
+  | python3 -m json.tool
+
+echo "Token revoked: $JTI"
+```
+
+**Expected response (200 OK, all revocation types):**
+
+```json
+{
+  "revoked": true,
+  "level": "token",
+  "target": "a1b2c3d4e5f6...",
+  "count": 1
+}
+```
+
+**Bash/curl example (agent-level revocation):**
+
+```bash
+#!/bin/bash
+set -e
+
+BROKER="http://localhost:8080"
+SPIFFE_ID="spiffe://agentauth.local/agent/orch/task/instance"
+
+# Authenticate
+ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
+  -H "Content-Type: application/json" \
+  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+# Revoke all tokens for this agent
+curl -s -X POST "$BROKER/v1/revoke" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d "{\"level\": \"agent\", \"target\": \"$SPIFFE_ID\"}" \
+  | python3 -m json.tool
+```
+
+**Bash/curl example (task-level revocation):**
+
+```bash
+#!/bin/bash
+set -e
+
+BROKER="http://localhost:8080"
+TASK_ID="task-001"
+
+# Authenticate
+ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
+  -H "Content-Type: application/json" \
+  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+# Revoke all tokens for this task
+curl -s -X POST "$BROKER/v1/revoke" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d "{\"level\": \"task\", \"target\": \"$TASK_ID\"}" \
+  | python3 -m json.tool
+```
+
+**Bash/curl example (chain-level revocation):**
+
+```bash
+#!/bin/bash
+set -e
+
+BROKER="http://localhost:8080"
+ROOT_DELEGATOR="spiffe://agentauth.local/agent/orch/task/instance"
+
+# Authenticate
+ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
+  -H "Content-Type: application/json" \
+  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+# Revoke entire delegation chain rooted at this agent
+curl -s -X POST "$BROKER/v1/revoke" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d "{\"level\": \"chain\", \"target\": \"$ROOT_DELEGATOR\"}" \
+  | python3 -m json.tool
+```
+
+**Python example (all revocation levels):**
+
+```python
+import requests
+
+BROKER = "http://localhost:8080"
+
+def revoke_tokens(broker, admin_token, level, target):
+    """Revoke tokens at the specified level."""
+    resp = requests.post(
+        f"{broker}/v1/revoke",
+        headers={
+            "Authorization": f"Bearer {admin_token}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "level": level,
+            "target": target,
+        }
+    )
+
+    if resp.status_code == 400:
+        raise ValueError(f"Invalid request: {resp.json().get('detail')}")
+    if resp.status_code == 401:
+        raise ValueError("Admin token invalid or expired")
+    if resp.status_code == 404:
+        raise ValueError(f"Target not found: {target}")
+
+    resp.raise_for_status()
+    return resp.json()
+
+# Example: revoke a single token by JTI
+try:
+    result = revoke_tokens(
+        BROKER,
+        admin_token="<admin_token>",
+        level="token",
+        target="a1b2c3d4e5f6..."
+    )
+    print(f"✓ Revoked {result['count']} token(s) at level '{result['level']}'")
+except ValueError as e:
+    print(f"✗ Revocation failed: {e}")
+
+# Example: revoke all tokens for an agent
+try:
+    result = revoke_tokens(
+        BROKER,
+        admin_token="<admin_token>",
+        level="agent",
+        target="spiffe://agentauth.local/agent/orch/task/instance"
+    )
+    print(f"✓ Revoked {result['count']} token(s) for agent")
+except ValueError as e:
+    print(f"✗ Revocation failed: {e}")
+
+# Example: revoke all tokens for a task
+try:
+    result = revoke_tokens(
+        BROKER,
+        admin_token="<admin_token>",
+        level="task",
+        target="task-001"
+    )
+    print(f"✓ Revoked {result['count']} token(s) for task")
+except ValueError as e:
+    print(f"✗ Revocation failed: {e}")
+
+# Example: revoke entire delegation chain
+try:
+    result = revoke_tokens(
+        BROKER,
+        admin_token="<admin_token>",
+        level="chain",
+        target="spiffe://agentauth.local/agent/orch/task/root"
+    )
+    print(f"✓ Revoked {result['count']} token(s) in delegation chain")
+except ValueError as e:
+    print(f"✗ Revocation failed: {e}")
+```
+
+**Revocation decision tree:**
+
+```
+What happened?
+├─ Single token leaked
+│  └─ Token-level revocation (target = JTI)
+├─ Agent instance compromised
+│  └─ Agent-level revocation (target = SPIFFE ID)
+├─ Entire task suspect
+│  └─ Task-level revocation (target = task_id)
+└─ Delegation chain exploited
+   └─ Chain-level revocation (target = root delegator SPIFFE ID)
+```
+
+**If revocation fails:**
+
+| Status | Meaning | Action |
+|--------|---------|--------|
+| 400 | Invalid target or level | Verify target format matches the level (JTI for token, SPIFFE ID for agent/chain, task_id for task) |
+| 401 | Admin token invalid | Re-authenticate and get a fresh admin token |
+| 404 | Target not found | Verify the target exists in the system |
+| 409 | Already revoked | The target was previously revoked; operation is idempotent (safe to retry) |
+
+---
+
+### Query the Audit Trail
+
+The audit trail is an append-only, hash-chained log of every significant operation. Use it for forensics, compliance, and incident investigation.
+
+**What's happening:** Every token acquisition, revocation, delegation, and admin action is logged with a cryptographic hash chain. You can query by agent, task, time range, or event type. Hash chaining allows you to detect if any audit record has been tampered with.
+
+**Bash/curl examples:**
+
+```bash
+#!/bin/bash
+set -e
+
+BROKER="http://localhost:8080"
+
+# Authenticate
+ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
+  -H "Content-Type: application/json" \
+  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+# All events (default: last 100)
+echo "=== Last 100 events ==="
+curl -s "http://localhost:8080/v1/audit/events" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" | python3 -m json.tool
+
+# Filter by agent
+echo "=== Events for specific agent ==="
+curl -s "http://localhost:8080/v1/audit/events?agent_id=spiffe://agentauth.local/agent/orch/task/instance" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" | python3 -m json.tool
+
+# Filter by event type
+echo "=== Token revocation events ==="
+curl -s "http://localhost:8080/v1/audit/events?event_type=token_revoked" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" | python3 -m json.tool
+
+# Filter by time range
+echo "=== Events from past hour ==="
+curl -s "http://localhost:8080/v1/audit/events?since=2026-02-15T11:00:00Z&until=2026-02-15T12:00:00Z" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" | python3 -m json.tool
+
+# Filter by task
+echo "=== Events for specific task ==="
+curl -s "http://localhost:8080/v1/audit/events?task_id=task-001" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" | python3 -m json.tool
+
+# Paginate through large result sets
+echo "=== Paginated results (50 per page, skip first 100) ==="
+curl -s "http://localhost:8080/v1/audit/events?limit=50&offset=100" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" | python3 -m json.tool
+```
+
+**Expected response (200 OK):**
+
+```json
+{
+  "events": [
+    {
+      "id": "event-001",
+      "timestamp": "2026-02-15T11:00:00Z",
+      "event_type": "token_acquired",
+      "agent_id": "spiffe://agentauth.local/agent/orch/task/instance",
+      "task_id": "task-001",
+      "orch_id": "orch-001",
+      "detail": {
+        "scope": ["read:data:*"],
+        "ttl": 300
+      },
+      "hash": "a1b2c3d4...",
+      "prev_hash": "0000000..."
+    }
+  ],
+  "total": 1,
+  "limit": 100,
+  "offset": 0
+}
+```
+
+**Python example:**
+
+```python
+import requests
+from datetime import datetime, timedelta
+import json
+
+BROKER = "http://localhost:8080"
+
+def query_audit_trail(broker, admin_token, **filters):
+    """Query the audit trail with optional filters."""
+    resp = requests.get(
+        f"{broker}/v1/audit/events",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        params=filters
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+# Example 1: Get all events
+try:
+    result = query_audit_trail(BROKER, admin_token="<admin_token>")
+    print(f"Total events: {result['total']}")
+    for event in result["events"]:
+        print(f"  {event['timestamp']} {event['event_type']}: {event['agent_id']}")
+except requests.exceptions.RequestException as e:
+    print(f"Query failed: {e}")
+
+# Example 2: Filter by agent
+try:
+    result = query_audit_trail(
+        BROKER,
+        admin_token="<admin_token>",
+        agent_id="spiffe://agentauth.local/agent/orch/task/instance"
+    )
+    print(f"Events for agent: {result['total']}")
+except requests.exceptions.RequestException as e:
+    print(f"Query failed: {e}")
+
+# Example 3: Filter by event type
+try:
+    result = query_audit_trail(
+        BROKER,
+        admin_token="<admin_token>",
+        event_type="token_revoked"
+    )
+    print(f"Revocation events: {result['total']}")
+except requests.exceptions.RequestException as e:
+    print(f"Query failed: {e}")
+
+# Example 4: Filter by time range (past 24 hours)
+try:
+    now = datetime.utcnow()
+    yesterday = now - timedelta(hours=24)
+
+    result = query_audit_trail(
+        BROKER,
+        admin_token="<admin_token>",
+        since=yesterday.isoformat() + "Z",
+        until=now.isoformat() + "Z"
+    )
+    print(f"Events in past 24h: {result['total']}")
+except requests.exceptions.RequestException as e:
+    print(f"Query failed: {e}")
+
+# Example 5: Paginate through large result sets
+try:
+    all_events = []
+    limit = 100
+    offset = 0
+
+    while True:
+        result = query_audit_trail(
+            BROKER,
+            admin_token="<admin_token>",
+            limit=limit,
+            offset=offset
+        )
+        all_events.extend(result["events"])
+
+        if len(result["events"]) < limit:
+            break
+
+        offset += limit
+
+    print(f"Retrieved all {len(all_events)} events")
+except requests.exceptions.RequestException as e:
+    print(f"Query failed: {e}")
+
+# Example 6: Verify hash chain integrity
+def verify_hash_chain(events):
+    """Verify that the audit trail hash chain is intact."""
+    import hashlib
+
+    for i, event in enumerate(events):
+        # Re-compute hash: SHA256(prev_hash | event_data)
+        prev_hash = event.get("prev_hash", "")
+
+        event_data = f"{event['id']}|{event['timestamp']}|{event['event_type']}|{event['agent_id']}|{event['task_id']}|{event['orch_id']}|{json.dumps(event['detail'])}"
+        computed_hash = hashlib.sha256((prev_hash + event_data).encode()).hexdigest()
+
+        if computed_hash != event["hash"]:
+            print(f"✗ Hash mismatch at event {i}: expected {event['hash']}, got {computed_hash}")
+            return False
+
+    print("✓ Hash chain verified")
+    return True
+
+try:
+    result = query_audit_trail(BROKER, admin_token="<admin_token>", limit=50)
+    verify_hash_chain(result["events"])
+except Exception as e:
+    print(f"Verification failed: {e}")
+```
+
+**Available filter parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `agent_id` | string | Filter by agent SPIFFE ID |
+| `task_id` | string | Filter by task ID |
+| `event_type` | string | Filter by event type (e.g., `token_acquired`, `token_revoked`, `delegation_issued`) |
+| `since` | string | Start time (RFC 3339 format, e.g., `2026-02-15T00:00:00Z`) |
+| `until` | string | End time (RFC 3339 format) |
+| `limit` | int | Max results (default: 100, max: 1000) |
+| `offset` | int | Skip N results for pagination |
+
+**Common event types:**
+
+| Type | Meaning |
+|------|---------|
+| `token_acquired` | Token issued to agent |
+| `token_renewed` | Token renewed by agent |
+| `token_revoked` | Token revoked by operator |
+| `token_validated` | Token validated (may be frequent; filter carefully) |
+| `delegation_issued` | Token delegated from one agent to another |
+| `agent_registered` | New agent registered with sidecar |
+| `launch_token_created` | Launch token created by operator |
+| `admin_auth` | Admin authentication occurred |
+
+**Hash chain verification:** Each event has a `hash` and `prev_hash` field. To verify integrity, recompute `SHA256(prev_hash | id | timestamp | event_type | agent_id | task_id | orch_id | detail)` for each event and confirm it matches the recorded `hash`. The first event's `prev_hash` is all zeros.
+
+**If audit query fails:**
+
+| Status | Meaning | Action |
+|--------|---------|--------|
+| 400 | Invalid filter parameters | Check date format (RFC 3339), numeric limits, and enum values |
+| 401 | Admin token invalid | Re-authenticate and get a fresh admin token |
+| 500 | Audit database error | Check broker logs; may be transient |
+
+---
+
+### Update Sidecar Scope Ceiling at Runtime
+
+Update the maximum allowed scopes for a sidecar without restarting it.
+
+**What's happening:** The sidecar enforces a scope ceiling—agents cannot request scopes beyond this limit. You can update this ceiling at runtime by making an admin API call to the broker, which propagates the change to all sidecars. No sidecar restart required.
+
+**Bash/curl example:**
+
+```bash
+#!/bin/bash
+set -e
+
+BROKER="http://localhost:8080"
+
+# Authenticate
+ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
+  -H "Content-Type: application/json" \
+  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+# Update sidecar scope ceiling
+curl -s -X PATCH "$BROKER/v1/admin/sidecar/config" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{
+    "scope_ceiling": ["read:data:*", "write:data:users"]
+  }' | python3 -m json.tool
+
+echo "Scope ceiling updated"
+```
+
+**Expected response (200 OK):**
+
+```json
+{
+  "scope_ceiling": ["read:data:*", "write:data:users"],
+  "effective_at": "2026-02-15T12:00:00Z"
+}
+```
+
+**Python example:**
+
+```python
+import requests
+
+BROKER = "http://localhost:8080"
+
+def update_sidecar_scope_ceiling(broker, admin_token, new_scope_ceiling):
+    """Update the sidecar scope ceiling."""
+    resp = requests.patch(
+        f"{broker}/v1/admin/sidecar/config",
+        headers={
+            "Authorization": f"Bearer {admin_token}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "scope_ceiling": new_scope_ceiling,
+        }
+    )
+
+    if resp.status_code == 400:
+        raise ValueError(f"Invalid scope ceiling: {resp.json().get('detail')}")
+    if resp.status_code == 401:
+        raise ValueError("Admin token invalid or expired")
+
+    resp.raise_for_status()
+    return resp.json()
+
+# Update scope ceiling
+try:
+    result = update_sidecar_scope_ceiling(
+        BROKER,
+        admin_token="<admin_token>",
+        new_scope_ceiling=["read:data:*", "write:data:users"]
+    )
+
+    print(f"Scope ceiling updated")
+    print(f"  New ceiling: {', '.join(result['scope_ceiling'])}")
+    print(f"  Effective at: {result['effective_at']}")
+except ValueError as e:
+    print(f"Update failed: {e}")
+except requests.exceptions.RequestException as e:
+    print(f"Network error: {e}")
+```
+
+**If update fails:**
+
+| Status | Meaning | Action |
+|--------|---------|--------|
+| 400 | Invalid scope list | Verify scopes follow the pattern `action:resource:identifier` |
+| 401 | Admin token invalid | Re-authenticate and get a fresh admin token |
+| 409 | Update in progress | Retry in a few seconds |
+
+---
+
+### Monitor Health and Metrics
+
+Track broker and sidecar health, request latency, and token activity.
+
+**What's happening:** Both broker and sidecar expose Prometheus-compatible metrics and health endpoints. These let you build dashboards, set up alerts, and investigate performance issues in real time.
+
+**Bash/curl examples:**
+
+```bash
+#!/bin/bash
+
+# Check broker health
+curl -s http://localhost:8080/v1/health | python3 -m json.tool
+
+# Check sidecar health
+curl -s http://localhost:8081/v1/health | python3 -m json.tool
+
+# Scrape Prometheus metrics from broker
+curl -s http://localhost:8080/v1/metrics | head -20
+
+# Scrape Prometheus metrics from sidecar
+curl -s http://localhost:8081/v1/metrics | head -20
+```
+
+**Expected broker health response:**
+
+```json
+{
+  "healthy": true,
+  "uptime_seconds": 12345,
+  "version": "1.0.0",
+  "timestamp": "2026-02-15T12:00:00Z"
+}
+```
+
+**Expected sidecar health response:**
+
+```json
+{
+  "healthy": true,
+  "broker_connected": true,
+  "agents_registered": 5,
+  "scope_ceiling": ["read:data:*", "write:data:*"],
+  "uptime_seconds": 6789,
+  "status_message": "Operational"
+}
+```
+
+**Key metrics to watch:**
+
+| What to monitor | Metric | Alert when |
+|-----------------|--------|------------|
+| Broker availability | `agentauth_broker_up` | Value is 0 |
+| Sidecar-broker connection | `agentauth_sidecar_circuit_state` | Value > 0 (open or probing) |
+| Failed admin auth | `agentauth_admin_auth_total{status="failure"}` | Sustained increase |
+| Revocation activity | `agentauth_tokens_revoked_total` | Unexpected spike |
+| Sidecar bootstrap failures | `agentauth_sidecar_bootstrap_total{status="failure"}` | Any increase after initial startup |
+| Cached token usage | `agentauth_sidecar_cached_tokens_served_total` | Sustained increase (indicates broker issues) |
+| Registration failures | `agentauth_registrations_total{status="failure"}` | Unexpected failures |
+| Request latency | `agentauth_request_duration_seconds` | p99 exceeds acceptable threshold |
+| Token expiration | `agentauth_tokens_expired_total` | Monitor trends |
+
+**Python example (health checks):**
+
+```python
+import requests
+import json
+
+BROKER = "http://localhost:8080"
+SIDECAR = "http://localhost:8081"
+
+def check_broker_health(broker):
+    """Check broker health."""
+    resp = requests.get(f"{broker}/v1/health")
+    resp.raise_for_status()
+    return resp.json()
+
+def check_sidecar_health(sidecar):
+    """Check sidecar health."""
+    resp = requests.get(f"{sidecar}/v1/health")
+    resp.raise_for_status()
+    return resp.json()
+
+def fetch_metrics(endpoint, port):
+    """Fetch Prometheus metrics."""
+    resp = requests.get(f"http://localhost:{port}/v1/metrics")
+    resp.raise_for_status()
+    return resp.text
+
+# Check health
+try:
+    broker_health = check_broker_health(BROKER)
+    print(f"Broker: {'✓' if broker_health['healthy'] else '✗'}")
+
+    sidecar_health = check_sidecar_health(SIDECAR)
+    print(f"Sidecar: {'✓' if sidecar_health['healthy'] else '✗'}")
+    print(f"  Broker connected: {sidecar_health['broker_connected']}")
+    print(f"  Agents registered: {sidecar_health['agents_registered']}")
+except requests.exceptions.RequestException as e:
+    print(f"Health check failed: {e}")
+
+# Fetch and parse metrics
+try:
+    metrics = fetch_metrics(BROKER, 8080)
+
+    # Simple example: look for specific metrics
+    for line in metrics.split('\n'):
+        if 'agentauth_tokens_revoked_total' in line and not line.startswith('#'):
+            print(f"Revocation metric: {line}")
+except requests.exceptions.RequestException as e:
+    print(f"Metrics fetch failed: {e}")
+```
+
+**Prometheus scrape configuration:**
+
+```yaml
+scrape_configs:
+  - job_name: 'agentauth-broker'
+    static_configs:
+      - targets: ['localhost:8080']
+    metrics_path: /v1/metrics
+    scrape_interval: 15s
+
+  - job_name: 'agentauth-sidecar'
+    static_configs:
+      - targets: ['localhost:8081']
+    metrics_path: /v1/metrics
+    scrape_interval: 15s
+```
+
+**Docker health check:**
+
+```dockerfile
+HEALTHCHECK --interval=2s --timeout=3s --retries=10 \
+  CMD curl -f http://localhost:8080/v1/health || exit 1
+```
+
+**Kubernetes liveness and readiness probes:**
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /v1/health
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /v1/health
+    port: 8080
+  initialDelaySeconds: 2
+  periodSeconds: 5
+```
+
+**If health checks fail:**
+
+| Issue | Meaning | Action |
+|-------|---------|--------|
+| Connection refused | Service not running | Start broker/sidecar process |
+| `healthy: false` | Service degraded | Check logs for errors; may recover automatically |
+| Metrics missing | Metrics endpoint disabled | Ensure metrics are enabled in configuration |
+
+---
+
+### Emergency Response: Immediate Scope Narrowing
+
+In a security incident, immediately narrow the scope ceiling to prevent further damage.
+
+**What's happening:** If you detect a compromise, you can reduce the scope ceiling to prevent new agents from requesting high-privilege scopes. Existing tokens are unaffected; this only constrains future acquisitions. Combined with targeted revocations, this buys time for investigation.
+
+**Bash/curl example:**
+
+```bash
+#!/bin/bash
+set -e
+
+BROKER="http://localhost:8080"
+
+# EMERGENCY: Authenticate as admin
+ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
+  -H "Content-Type: application/json" \
+  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+echo "[INCIDENT] Narrowing scope ceiling to read-only..."
+
+# Step 1: Narrow scope ceiling to read-only
+curl -s -X PATCH "$BROKER/v1/admin/sidecar/config" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{
+    "scope_ceiling": ["read:data:*"]
+  }' | python3 -m json.tool
+
+echo "[INCIDENT] Scope ceiling narrowed. New agent requests will be limited to read:data:*"
+
+# Step 2: Revoke all tokens for the affected task
+TASK_ID="task-compromised"
+curl -s -X POST "$BROKER/v1/revoke" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d "{\"level\": \"task\", \"target\": \"$TASK_ID\"}" | python3 -m json.tool
+
+echo "[INCIDENT] Revoked all tokens for $TASK_ID"
+
+# Step 3: Query audit trail for evidence
+curl -s "http://localhost:8080/v1/audit/events?task_id=$TASK_ID&limit=20" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" | python3 -m json.tool
+
+echo "[INCIDENT] Response plan executed. Investigate and restore scope when safe."
+```
+
+**Python emergency response script:**
+
+```python
+import requests
+import os
+import sys
+from datetime import datetime, timedelta
+
+BROKER = "http://localhost:8080"
+
+def emergency_incident_response(broker, admin_secret, compromised_task_id):
+    """Execute emergency incident response: narrow scope and revoke tokens."""
+
+    print(f"[{datetime.utcnow().isoformat()}] EMERGENCY INCIDENT RESPONSE INITIATED")
+
+    # Step 1: Authenticate
+    try:
+        auth_resp = requests.post(
+            f"{broker}/v1/admin/auth",
+            json={"client_id": "admin", "client_secret": admin_secret}
+        )
+        auth_resp.raise_for_status()
+        admin_token = auth_resp.json()["access_token"]
+        print("[✓] Admin authenticated")
+    except requests.exceptions.RequestException as e:
+        print(f"[✗] Authentication failed: {e}")
+        return False
+
+    # Step 2: Narrow scope ceiling
+    try:
+        scope_resp = requests.patch(
+            f"{broker}/v1/admin/sidecar/config",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json={"scope_ceiling": ["read:data:*"]}
+        )
+        scope_resp.raise_for_status()
+        print("[✓] Scope ceiling narrowed to read-only")
+    except requests.exceptions.RequestException as e:
+        print(f"[✗] Scope narrowing failed: {e}")
+        return False
+
+    # Step 3: Revoke all tokens for the compromised task
+    try:
+        revoke_resp = requests.post(
+            f"{broker}/v1/revoke",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            json={"level": "task", "target": compromised_task_id}
+        )
+        revoke_resp.raise_for_status()
+        revocation_count = revoke_resp.json()["count"]
+        print(f"[✓] Revoked {revocation_count} token(s) for task {compromised_task_id}")
+    except requests.exceptions.RequestException as e:
+        print(f"[✗] Revocation failed: {e}")
+        return False
+
+    # Step 4: Audit trail check
+    try:
+        now = datetime.utcnow()
+        one_hour_ago = now - timedelta(hours=1)
+
+        audit_resp = requests.get(
+            f"{broker}/v1/audit/events",
+            headers={"Authorization": f"Bearer {admin_token}"},
+            params={
+                "task_id": compromised_task_id,
+                "since": one_hour_ago.isoformat() + "Z",
+                "until": now.isoformat() + "Z",
+                "limit": 20
+            }
+        )
+        audit_resp.raise_for_status()
+        events = audit_resp.json()["events"]
+        print(f"[✓] Audit trail retrieved: {len(events)} event(s) in past hour")
+
+        for event in events:
+            print(f"    {event['timestamp']} {event['event_type']}: {event['agent_id']}")
+    except requests.exceptions.RequestException as e:
+        print(f"[✗] Audit trail query failed: {e}")
+        return False
+
+    print(f"[{datetime.utcnow().isoformat()}] EMERGENCY RESPONSE COMPLETE")
+    print("[!] Scope is now read-only. Tokens for the compromised task have been revoked.")
+    print("[!] Investigate and restore normal scope settings once the incident is resolved.")
+
+    return True
+
+# Usage
+admin_secret = os.getenv("AA_ADMIN_SECRET")
+if not admin_secret:
+    print("Error: AA_ADMIN_SECRET not set")
+    sys.exit(1)
+
+success = emergency_incident_response(BROKER, admin_secret, "task-compromised")
+sys.exit(0 if success else 1)
+```
+
+**Incident response checklist:**
+
+1. ✓ Authenticate with admin credentials
+2. ✓ Narrow scope ceiling to `["read:data:*"]` (read-only)
+3. ✓ Revoke all tokens for the compromised task
+4. ✓ Query audit trail to identify affected agents and users
+5. ✓ Document the timeline and scope of compromise
+6. ✓ Notify relevant teams
+7. ⧗ Wait for investigation to complete
+8. ⧗ Restore normal scope ceiling once safe
+
+---
+
+## Error Handling Reference
 
 AgentAuth uses RFC 7807 `application/problem+json` error responses from the broker. The sidecar uses a simpler JSON error format.
 
-#### Broker Error Format (RFC 7807)
+**Broker error format (RFC 7807):**
 
 ```json
 {
@@ -297,7 +2208,7 @@ AgentAuth uses RFC 7807 `application/problem+json` error responses from the brok
 }
 ```
 
-#### Sidecar Error Format
+**Sidecar error format:**
 
 ```json
 {
@@ -306,354 +2217,27 @@ AgentAuth uses RFC 7807 `application/problem+json` error responses from the brok
 }
 ```
 
-#### Status Code Reference for Developers
+**Universal status code reference:**
 
-| Status | Error Code | What It Means | What To Do |
-|--------|-----------|---------------|------------|
-| 400 | `invalid_request` | Malformed JSON or missing required fields | Fix the request body |
-| 401 | `unauthorized` | Token expired, invalid signature, or bad launch token | Re-acquire token via sidecar |
-| 403 | `scope_violation` | Requested scope exceeds allowed scope | Request a narrower scope |
-| 403 | `insufficient_scope` | Token lacks required scope for this endpoint | Check your token's scope |
-| 403 | -- | Token has been revoked | Re-acquire token via sidecar |
-| 404 | `not_found` | Delegate agent not found (delegation) | Verify the delegate's SPIFFE ID |
-| 429 | `rate_limited` | Too many requests | Wait and retry with backoff |
-| 502 | -- | Sidecar cannot reach broker | Retry with backoff |
-| 503 | -- | Broker unavailable, no cached token | Wait for broker recovery |
-
-#### Error Handling Pattern
-
-```python
-import requests
-import time
-
-SIDECAR = "http://localhost:8081"
-
-def request_with_retry(sidecar, token, max_retries=3):
-    """Make a request with automatic retry and re-bootstrap."""
-    for attempt in range(max_retries):
-        resp = requests.post(
-            f"{sidecar}/v1/token/renew",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-
-        if resp.status_code == 200:
-            return resp.json()
-
-        if resp.status_code in (401, 403):
-            # Token expired or revoked -- get a new one
-            print("Token invalid, re-acquiring...")
-            new_resp = requests.post(f"{sidecar}/v1/token", json={
-                "agent_name": "my-agent",
-                "task_id": "task-001",
-                "scope": ["read:data:*"],
-            })
-            new_resp.raise_for_status()
-            token = new_resp.json()["access_token"]
-            continue
-
-        if resp.status_code == 429:
-            wait = int(resp.headers.get("Retry-After", 1))
-            print(f"Rate limited, waiting {wait}s...")
-            time.sleep(wait)
-            continue
-
-        if resp.status_code in (502, 503):
-            backoff = 2 ** attempt
-            print(f"Broker unavailable, retrying in {backoff}s...")
-            time.sleep(backoff)
-            continue
-
-        resp.raise_for_status()
-
-    raise RuntimeError("Max retries exceeded")
-```
+| Status | Meaning | Retry? | Action |
+|--------|---------|--------|--------|
+| 200–299 | Success | N/A | Proceed |
+| 400 | Bad request | No | Fix the request body |
+| 401 | Unauthorized | Yes (after re-auth) | Re-acquire token; check credentials |
+| 403 | Forbidden | No | Check scope or permissions |
+| 404 | Not found | No | Verify resource ID |
+| 429 | Rate limited | Yes | Wait for `Retry-After` header |
+| 500 | Server error | Yes (with backoff) | Check service logs; may be transient |
+| 502 | Bad gateway | Yes (with backoff) | Broker unreachable; sidecar may use cache |
+| 503 | Service unavailable | Yes (with backoff) | Service starting up or recovering |
 
 ---
 
-## Operator Tasks
-
-> **Target persona:** Platform Operator
->
-> These tasks cover administrative operations: authentication, launch token management, sidecar deployment, revocation, audit, and monitoring. All examples use curl.
->
-> **Prerequisite:** Broker running, `AA_ADMIN_SECRET` set. See [Getting Started: Operator](getting-started-operator.md).
-
----
-
-### Authenticate as Admin
-
-Every admin operation requires a Bearer token obtained from the admin auth endpoint. Admin tokens have a 300-second TTL and include all admin scopes.
-
-```bash
-ADMIN_TOKEN=$(curl -s -X POST http://localhost:8080/v1/admin/auth \
-  -H "Content-Type: application/json" \
-  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
-```
-
-The response includes:
-
-```json
-{
-  "access_token": "eyJhbGciOiJFZERTQSIs...",
-  "expires_in": 300,
-  "token_type": "Bearer"
-}
-```
-
-**Admin token scopes:** `admin:launch-tokens:*`, `admin:revoke:*`, `admin:audit:*`
-
-**Rate limit:** 5 requests/second, burst 10, per IP address. Exceeding returns 429 with `Retry-After: 1`.
-
-Cache the admin token and reuse it within its 300-second TTL rather than re-authenticating for every operation.
-
----
-
-### Create Launch Tokens
-
-Launch tokens are the "secret zero" that bootstraps agent identity. Design them carefully -- the launch token policy defines the maximum scope and TTL that any agent using this token can receive.
-
-```bash
-curl -s -X POST http://localhost:8080/v1/admin/launch-tokens \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -d '{
-    "agent_name": "data-processor",
-    "allowed_scope": ["read:data:*"],
-    "max_ttl": 300,
-    "single_use": true,
-    "ttl": 30
-  }'
-```
-
-Response (201 Created):
-
-```json
-{
-  "launch_token": "a1b2c3d4...64-hex-characters",
-  "expires_at": "2026-02-15T12:00:30Z",
-  "policy": {
-    "allowed_scope": ["read:data:*"],
-    "max_ttl": 300
-  }
-}
-```
-
-#### Policy design guidance
-
-| Decision | Recommendation |
-|----------|---------------|
-| **`single_use`** | Set `true` for one-shot agents. Set `false` for orchestrators that register multiple agents with the same token. |
-| **`ttl`** (launch token lifetime) | Keep short (30s default). This is how long the token is valid for initiating registration, not the agent token lifetime. |
-| **`max_ttl`** (agent token cap) | Match to expected task duration. 300s (5 min) for short tasks, up to 900s (15 min) for longer workflows. |
-| **`allowed_scope`** | Principle of least privilege. A data-reader agent should get `["read:data:*"]`, not `["read:data:*", "write:data:*"]`. |
-
-**Key distinction:** `ttl` controls how long the launch token itself is valid (default 30s). `max_ttl` caps the TTL of the agent token issued during registration (default 300s). These are independent.
-
----
-
-### Revoke Credentials
-
-AgentAuth provides four revocation levels, each with a different blast radius. Use the narrowest level that addresses the incident.
-
-```mermaid
-flowchart TD
-    Q["What happened?"]
-    Q -->|"Single token leaked"| T["Token-level revocation<br/>target = JTI"]
-    Q -->|"Agent instance compromised"| A["Agent-level revocation<br/>target = SPIFFE ID"]
-    Q -->|"Entire task suspect"| K["Task-level revocation<br/>target = task_id"]
-    Q -->|"Delegation chain exploited"| C["Chain-level revocation<br/>target = root delegator SPIFFE ID"]
-
-    T --> R["POST /v1/revoke"]
-    A --> R
-    K --> R
-    C --> R
-```
-
-#### Token-level revocation
-
-Revoke a single token by its JTI. Use when a specific token has been leaked but the agent itself is not compromised.
-
-```bash
-curl -s -X POST http://localhost:8080/v1/revoke \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -d '{"level": "token", "target": "JTI_VALUE"}'
-```
-
-To find the JTI, validate the token first:
-
-```bash
-curl -s -X POST http://localhost:8080/v1/token/validate \
-  -H "Content-Type: application/json" \
-  -d '{"token": "THE_TOKEN_STRING"}' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['claims']['jti'])"
-```
-
-#### Agent-level revocation
-
-Revoke all tokens for a specific agent. Use when an agent instance is compromised.
-
-```bash
-curl -s -X POST http://localhost:8080/v1/revoke \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -d '{"level": "agent", "target": "spiffe://agentauth.local/agent/orch/task/instance"}'
-```
-
-#### Task-level revocation
-
-Revoke all tokens associated with a task ID. Use for task-wide incidents where multiple agents under one task may be compromised.
-
-```bash
-curl -s -X POST http://localhost:8080/v1/revoke \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -d '{"level": "task", "target": "task-001"}'
-```
-
-#### Chain-level revocation
-
-Revoke all tokens in a delegation chain. Use when the root delegator is compromised and all downstream delegated tokens must be invalidated.
-
-```bash
-curl -s -X POST http://localhost:8080/v1/revoke \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -d '{"level": "chain", "target": "spiffe://agentauth.local/agent/orch/task/instance"}'
-```
-
-The `target` is the SPIFFE ID of the root delegator (the first entry in the `delegation_chain`).
-
-All revocation responses follow the same format:
-
-```json
-{"revoked": true, "level": "token", "target": "...", "count": 1}
-```
-
-Revoked tokens are rejected by the bearer validation middleware on subsequent requests with a 403 status.
-
----
-
-### Query the Audit Trail
-
-The audit trail is an append-only, hash-chained log of every significant operation. Use it for forensics, compliance, and incident investigation.
-
-```bash
-# All events (default: last 100)
-curl -s "http://localhost:8080/v1/audit/events" \
-  -H "Authorization: Bearer $ADMIN_TOKEN"
-
-# Filter by agent
-curl -s "http://localhost:8080/v1/audit/events?agent_id=spiffe://agentauth.local/agent/orch/task/instance" \
-  -H "Authorization: Bearer $ADMIN_TOKEN"
-
-# Filter by event type
-curl -s "http://localhost:8080/v1/audit/events?event_type=token_revoked" \
-  -H "Authorization: Bearer $ADMIN_TOKEN"
-
-# Filter by time range
-curl -s "http://localhost:8080/v1/audit/events?since=2026-02-15T00:00:00Z&until=2026-02-15T23:59:59Z" \
-  -H "Authorization: Bearer $ADMIN_TOKEN"
-
-# Filter by task
-curl -s "http://localhost:8080/v1/audit/events?task_id=task-001" \
-  -H "Authorization: Bearer $ADMIN_TOKEN"
-
-# Paginate through results
-curl -s "http://localhost:8080/v1/audit/events?limit=50&offset=100" \
-  -H "Authorization: Bearer $ADMIN_TOKEN"
-```
-
-**Available filters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `agent_id` | string | Filter by agent SPIFFE ID |
-| `task_id` | string | Filter by task ID |
-| `event_type` | string | Filter by event type |
-| `since` | string | Start time (RFC 3339) |
-| `until` | string | End time (RFC 3339) |
-| `limit` | int | Max results (default 100, max 1000) |
-| `offset` | int | Skip N results for pagination |
-
-**Hash chain verification:** Each event has a `hash` and `prev_hash` field. The first event's `prev_hash` is 64 zeros (genesis). To verify integrity, re-compute `SHA256(prev_hash|id|timestamp|event_type|agent_id|task_id|orch_id|detail)` for each event and confirm it matches the recorded `hash`.
-
----
-
-### Deploy and Manage Sidecars
-
-The sidecar auto-bootstraps with the broker on startup. As an operator, you configure environment variables and let the sidecar handle the rest.
-
-**Required sidecar environment variables:**
-
-```bash
-export AA_ADMIN_SECRET="..."                                # Must match broker
-export AA_SIDECAR_SCOPE_CEILING="read:data:*,write:data:*"  # Maximum scopes
-export AA_BROKER_URL="http://localhost:8080"                 # Broker address
-```
-
-**Activation flow:** On startup the sidecar automatically:
-1. Waits for the broker health endpoint.
-2. Authenticates as admin using `AA_ADMIN_SECRET`.
-3. Creates a sidecar activation token.
-4. Exchanges the activation token for a sidecar bearer (single-use, TTL 900s).
-5. Registers developer-facing routes (`/v1/token`, `/v1/token/renew`, `/v1/challenge`, `/v1/register`).
-6. Starts a background renewal goroutine at 80% TTL (configurable via `AA_SIDECAR_RENEWAL_BUFFER`).
-
-**Verify sidecar status:**
-
-```bash
-curl -s http://localhost:8081/v1/health | python3 -m json.tool
-```
-
-Check these fields:
-- `broker_connected`: `true` means the sidecar has a valid broker bearer token.
-- `healthy`: `true` means fully operational.
-- `agents_registered`: count of agents currently in sidecar memory.
-- `scope_ceiling`: the configured scope ceiling.
-
----
-
-### Monitor the System
-
-#### Key metrics to watch
-
-| What to monitor | Metric | Alert when |
-|-----------------|--------|------------|
-| Broker availability | `agentauth_sidecar_circuit_state` | Value > 0 (open or probing) |
-| Failed admin auth attempts | `agentauth_admin_auth_total{status="failure"}` | Sustained increase |
-| Revocation activity | `agentauth_tokens_revoked_total` | Unexpected spike |
-| Bootstrap failures | `agentauth_sidecar_bootstrap_total{status="failure"}` | Any increase after initial startup |
-| Cached token usage | `agentauth_sidecar_cached_tokens_served_total` | Sustained increase indicates broker issues |
-| Registration failures | `agentauth_registrations_total{status="failure"}` | Unexpected failures |
-| Request latency | `agentauth_request_duration_seconds` | p99 exceeds acceptable threshold |
-
-#### Prometheus scrape configuration
-
-```yaml
-scrape_configs:
-  - job_name: 'agentauth-broker'
-    static_configs:
-      - targets: ['localhost:8080']
-    metrics_path: /v1/metrics
-
-  - job_name: 'agentauth-sidecar'
-    static_configs:
-      - targets: ['localhost:8081']
-    metrics_path: /v1/metrics
-```
-
-#### Health check integration
-
-For Docker health checks, the broker uses `wget --spider` and the sidecar can use `curl`:
-
-```yaml
-healthcheck:
-  test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/v1/health"]
-  interval: 2s
-  timeout: 3s
-  retries: 10
-```
-
-For Kubernetes liveness/readiness probes, point them at `GET /v1/health` on each service's port.
+## Cross-References
+
+- **API Reference:** [api.md](api.md) — Complete endpoint documentation
+- **Developer Guide:** [getting-started-developer.md](getting-started-developer.md) — Setup and first agent
+- **Operator Guide:** [getting-started-operator.md](getting-started-operator.md) — Deployment and administration
+- **Concepts:** [concepts.md](concepts.md) — SPIFFE, token lifetime, delegation, scopes
+- **Architecture:** [architecture.md](architecture.md) — Sidecar, broker, key management, trust model
+- **Troubleshooting:** [troubleshooting.md](troubleshooting.md) — Common problems and solutions

@@ -646,4 +646,4 @@ See the [Getting Started: Operator](../getting-started-operator.md) guide for fu
 - [Concepts: Why AgentAuth Exists](../concepts.md) -- the full security pattern and 7 components
 - [Getting Started: Developer](../getting-started-developer.md) -- integrate an agent with the sidecar in 15 lines
 - [Getting Started: Operator](../getting-started-operator.md) -- deploy the broker, configure sidecars, create launch tokens
-- [API Reference](../API_REFERENCE.md) -- complete endpoint documentation
+- [API Reference](../api.md) -- complete endpoint documentation

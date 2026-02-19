@@ -1,9 +1,12 @@
 # Getting Started: Operator
 
-> **Target persona:** Platform Operator
+> **Document Version:** 2.0 | **Last Updated:** February 2026 | **Status:** Current
 >
-> **Prerequisite:** Read [Concepts](concepts.md) to understand why AgentAuth exists and what the 7-component security pattern provides.
-> If you are a developer integrating an agent, see [Getting Started: Developer](getting-started-developer.md).
+> **Audience:** Platform Operator responsible for deploying and managing AgentAuth infrastructure.
+>
+> **Prerequisite:** Read [Concepts](concepts.md) to understand why AgentAuth exists and what the 7-component security pattern provides. If you are a developer integrating an agent, see [Getting Started: Developer](getting-started-developer.md).
+>
+> **Next steps:** [Common Tasks: Operator](common-tasks.md#operator-tasks) | [Troubleshooting](troubleshooting.md#operator-errors) | [Architecture](architecture.md)
 
 This guide walks you through deploying the AgentAuth broker, configuring it, creating launch tokens for developers, deploying sidecars, and monitoring the system.
 

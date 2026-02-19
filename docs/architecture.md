@@ -1,9 +1,12 @@
 # Architecture
 
+> **Document Version:** 2.0 | **Last Updated:** February 2026 | **Status:** Current
+>
 > **Audience:** Contributors, security reviewers, and operators who want to understand how AgentAuth works internally.
 >
 > **Prerequisites:** [Concepts](concepts.md) for the security pattern overview.
-> **Next steps:** [API Reference](api.md), [Contributing](../CONTRIBUTING.md)
+>
+> **Next steps:** [API Reference](api.md) | [Contributing](../CONTRIBUTING.md) | [Getting Started: Operator](getting-started-operator.md)
 
 ---
 

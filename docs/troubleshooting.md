@@ -1,7 +1,14 @@
 # Troubleshooting
 
-> This guide covers exact error messages, their causes, and fixes.
-> Errors are organized by role: [Developer Errors](#developer-errors) and [Operator Errors](#operator-errors).
+> **Document Version:** 2.0 | **Last Updated:** February 2026 | **Status:** Current
+>
+> **Audience:** Developers and Operators encountering errors in AgentAuth.
+>
+> **Prerequisites:** [Getting Started: Developer](getting-started-developer.md) or [Getting Started: Operator](getting-started-operator.md).
+>
+> **Next steps:** [API Reference](api.md) for endpoint details | [Common Tasks](common-tasks.md) for working examples.
+>
+> This guide covers exact error messages, their causes, and fixes. Errors are organized by role: [Developer Errors](#developer-errors) and [Operator Errors](#operator-errors).
 
 ## Diagnostic Flowchart
 
