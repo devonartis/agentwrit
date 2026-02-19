@@ -272,6 +272,51 @@ has rate limiting on `/v1/admin/auth` — use the same pattern.
 
 ---
 
+### 16. Go CLI for admin endpoints (`cmd/cli/`)
+
+**Status: NEW** | Priority: HIGH | Date: 2026-02-19
+
+**What we saw:** Built `GET /v1/admin/sidecars` endpoint but there's no CLI anywhere
+to access it. The only way to call admin endpoints is manual curl + JWT management.
+The Python CLI in agentauth-app is a demo app CLI — it can change or be replaced.
+Operator tooling must live in the Go repo alongside the broker and sidecar.
+
+**User feedback:**
+> "there is no cli for this in that repo and it should not be in that repo" (re: agentauth-app)
+> "why would we write this without a cli to access it"
+
+**What this would look like:**
+```bash
+# Authenticate as admin
+agentauth admin auth --secret <admin-secret> --broker http://localhost:8080
+
+# List sidecars
+agentauth admin sidecars list
+
+# Get ceiling for a sidecar
+agentauth admin sidecars ceiling --id sc-abc123
+
+# Update ceiling
+agentauth admin sidecars ceiling update --id sc-abc123 --scope "read:customer:*"
+
+# Query audit log
+agentauth admin audit list [--event-type TYPE]
+```
+
+**What needs to happen:**
+1. New `cmd/cli/` directory — third binary alongside broker and sidecar
+2. Admin auth command (POST /v1/admin/auth, store token locally)
+3. Sidecar list command (GET /v1/admin/sidecars)
+4. Ceiling CRUD commands (GET/PUT /v1/admin/sidecars/{id}/ceiling)
+5. Audit query commands (GET /v1/admin/audit)
+6. Health check command (GET /v1/health)
+7. Token inspection (decode JWT, show claims, expiry)
+
+**Repo:** agentAuth (Go — this is the operator's tool, not the demo app's)
+**Impact:** Without this, every admin endpoint we build is unusable by operators.
+
+---
+
 ## P3 — Nice to Have / Future
 
 ### 12. Ceiling diff preview (dry-run)
