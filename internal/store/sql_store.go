@@ -657,6 +657,48 @@ func (s *SqlStore) UpdateSidecarStatus(id string, status string) error {
 	return nil
 }
 
+// LoadAllSidecars returns active sidecars as a map of ID→ceiling for
+// populating the in-memory ceiling map at startup.
+func (s *SqlStore) LoadAllSidecars() (map[string][]string, error) {
+	if s.db == nil {
+		return nil, errors.New("database not initialized: call InitDB first")
+	}
+
+	const q = `SELECT id, ceiling FROM sidecars WHERE status = 'active'`
+
+	rows, err := s.db.Query(q)
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to load all sidecars", "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("load_all_sidecars").Inc()
+		return nil, fmt.Errorf("load all sidecars: %w", err)
+	}
+	defer rows.Close()
+
+	ceilings := make(map[string][]string)
+	for rows.Next() {
+		var id, ceilingStr string
+		if err := rows.Scan(&id, &ceilingStr); err != nil {
+			obs.Fail("store", "sqlite", "failed to scan sidecar row", "error="+err.Error())
+			obs.DBErrorsTotal.WithLabelValues("scan_sidecar").Inc()
+			return nil, fmt.Errorf("scan sidecar: %w", err)
+		}
+		var ceiling []string
+		if err := json.Unmarshal([]byte(ceilingStr), &ceiling); err != nil {
+			obs.Fail("store", "sqlite", "failed to unmarshal ceiling", "id="+id, "error="+err.Error())
+			obs.DBErrorsTotal.WithLabelValues("unmarshal_ceiling").Inc()
+			return nil, fmt.Errorf("unmarshal ceiling for sidecar %s: %w", id, err)
+		}
+		ceilings[id] = ceiling
+	}
+	if err := rows.Err(); err != nil {
+		obs.Fail("store", "sqlite", "row iteration error on load all sidecars", "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("iterate_load_sidecars").Inc()
+		return nil, fmt.Errorf("iterate load all sidecars: %w", err)
+	}
+	obs.Ok("store", "sqlite", "active sidecars loaded", fmt.Sprintf("count=%d", len(ceilings)))
+	return ceilings, nil
+}
+
 // HasDB reports whether the store has an active SQLite database connection.
 func (s *SqlStore) HasDB() bool {
 	s.mu.RLock()

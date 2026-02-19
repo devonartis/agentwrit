@@ -615,6 +615,31 @@ func TestUpdateSidecarStatus_NotFound(t *testing.T) {
 	}
 }
 
+func TestLoadAllSidecars(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s := NewSqlStore()
+	if err := s.InitDB(dbPath); err != nil {
+		t.Fatalf("InitDB: %v", err)
+	}
+	defer s.Close()
+
+	_ = s.SaveSidecar("sc-001", []string{"read:customer:*"})
+	_ = s.SaveSidecar("sc-002", []string{"write:customer:*"})
+	_ = s.UpdateSidecarStatus("sc-002", "revoked")
+
+	ceilings, err := s.LoadAllSidecars()
+	if err != nil {
+		t.Fatalf("LoadAllSidecars: %v", err)
+	}
+	// Only active sidecars should be loaded
+	if len(ceilings) != 1 {
+		t.Fatalf("expected 1 active sidecar, got %d", len(ceilings))
+	}
+	if _, ok := ceilings["sc-001"]; !ok {
+		t.Error("expected sc-001 in loaded ceilings")
+	}
+}
+
 func TestQueryAuditEvents_TimestampFilters(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	s := NewSqlStore()
