@@ -9,11 +9,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// sidecarsCmd is the parent command grouping all sidecar-related subcommands
+// under "aactl sidecars".
 var sidecarsCmd = &cobra.Command{
 	Use:   "sidecars",
 	Short: "Manage sidecars",
 }
 
+// sidecarsListCmd implements "aactl sidecars list", fetching all registered
+// sidecars from the broker and printing them as a table or raw JSON.
 var sidecarsListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all registered sidecars",
@@ -60,11 +64,15 @@ var sidecarsListCmd = &cobra.Command{
 	},
 }
 
+// ceilingCmd is the parent command grouping scope-ceiling subcommands under
+// "aactl sidecars ceiling".
 var ceilingCmd = &cobra.Command{
 	Use:   "ceiling",
 	Short: "Manage sidecar scope ceilings",
 }
 
+// ceilingGetCmd implements "aactl sidecars ceiling get [sidecar-id]", printing
+// the current scope ceiling for the specified sidecar.
 var ceilingGetCmd = &cobra.Command{
 	Use:   "get [sidecar-id]",
 	Short: "Get scope ceiling for a sidecar",
@@ -99,8 +107,12 @@ var ceilingGetCmd = &cobra.Command{
 	},
 }
 
+// ceilingSetScopes holds the value of the --scopes flag for the ceiling set
+// command. It is a comma-separated list of scope tokens.
 var ceilingSetScopes string
 
+// ceilingSetCmd implements "aactl sidecars ceiling set [sidecar-id]", updating
+// the scope ceiling for the specified sidecar to the scopes given via --scopes.
 var ceilingSetCmd = &cobra.Command{
 	Use:   "set [sidecar-id]",
 	Short: "Update scope ceiling for a sidecar",
