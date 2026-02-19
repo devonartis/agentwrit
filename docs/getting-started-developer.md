@@ -1,9 +1,12 @@
 # Getting Started: Developer
 
-> **Persona:** Developer building an AI agent in Python or TypeScript.
+> **Document Version:** 2.0 | **Last Updated:** February 2026 | **Status:** Current
 >
-> **Prerequisite:** Your operator has deployed a sidecar and given you its URL and scope ceiling.
-> If you are the operator, see [Getting Started: Operator](getting-started-operator.md).
+> **Audience:** Developer building an AI agent in Python or TypeScript.
+>
+> **Prerequisite:** Your operator has deployed a sidecar and given you its URL and scope ceiling. If you are the operator, see [Getting Started: Operator](getting-started-operator.md).
+>
+> **Next steps:** [Common Tasks](common-tasks.md) | [API Reference](api.md) | [Troubleshooting](troubleshooting.md)
 
 ## How It Works: The Provisioning Flow
 

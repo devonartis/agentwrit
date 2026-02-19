@@ -1,9 +1,12 @@
 # API Reference
 
+> **Document Version:** 2.0 | **Last Updated:** February 2026 | **Status:** Current
+>
 > **Audience:** Developers and operators who need the definitive contract for every endpoint.
 >
 > **Prerequisites:** [Concepts](concepts.md) for background, [Getting Started: Developer](getting-started-developer.md) or [Getting Started: Operator](getting-started-operator.md) for walkthroughs.
-> **Next steps:** [Troubleshooting](troubleshooting.md) for error resolution.
+>
+> **Next steps:** [Troubleshooting](troubleshooting.md) for error resolution | [Common Tasks](common-tasks.md) for step-by-step workflows.
 
 ---
 

@@ -1,56 +1,74 @@
 # AgentAuth
 
-AgentAuth is an ephemeral agent credentialing broker that issues short-lived, scope-attenuated tokens to AI agents. It implements the [Ephemeral Agent Credentialing](plans/archive/Security-Pattern-That-Is-Why-We-Built-AgentAuth.md) security pattern: each agent proves identity via Ed25519 challenge-response, receives a SPIFFE-format identifier, and operates with only the permissions its task requires. Tokens expire in minutes, not hours, eliminating the credential exposure window that plagues traditional IAM approaches to AI agent security.
+**Ephemeral agent credentialing for AI systems.**
+
+AgentAuth is a credential broker that issues short-lived, scope-attenuated tokens to AI agents through Ed25519 challenge-response identity verification. Each agent instance receives a unique [SPIFFE](https://spiffe.io/)-format identity and operates with only the permissions its task requires. Tokens expire in minutes — not hours — eliminating the credential exposure window that plagues traditional IAM approaches to AI agent security.
+
+---
+
+## Why AgentAuth
+
+Traditional identity systems (OAuth, AWS IAM, service accounts) were designed for long-lived services with persistent identities. AI agents break those assumptions: they are ephemeral, non-deterministic, and require task-specific permissions at runtime. AgentAuth implements the **Ephemeral Agent Credentialing** pattern — a 7-component security architecture purpose-built for autonomous AI agents.
+
+Read more: [Concepts: Why AgentAuth Exists](docs/concepts.md)
+
+---
 
 ## Release Status
 
-**Current release:** MVP Prototype (pattern validation release)
+**Current release:** v2.0.0 — MVP Prototype (pattern validation release)
 
-This release validates that AgentAuth is a working implementation of the target security pattern and is ready for controlled demos, integration testing, and senior-engineering productionization.
+This release validates that AgentAuth is a working implementation of the target security pattern, ready for controlled demos, integration testing, and production hardening.
 
-This is intentionally **not** a production-hardening release. Production controls (transport hardening, deployment architecture, and operations posture) are handled in a follow-on build-out phase.
-
-For full release framing and handoff scope, see [plans/archive/AgentAuth-MVP-Release-Writeup-v1.0.md](plans/archive/AgentAuth-MVP-Release-Writeup-v1.0.md).
+---
 
 ## Quick Start
 
 ```bash
-# 1. Configure (required)
-export AA_ADMIN_SECRET="change-me-in-production"
+# 1. Set the admin secret (required — broker exits without it)
+export AA_ADMIN_SECRET="$(openssl rand -hex 32)"
 
-# 2. Start broker + sidecar with Docker Compose (required runtime path)
+# 2. Start broker + sidecar with Docker Compose
 ./scripts/stack_up.sh
 
-# 3. Test health
+# 3. Verify broker health
 curl http://localhost:8080/v1/health
+# {"status":"ok","version":"2.0.0","uptime":5,"db_connected":true}
+
+# 4. Verify sidecar health
+curl http://localhost:8081/v1/health
+# {"status":"ok","broker_connected":true,"healthy":true}
+
+# 5. Get a token (one call via sidecar)
+curl -X POST http://localhost:8081/v1/token \
+  -H "Content-Type: application/json" \
+  -d '{"agent_name":"my-agent","task_id":"task-001","scope":["read:data:*"]}'
 ```
 
-The broker binds to port `8080` by default (override with `AA_HOST_PORT` for docker-compose port mapping).
-For integration and demo flows in this repository, use Docker Compose (`./scripts/stack_up.sh`) rather than running `go run ./cmd/broker` directly.
+The broker listens on port `8080` (override with `AA_PORT`). The sidecar listens on port `8081` (override with `AA_SIDECAR_PORT`).
+
+---
 
 ## Architecture
 
-```
-                          AgentAuth Broker (:8080)
-                         +-------------------------+
-                         |                         |
-  Agent                  |  Identity   Token       |
-  +----------+           |  Service    Service     |   Resource
-  | Ed25519  |--challenge-->  |           |        |   Server
-  | key pair |--register---->  |           |        |   +------+
-  |          |<--JWT token----+-----------+        |   |      |
-  |          |--request + Bearer token-------------------> |  |
-  +----------+           |  Authz    Revoke        |   +------+
-                         |  Middleware Service      |
-  Admin                  |     |         |         |
-  +----------+           |  Audit    Delegation    |
-  | client   |--auth---->|  Log      Service       |
-  | secret   |<--admin-->|     |         |         |
-  +----------+  token    |  Prometheus Metrics      |
-                         +-------------------------+
-```
+```mermaid
+flowchart TB
+    subgraph External["External Actors"]
+        DEV["Developer App"]
+        ADMIN["Operator"]
+        RS["Resource Servers"]
+    end
 
-**Key components:**
+    subgraph AA["AgentAuth System"]
+        SIDECAR["Sidecar :8081\nSimplified API"]
+        BROKER["Broker :8080\nIdentity · Token · Authz\nRevocation · Audit · Delegation"]
+    end
+
+    DEV -- "POST /v1/token" --> SIDECAR
+    SIDECAR -- "challenge, register,\nexchange, renew" --> BROKER
+    ADMIN -- "admin auth,\nlaunch tokens,\nrevocation" --> BROKER
+    DEV -- "Bearer token" --> RS
+```
 
 | Component | Package | Purpose |
 |-----------|---------|---------|
@@ -60,8 +78,12 @@ For integration and demo flows in this repository, use Docker Compose (`./script
 | Revocation Service | `internal/revoke` | 4-level revocation (token, agent, task, delegation chain) |
 | Audit Log | `internal/audit` | Hash-chain tamper-evident audit trail with PII sanitization |
 | Delegation Service | `internal/deleg` | Scope-attenuated delegation with chain verification |
-| Admin Service | `internal/admin` | Admin authentication, launch token lifecycle |
+| Admin Service | `internal/admin` | Admin authentication, launch token lifecycle, sidecar activation |
 | Observability | `internal/obs` | Structured logging, Prometheus metrics |
+
+See [Architecture](docs/architecture.md) for detailed component diagrams, data flow diagrams, and the package dependency graph.
+
+---
 
 ## API Endpoints
 
@@ -74,30 +96,35 @@ For integration and demo flows in this repository, use Docker Compose (`./script
 | `POST` | `/v1/delegate` | Bearer | Create scope-attenuated delegation token |
 | `POST` | `/v1/revoke` | Bearer + `admin:revoke:*` | Revoke tokens at 4 levels |
 | `GET` | `/v1/audit/events` | Bearer + `admin:audit:*` | Query the audit trail |
-| `POST` | `/v1/admin/auth` | None | Authenticate admin with shared secret |
+| `POST` | `/v1/admin/auth` | None (rate-limited) | Authenticate admin with shared secret |
 | `POST` | `/v1/admin/launch-tokens` | Bearer + `admin:launch-tokens:*` | Create launch tokens |
 | `POST` | `/v1/admin/sidecar-activations` | Bearer + `admin:launch-tokens:*` | Create sidecar activation token |
-| `POST` | `/v1/sidecar/activate` | Activation token in body | Exchange activation token for sidecar Bearer token |
+| `POST` | `/v1/sidecar/activate` | Activation token | Exchange activation for sidecar Bearer token |
 | `POST` | `/v1/token/exchange` | Bearer + `sidecar:manage:*` | Sidecar-mediated token issuance |
 | `GET` | `/v1/health` | None | Health check (status, version, uptime) |
 | `GET` | `/v1/metrics` | None | Prometheus metrics |
 
-All error responses use [RFC 7807](https://tools.ietf.org/html/rfc7807) `application/problem+json`.
+All error responses use [RFC 7807](https://tools.ietf.org/html/rfc7807) `application/problem+json`. See the [API Reference](docs/api.md) for complete endpoint documentation with request/response schemas.
 
-See [docs/api/openapi.yaml](docs/api/openapi.yaml) for the full machine-readable API specification.
+---
 
 ## Configuration
 
-All environment variables are prefixed with `AA_`:
+All environment variables use the `AA_` prefix:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AA_PORT` | `8080` | HTTP listen port |
-| `AA_LOG_LEVEL` | `verbose` | Logging level: `quiet`, `standard`, `verbose`, `trace` |
+| `AA_ADMIN_SECRET` | **(required)** | Shared secret for admin authentication. Broker exits if unset. |
+| `AA_PORT` | `8080` | Broker HTTP listen port |
+| `AA_LOG_LEVEL` | `verbose` | Logging: `quiet`, `standard`, `verbose`, `trace` |
 | `AA_TRUST_DOMAIN` | `agentauth.local` | SPIFFE trust domain for agent IDs |
-| `AA_DEFAULT_TTL` | `300` | Default token TTL in seconds (5 minutes) |
-| `AA_ADMIN_SECRET` | **(required)** | Shared secret for admin authentication. Broker exits on startup if unset. |
-| `AA_SEED_TOKENS` | `false` | Print seed launch/admin tokens on startup (dev only) |
+| `AA_DEFAULT_TTL` | `300` | Default token TTL in seconds |
+| `AA_DB_PATH` | `./agentauth.db` | SQLite path for audit persistence (set `""` to disable) |
+| `AA_SEED_TOKENS` | `false` | Print seed tokens on startup (dev only) |
+
+Sidecar configuration: `AA_SIDECAR_SCOPE_CEILING`, `AA_BROKER_URL`, `AA_SIDECAR_PORT`, and circuit breaker tuning (`AA_SIDECAR_CB_*`). See [Getting Started: Operator](docs/getting-started-operator.md) for full sidecar configuration.
+
+---
 
 ## Running Tests
 
@@ -105,13 +132,30 @@ All environment variables are prefixed with `AA_`:
 go test ./...                     # all tests
 go test ./... -short              # unit tests only (skip integration)
 go test ./internal/token/...      # single package
+./scripts/gates.sh task           # quality gates: build + lint + unit tests
+./scripts/gates.sh module         # full gates: + integration + live tests
 ```
+
+---
+
+## Docker Deployment
+
+```bash
+# Start broker + sidecar
+./scripts/stack_up.sh
+
+# Tear down
+./scripts/stack_down.sh
+
+# Run live E2E tests (deploys compose stack first)
+./scripts/live_test.sh --docker
+```
+
+---
 
 ## Production Deployment
 
-The broker listens on plain HTTP by default. **Production deployments MUST use a TLS-terminating reverse proxy** (e.g., nginx, envoy, Caddy) or configure a load balancer with TLS termination. Native TLS support (`AA_TLS_CERT`, `AA_TLS_KEY`) is planned for a future release.
-
-Example with nginx:
+The broker listens on plain HTTP by default. **Production deployments must use a TLS-terminating reverse proxy** (nginx, envoy, Caddy) or a load balancer with TLS termination.
 
 ```nginx
 server {
@@ -123,42 +167,43 @@ server {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 }
 ```
 
-## Docker (Broker + Sidecar)
-
-This repo includes a Docker Compose stack for the broker and sidecar runtime.
-The demo app is intentionally separate and should run from its own repository.
-
-One-command startup:
-
-```bash
-./scripts/stack_up.sh
-```
-
-One-command teardown:
-
-```bash
-./scripts/stack_down.sh
-```
-
-Run live E2E (always deploys compose stack first):
-
-```bash
-./scripts/live_test.sh --docker
-```
+---
 
 ## Documentation
 
-- [API Reference](docs/API_REFERENCE.md) -- endpoint details and examples
-- [Agent Integration Guide](docs/AGENT_INTEGRATION_GUIDE.md) -- step-by-step Python/TypeScript agent integration
-- [Developer Guide](docs/DEVELOPER_GUIDE.md) -- architecture, conventions, contributing
-- [User Guide](docs/USER_GUIDE.md) -- workflows and integration patterns
-- [OpenAPI Spec](docs/api/openapi.yaml) -- machine-readable API contract
-- [Security Pattern](plans/archive/Security-Pattern-That-Is-Why-We-Built-AgentAuth.md) -- the "why" behind AgentAuth
-- [Changelog](CHANGELOG.md) -- release history
+### Getting Started
+
+| Guide | Audience | Description |
+|-------|----------|-------------|
+| [Getting Started](docs/getting-started-user.md) | Everyone | Installation, first token in 5 steps |
+| [Getting Started: Developer](docs/getting-started-developer.md) | Developers | Python/TypeScript agent integration |
+| [Getting Started: Operator](docs/getting-started-operator.md) | Operators | Broker deployment, sidecar configuration, monitoring |
+
+### Reference
+
+| Document | Description |
+|----------|-------------|
+| [API Reference](docs/api.md) | Complete endpoint documentation with schemas and examples |
+| [Architecture](docs/architecture.md) | Component diagrams, data flows, middleware stack, design decisions |
+| [Concepts](docs/concepts.md) | Security pattern, threat model, 7-component breakdown, CVE case study |
+| [Common Tasks](docs/common-tasks.md) | Step-by-step workflows for developers and operators |
+| [Troubleshooting](docs/troubleshooting.md) | Error messages, diagnostic flowchart, fixes by role |
+
+### Project
+
+| Document | Description |
+|----------|-------------|
+| [OpenAPI Spec](docs/api/openapi.yaml) | Machine-readable API contract |
+| [Contributing](CONTRIBUTING.md) | Development setup, coding conventions, PR process |
+| [Security Policy](SECURITY.md) | Vulnerability reporting, security design principles |
+| [Changelog](CHANGELOG.md) | Release history |
+
+---
 
 ## License
 

@@ -11,6 +11,8 @@ User feedback this session:
 - "dont merge i am going to have another team test" — separate review team validates before merge
 - Docker stack is currently running on ports 8080/8081 (admin secret: `change-me-in-production`)
 
+Added PostToolUse hook (`.claude/hooks/go-quality-check.sh`) — runs gofmt, go vet, golangci-lint, and godoc checks after every Edit/Write on `.go` files.
+
 ## Notes
 
 - CLAUDE.md is checked into the repo while it's private. Remove it before going public.
