@@ -10,9 +10,6 @@ AGENTS.md
 .claude/
 .active_module
 
-# Internal planning and specs
-plans/
-
 # Internal QA reports
 docs/QA_REPORT_*.md
 
