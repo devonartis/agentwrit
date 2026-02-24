@@ -1,5 +1,14 @@
 # MEMORY.md
 
+## Standing Rule (established 2026-02-24)
+
+**Live tests require Docker — the app must be running in containers.**
+- Self-hosted binary tests are NOT live tests — they are quick local checks only
+- Real live tests run against the Docker stack (`./scripts/stack_up.sh` first)
+- Every fix/feature must have a Docker live test before merge
+- User stories go in `tests/<name>-user-stories.md` before writing any test code
+- `docker-compose.yml` must be updated when a fix adds new env vars
+
 ## 2026-02-24 (Session 7)
 
 Session work:

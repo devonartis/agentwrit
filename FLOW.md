@@ -95,3 +95,8 @@ Four independent reviewers evaluated develop against the Ephemeral Agent Credent
 - Confirmed `develop-harness-backup` is intentionally orphaned (no merge planned).
 - `develop` is clean, ahead of `origin/develop` by 1 commit (`dcff7ec`).
 - Ready to begin implementing the 6 compliance fixes from `plans/implementation-plan.md`.
+- **Standing rule established:** Every fix/feature MUST include a Docker live test. Self-hosted binary tests are quick checks only. Docker is mandatory before merge. User stories go in `tests/<name>-user-stories.md` first. `docker-compose.yml` must be updated when new env vars are added. Added to CLAUDE.md.
+
+### Fix 1 (broker TLS/mTLS) — In Progress
+
+TDD RED confirmed: 3 cfg tests + 3 loadCA tests all failing before any production code written. GREEN: added `TLSMode`, `TLSCert`, `TLSKey`, `TLSClientCA` fields to `internal/cfg/cfg.go`, added `serve.go` + `loadCA()` to `cmd/broker/`, wired `serve()` into `main.go`. All 8 unit tests pass. Live test (`--tls`, `--mtls`) added to `live_test.sh`. User stories saved to `tests/fix1-broker-tls-user-stories.md`. Docker live test still needed — `docker-compose.yml` update pending.

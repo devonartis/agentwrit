@@ -14,6 +14,10 @@
 //	AA_ADMIN_SECRET  – shared secret for admin auth (required in production)
 //	AA_SEED_TOKENS   – print seed tokens on startup (default "false", dev only)
 //	AA_DB_PATH       – SQLite database file path    (default "./agentauth.db")
+//	AA_TLS_MODE      – none|tls|mtls               (default "none")
+//	AA_TLS_CERT      – path to TLS certificate PEM file
+//	AA_TLS_KEY       – path to TLS private key PEM file
+//	AA_TLS_CLIENT_CA – path to client CA certificate PEM file (mtls only)
 package cfg
 
 import (
@@ -31,6 +35,10 @@ type Cfg struct {
 	AdminSecret string // AA_ADMIN_SECRET (required for admin auth)
 	SeedTokens  bool   // AA_SEED_TOKENS (dev only, default false)
 	DBPath      string // AA_DB_PATH (default "./agentauth.db")
+	TLSMode     string // AA_TLS_MODE: none|tls|mtls (default "none")
+	TLSCert     string // AA_TLS_CERT: path to TLS certificate PEM file
+	TLSKey      string // AA_TLS_KEY: path to TLS private key PEM file
+	TLSClientCA string // AA_TLS_CLIENT_CA: path to client CA PEM file (mtls only)
 }
 
 // Load reads AA_* environment variables and returns a Cfg with defaults
@@ -45,6 +53,10 @@ func Load() Cfg {
 		AdminSecret: os.Getenv("AA_ADMIN_SECRET"),
 		SeedTokens:  envOr("AA_SEED_TOKENS", "false") == "true",
 		DBPath:      envOr("AA_DB_PATH", "./agentauth.db"),
+		TLSMode:     envOr("AA_TLS_MODE", "none"),
+		TLSCert:     os.Getenv("AA_TLS_CERT"),
+		TLSKey:      os.Getenv("AA_TLS_KEY"),
+		TLSClientCA: os.Getenv("AA_TLS_CLIENT_CA"),
 	}
 	return c
 }
