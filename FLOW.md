@@ -66,3 +66,37 @@ Format:
 Chose Option 1 (merge locally) over creating a PR — branch is feature-complete, gates pass, and no separate review team was requested. Merged `feature/aactl-cli` into `develop` via fast-forward (clean history, no merge commit). Verified gates on merged `develop` (3 PASS, 1 WARN non-blocking). Deleted feature branch. Pushed `develop` to origin at `1cb28e2`.
 
 → Artifact: `develop` branch, origin `1cb28e2`
+
+---
+
+## 2026-02-20 (Session 6)
+
+- Harness work (autonomous coding agent harness) was built then deliberately removed — not needed, kept as `develop-harness-backup` branch for reference only.
+- Cleaned up session artifacts: removed `conductor/`, `internal_use_docs/`, `misc_docs/` — these were never application content.
+- Renamed `compliance_review/` → `plans/` and unignored so the directory is tracked in git going forward.
+
+### Compliance Review: Round 2 (India, Juliet, Kilo, Lima)
+
+Four independent reviewers evaluated develop against the Ephemeral Agent Credentialing Security Pattern v1.2. Codebase scored 92-96% compliance with zero NOT COMPLIANT findings. Key partial findings: no native TLS/mTLS (all 4), no task-completion signal (Juliet), revocation lost on restart (Kilo), audit Detail field is free-form (Kilo).
+
+→ Artifacts: `plans/round2-reviewer-*.md`
+
+### Design: Compliance Fix + Sidecar Sprawl
+
+5-agent team (security-architect, system-designer, code-planner, integration-lead, devils-advocate) produced a single approved design. Six independently implementable fixes. Devils-advocate signed off. Key additional gap found by team (missed by all 4 reviewers): audience field is never set or validated — tokens can be presented to any resource server. Harness-based autonomous execution approach was explored and discarded; fixes will be implemented as standard feature branches.
+
+→ Artifact: `plans/design-solution.md`, `plans/implementation-plan.md`
+
+---
+
+## 2026-02-24 (Session 7)
+
+- Reconciled MEMORY.md and FLOW.md with actual git history — previous logs were incomplete.
+- Confirmed `develop-harness-backup` is intentionally orphaned (no merge planned).
+- `develop` is clean, ahead of `origin/develop` by 1 commit (`dcff7ec`).
+- Ready to begin implementing the 6 compliance fixes from `plans/implementation-plan.md`.
+- **Standing rule established:** Every fix/feature MUST include a Docker live test. Self-hosted binary tests are quick checks only. Docker is mandatory before merge. User stories go in `tests/<name>-user-stories.md` first. `docker-compose.yml` must be updated when new env vars are added. Added to CLAUDE.md.
+
+### Fix 1 (broker TLS/mTLS) — In Progress
+
+TDD RED confirmed: 3 cfg tests + 3 loadCA tests all failing before any production code written. GREEN: added `TLSMode`, `TLSCert`, `TLSKey`, `TLSClientCA` fields to `internal/cfg/cfg.go`, added `serve.go` + `loadCA()` to `cmd/broker/`, wired `serve()` into `main.go`. All 8 unit tests pass. Live test (`--tls`, `--mtls`) added to `live_test.sh`. User stories saved to `tests/fix1-broker-tls-user-stories.md`. Docker live test still needed — `docker-compose.yml` update pending.

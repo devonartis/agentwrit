@@ -1,6 +1,6 @@
 # Getting Started: Developer
 
-> **Document Version:** 2.0 | **Last Updated:** February 2026 | **Status:** Current
+> **Document Version:** 2.1 | **Last Updated:** February 2026 | **Status:** Current
 >
 > **Audience:** Developer building an AI agent in Python or TypeScript.
 >
@@ -563,6 +563,31 @@ resp = requests.post(f"{SIDECAR}/v1/token", json={
 ### 4. Reusing a nonce
 
 Each nonce is single-use and expires after 30 seconds. Always get a fresh nonce immediately before signing and registering.
+
+---
+
+## TLS Connections
+
+If your operator has enabled TLS or mTLS on the broker or sidecar, use `https://` URLs. For mTLS deployments, your operator will provide you with a client certificate and key — pass them on every request:
+
+```python
+import requests
+
+# mTLS: operator provides cert and key
+session = requests.Session()
+session.verify = "/path/to/ca.crt"        # CA to verify broker/sidecar identity
+session.cert = ("/path/to/client.crt", "/path/to/client.key")  # your client cert
+
+resp = session.post(f"{SIDECAR}/v1/token", json={...})
+```
+
+For TLS (one-way), you only need `verify`:
+
+```python
+session.verify = "/path/to/ca.crt"
+```
+
+See [Getting Started: Operator — TLS/mTLS Configuration](getting-started-operator.md#tlsmtls-configuration) for deployment details.
 
 ---
 

@@ -23,11 +23,22 @@ For deeper context on architecture, API, or operations see `docs/`.
 
 ## Workflow
 
-- GitFlow: `main` -> `develop` -> feature branches
+- GitFlow: `main` -> `develop` -> `fix/*` or `feature/*` branches
 - Run `./scripts/gates.sh task` before every PR
 - Test with Docker (`./scripts/stack_up.sh`), not `go run`
 - Show terminal evidence when claiming tests pass
 - Update docs + CHANGELOG with every feature
+
+## Live Test Rules
+
+**A live test means the Docker stack is running. No Docker = not a live test.**
+
+- `./scripts/stack_up.sh` must be run first — app must be up in containers before any live test
+- Self-hosted binary tests are NOT live tests — they are quick local integration checks only
+- Every fix/feature MUST have a Docker live test before merge — `./scripts/live_test.sh --docker`
+- Write user stories FIRST, save to `tests/<fix-or-feature-name>-user-stories.md`, before writing test code
+- If a fix adds new env vars, update `docker-compose.yml` to pass them into the container
+- Never claim a live test passes without showing Docker terminal evidence
 
 ## Delegation Rules
 

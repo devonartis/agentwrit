@@ -6,7 +6,158 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-### Added
+
+### Added — Fix 1: Native TLS/mTLS Transport (P0 Compliance — Pattern v1.2 §3.3)
+
+**Summary:** The broker previously only supported plain HTTP regardless of deployment
+environment. This fix adds first-class TLS and mutual TLS (mTLS) support directly to
+the broker process, eliminating the unencrypted transport gap identified in the
+4-reviewer compliance audit (2026-02-20). All changes are fully backward compatible —
+default mode remains `none` (plain HTTP).
+
+#### New: `cmd/broker/serve.go`
+
+- New `serve(c cfg.Cfg, addr string, handler http.Handler) error` function — single
+  dispatch point for all three TLS modes. `main()` now calls `serve()` instead of
+  calling `http.ListenAndServe()` directly, keeping the startup path clean.
+- New `loadCA(path string) (*x509.CertPool, error)` function — reads a PEM-encoded CA
+  certificate file and returns an `x509.CertPool`. Extracted as an independently
+  testable unit to enable unit coverage of the mTLS CA loading path without blocking
+  on a live server.
+- Mode `"none"` (default): delegates to `http.ListenAndServe` — zero regression for
+  existing plain-HTTP deployments.
+- Mode `"tls"`: delegates to `http.ListenAndServeTLS` using `AA_TLS_CERT` and
+  `AA_TLS_KEY` paths.
+- Mode `"mtls"`: builds a `tls.Config` with `ClientAuth: tls.RequireAndVerifyClientCert`
+  and a CA pool loaded from `AA_TLS_CLIENT_CA`, then starts an `http.Server` with that
+  config. Clients without a valid certificate signed by the configured CA are rejected
+  at the TLS handshake.
+
+#### New: `cmd/broker/serve_test.go`
+
+Three unit tests covering all error paths of `loadCA()` (TDD Red-Green-Refactor):
+
+- `TestLoadCA_MissingFile` — expects an error when the CA path does not exist.
+- `TestLoadCA_InvalidPEM` — expects an error when the file contains non-PEM bytes.
+- `TestLoadCA_ValidPEM` — generates a real self-signed CA certificate in-process using
+  `crypto/ecdsa` + `crypto/x509` + `encoding/pem`, writes it to a temp file, and
+  asserts that `loadCA()` returns a non-nil pool. No hardcoded cert bytes — cert
+  generated programmatically so the test can never fail from an expired or truncated
+  fixture.
+
+#### Changed: `cmd/broker/main.go`
+
+- Replaced inline `http.ListenAndServe(addr, rootHandler)` call with `serve(c, addr,
+  rootHandler)`.
+- Updated package-level godoc comment to document all three TLS modes and their
+  required env vars (`AA_TLS_MODE`, `AA_TLS_CERT`, `AA_TLS_KEY`, `AA_TLS_CLIENT_CA`).
+- Corrected stale doc reference from `docs/API_REFERENCE.md` to `docs/api.md`.
+
+#### Changed: `internal/cfg/cfg.go`
+
+Four new fields added to the `Cfg` struct with corresponding `Load()` wiring:
+
+| Field         | Env Var             | Default | Description                              |
+|---------------|---------------------|---------|------------------------------------------|
+| `TLSMode`     | `AA_TLS_MODE`       | `none`  | Transport mode: `none`, `tls`, `mtls`    |
+| `TLSCert`     | `AA_TLS_CERT`       | `""`    | Path to TLS certificate PEM file         |
+| `TLSKey`      | `AA_TLS_KEY`        | `""`    | Path to TLS private key PEM file         |
+| `TLSClientCA` | `AA_TLS_CLIENT_CA`  | `""`    | Path to client CA PEM file (mTLS only)   |
+
+Updated package-level godoc to enumerate all four new env vars alongside existing ones.
+
+#### Changed: `internal/cfg/cfg_test.go`
+
+Three new unit tests (written before production code — TDD Red first):
+
+- `TestLoad_TLSModeDefault` — asserts `TLSMode` is `"none"` when `AA_TLS_MODE` unset.
+- `TestLoad_TLSModeSet` — asserts `TLSMode` is `"mtls"` when `AA_TLS_MODE=mtls`.
+- `TestLoad_TLSFields` — asserts all three path fields are populated from their
+  respective env vars.
+
+#### Changed: `docker-compose.yml`
+
+Four TLS env vars added to the `broker` service with safe empty defaults, so existing
+`docker-compose up` workflows require no changes:
+
+```yaml
+- AA_TLS_MODE=${AA_TLS_MODE:-none}
+- AA_TLS_CERT=${AA_TLS_CERT:-}
+- AA_TLS_KEY=${AA_TLS_KEY:-}
+- AA_TLS_CLIENT_CA=${AA_TLS_CLIENT_CA:-}
+```
+
+#### Changed: `scripts/live_test.sh`
+
+Two new live test modes added (`--tls`, `--mtls`) covering all four user stories:
+
+- `run_tls()` — generates an RSA-2048 self-signed cert with `openssl`, starts the
+  broker binary with `AA_TLS_MODE=tls`, verifies the health endpoint responds over
+  HTTPS (`curl --cacert`), and confirms that a misconfigured cert path causes a fast
+  non-zero exit (Story 4).
+- `run_mtls()` — generates a CA, a server cert signed by that CA, and a client cert
+  signed by the same CA; starts the broker with `AA_TLS_MODE=mtls`; asserts that a
+  client presenting the signed client cert receives a 200 OK response; asserts that a
+  client presenting no cert is rejected at the TLS layer (curl exit 35/56).
+- Both modes clean up temp files on exit via `trap`.
+
+#### New: `tests/fix1-broker-tls-user-stories.md`
+
+User stories written before any test code was authored (standing rule established
+2026-02-24):
+
+| Story | As a…         | I want…                                         | Acceptance Criteria                          |
+|-------|---------------|-------------------------------------------------|----------------------------------------------|
+| 1     | Operator      | Plain HTTP to still work with no TLS config     | `AA_TLS_MODE` unset → broker starts on HTTP  |
+| 2     | Operator      | One-way TLS with `AA_TLS_MODE=tls`              | Health endpoint responds on HTTPS            |
+| 3     | Security Eng  | mTLS with `AA_TLS_MODE=mtls`                    | Clients without cert rejected at TLS layer   |
+| 4     | Operator      | Misconfigured cert path to fail at startup      | Broker exits non-zero, does not start silently|
+
+Each story is mapped to the live test command (`live_test.sh --tls` / `--mtls`) that
+covers it.
+
+#### Changed: `docs/getting-started-operator.md` (Document Version 2.1)
+
+- Added TLS env vars to the broker configuration reference table.
+- New "TLS/mTLS Configuration" section covering:
+  - When to use each mode (none / tls / mtls).
+  - Step-by-step TLS mode example with `openssl` self-signed cert generation.
+  - Step-by-step mTLS mode example with CA, server cert, and client cert chain.
+  - Docker Compose override pattern for TLS deployments.
+  - Production cert note (Let's Encrypt / internal PKI).
+
+#### Changed: `docs/getting-started-developer.md` (Document Version 2.1)
+
+- New "TLS Connections" section added to the Python SDK reference with working examples
+  for connecting to TLS-enabled (`ssl_ca_certs`) and mTLS-enabled (`ssl_certfile` +
+  `ssl_keyfile`) broker deployments.
+
+#### Process: Standing Rules Established (2026-02-24)
+
+During Fix 1 implementation the following standing rules were documented in `CLAUDE.md`,
+`FLOW.md`, and `MEMORY.md`:
+
+- **Live tests require Docker** — self-hosted binary tests are NOT live tests. The
+  Docker stack (`./scripts/stack_up.sh`) must be running before any live test executes.
+- **User stories before test code** — `tests/<fix-name>-user-stories.md` must exist
+  before any live test file is written.
+- **Docker Compose must be updated** when a fix adds new env vars.
+- `CLAUDE.md` "Live Test Rules" section added to enforce these rules for all future
+  contributors.
+
+### Fixed
+
+- **Compliance [Fix 1 — P0]**: Resolved unencrypted transport gap against
+  Pattern v1.2 Section 3.3. The broker now enforces transport security when
+  `AA_TLS_MODE` is set to `tls` or `mtls`. Default `none` preserves backward
+  compatibility for development and internal deployments where a terminating proxy
+  provides TLS externally.
+
+#### Verification Evidence (2026-02-24)
+
+- Unit tests: **8 pass** (5 cfg + 3 loadCA), 0 fail — `go test ./internal/cfg/... ./cmd/broker/...`
+- Gates: **BUILD OK · lint OK · unit OK** · gosec WARN (non-blocking, pre-existing)
+- Docker live test: **9 pass, 0 fail** — `./scripts/live_test.sh --docker`
 
 - `aactl` operator CLI (`cmd/aactl/`) — cobra-based binary for managing the AgentAuth broker without hand-crafting curl + JWT
   - `aactl sidecars list` — list all registered sidecars (table or JSON)

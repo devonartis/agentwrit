@@ -1,6 +1,6 @@
 # Getting Started: Operator
 
-> **Document Version:** 2.0 | **Last Updated:** February 2026 | **Status:** Current
+> **Document Version:** 2.1 | **Last Updated:** February 2026 | **Status:** Current
 >
 > **Audience:** Platform Operator responsible for deploying and managing AgentAuth infrastructure.
 >
@@ -114,12 +114,108 @@ All broker configuration is via environment variables prefixed `AA_`. There are 
 | `AA_DEFAULT_TTL` | int | `300` | No | Default token TTL in seconds (5 minutes). |
 | `AA_SEED_TOKENS` | bool | `false` | No | Print seed launch and admin tokens to stdout on startup. **Development only** -- never enable in production. |
 | `AA_DB_PATH` | string | `"./agentauth.db"` | No | Path to the SQLite database file for audit event persistence. The broker creates the file and table on first startup. Set to `""` to disable persistence (memory-only mode). See [Audit Persistence](#audit-persistence-aa_db_path) below. |
+| `AA_TLS_MODE` | string | `"none"` | No | Transport security mode: `none` (plain HTTP), `tls` (one-way TLS), `mtls` (mutual TLS). See [TLS/mTLS Configuration](#tlsmtls-configuration) below. |
+| `AA_TLS_CERT` | string | *(none)* | If TLS | Path to the broker's TLS certificate PEM file. Required when `AA_TLS_MODE` is `tls` or `mtls`. |
+| `AA_TLS_KEY` | string | *(none)* | If TLS | Path to the broker's TLS private key PEM file. Required when `AA_TLS_MODE` is `tls` or `mtls`. |
+| `AA_TLS_CLIENT_CA` | string | *(none)* | If mTLS | Path to the client CA certificate PEM file used to verify client certificates. Required when `AA_TLS_MODE` is `mtls`. |
 
 ### Security notes
 
 - **`AA_ADMIN_SECRET`** is the root of trust for the entire system. Anyone who knows this value can create launch tokens, revoke credentials, and read the audit trail. Treat it like a root password.
 - **`AA_SEED_TOKENS`** bypasses the normal bootstrap flow by printing tokens to stdout. This is for local development and testing only.
 - The broker generates a **fresh Ed25519 signing key pair on every startup**. This means all previously issued tokens become invalid after a broker restart. This is by design -- there is no persistent key material to protect.
+
+---
+
+## TLS/mTLS Configuration
+
+By default the broker listens on plain HTTP (`AA_TLS_MODE=none`). For production deployments, enable TLS or mutual TLS to encrypt traffic and optionally require client certificates.
+
+### Mode: tls (one-way TLS)
+
+The broker presents a certificate. Clients verify the broker's identity but do not present their own certificate.
+
+```bash
+export AA_TLS_MODE=tls
+export AA_TLS_CERT=/etc/agentauth/certs/broker.crt
+export AA_TLS_KEY=/etc/agentauth/certs/broker.key
+export AA_ADMIN_SECRET="$(openssl rand -hex 32)"
+
+go run ./cmd/broker
+# AgentAuth broker v2.0.0 listening on :8080 (TLS)
+```
+
+Clients connect with HTTPS:
+
+```bash
+curl --cacert /etc/agentauth/certs/ca.crt https://localhost:8080/v1/health
+```
+
+### Mode: mtls (mutual TLS)
+
+Both broker and client present certificates. The broker verifies client certificates against the configured CA. This is the recommended mode for production — only authorized clients with valid certificates can connect.
+
+```bash
+export AA_TLS_MODE=mtls
+export AA_TLS_CERT=/etc/agentauth/certs/broker.crt
+export AA_TLS_KEY=/etc/agentauth/certs/broker.key
+export AA_TLS_CLIENT_CA=/etc/agentauth/certs/client-ca.crt
+export AA_ADMIN_SECRET="$(openssl rand -hex 32)"
+
+go run ./cmd/broker
+```
+
+Clients must present a certificate signed by the configured client CA:
+
+```bash
+curl \
+  --cacert /etc/agentauth/certs/ca.crt \
+  --cert /etc/agentauth/certs/client.crt \
+  --key /etc/agentauth/certs/client.key \
+  https://localhost:8080/v1/health
+```
+
+Clients without a valid certificate are rejected at the TLS handshake — they never reach the HTTP layer.
+
+### Docker Compose with TLS
+
+Mount your certificates into the container and pass the env vars:
+
+```yaml
+broker:
+  environment:
+    - AA_TLS_MODE=${AA_TLS_MODE:-none}
+    - AA_TLS_CERT=${AA_TLS_CERT:-}
+    - AA_TLS_KEY=${AA_TLS_KEY:-}
+    - AA_TLS_CLIENT_CA=${AA_TLS_CLIENT_CA:-}
+  volumes:
+    - /etc/agentauth/certs:/certs:ro
+```
+
+Then set env vars before bringing up the stack:
+
+```bash
+export AA_TLS_MODE=tls
+export AA_TLS_CERT=/certs/broker.crt
+export AA_TLS_KEY=/certs/broker.key
+./scripts/stack_up.sh
+```
+
+> **Note:** When TLS is enabled, update the sidecar's `AA_BROKER_URL` from `http://` to `https://` and ensure the sidecar container has access to the CA certificate to verify the broker's identity.
+
+### Generating a self-signed cert for testing
+
+```bash
+# Generate a self-signed cert valid for localhost
+openssl req -x509 -newkey rsa:2048 \
+  -keyout broker.key \
+  -out broker.crt \
+  -days 365 -nodes \
+  -subj "/CN=localhost" \
+  -addext "subjectAltName=IP:127.0.0.1,DNS:localhost"
+```
+
+> **Warning:** Self-signed certs are for development and testing only. Use a proper CA in production.
 
 ---
 

@@ -4,7 +4,13 @@
 // [http.ServeMux], and listens on the port configured by AA_PORT (default
 // 8080). A fresh Ed25519 signing key pair is generated on every startup.
 //
-// Route table (see also docs/API_REFERENCE.md):
+// Transport security is controlled by AA_TLS_MODE (default "none"):
+//
+//   - "none"  — plain HTTP (development and internal deployments)
+//   - "tls"   — one-way TLS; requires AA_TLS_CERT and AA_TLS_KEY
+//   - "mtls"  — mutual TLS; requires AA_TLS_CERT, AA_TLS_KEY, and AA_TLS_CLIENT_CA
+//
+// Route table (see also docs/api.md):
 //
 //	GET  /v1/challenge           – obtain a cryptographic nonce (public)
 //	POST /v1/register            – agent registration (launch-token auth)
@@ -171,7 +177,7 @@ func main() {
 	obs.Ok("BROKER", "main", "starting broker", "addr="+addr, "version="+version)
 	fmt.Printf("AgentAuth broker v%s listening on %s\n", version, addr)
 
-	if err := http.ListenAndServe(addr, rootHandler); err != nil {
+	if err := serve(c, addr, rootHandler); err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
 		os.Exit(1)
 	}
