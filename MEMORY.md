@@ -1,5 +1,42 @@
 # MEMORY.md
 
+## 2026-02-24 (Session 7)
+
+Session work:
+- Reviewed git log and reconciled MEMORY.md + FLOW.md with actual history
+- Confirmed harness removal was intentional — `develop-harness-backup` preserved as reference only, not to be merged
+- `develop` is ahead of `origin/develop` by 1 commit (`dcff7ec`)
+- Starting implementation of 6 compliance fixes from `plans/implementation-plan.md`
+
+What's next:
+1. Implement Fix 1 (mTLS) — `feature/broker-tls`
+2. Implement Fix 2 (revocation persistence) — `feature/revocation-persistence`
+3. Implement Fix 3 (audience validation) — `feature/audience-validation`
+4. Implement Fix 4 (token release) — `feature/token-release`
+5. Implement Fix 5 (sidecar UDS) — `feature/sidecar-uds`
+6. Implement Fix 6 (structured audit) — `feature/structured-audit`
+
+See `plans/implementation-plan.md` and `plans/design-solution.md` for full spec.
+
+## 2026-02-20 (Session 6)
+
+Session work:
+- Cleanup: removed `conductor/` directory, removed `internal_use_docs/` and `misc_docs/` session artifacts (`c7df130`, `dcff7ec`)
+- Renamed `compliance_review/` → `plans/` and unignored it (`c8bfcb0`, `39c3c49`)
+- Harness work (autonomous coding agent harness) was built then deliberately removed — preserved as `develop-harness-backup` branch for reference
+- Ran 4 compliance reviewers (India, Juliet, Kilo, Lima) against develop branch — results in `plans/round2-reviewer-*.md`
+- Ran 5-agent design team (security-architect, system-designer, code-planner, integration-lead, devils-advocate) to produce design and plan
+- Design approved by devils-advocate — `plans/design-solution.md`
+- Implementation plan written — `plans/implementation-plan.md`
+
+Six fixes identified (all independently implementable):
+1. Fix 1: Native TLS/mTLS in broker (P0) — `feature/broker-tls`
+2. Fix 2: Revocation persistence to SQLite (P0) — `feature/revocation-persistence`
+3. Fix 3: Audience validation enforcement (P1) — `feature/audience-validation`
+4. Fix 4: Token release endpoint (P1) — `feature/token-release`
+5. Fix 5: Sidecar UDS listen mode (P1) — `feature/sidecar-uds`
+6. Fix 6: Structured audit log fields (P2) — `feature/structured-audit`
+
 ## 2026-02-19 (Session 5)
 
 Session work:
