@@ -116,9 +116,49 @@ The next session must redesign before writing any code. Here is everything neede
 - 5 user story files (`tests/fix2-*` through `tests/fix6-*`)
 
 ### Local branches
-- `develop` (current)
+- `fix/audience-validation` (current)
+- `develop`
 - `main`
 - `develop-harness-backup` (dead/reference only)
+
+## 2026-02-25 (Session 11)
+
+### Git operations
+- Created `fix/audience-validation` off `develop`
+- Commits: `9c5a139` (cfg), `d3e1a93` (authz+token), `7abeb86` (admin fix), `4e03188` (changelog)
+- Branch NOT yet merged — ready for merge
+
+### What happened
+Implemented Fix 3 (audience validation) from `docs/plans/2026-02-25-fix3-audience-validation.md`. TDD throughout.
+
+- `internal/cfg/cfg.go`: `AA_AUDIENCE` via `LookupEnv` — unset = "agentauth", empty = skip
+- `internal/authz/val_mw.go`: audience field, check in `Wrap()` after revocation
+- `internal/identity/id_svc.go`: audience field, populates `Aud` on registration tokens
+- `internal/token/tkn_svc.go`: `Renew()` preserves `Aud`
+- `internal/deleg/deleg_svc.go`: `Delegate()` propagates `Aud` from delegator
+- `internal/admin/admin_svc.go`: audience field, populates `Aud` in `Authenticate()` and `ActivateSidecar()`
+- `internal/handler/token_exchange_hdl.go`: propagates `Aud` from sidecar caller
+- `docker-compose.yml`: `AA_AUDIENCE` env var
+
+### Docker live test finding: missed issuance path
+Plan covered 3 of 4 token issuance paths (IdSvc, Renew, Delegate). AdminSvc.Authenticate and ActivateSidecar were missed — admin tokens got "audience mismatch" 401. Docker live test caught this immediately. Also added token exchange handler propagation.
+
+### Docker live test — PASSED
+
+**Steps:**
+1. `AA_AUDIENCE=broker-production ./scripts/stack_up.sh`
+2. Story 3: admin auth → launch token → register agent → verify `aud: ["broker-production"]` in token → validate → renew → verify audience preserved
+3. Story 1: correct-audience tokens accepted on authenticated endpoints (audit, renew)
+4. Story 2: `AA_AUDIENCE="" ./scripts/stack_up.sh` → no audience in tokens → all endpoints work → backward compatible
+5. `docker compose down -v`
+
+All 3 user stories pass.
+
+### What's next: IMPLEMENT FIX 4
+- Branch: `fix/token-release` off `develop`
+- Plan: `docs/plans/2026-02-25-fix4-token-release.md`
+- User stories: `tests/fix4-token-release-user-stories.md`
+- After Fix 4 → Fix 1 → Fix 5 → Fix 6
 
 ## 2026-02-25 (Session 10)
 
