@@ -1,0 +1,20 @@
+# TLS overlay — one-way TLS (broker serves HTTPS, sidecar trusts CA).
+# Usage: docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
+# Requires certs in /tmp/agentauth-certs (run scripts/gen_test_certs.sh first).
+services:
+  broker:
+    environment:
+      - AA_TLS_MODE=tls
+      - AA_TLS_CERT=/certs/broker.pem
+      - AA_TLS_KEY=/certs/broker-key.pem
+    volumes:
+      - /tmp/agentauth-certs:/certs:ro
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "--cacert", "/certs/ca.pem", "https://localhost:8080/v1/health"]
+
+  sidecar:
+    environment:
+      - AA_BROKER_URL=https://broker:8080
+      - AA_SIDECAR_CA_CERT=/certs/ca.pem
+    volumes:
+      - /tmp/agentauth-certs:/certs:ro
