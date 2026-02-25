@@ -14,7 +14,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o sidecar ./cmd/sidecar
 # Stage 2: Broker image
 FROM alpine:3.18 AS broker
 
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates sqlite
 WORKDIR /root/
 COPY --from=builder /app/broker .
 EXPOSE 8080

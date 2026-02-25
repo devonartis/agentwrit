@@ -161,6 +161,104 @@ else
   FAIL=$((FAIL + 1)); echo "  FAIL: broker HTTP request logs missing"
 fi
 
+# ---------------------------------------------------------------------------
+# Fix 2: Revocation Persistence (survives broker restart)
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== Fix 2: Revocation Persistence ==="
+
+# Story 1 & 3: Revoke a token, verify it persists in SQLite, restart, verify it loads
+echo "--- Story 1: Revoke token and verify SQLite persistence ---"
+REVOKE_RESP=$(scurl -X POST "$BASE/v1/revoke" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"level":"token","target":"test-persist-jti-1"}' 2>/dev/null) || true
+if [[ "$REVOKE_RESP" == *'"revoked"'* ]] || [[ "$REVOKE_RESP" == *'"count"'* ]]; then
+  PASS=$((PASS + 1)); echo "  PASS: revoke accepted (token level)"
+else
+  FAIL=$((FAIL + 1)); echo "  FAIL: revoke not accepted: $REVOKE_RESP"
+fi
+
+# Also revoke at agent level to test multiple levels persist
+REVOKE_RESP2=$(scurl -X POST "$BASE/v1/revoke" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"level":"agent","target":"spiffe://test/agent/persist-check"}' 2>/dev/null) || true
+if [[ "$REVOKE_RESP2" == *'"revoked"'* ]] || [[ "$REVOKE_RESP2" == *'"count"'* ]]; then
+  PASS=$((PASS + 1)); echo "  PASS: revoke accepted (agent level)"
+else
+  FAIL=$((FAIL + 1)); echo "  FAIL: revoke not accepted (agent): $REVOKE_RESP2"
+fi
+
+# Story 3: Check SQLite has the revocation entries
+echo "--- Story 3: Verify revocations in SQLite ---"
+SQLITE_COUNT=$(cd "$PROJECT_ROOT" && docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" \
+  exec -T broker sh -c 'sqlite3 /data/agentauth.db "SELECT COUNT(*) FROM revocations"' 2>/dev/null) || SQLITE_COUNT="0"
+SQLITE_COUNT=$(echo "$SQLITE_COUNT" | tr -d '[:space:]')
+if [[ "$SQLITE_COUNT" -ge 2 ]]; then
+  PASS=$((PASS + 1)); echo "  PASS: SQLite has $SQLITE_COUNT revocation entries"
+else
+  FAIL=$((FAIL + 1)); echo "  FAIL: expected >=2 revocations in SQLite, got '$SQLITE_COUNT'"
+fi
+
+# Restart broker
+echo "--- Restarting broker ---"
+(cd "$PROJECT_ROOT" && docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" restart broker) >/dev/null 2>&1
+
+# Wait for healthy after restart
+READY=false
+for _ in $(seq 1 60); do
+  if scurl -f "$BASE/v1/health" >/dev/null 2>&1; then
+    READY=true
+    break
+  fi
+  sleep 0.5
+done
+
+if [[ "$READY" != "true" ]]; then
+  echo "  FAIL: broker did not become ready after restart"
+  FAIL=$((FAIL + 1))
+else
+  echo "  broker healthy after restart"
+
+  # Check broker logs show revocations loaded
+  RESTART_LOGS=$(cd "$PROJECT_ROOT" && docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" logs broker --tail=50 || true)
+  if printf '%s' "$RESTART_LOGS" | grep -q 'revocations loaded'; then
+    PASS=$((PASS + 1)); echo "  PASS: broker logs confirm revocations loaded on restart"
+  else
+    FAIL=$((FAIL + 1)); echo "  FAIL: 'revocations loaded' not found in broker restart logs"
+  fi
+
+  # Verify SQLite still has the entries after restart
+  SQLITE_AFTER=$(cd "$PROJECT_ROOT" && docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" \
+    exec -T broker sh -c 'sqlite3 /data/agentauth.db "SELECT COUNT(*) FROM revocations"' 2>/dev/null) || SQLITE_AFTER="0"
+  SQLITE_AFTER=$(echo "$SQLITE_AFTER" | tr -d '[:space:]')
+  if [[ "$SQLITE_AFTER" -ge 2 ]]; then
+    PASS=$((PASS + 1)); echo "  PASS: SQLite still has $SQLITE_AFTER revocations after restart"
+  else
+    FAIL=$((FAIL + 1)); echo "  FAIL: revocations lost after restart, got '$SQLITE_AFTER'"
+  fi
+
+  # Story 2: Fresh token after restart is NOT false-positived
+  echo "--- Story 2: Non-revoked tokens not affected (no false positives) ---"
+  AUTH_RESP2=$(scurl -X POST "$BASE/v1/admin/auth" -H "Content-Type: application/json" \
+    -d '{"client_id":"admin","client_secret":"'"$ADMIN_SECRET"'"}' 2>/dev/null) || true
+  if [[ "$AUTH_RESP2" == *'"access_token"'* ]]; then
+    ADMIN_TOKEN2=$(printf '%s' "$AUTH_RESP2" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+    # Validate the fresh admin token — should be valid (not false-positived by revocations)
+    VAL_RESP=$(scurl -X POST "$BASE/v1/token/validate" -H "Content-Type: application/json" \
+      -d '{"token":"'"$ADMIN_TOKEN2"'"}' 2>/dev/null) || true
+    if [[ "$VAL_RESP" == *'"valid":true'* ]]; then
+      PASS=$((PASS + 1)); echo "  PASS: fresh post-restart token validates (no false positive)"
+    elif [[ "$VAL_RESP" == *'"revoked"'* ]]; then
+      FAIL=$((FAIL + 1)); echo "  FAIL: fresh token falsely reported as revoked: $VAL_RESP"
+    else
+      FAIL=$((FAIL + 1)); echo "  FAIL: unexpected validate response: $VAL_RESP"
+    fi
+  else
+    FAIL=$((FAIL + 1)); echo "  FAIL: could not auth after restart"
+  fi
+fi
+
+echo ""
 echo "=== Live Test Summary ==="
 echo "  PASS: $PASS"
 echo "  FAIL: $FAIL"
