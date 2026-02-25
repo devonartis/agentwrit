@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Fix 4: Token Release Endpoint (P1 Compliance — Pattern v1.2 §4.4)
+
+**Summary:** Agents had no way to explicitly surrender tokens after task completion.
+This fix adds `POST /v1/token/release` — an agent presents its Bearer token and the
+handler self-revokes by JTI, records a `token_released` audit event, and returns 204.
+Idempotent. No admin scope required. Includes `aactl token release` operator tooling.
+
+#### New: `internal/handler/release_hdl.go`
+- `ReleaseHdl` extracts claims from context, calls `revSvc.Revoke("token", jti)`.
+- Records `token_released` audit event with agent/task/orch IDs.
+- Returns 204 No Content on success.
+
+#### Modified: `internal/audit/audit_log.go`
+- New `EventTokenReleased` constant.
+
+#### Modified: `internal/authz/val_mw.go`
+- New `ContextWithClaims()` test helper for injecting claims into context.
+
+#### Modified: `cmd/broker/main.go`
+- Wired `POST /v1/token/release` through `valMw.Wrap()` (Bearer auth, no scope gate).
+
+#### New: `cmd/aactl/token.go`
+- `aactl token release --token <jwt>` — operator CLI for testing/force-releasing tokens.
+- Handles 204 success and 403 "already revoked" as idempotent outcomes.
+
+#### Modified: `cmd/aactl/client.go`
+- New `doPostWithToken()` for agent-facing endpoints that use a caller-supplied token.
+
 ### Added — Fix 3: Audience Validation (P1 Compliance — Pattern v1.2 §3.1)
 
 **Summary:** Tokens were issued without an `aud` (audience) claim, meaning a token from

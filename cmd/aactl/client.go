@@ -9,6 +9,11 @@ import (
 	"os"
 )
 
+// defaultHTTPClient returns the shared HTTP client for all aactl requests.
+func defaultHTTPClient() *http.Client {
+	return &http.Client{}
+}
+
 // client holds the broker base URL, admin secret, cached auth token, and the
 // underlying HTTP client used for all requests.
 type client struct {
@@ -123,6 +128,25 @@ func (c *client) doPost(path string, payload any) ([]byte, error) {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(b))
 	}
 	return b, nil
+}
+
+// doPostWithToken performs a POST request using a caller-supplied Bearer token
+// instead of the admin auth flow. It returns the HTTP status code and response
+// body. This is used for agent-facing endpoints like /v1/token/release where
+// the caller's own token is the credential being acted on.
+func (c *client) doPostWithToken(path, bearerToken string) (int, []byte, error) {
+	req, err := http.NewRequest("POST", c.baseURL+path, nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+bearerToken)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return 0, nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, b, nil
 }
 
 // doPut performs an authenticated PUT request to the given path with the
