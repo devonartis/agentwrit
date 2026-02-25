@@ -7,8 +7,51 @@ import (
 	"github.com/divineartis/agentauth/internal/token"
 )
 
+// mockRevStore implements RevocationStore for testing.
+type mockRevStore struct {
+	saved []struct{ Level, Target string }
+}
+
+func (m *mockRevStore) SaveRevocation(level, target string) error {
+	m.saved = append(m.saved, struct{ Level, Target string }{level, target})
+	return nil
+}
+
+func TestRevoke_PersistsToStore(t *testing.T) {
+	ms := &mockRevStore{}
+	svc := NewRevSvc(ms)
+
+	_, err := svc.Revoke("token", "jti-abc")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(ms.saved) != 1 {
+		t.Fatalf("expected 1 save call, got %d", len(ms.saved))
+	}
+	if ms.saved[0].Level != "token" || ms.saved[0].Target != "jti-abc" {
+		t.Fatalf("unexpected save: %+v", ms.saved[0])
+	}
+}
+
+func TestRevSvc_LoadFromEntries(t *testing.T) {
+	svc := NewRevSvc(nil)
+	entries := []struct{ Level, Target string }{
+		{"token", "jti-1"},
+		{"agent", "agent-a"},
+		{"task", "task-1"},
+		{"chain", "chain-root"},
+	}
+	svc.LoadFromEntries(entries)
+
+	claims := &token.TknClaims{Jti: "jti-1", Sub: "agent-a"}
+	if !svc.IsRevoked(claims) {
+		t.Fatal("expected revoked by JTI")
+	}
+}
+
 func TestRevoke_InvalidLevel(t *testing.T) {
-	svc := NewRevSvc()
+	svc := NewRevSvc(nil)
 	_, err := svc.Revoke("invalid", "target")
 	if err != ErrInvalidLevel {
 		t.Fatalf("expected ErrInvalidLevel, got %v", err)
@@ -16,7 +59,7 @@ func TestRevoke_InvalidLevel(t *testing.T) {
 }
 
 func TestRevoke_MissingTarget(t *testing.T) {
-	svc := NewRevSvc()
+	svc := NewRevSvc(nil)
 	for _, level := range []string{"token", "agent", "task", "chain"} {
 		_, err := svc.Revoke(level, "")
 		if err != ErrMissingTarget {
@@ -26,7 +69,7 @@ func TestRevoke_MissingTarget(t *testing.T) {
 }
 
 func TestRevoke_AllLevels(t *testing.T) {
-	svc := NewRevSvc()
+	svc := NewRevSvc(nil)
 	for _, level := range []string{"token", "agent", "task", "chain"} {
 		n, err := svc.Revoke(level, "target-"+level)
 		if err != nil {
@@ -39,7 +82,7 @@ func TestRevoke_AllLevels(t *testing.T) {
 }
 
 func TestIsRevoked_Token(t *testing.T) {
-	svc := NewRevSvc()
+	svc := NewRevSvc(nil)
 	claims := &token.TknClaims{Jti: "jti-1", Sub: "agent-a"}
 
 	if svc.IsRevoked(claims) {
@@ -53,7 +96,7 @@ func TestIsRevoked_Token(t *testing.T) {
 }
 
 func TestIsRevoked_Agent(t *testing.T) {
-	svc := NewRevSvc()
+	svc := NewRevSvc(nil)
 	claims := &token.TknClaims{Jti: "jti-2", Sub: "spiffe://example/agent/a"}
 
 	_, _ = svc.Revoke("agent", "spiffe://example/agent/a") //nolint:errcheck // test setup
@@ -63,7 +106,7 @@ func TestIsRevoked_Agent(t *testing.T) {
 }
 
 func TestIsRevoked_Task(t *testing.T) {
-	svc := NewRevSvc()
+	svc := NewRevSvc(nil)
 	claims := &token.TknClaims{Jti: "jti-3", Sub: "agent-b", TaskId: "task-42"}
 
 	_, _ = svc.Revoke("task", "task-42") //nolint:errcheck // test setup
@@ -73,7 +116,7 @@ func TestIsRevoked_Task(t *testing.T) {
 }
 
 func TestIsRevoked_Chain(t *testing.T) {
-	svc := NewRevSvc()
+	svc := NewRevSvc(nil)
 	rootAgent := "spiffe://example/agent/root"
 
 	// Simulate a 2-level delegation chain: root → mid → leaf.
@@ -100,7 +143,7 @@ func TestIsRevoked_Chain(t *testing.T) {
 }
 
 func TestIsRevoked_ChainDoesNotAffectNonDelegated(t *testing.T) {
-	svc := NewRevSvc()
+	svc := NewRevSvc(nil)
 	rootAgent := "spiffe://example/agent/root"
 
 	// A non-delegated token from the same agent should NOT be caught by chain revocation.
@@ -117,7 +160,7 @@ func TestIsRevoked_ChainDoesNotAffectNonDelegated(t *testing.T) {
 }
 
 func TestIsRevoked_ChainSubDelegation(t *testing.T) {
-	svc := NewRevSvc()
+	svc := NewRevSvc(nil)
 	rootAgent := "spiffe://example/agent/root"
 
 	// A sub-delegation (3 levels) still has the root as DelegChain[0].Agent.
@@ -139,7 +182,7 @@ func TestIsRevoked_ChainSubDelegation(t *testing.T) {
 }
 
 func TestIsRevoked_ChainWrongRoot(t *testing.T) {
-	svc := NewRevSvc()
+	svc := NewRevSvc(nil)
 
 	// Revoke a different root — should not affect this chain.
 	claims := &token.TknClaims{
@@ -158,7 +201,7 @@ func TestIsRevoked_ChainWrongRoot(t *testing.T) {
 }
 
 func TestIsRevoked_EmptyDelegChainSkipsChainCheck(t *testing.T) {
-	svc := NewRevSvc()
+	svc := NewRevSvc(nil)
 
 	claims := &token.TknClaims{
 		Jti: "no-chain-jti",

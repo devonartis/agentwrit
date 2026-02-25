@@ -16,8 +16,14 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/divineartis/agentauth/internal/obs"
 	"github.com/divineartis/agentauth/internal/token"
 )
+
+// RevocationStore is the optional persistence backend for revocations.
+type RevocationStore interface {
+	SaveRevocation(level, target string) error
+}
 
 // Sentinel errors returned by [RevSvc.Revoke].
 var (
@@ -33,15 +39,18 @@ type RevSvc struct {
 	agents map[string]bool // agent SPIFFE ID → revoked
 	tasks  map[string]bool // task_id → revoked
 	chains map[string]bool // root delegator agent ID → revoked
+	store  RevocationStore
 }
 
-// NewRevSvc returns an empty revocation service ready for use.
-func NewRevSvc() *RevSvc {
+// NewRevSvc returns an empty revocation service ready for use. If store is
+// non-nil, every Revoke call writes through to the persistence backend.
+func NewRevSvc(store RevocationStore) *RevSvc {
 	return &RevSvc{
 		tokens: make(map[string]bool),
 		agents: make(map[string]bool),
 		tasks:  make(map[string]bool),
 		chains: make(map[string]bool),
+		store:  store,
 	}
 }
 
@@ -97,17 +106,39 @@ func (s *RevSvc) Revoke(level, target string) (int, error) {
 	switch level {
 	case "token":
 		s.tokens[target] = true
-		return 1, nil
 	case "agent":
 		s.agents[target] = true
-		return 1, nil
 	case "task":
 		s.tasks[target] = true
-		return 1, nil
 	case "chain":
 		s.chains[target] = true
-		return 1, nil
 	default:
 		return 0, ErrInvalidLevel
+	}
+
+	if s.store != nil {
+		if err := s.store.SaveRevocation(level, target); err != nil {
+			obs.Warn("REVOKE", "svc", "persistence failed", "level="+level, "target="+target, "err="+err.Error())
+		}
+	}
+	return 1, nil
+}
+
+// LoadFromEntries populates the in-memory revocation maps from a slice
+// of level/target pairs. Called at broker startup after loading from SQLite.
+func (s *RevSvc) LoadFromEntries(entries []struct{ Level, Target string }) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, e := range entries {
+		switch e.Level {
+		case "token":
+			s.tokens[e.Target] = true
+		case "agent":
+			s.agents[e.Target] = true
+		case "task":
+			s.tasks[e.Target] = true
+		case "chain":
+			s.chains[e.Target] = true
+		}
 	}
 }
