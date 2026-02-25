@@ -31,7 +31,7 @@ func setupIdSvc(t *testing.T) (*IdSvc, *store.SqlStore, *audit.AuditLog) {
 	}
 	tknSvc := token.NewTknSvc(priv, pub, c)
 	auditLog := audit.NewAuditLog(nil)
-	idSvc := NewIdSvc(sqlStore, tknSvc, "agentauth.local", auditLog)
+	idSvc := NewIdSvc(sqlStore, tknSvc, "agentauth.local", auditLog, "")
 
 	return idSvc, sqlStore, auditLog
 }

@@ -45,16 +45,19 @@ type ValMw struct {
 	tknSvc   TokenVerifier
 	revSvc   RevocationChecker
 	auditLog AuditRecorder
+	audience string
 }
 
 // NewValMw creates a new validation middleware. The revSvc and auditLog
 // parameters may be nil to disable revocation checking or audit recording
-// respectively.
-func NewValMw(tknSvc TokenVerifier, revSvc RevocationChecker, auditLog AuditRecorder) *ValMw {
+// respectively. When audience is non-empty, every token's aud claim is
+// checked for a matching value; empty skips the check.
+func NewValMw(tknSvc TokenVerifier, revSvc RevocationChecker, auditLog AuditRecorder, audience string) *ValMw {
 	return &ValMw{
 		tknSvc:   tknSvc,
 		revSvc:   revSvc,
 		auditLog: auditLog,
+		audience: audience,
 	}
 }
 
@@ -95,6 +98,16 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 				m.auditLog.Record(audit.EventTokenRevokedAccess, claims.Sub, claims.TaskId, claims.OrchId, "revoked token used | path="+r.URL.Path)
 			}
 			problemdetails.WriteProblem(r.Context(), w, 403, "insufficient_scope", "token has been revoked", r.URL.Path)
+			return
+		}
+
+		// Audience validation (skip when not configured)
+		if m.audience != "" && !containsAudience(claims.Aud, m.audience) {
+			if m.auditLog != nil {
+				m.auditLog.Record(audit.EventTokenAuthFailed, claims.Sub, claims.TaskId, claims.OrchId,
+					"audience mismatch | expected="+m.audience+" | path="+r.URL.Path)
+			}
+			problemdetails.WriteProblem(r.Context(), w, 401, "unauthorized", "token audience mismatch", r.URL.Path)
 			return
 		}
 
@@ -141,6 +154,16 @@ func ClaimsFromContext(ctx context.Context) *token.TknClaims {
 		return nil
 	}
 	return claims
+}
+
+// containsAudience checks whether aud contains the expected audience string.
+func containsAudience(aud []string, expected string) bool {
+	for _, a := range aud {
+		if a == expected {
+			return true
+		}
+	}
+	return false
 }
 
 // TokenFromRequest extracts the raw bearer token string from the

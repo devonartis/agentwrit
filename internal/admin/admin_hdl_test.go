@@ -27,7 +27,7 @@ func newTestHandler(t *testing.T) (*AdminHdl, *AdminSvc, *token.TknSvc) {
 	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
 	st := store.NewSqlStore()
 	adminSvc := NewAdminSvc(testSecret, tknSvc, st, nil)
-	valMw := authz.NewValMw(tknSvc, nil, nil)
+	valMw := authz.NewValMw(tknSvc, nil, nil, "")
 	hdl := NewAdminHdl(adminSvc, valMw, nil, nil)
 	return hdl, adminSvc, tknSvc
 }
@@ -519,7 +519,7 @@ func TestHandleUpdateCeiling_NarrowingTriggersRevocation(t *testing.T) {
 	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
 	st := store.NewSqlStore()
 	adminSvc := NewAdminSvc(testSecret, tknSvc, st, nil)
-	valMw := authz.NewValMw(tknSvc, nil, nil)
+	valMw := authz.NewValMw(tknSvc, nil, nil, "")
 	revSvc := revoke.NewRevSvc(nil)
 	hdl := NewAdminHdl(adminSvc, valMw, nil, revSvc)
 
@@ -573,7 +573,7 @@ func TestHandleUpdateCeiling_WideningNoRevocation(t *testing.T) {
 	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
 	st := store.NewSqlStore()
 	adminSvc := NewAdminSvc(testSecret, tknSvc, st, nil)
-	valMw := authz.NewValMw(tknSvc, nil, nil)
+	valMw := authz.NewValMw(tknSvc, nil, nil, "")
 	revSvc := revoke.NewRevSvc(nil)
 	hdl := NewAdminHdl(adminSvc, valMw, nil, revSvc)
 
@@ -639,7 +639,7 @@ func TestListSidecars_Integration(t *testing.T) {
 	auditLog := audit.NewAuditLog(st)
 	revSvc := revoke.NewRevSvc(nil)
 	adminSvc := NewAdminSvc(testSecret, tknSvc, st, auditLog)
-	valMw := authz.NewValMw(tknSvc, revSvc, auditLog)
+	valMw := authz.NewValMw(tknSvc, revSvc, auditLog, "")
 	hdl := NewAdminHdl(adminSvc, valMw, auditLog, revSvc)
 
 	mux := http.NewServeMux()

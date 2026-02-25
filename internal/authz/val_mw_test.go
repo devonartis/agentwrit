@@ -33,7 +33,7 @@ var okHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 func TestWrap_MissingAuthHeader_AuditsEvent(t *testing.T) {
 	al := audit.NewAuditLog(nil)
-	mw := NewValMw(&mockVerifier{}, nil, al)
+	mw := NewValMw(&mockVerifier{}, nil, al, "")
 
 	req := httptest.NewRequest("GET", "/test/path", nil)
 	rec := httptest.NewRecorder()
@@ -56,7 +56,7 @@ func TestWrap_MissingAuthHeader_AuditsEvent(t *testing.T) {
 
 func TestWrap_InvalidScheme_AuditsEvent(t *testing.T) {
 	al := audit.NewAuditLog(nil)
-	mw := NewValMw(&mockVerifier{}, nil, al)
+	mw := NewValMw(&mockVerifier{}, nil, al, "")
 
 	req := httptest.NewRequest("GET", "/test/path", nil)
 	req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
@@ -77,7 +77,7 @@ func TestWrap_InvalidScheme_AuditsEvent(t *testing.T) {
 
 func TestWrap_VerificationFailed_AuditsEvent(t *testing.T) {
 	al := audit.NewAuditLog(nil)
-	mw := NewValMw(&mockVerifier{err: token.ErrInvalidToken}, nil, al)
+	mw := NewValMw(&mockVerifier{err: token.ErrInvalidToken}, nil, al, "")
 
 	req := httptest.NewRequest("GET", "/test/path", nil)
 	req.Header.Set("Authorization", "Bearer bad-token")
@@ -104,7 +104,7 @@ func TestWrap_RevokedToken_AuditsEvent(t *testing.T) {
 		OrchId: "orch-1",
 		Scope:  []string{"read:data:*"},
 	}
-	mw := NewValMw(&mockVerifier{claims: claims}, &mockRevChecker{revoked: true}, al)
+	mw := NewValMw(&mockVerifier{claims: claims}, &mockRevChecker{revoked: true}, al, "")
 
 	req := httptest.NewRequest("GET", "/test/path", nil)
 	req.Header.Set("Authorization", "Bearer valid-but-revoked")
@@ -127,7 +127,7 @@ func TestWrap_RevokedToken_AuditsEvent(t *testing.T) {
 }
 
 func TestWrap_NilAuditLog_DoesNotPanic(t *testing.T) {
-	mw := NewValMw(&mockVerifier{err: token.ErrInvalidToken}, nil, nil)
+	mw := NewValMw(&mockVerifier{err: token.ErrInvalidToken}, nil, nil, "")
 
 	req := httptest.NewRequest("GET", "/test/path", nil)
 	req.Header.Set("Authorization", "Bearer bad-token")
@@ -142,7 +142,7 @@ func TestWrap_NilAuditLog_DoesNotPanic(t *testing.T) {
 func TestWrap_ValidToken_NoAuditEvent(t *testing.T) {
 	al := audit.NewAuditLog(nil)
 	claims := &token.TknClaims{Sub: "agent-1", Scope: []string{"read:data:*"}}
-	mw := NewValMw(&mockVerifier{claims: claims}, &mockRevChecker{revoked: false}, al)
+	mw := NewValMw(&mockVerifier{claims: claims}, &mockRevChecker{revoked: false}, al, "")
 
 	req := httptest.NewRequest("GET", "/test/path", nil)
 	req.Header.Set("Authorization", "Bearer good-token")
@@ -165,7 +165,7 @@ func TestRequireScope_InsufficientScope_AuditsEvent(t *testing.T) {
 		OrchId: "orch-1",
 		Scope:  []string{"read:data:*"},
 	}
-	mw := NewValMw(&mockVerifier{claims: claims}, nil, al)
+	mw := NewValMw(&mockVerifier{claims: claims}, nil, al, "")
 	handler := mw.Wrap(mw.RequireScope("write:data:*", okHandler))
 
 	req := httptest.NewRequest("GET", "/test/path", nil)
@@ -191,7 +191,7 @@ func TestRequireScope_InsufficientScope_AuditsEvent(t *testing.T) {
 func TestRequireScope_SufficientScope_NoAuditEvent(t *testing.T) {
 	al := audit.NewAuditLog(nil)
 	claims := &token.TknClaims{Sub: "agent-1", Scope: []string{"read:data:*", "write:data:*"}}
-	mw := NewValMw(&mockVerifier{claims: claims}, nil, al)
+	mw := NewValMw(&mockVerifier{claims: claims}, nil, al, "")
 	handler := mw.Wrap(mw.RequireScope("read:data:*", okHandler))
 
 	req := httptest.NewRequest("GET", "/test/path", nil)
@@ -209,7 +209,7 @@ func TestRequireScope_SufficientScope_NoAuditEvent(t *testing.T) {
 
 func TestRequireScope_NilAuditLog_DoesNotPanic(t *testing.T) {
 	claims := &token.TknClaims{Sub: "agent-1", Scope: []string{"read:data:*"}}
-	mw := NewValMw(&mockVerifier{claims: claims}, nil, nil)
+	mw := NewValMw(&mockVerifier{claims: claims}, nil, nil, "")
 	handler := mw.Wrap(mw.RequireScope("write:data:*", okHandler))
 
 	req := httptest.NewRequest("GET", "/test/path", nil)
@@ -219,5 +219,73 @@ func TestRequireScope_NilAuditLog_DoesNotPanic(t *testing.T) {
 
 	if rec.Code != 403 {
 		t.Fatalf("expected 403, got %d", rec.Code)
+	}
+}
+
+func TestWrap_AudienceRejectsWrongAud(t *testing.T) {
+	claims := &token.TknClaims{
+		Iss: "agentauth", Sub: "agent-1", Jti: "jti-1",
+		Exp: 9999999999, Nbf: 0, Iat: 0,
+		Scope: []string{"read:data:*"},
+		Aud:   []string{"other-service"},
+	}
+	mw := NewValMw(&mockVerifier{claims: claims}, nil, nil, "my-broker")
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("handler should not be called")
+	}))
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer fake-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != 401 {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestWrap_AudienceAcceptsCorrectAud(t *testing.T) {
+	claims := &token.TknClaims{
+		Iss: "agentauth", Sub: "agent-1", Jti: "jti-1",
+		Exp: 9999999999, Nbf: 0, Iat: 0,
+		Scope: []string{"read:data:*"},
+		Aud:   []string{"my-broker"},
+	}
+	mw := NewValMw(&mockVerifier{claims: claims}, nil, nil, "my-broker")
+	called := false
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	}))
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer fake-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !called {
+		t.Fatal("handler should have been called")
+	}
+}
+
+func TestWrap_AudienceSkippedWhenEmpty(t *testing.T) {
+	claims := &token.TknClaims{
+		Iss: "agentauth", Sub: "agent-1", Jti: "jti-1",
+		Exp: 9999999999, Nbf: 0, Iat: 0,
+		Scope: []string{"read:data:*"},
+		Aud:   []string{},
+	}
+	mw := NewValMw(&mockVerifier{claims: claims}, nil, nil, "")
+	called := false
+	handler := mw.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	}))
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Authorization", "Bearer fake-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !called {
+		t.Fatal("handler should have been called when audience is empty")
 	}
 }

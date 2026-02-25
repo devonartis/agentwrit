@@ -150,6 +150,7 @@ func (s *DelegSvc) Delegate(delegatorClaims *token.TknClaims, req DelegReq) (*De
 	// Issue delegated token
 	issResp, err := s.tknSvc.Issue(token.IssueReq{
 		Sub:        req.DelegateTo,
+		Aud:        delegatorClaims.Aud,
 		Scope:      req.Scope,
 		TaskId:     delegatorClaims.TaskId,
 		OrchId:     delegatorClaims.OrchId,

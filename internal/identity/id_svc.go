@@ -73,17 +73,29 @@ type IdSvc struct {
 	tknSvc      *token.TknSvc
 	trustDomain string
 	auditLog    AuditRecorder
+	audience    string
 }
 
 // NewIdSvc creates a new identity service. The auditLog parameter may
-// be nil to disable audit recording.
-func NewIdSvc(sqlStore *store.SqlStore, tknSvc *token.TknSvc, trustDomain string, auditLog AuditRecorder) *IdSvc {
+// be nil to disable audit recording. The audience parameter is populated
+// into issued tokens; empty means no audience claim.
+func NewIdSvc(sqlStore *store.SqlStore, tknSvc *token.TknSvc, trustDomain string, auditLog AuditRecorder, audience string) *IdSvc {
 	return &IdSvc{
 		store:       sqlStore,
 		tknSvc:      tknSvc,
 		trustDomain: trustDomain,
 		auditLog:    auditLog,
+		audience:    audience,
 	}
+}
+
+// audienceSlice returns the audience as a single-element slice, or nil
+// when no audience is configured.
+func (s *IdSvc) audienceSlice() []string {
+	if s.audience == "" {
+		return nil
+	}
+	return []string{s.audience}
 }
 
 // Register performs the complete agent registration flow:
@@ -192,6 +204,7 @@ func (s *IdSvc) Register(req RegisterReq) (*RegisterResp, error) {
 	// Issue token
 	issResp, err := s.tknSvc.Issue(token.IssueReq{
 		Sub:    agentID,
+		Aud:    s.audienceSlice(),
 		Scope:  req.RequestedScope,
 		TaskId: req.TaskID,
 		OrchId: req.OrchID,

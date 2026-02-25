@@ -174,6 +174,7 @@ func (s *TknSvc) Renew(tokenStr string) (*IssueResp, error) {
 
 	return s.Issue(IssueReq{
 		Sub:        claims.Sub,
+		Aud:        claims.Aud,
 		Scope:      claims.Scope,
 		TaskId:     claims.TaskId,
 		OrchId:     claims.OrchId,

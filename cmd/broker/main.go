@@ -129,7 +129,7 @@ func main() {
 		revSvc.LoadFromEntries(typed)
 		obs.Ok("BROKER", "main", "revocations loaded", fmt.Sprintf("count=%d", len(revEntries)))
 	}
-	idSvc := identity.NewIdSvc(sqlStore, tknSvc, c.TrustDomain, auditLog)
+	idSvc := identity.NewIdSvc(sqlStore, tknSvc, c.TrustDomain, auditLog, c.Audience)
 	delegSvc := deleg.NewDelegSvc(tknSvc, sqlStore, auditLog, privKey)
 	adminSvc := admin.NewAdminSvc(c.AdminSecret, tknSvc, sqlStore, auditLog)
 
@@ -140,7 +140,7 @@ func main() {
 	}
 
 	// Middleware
-	valMw := authz.NewValMw(tknSvc, revSvc, auditLog)
+	valMw := authz.NewValMw(tknSvc, revSvc, auditLog, c.Audience)
 
 	// Handlers
 	challengeHdl := handler.NewChallengeHdl(sqlStore)
