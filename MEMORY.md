@@ -167,14 +167,15 @@ Signing keys are regenerated on every startup. After restart, ALL pre-restart to
 3. **`live_test_docker.sh` creates its own stack.** It spins up an isolated project with random ports, which conflicts with a stack from `stack_up.sh`. The manual test steps above are how to properly test against a running stack.
 4. **`stack_up.sh` first, then test.** The correct process: bring up stack, verify healthy, run commands against it. Not a single script that does everything.
 
-### What's next
-- Merge `fix/revocation-persistence` to `develop`
-- Start Fix 3 (audience validation): `docs/plans/2026-02-25-fix3-audience-validation.md`
-- **For Fix 3: read user stories and test infrastructure FIRST, design Docker test, then implement**
+### What's next: IMPLEMENT FIX 3
+- Branch: `fix/audience-validation` off `develop`
+- Plan: `docs/plans/2026-02-25-fix3-audience-validation.md`
+- User stories: `tests/fix3-audience-validation-user-stories.md`
+- **Read user stories and test infrastructure FIRST, design Docker test, then implement**
+- After Fix 3 → Fix 4 → Fix 1 → Fix 5 → Fix 6
 
 ### Local branches
-- `fix/revocation-persistence` (current, 5 commits ahead of develop)
-- `develop`
+- `develop` (current)
 - `main`
 - `develop-harness-backup` (dead/reference only)
 
