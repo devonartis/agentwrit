@@ -7,7 +7,8 @@
 //
 // SQLite-backed audit persistence is available via [SqlStore.InitDB],
 // [SqlStore.SaveAuditEvent], [SqlStore.LoadAllAuditEvents],
-// [SqlStore.QueryAuditEvents], and [SqlStore.Close].
+// [SqlStore.QueryAuditEvents], and [SqlStore.Close]. Revocation persistence
+// is provided by [SqlStore.SaveRevocation] and [SqlStore.LoadAllRevocations].
 //
 // All public methods are safe for concurrent use.
 package store
@@ -317,9 +318,9 @@ CREATE TABLE IF NOT EXISTS sidecars (
 );
 `
 
-// InitDB opens the SQLite database at path and creates the audit_events table
-// and indexes if they do not already exist. It must be called before any audit
-// persistence methods are used.
+// InitDB opens the SQLite database at path and creates the audit_events,
+// sidecars, and revocations tables if they do not already exist. It must be
+// called before any persistence methods are used.
 func (s *SqlStore) InitDB(path string) error {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {

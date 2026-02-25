@@ -9,7 +9,10 @@
 //   - chain: revoke all tokens in a delegation chain by the root delegator's agent ID.
 //
 // Revocation entries are stored in memory and checked by [RevSvc.IsRevoked]
-// during middleware validation (see [authz.ValMw]).
+// during middleware validation (see [authz.ValMw]). When a [RevocationStore]
+// is provided, entries are written through to SQLite so they survive broker
+// restarts. On startup, [RevSvc.LoadFromEntries] rebuilds in-memory state
+// from the persisted records.
 package revoke
 
 import (

@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Fix 2: Revocation Persistence (P0 Compliance — Pattern v1.2 §4.2)
+
+**Summary:** Revocations were previously stored only in memory — a broker restart
+silently cleared every revocation, allowing previously-revoked tokens to be accepted
+again. This fix persists revocations to SQLite via a write-through pattern matching the
+existing audit and sidecar persistence. On startup, the broker loads all revocations from
+SQLite and rebuilds the in-memory maps.
+
+#### Modified: `internal/store/sql_store.go`
+
+- New `revocations` table (`level`, `target`, `revoked_at`) with `UNIQUE(level, target)`.
+- New `RevocationEntry` type — represents a single persisted revocation.
+- New `SaveRevocation(level, target)` — idempotent INSERT OR IGNORE.
+- New `LoadAllRevocations()` — returns all entries ordered by id for startup rebuild.
+- `InitDB()` now creates the revocations table alongside audit and sidecars.
+
+#### Modified: `internal/revoke/rev_svc.go`
+
+- New `RevocationStore` interface — single method `SaveRevocation(level, target)`.
+- `NewRevSvc()` now accepts an optional `RevocationStore` parameter.
+- `Revoke()` writes through to the store when non-nil (warn-on-failure, non-blocking).
+- New `LoadFromEntries()` — bulk-loads level/target pairs into in-memory maps at startup.
+
+#### Modified: `cmd/broker/main.go`
+
+- Loads revocations from SQLite after sidecar loading, before service init.
+- Passes `sqlStore` as `RevocationStore` to `NewRevSvc()`.
+- Calls `LoadFromEntries()` to rebuild in-memory state on startup.
+
 ### Added — Fix 1: Native TLS/mTLS Transport (P0 Compliance — Pattern v1.2 §3.3)
 
 **Summary:** The broker previously only supported plain HTTP regardless of deployment
