@@ -214,3 +214,23 @@ Signing keys are regenerated on every startup. After restart, ALL pre-restart to
 This should have been understood before coding — it shapes the entire test design.
 
 → Artifact: Docker live test steps documented in MEMORY.md Session 10
+
+---
+
+## 2026-02-25 (Session 11)
+
+### Executing-Plans: Fix 3 — Audience Validation
+
+Executed `docs/plans/2026-02-25-fix3-audience-validation.md` via TDD. Plan was mostly accurate but missed 2 of 5 token issuance paths.
+
+Key decisions:
+1. **`LookupEnv` over `envOr`** — empty string means "disable validation", unset means "use default agentauth"
+2. **Audience check placement** — after revocation check in ValMw, before context storage
+3. **Propagation model** — set once at registration, preserved through renewal/delegation/exchange
+4. **AdminSvc needs audience too** — plan missed this; Docker live test caught it immediately
+
+### Lesson: every token issuance path must be audited
+
+The plan identified 3 issuance paths (IdSvc.Register, TknSvc.Renew, DelegSvc.Delegate). Reality had 5 more: AdminSvc.Authenticate, AdminSvc.ActivateSidecar, handler.TokenExchange, plus seedAdmin and CreateSidecarActivationToken (last two use special-purpose audiences). When adding a claim to all tokens, grep for `tknSvc.Issue(` to find every path.
+
+→ Artifact: `fix/audience-validation` branch (5 commits)
