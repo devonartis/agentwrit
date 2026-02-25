@@ -201,7 +201,43 @@ export AA_TLS_KEY=/certs/broker.key
 ./scripts/stack_up.sh
 ```
 
-> **Note:** When TLS is enabled, update the sidecar's `AA_BROKER_URL` from `http://` to `https://` and ensure the sidecar container has access to the CA certificate to verify the broker's identity.
+### Sidecar TLS client
+
+When TLS is enabled on the broker, the sidecar must be configured to connect over HTTPS. Set `AA_BROKER_URL` to `https://...` and provide the CA cert so the sidecar can verify the broker's identity.
+
+**One-way TLS** (sidecar trusts broker):
+
+```bash
+# Sidecar env vars
+AA_BROKER_URL=https://broker:8080
+AA_SIDECAR_CA_CERT=/certs/ca.crt
+```
+
+**Mutual TLS** (sidecar also presents its own cert):
+
+```bash
+# Sidecar env vars
+AA_BROKER_URL=https://broker:8080
+AA_SIDECAR_CA_CERT=/certs/ca.crt
+AA_SIDECAR_TLS_CERT=/certs/sidecar.crt
+AA_SIDECAR_TLS_KEY=/certs/sidecar.key
+```
+
+Docker Compose overlay for mTLS (`docker-compose.mtls.yml`):
+
+```yaml
+services:
+  sidecar:
+    environment:
+      - AA_BROKER_URL=https://broker:8080
+      - AA_SIDECAR_CA_CERT=/certs/ca.crt
+      - AA_SIDECAR_TLS_CERT=/certs/sidecar.crt
+      - AA_SIDECAR_TLS_KEY=/certs/sidecar.key
+    volumes:
+      - /etc/agentauth/certs:/certs:ro
+```
+
+The sidecar enforces TLS 1.3 minimum. If the CA cert is invalid or missing, the sidecar falls back to plain HTTP and logs a warning — the health check will fail and bootstrap will retry.
 
 ### Generating a self-signed cert for testing
 
@@ -235,6 +271,9 @@ The sidecar is a developer-facing proxy that auto-bootstraps with the broker. It
 | `AA_SIDECAR_CB_THRESHOLD` | float | `0.5` | No | Failure rate (0.0--1.0) within the window that trips the circuit breaker. |
 | `AA_SIDECAR_CB_PROBE_INTERVAL` | int | `5` | No | Seconds between health probes when the circuit is open. |
 | `AA_SIDECAR_CB_MIN_REQUESTS` | int | `5` | No | Minimum requests in the sliding window before the circuit breaker can trip. Prevents tripping on low traffic. |
+| `AA_SIDECAR_CA_CERT` | string | *(none)* | If TLS | Path to the CA certificate PEM file for verifying the broker's TLS certificate. When set, the sidecar connects to the broker over HTTPS. Also set `AA_BROKER_URL` to `https://...`. |
+| `AA_SIDECAR_TLS_CERT` | string | *(none)* | If mTLS | Path to the sidecar's client certificate PEM file. Required when the broker uses `AA_TLS_MODE=mtls`. |
+| `AA_SIDECAR_TLS_KEY` | string | *(none)* | If mTLS | Path to the sidecar's client private key PEM file. Required when the broker uses `AA_TLS_MODE=mtls`. |
 
 ### Scope ceiling design
 

@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Fix 1 (Sidecar): TLS/mTLS Client Support (P0 Compliance — Pattern v1.2 §3.3)
+
+**Summary:** The broker-side TLS was already on `develop`, but the sidecar had no TLS
+client support — it always connected over plain HTTP. This fix completes the TLS story
+by adding client-side TLS to the sidecar's broker client. The sidecar can now verify
+the broker's cert (one-way TLS) and present its own client cert (mTLS).
+
+#### Modified: `cmd/sidecar/config.go`
+- New `CACert`, `TLSCert`, `TLSKey` fields on `sidecarConfig`.
+- Loaded from `AA_SIDECAR_CA_CERT`, `AA_SIDECAR_TLS_CERT`, `AA_SIDECAR_TLS_KEY`.
+
+#### Modified: `cmd/sidecar/broker_client.go`
+- `newBrokerClient()` now accepts CA cert, client cert, and client key paths.
+- New `buildTLSConfig()` — builds `tls.Config` with CA trust pool and optional client cert.
+- TLS 1.3 minimum enforced. Falls back to plain HTTP on config errors.
+
+#### Modified: `cmd/sidecar/main.go`
+- Passes TLS config from `sidecarConfig` to `newBrokerClient()`.
+
+#### Modified: `docker-compose.yml`
+- `AA_SIDECAR_CA_CERT`, `AA_SIDECAR_TLS_CERT`, `AA_SIDECAR_TLS_KEY` env vars for sidecar.
+
+#### New: `docker-compose.tls.yml`, `docker-compose.mtls.yml`
+- Compose overlays for TLS and mTLS Docker testing.
+
+#### New: `scripts/gen_test_certs.sh`
+- Generates CA, broker, and sidecar certs (ECDSA P-256, SHA-256) for testing.
+
+#### Modified: `docs/getting-started-operator.md`
+- Sidecar TLS client env vars added to configuration table.
+- New "Sidecar TLS client" section with one-way TLS and mTLS examples.
+
 ### Added — Fix 4: Token Release Endpoint (P1 Compliance — Pattern v1.2 §4.4)
 
 **Summary:** Agents had no way to explicitly surrender tokens after task completion.
