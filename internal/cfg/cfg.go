@@ -18,6 +18,7 @@
 //	AA_TLS_CERT      – path to TLS certificate PEM file
 //	AA_TLS_KEY       – path to TLS private key PEM file
 //	AA_TLS_CLIENT_CA – path to client CA certificate PEM file (mtls only)
+//	AA_AUDIENCE      – expected token audience claim        (default "agentauth", empty = skip)
 package cfg
 
 import (
@@ -39,6 +40,7 @@ type Cfg struct {
 	TLSCert     string // AA_TLS_CERT: path to TLS certificate PEM file
 	TLSKey      string // AA_TLS_KEY: path to TLS private key PEM file
 	TLSClientCA string // AA_TLS_CLIENT_CA: path to client CA PEM file (mtls only)
+	Audience    string // AA_AUDIENCE: expected token audience (default "agentauth", empty = skip)
 }
 
 // Load reads AA_* environment variables and returns a Cfg with defaults
@@ -57,6 +59,13 @@ func Load() Cfg {
 		TLSCert:     os.Getenv("AA_TLS_CERT"),
 		TLSKey:      os.Getenv("AA_TLS_KEY"),
 		TLSClientCA: os.Getenv("AA_TLS_CLIENT_CA"),
+	}
+	// AA_AUDIENCE: LookupEnv distinguishes unset (→ default "agentauth")
+	// from explicitly empty (→ skip validation).
+	if v, ok := os.LookupEnv("AA_AUDIENCE"); ok {
+		c.Audience = v
+	} else {
+		c.Audience = "agentauth"
 	}
 	return c
 }

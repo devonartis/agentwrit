@@ -39,6 +39,32 @@ func TestLoad_TLSModeSet(t *testing.T) {
 	}
 }
 
+func TestLoad_AudienceDefault(t *testing.T) {
+	os.Unsetenv("AA_AUDIENCE")
+	c := Load()
+	if c.Audience != "agentauth" {
+		t.Fatalf("expected default audience 'agentauth', got %q", c.Audience)
+	}
+}
+
+func TestLoad_AudienceCustom(t *testing.T) {
+	os.Setenv("AA_AUDIENCE", "my-broker")
+	defer os.Unsetenv("AA_AUDIENCE")
+	c := Load()
+	if c.Audience != "my-broker" {
+		t.Fatalf("expected audience 'my-broker', got %q", c.Audience)
+	}
+}
+
+func TestLoad_AudienceEmpty(t *testing.T) {
+	os.Setenv("AA_AUDIENCE", "")
+	defer os.Unsetenv("AA_AUDIENCE")
+	c := Load()
+	if c.Audience != "" {
+		t.Fatalf("expected empty audience, got %q", c.Audience)
+	}
+}
+
 func TestLoad_TLSFields(t *testing.T) {
 	os.Setenv("AA_TLS_CERT", "/etc/certs/cert.pem")
 	os.Setenv("AA_TLS_KEY", "/etc/certs/key.pem")
