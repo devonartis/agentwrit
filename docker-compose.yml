@@ -15,6 +15,7 @@ services:
       - AA_TLS_CERT=${AA_TLS_CERT:-}
       - AA_TLS_KEY=${AA_TLS_KEY:-}
       - AA_TLS_CLIENT_CA=${AA_TLS_CLIENT_CA:-}
+      - AA_AUDIENCE=${AA_AUDIENCE:-}
     volumes:
       - broker-data:/data
     healthcheck:

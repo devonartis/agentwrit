@@ -133,18 +133,30 @@ type AdminSvc struct {
 	tknSvc      *token.TknSvc
 	store       *store.SqlStore
 	auditLog    *audit.AuditLog
+	audience    string
 }
 
 // NewAdminSvc creates a new admin service. The adminSecret is the shared
 // secret that administrators must present to authenticate. The auditLog
-// parameter may be nil to disable audit recording.
-func NewAdminSvc(adminSecret string, tknSvc *token.TknSvc, st *store.SqlStore, al *audit.AuditLog) *AdminSvc {
+// parameter may be nil to disable audit recording. The audience is
+// populated into all issued tokens.
+func NewAdminSvc(adminSecret string, tknSvc *token.TknSvc, st *store.SqlStore, al *audit.AuditLog, audience string) *AdminSvc {
 	return &AdminSvc{
 		adminSecret: []byte(adminSecret),
 		tknSvc:      tknSvc,
 		store:       st,
 		auditLog:    al,
+		audience:    audience,
 	}
+}
+
+// audienceSlice returns the audience as a single-element slice, or nil
+// when no audience is configured.
+func (s *AdminSvc) audienceSlice() []string {
+	if s.audience == "" {
+		return nil
+	}
+	return []string{s.audience}
 }
 
 // Authenticate validates the client secret using constant-time comparison
@@ -166,6 +178,7 @@ func (s *AdminSvc) Authenticate(clientID, clientSecret string) (*token.IssueResp
 
 	resp, err := s.tknSvc.Issue(token.IssueReq{
 		Sub:   adminSub,
+		Aud:   s.audienceSlice(),
 		Scope: adminScope,
 		TTL:   adminTTL,
 	})
@@ -350,6 +363,7 @@ func (s *AdminSvc) ActivateSidecar(req ActivateSidecarReq) (*ActivateSidecarResp
 	}
 	issResp, err := s.tknSvc.Issue(token.IssueReq{
 		Sub:   "sidecar:" + sidecarID,
+		Aud:   s.audienceSlice(),
 		Scope: sidecarScopes,
 		Sid:   sidecarID,
 		TTL:   ttl,

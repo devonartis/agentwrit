@@ -180,6 +180,7 @@ func (h *TokenExchangeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	issResp, err := h.tknSvc.Issue(token.IssueReq{
 		Sub:       req.AgentID,
+		Aud:       claims.Aud,
 		Scope:     req.Scope,
 		TaskId:    agent.TaskID,
 		OrchId:    agent.OrchID,

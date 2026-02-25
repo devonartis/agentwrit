@@ -24,7 +24,7 @@ func newTestAdminSvc(t *testing.T) *AdminSvc {
 	}
 	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
 	st := store.NewSqlStore()
-	return NewAdminSvc(testSecret, tknSvc, st, nil)
+	return NewAdminSvc(testSecret, tknSvc, st, nil, "")
 }
 
 func newTestAdminSvcWithAudit(t *testing.T) (*AdminSvc, *audit.AuditLog) {
@@ -36,7 +36,7 @@ func newTestAdminSvcWithAudit(t *testing.T) (*AdminSvc, *audit.AuditLog) {
 	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
 	st := store.NewSqlStore()
 	al := audit.NewAuditLog(nil)
-	return NewAdminSvc(testSecret, tknSvc, st, al), al
+	return NewAdminSvc(testSecret, tknSvc, st, al, ""), al
 }
 
 // --- Authenticate ---

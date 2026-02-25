@@ -58,7 +58,7 @@ func newTestBroker(t *testing.T) *testBroker {
 	revSvc := revoke.NewRevSvc(nil)
 	idSvc := identity.NewIdSvc(sqlStore, tknSvc, c.TrustDomain, auditLog, "")
 	delegSvc := deleg.NewDelegSvc(tknSvc, sqlStore, auditLog, priv)
-	adminSvc := admin.NewAdminSvc(c.AdminSecret, tknSvc, sqlStore, auditLog)
+	adminSvc := admin.NewAdminSvc(c.AdminSecret, tknSvc, sqlStore, auditLog, "")
 
 	valMw := authz.NewValMw(tknSvc, revSvc, auditLog, "")
 
