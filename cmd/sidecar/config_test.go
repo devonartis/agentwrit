@@ -95,6 +95,47 @@ func TestLoadConfig_RenewalBuffer(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_TLSFields(t *testing.T) {
+	os.Setenv("AA_SIDECAR_CA_CERT", "/path/to/ca.pem")
+	os.Setenv("AA_SIDECAR_TLS_CERT", "/path/to/client.pem")
+	os.Setenv("AA_SIDECAR_TLS_KEY", "/path/to/client-key.pem")
+	defer func() {
+		os.Unsetenv("AA_SIDECAR_CA_CERT")
+		os.Unsetenv("AA_SIDECAR_TLS_CERT")
+		os.Unsetenv("AA_SIDECAR_TLS_KEY")
+	}()
+
+	cfg := loadConfig()
+
+	if cfg.CACert != "/path/to/ca.pem" {
+		t.Fatalf("CACert: expected /path/to/ca.pem, got %q", cfg.CACert)
+	}
+	if cfg.TLSCert != "/path/to/client.pem" {
+		t.Fatalf("TLSCert: expected /path/to/client.pem, got %q", cfg.TLSCert)
+	}
+	if cfg.TLSKey != "/path/to/client-key.pem" {
+		t.Fatalf("TLSKey: expected /path/to/client-key.pem, got %q", cfg.TLSKey)
+	}
+}
+
+func TestLoadConfig_TLSFieldsDefault(t *testing.T) {
+	os.Unsetenv("AA_SIDECAR_CA_CERT")
+	os.Unsetenv("AA_SIDECAR_TLS_CERT")
+	os.Unsetenv("AA_SIDECAR_TLS_KEY")
+
+	cfg := loadConfig()
+
+	if cfg.CACert != "" {
+		t.Fatalf("CACert should be empty by default, got %q", cfg.CACert)
+	}
+	if cfg.TLSCert != "" {
+		t.Fatalf("TLSCert should be empty by default, got %q", cfg.TLSCert)
+	}
+	if cfg.TLSKey != "" {
+		t.Fatalf("TLSKey should be empty by default, got %q", cfg.TLSKey)
+	}
+}
+
 func TestLoadConfig_MissingRequired(t *testing.T) {
 	os.Unsetenv("AA_ADMIN_SECRET")
 	os.Unsetenv("AA_SIDECAR_SCOPE_CEILING")

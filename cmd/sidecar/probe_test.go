@@ -16,7 +16,7 @@ func TestProbe_TransitionsToProbing(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	cb := newCircuitBreaker(30*time.Second, 0.5, 50*time.Millisecond, 5)
 
 	// Trip the circuit.
@@ -44,7 +44,7 @@ func TestProbe_StaysOpenWhenBrokerDown(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	cb := newCircuitBreaker(30*time.Second, 0.5, 50*time.Millisecond, 5)
 
 	for i := 0; i < 5; i++ {
@@ -64,7 +64,7 @@ func TestProbe_StaysOpenWhenBrokerDown(t *testing.T) {
 }
 
 func TestProbe_StopsOnCancel(t *testing.T) {
-	bc := newBrokerClient("http://127.0.0.1:1")
+	bc := newBrokerClient("http://127.0.0.1:1", "", "", "")
 	cb := newCircuitBreaker(30*time.Second, 0.5, 50*time.Millisecond, 5)
 
 	for i := 0; i < 5; i++ {

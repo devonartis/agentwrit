@@ -51,7 +51,7 @@ func TestBootstrap_HappyPath(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	cfg := sidecarConfig{
 		AdminSecret:  "test-secret",
 		ScopeCeiling: []string{"read:data:*", "write:orders:*"},
@@ -109,7 +109,7 @@ func TestBootstrap_AdminAuthFails(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	cfg := sidecarConfig{
 		AdminSecret:  "wrong-secret",
 		ScopeCeiling: []string{"read:data:*"},
@@ -134,7 +134,7 @@ func TestBootstrap_BrokerUnreachable(t *testing.T) {
 	defer func() { defaultHealthTimeout = origTimeout }()
 
 	// Point at a port that is not listening (port 1).
-	bc := newBrokerClient("http://127.0.0.1:1")
+	bc := newBrokerClient("http://127.0.0.1:1", "", "", "")
 	// Override the HTTP client timeout so individual requests fail fast.
 	bc.http.Timeout = 500 * time.Millisecond
 

@@ -30,7 +30,7 @@ func TestChallengeHandler_ProxiesBrokerChallenge(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	h := newChallengeProxyHandler(bc)
 
 	req := httptest.NewRequest("GET", "/v1/challenge", nil)
@@ -56,7 +56,7 @@ func TestChallengeHandler_ProxiesBrokerChallenge(t *testing.T) {
 }
 
 func TestChallengeHandler_MethodNotAllowed(t *testing.T) {
-	bc := newBrokerClient("http://127.0.0.1:1") // unused — should reject before calling broker
+	bc := newBrokerClient("http://127.0.0.1:1", "", "", "") // unused — should reject before calling broker
 	h := newChallengeProxyHandler(bc)
 
 	req := httptest.NewRequest("POST", "/v1/challenge", nil)
@@ -102,7 +102,7 @@ func TestRegisterHandler_BYOK_HappyPath(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	reg := newAgentRegistry()
 	ceiling := newCeilingCache([]string{"read:data:*", "write:data:*"})
 
@@ -156,7 +156,7 @@ func TestRegisterHandler_BYOK_HappyPath(t *testing.T) {
 }
 
 func TestRegisterHandler_MissingFields_400(t *testing.T) {
-	bc := newBrokerClient("http://127.0.0.1:1") // unused
+	bc := newBrokerClient("http://127.0.0.1:1", "", "", "") // unused
 	reg := newAgentRegistry()
 	ceiling := newCeilingCache([]string{"read:data:*"})
 
@@ -184,7 +184,7 @@ func TestRegisterHandler_MissingFields_400(t *testing.T) {
 }
 
 func TestRegisterHandler_MethodNotAllowed(t *testing.T) {
-	bc := newBrokerClient("http://127.0.0.1:1") // unused
+	bc := newBrokerClient("http://127.0.0.1:1", "", "", "") // unused
 	reg := newAgentRegistry()
 	ceiling := newCeilingCache([]string{"read:data:*"})
 

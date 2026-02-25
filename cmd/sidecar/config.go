@@ -36,6 +36,15 @@ type sidecarConfig struct {
 	// CBMinRequests is the minimum number of requests in the sliding window
 	// before the circuit breaker can trip (default 5).
 	CBMinRequests int
+	// CACert is the path to the CA certificate PEM file for verifying the
+	// broker's TLS certificate. When set, the sidecar connects over HTTPS.
+	CACert string
+	// TLSCert is the path to the sidecar's client certificate PEM file
+	// for mTLS. Only used when CACert is also set.
+	TLSCert string
+	// TLSKey is the path to the sidecar's client private key PEM file
+	// for mTLS. Only used when CACert is also set.
+	TLSKey string
 }
 
 func loadConfig() sidecarConfig {
@@ -67,6 +76,10 @@ func loadConfig() sidecarConfig {
 			}
 		}
 	}
+
+	cfg.CACert = os.Getenv("AA_SIDECAR_CA_CERT")
+	cfg.TLSCert = os.Getenv("AA_SIDECAR_TLS_CERT")
+	cfg.TLSKey = os.Getenv("AA_SIDECAR_TLS_KEY")
 
 	return cfg
 }

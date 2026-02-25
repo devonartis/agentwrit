@@ -29,7 +29,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	bc := newBrokerClient(cfg.BrokerURL)
+	bc := newBrokerClient(cfg.BrokerURL, cfg.CACert, cfg.TLSCert, cfg.TLSKey)
 
 	obs.Ok("SIDECAR", "MAIN", "starting", "broker="+cfg.BrokerURL, "scope_ceiling="+strings.Join(cfg.ScopeCeiling, ","))
 

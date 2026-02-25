@@ -37,6 +37,9 @@ services:
       - AA_ADMIN_SECRET=${AA_ADMIN_SECRET:-change-me-in-production}
       - AA_SIDECAR_SCOPE_CEILING=${AA_SIDECAR_SCOPE_CEILING:-read:data:*,write:data:*}
       - AA_SIDECAR_PORT=8081
+      - AA_SIDECAR_CA_CERT=${AA_SIDECAR_CA_CERT:-}
+      - AA_SIDECAR_TLS_CERT=${AA_SIDECAR_TLS_CERT:-}
+      - AA_SIDECAR_TLS_KEY=${AA_SIDECAR_TLS_KEY:-}
     depends_on:
       broker:
         condition: service_healthy

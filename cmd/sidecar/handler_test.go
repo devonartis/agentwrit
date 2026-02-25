@@ -102,7 +102,7 @@ func TestTokenHandler_HappyPath(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	state := &sidecarState{}
 	state.setToken("sidecar-bearer-token", 900)
 	ceiling := newCeilingCache([]string{"read:data:*", "write:data:*"})
@@ -146,7 +146,7 @@ func TestTokenHandler_HappyPath(t *testing.T) {
 
 func TestTokenHandler_ScopeExceedsCeiling(t *testing.T) {
 	// No mock broker needed — scope check should reject before calling broker.
-	bc := newBrokerClient("http://127.0.0.1:1") // unused
+	bc := newBrokerClient("http://127.0.0.1:1", "", "", "") // unused
 	state := &sidecarState{}
 	state.setToken("sidecar-bearer-token", 900)
 	ceiling := newCeilingCache([]string{"read:data:*"}) // only read:data allowed
@@ -175,7 +175,7 @@ func TestTokenHandler_ScopeExceedsCeiling(t *testing.T) {
 }
 
 func TestTokenHandler_MissingFields(t *testing.T) {
-	bc := newBrokerClient("http://127.0.0.1:1") // unused
+	bc := newBrokerClient("http://127.0.0.1:1", "", "", "") // unused
 	state := &sidecarState{}
 	state.setToken("sidecar-bearer-token", 900)
 	ceiling := newCeilingCache([]string{"read:data:*"})
@@ -197,7 +197,7 @@ func TestTokenHandler_MissingFields(t *testing.T) {
 }
 
 func TestTokenHandler_MethodNotAllowed(t *testing.T) {
-	bc := newBrokerClient("http://127.0.0.1:1") // unused
+	bc := newBrokerClient("http://127.0.0.1:1", "", "", "") // unused
 	state := &sidecarState{}
 	state.setToken("sidecar-bearer-token", 900)
 	ceiling := newCeilingCache([]string{"read:data:*"})
@@ -225,7 +225,7 @@ func TestTokenHandler_BrokerError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	state := &sidecarState{}
 	state.setToken("sidecar-bearer-token", 900)
 	ceiling := newCeilingCache([]string{"read:data:*"})
@@ -296,7 +296,7 @@ func TestTokenHandler_LazyRegistration_FirstRequest(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	state := &sidecarState{}
 	state.setToken("sidecar-token", 900)
 	ceiling := newCeilingCache([]string{"read:data:*"})
@@ -372,7 +372,7 @@ func TestTokenHandler_LazyRegistration_SecondRequestSkipsRegistration(t *testing
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	state := &sidecarState{}
 	state.setToken("sidecar-token", 900)
 	ceiling := newCeilingCache([]string{"read:data:*"})
@@ -419,7 +419,7 @@ func TestTokenHandler_LazyRegistration_BrokerFailure502(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	state := &sidecarState{}
 	state.setToken("sidecar-token", 900)
 	ceiling := newCeilingCache([]string{"read:data:*"})
@@ -454,7 +454,7 @@ func TestTokenHandler_LazyRegistration_BrokerFailure502(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTokenHandler_CircuitOpen_ServesCachedToken(t *testing.T) {
-	bc := newBrokerClient("http://127.0.0.1:1") // unreachable
+	bc := newBrokerClient("http://127.0.0.1:1", "", "", "") // unreachable
 	state := &sidecarState{}
 	state.setToken("sidecar-token", 900)
 	ceiling := newCeilingCache([]string{"read:data:*"})
@@ -495,7 +495,7 @@ func TestTokenHandler_CircuitOpen_ServesCachedToken(t *testing.T) {
 }
 
 func TestTokenHandler_CircuitOpen_NoCachedToken_Returns503(t *testing.T) {
-	bc := newBrokerClient("http://127.0.0.1:1")
+	bc := newBrokerClient("http://127.0.0.1:1", "", "", "")
 	state := &sidecarState{}
 	state.setToken("sidecar-token", 900)
 	ceiling := newCeilingCache([]string{"read:data:*"})
@@ -541,7 +541,7 @@ func TestRenewHandler_HappyPath(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	h := newRenewHandler(bc)
 
 	req := httptest.NewRequest("POST", "/v1/token/renew", nil)
@@ -568,7 +568,7 @@ func TestRenewHandler_HappyPath(t *testing.T) {
 }
 
 func TestRenewHandler_NoBearer(t *testing.T) {
-	bc := newBrokerClient("http://127.0.0.1:1") // unused
+	bc := newBrokerClient("http://127.0.0.1:1", "", "", "") // unused
 	h := newRenewHandler(bc)
 
 	req := httptest.NewRequest("POST", "/v1/token/renew", nil)
@@ -583,7 +583,7 @@ func TestRenewHandler_NoBearer(t *testing.T) {
 }
 
 func TestRenewHandler_MethodNotAllowed(t *testing.T) {
-	bc := newBrokerClient("http://127.0.0.1:1") // unused
+	bc := newBrokerClient("http://127.0.0.1:1", "", "", "") // unused
 	h := newRenewHandler(bc)
 
 	req := httptest.NewRequest("GET", "/v1/token/renew", nil)
@@ -603,7 +603,7 @@ func TestRenewHandler_BrokerError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	h := newRenewHandler(bc)
 
 	req := httptest.NewRequest("POST", "/v1/token/renew", nil)

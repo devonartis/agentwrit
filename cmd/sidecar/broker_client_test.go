@@ -1,11 +1,21 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"io"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestBrokerClient_AdminAuth(t *testing.T) {
@@ -30,7 +40,7 @@ func TestBrokerClient_AdminAuth(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	token, err := bc.adminAuth("test-secret")
 	if err != nil {
 		t.Fatalf("adminAuth returned error: %v", err)
@@ -87,7 +97,7 @@ func TestBrokerClient_CreateSidecarActivation(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	actToken, err := bc.createSidecarActivation("admin-jwt", []string{"read:data:*"}, 600)
 	if err != nil {
 		t.Fatalf("createSidecarActivation returned error: %v", err)
@@ -145,7 +155,7 @@ func TestBrokerClient_ActivateSidecar(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	resp, err := bc.activateSidecar("act-token-123")
 	if err != nil {
 		t.Fatalf("activateSidecar returned error: %v", err)
@@ -203,7 +213,7 @@ func TestBrokerClient_TokenExchange(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	resp, err := bc.tokenExchange("sidecar-token", "agent-1", []string{"read:data:*", "write:data:*"}, 300)
 	if err != nil {
 		t.Fatalf("tokenExchange returned error: %v", err)
@@ -273,7 +283,7 @@ func TestBrokerClient_HealthCheck(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	err := bc.healthCheck()
 	if err != nil {
 		t.Fatalf("healthCheck returned error: %v", err)
@@ -293,7 +303,7 @@ func TestBrokerClient_HealthCheck(t *testing.T) {
 func TestBrokerClient_HealthCheck_Failure(t *testing.T) {
 	// Connect to port 1 which is almost certainly not listening.
 	// This tests that the client correctly reports connection failures.
-	bc := newBrokerClient("http://127.0.0.1:1")
+	bc := newBrokerClient("http://127.0.0.1:1", "", "", "")
 	err := bc.healthCheck()
 	if err == nil {
 		t.Fatal("healthCheck should return error for unreachable host")
@@ -317,7 +327,7 @@ func TestBrokerClient_TokenRenew(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	resp, err := bc.tokenRenew("old-sidecar-token")
 	if err != nil {
 		t.Fatalf("tokenRenew returned error: %v", err)
@@ -362,7 +372,7 @@ func TestBrokerClient_TokenRenew_WithScopeCeiling(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	resp, err := bc.tokenRenew("old-sidecar-token")
 	if err != nil {
 		t.Fatalf("tokenRenew returned error: %v", err)
@@ -389,7 +399,7 @@ func TestBrokerClient_GetChallenge(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	nonce, err := bc.getChallenge()
 	if err != nil {
 		t.Fatalf("getChallenge() error: %v", err)
@@ -415,7 +425,7 @@ func TestBrokerClient_CreateLaunchToken(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	lt, err := bc.createLaunchToken("admin-jwt", "test-agent", []string{"read:data:*"}, 600)
 	if err != nil {
 		t.Fatalf("createLaunchToken() error: %v", err)
@@ -444,7 +454,7 @@ func TestBrokerClient_RegisterAgent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	agentID, err := bc.registerAgent("launch-token", "nonce-hex", "pubkey-b64", "sig-b64", "orch-1", "task-1", []string{"read:data:*"})
 	if err != nil {
 		t.Fatalf("registerAgent() error: %v", err)
@@ -467,7 +477,7 @@ func TestBrokerClient_doJSON_ErrorStatus(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	bc := newBrokerClient(srv.URL)
+	bc := newBrokerClient(srv.URL, "", "", "")
 	_, err := bc.adminAuth("wrong-secret")
 	if err == nil {
 		t.Fatal("expected error for 401 response, got nil")
@@ -477,5 +487,141 @@ func TestBrokerClient_doJSON_ErrorStatus(t *testing.T) {
 	errMsg := err.Error()
 	if len(errMsg) == 0 {
 		t.Error("error message should be non-empty")
+	}
+}
+
+// generateTestCA creates a self-signed CA cert and key, writes them to tmpDir,
+// and returns the cert path.
+func generateTestCA(t *testing.T, tmpDir string) (caPath string, caKey *ecdsa.PrivateKey, caCert *x509.Certificate) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "test-ca"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign,
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caFile := filepath.Join(tmpDir, "ca.pem")
+	f, err := os.Create(caFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pem.Encode(f, &pem.Block{Type: "CERTIFICATE", Bytes: certDER}); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	return caFile, key, parsed
+}
+
+func TestBuildTLSConfig_MissingCAFile(t *testing.T) {
+	_, err := buildTLSConfig("/nonexistent/ca.pem", "", "")
+	if err == nil {
+		t.Fatal("expected error for missing CA file")
+	}
+}
+
+func TestBuildTLSConfig_InvalidPEM(t *testing.T) {
+	tmp := filepath.Join(t.TempDir(), "bad.pem")
+	if err := os.WriteFile(tmp, []byte("not-a-pem"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := buildTLSConfig(tmp, "", "")
+	if err == nil {
+		t.Fatal("expected error for invalid PEM")
+	}
+}
+
+func TestBuildTLSConfig_ValidCA(t *testing.T) {
+	caPath, _, _ := generateTestCA(t, t.TempDir())
+
+	cfg, err := buildTLSConfig(caPath, "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.RootCAs == nil {
+		t.Fatal("RootCAs should be non-nil")
+	}
+	if cfg.MinVersion != 0x0304 { // tls.VersionTLS13
+		t.Fatalf("MinVersion = %#x, want TLS 1.3", cfg.MinVersion)
+	}
+	if len(cfg.Certificates) != 0 {
+		t.Fatal("Certificates should be empty without client cert")
+	}
+}
+
+func TestBuildTLSConfig_WithClientCert(t *testing.T) {
+	tmpDir := t.TempDir()
+	caPath, caKey, caCert := generateTestCA(t, tmpDir)
+
+	// Generate client cert signed by CA.
+	clientKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	clientTmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: "test-client"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+	clientDER, _ := x509.CreateCertificate(rand.Reader, clientTmpl, caCert, &clientKey.PublicKey, caKey)
+
+	certPath := filepath.Join(tmpDir, "client.pem")
+	keyPath := filepath.Join(tmpDir, "client-key.pem")
+
+	cf, err := os.Create(certPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pem.Encode(cf, &pem.Block{Type: "CERTIFICATE", Bytes: clientDER}); err != nil {
+		t.Fatal(err)
+	}
+	cf.Close()
+
+	keyDER, _ := x509.MarshalECPrivateKey(clientKey)
+	kf, err := os.Create(keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pem.Encode(kf, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}); err != nil {
+		t.Fatal(err)
+	}
+	kf.Close()
+
+	cfg, err := buildTLSConfig(caPath, certPath, keyPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Certificates) != 1 {
+		t.Fatalf("expected 1 client cert, got %d", len(cfg.Certificates))
+	}
+}
+
+func TestNewBrokerClient_PlainHTTP(t *testing.T) {
+	bc := newBrokerClient("http://localhost:8080", "", "", "")
+	if bc.http.Transport != nil {
+		t.Fatal("plain HTTP client should not have custom transport")
+	}
+}
+
+func TestNewBrokerClient_InvalidCAFallsBack(t *testing.T) {
+	// Bad CA path should warn and fall back to plain HTTP (no Transport).
+	bc := newBrokerClient("http://localhost:8080", "/nonexistent/ca.pem", "", "")
+	if bc.http.Transport != nil {
+		t.Fatal("should fall back to nil transport on bad CA")
 	}
 }

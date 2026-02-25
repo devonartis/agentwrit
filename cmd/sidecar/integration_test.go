@@ -296,7 +296,7 @@ func TestIntegration_DeveloperFlow(t *testing.T) {
 	// ---------------------------------------------------------------
 	// Step 5: Bootstrap the sidecar against the real broker.
 	// ---------------------------------------------------------------
-	bc := newBrokerClient(broker.URL)
+	bc := newBrokerClient(broker.URL, "", "", "")
 	sidecarCfg := sidecarConfig{
 		AdminSecret:  adminSecret,
 		ScopeCeiling: []string{"read:data:*"},
@@ -417,7 +417,7 @@ func TestIntegration_Phase2_LazyRegistration(t *testing.T) {
 	defer broker.Close()
 
 	// Step 2: Bootstrap sidecar.
-	bc := newBrokerClient(broker.URL)
+	bc := newBrokerClient(broker.URL, "", "", "")
 	sidecarCfg := sidecarConfig{
 		AdminSecret:   adminSecret,
 		ScopeCeiling:  []string{"read:data:*"},
@@ -536,7 +536,7 @@ func TestIntegration_Phase2_BYOKRegistration(t *testing.T) {
 	broker := startTestBroker(t, adminSecret)
 	defer broker.Close()
 
-	bc := newBrokerClient(broker.URL)
+	bc := newBrokerClient(broker.URL, "", "", "")
 	sidecarCfg := sidecarConfig{
 		AdminSecret:   adminSecret,
 		ScopeCeiling:  []string{"read:data:*"},

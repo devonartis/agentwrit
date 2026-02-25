@@ -2,10 +2,13 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -32,14 +35,54 @@ type exchangeResp struct {
 }
 
 // newBrokerClient creates a broker HTTP client pointing at the given base URL.
-// All requests use a 10-second timeout.
-func newBrokerClient(baseURL string) *brokerClient {
+// When caCertPath is non-empty, the client uses TLS and trusts the CA at that
+// path. When tlsCertPath and tlsKeyPath are also set, the client presents a
+// client certificate for mTLS. All requests use a 10-second timeout.
+func newBrokerClient(baseURL, caCertPath, tlsCertPath, tlsKeyPath string) *brokerClient {
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	if caCertPath != "" {
+		tlsCfg, err := buildTLSConfig(caCertPath, tlsCertPath, tlsKeyPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "WARN: TLS config failed, falling back to plain HTTP: %v\n", err)
+		} else {
+			client.Transport = &http.Transport{TLSClientConfig: tlsCfg}
+		}
+	}
+
 	return &brokerClient{
 		baseURL: baseURL,
-		http: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+		http:    client,
 	}
+}
+
+// buildTLSConfig constructs a tls.Config that trusts the given CA and
+// optionally loads a client certificate for mTLS.
+func buildTLSConfig(caCertPath, tlsCertPath, tlsKeyPath string) (*tls.Config, error) {
+	caPEM, err := os.ReadFile(caCertPath)
+	if err != nil {
+		return nil, fmt.Errorf("read CA cert %s: %w", caCertPath, err)
+	}
+
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caPEM) {
+		return nil, fmt.Errorf("no valid certificates in %s", caCertPath)
+	}
+
+	cfg := &tls.Config{
+		RootCAs:    pool,
+		MinVersion: tls.VersionTLS13,
+	}
+
+	if tlsCertPath != "" && tlsKeyPath != "" {
+		cert, err := tls.LoadX509KeyPair(tlsCertPath, tlsKeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("load client cert: %w", err)
+		}
+		cfg.Certificates = []tls.Certificate{cert}
+	}
+
+	return cfg, nil
 }
 
 // healthCheck performs GET /v1/health and returns nil when the broker
