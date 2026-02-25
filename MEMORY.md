@@ -18,6 +18,12 @@
 - Check standing rules first, act second
 - Don't delete branches or push until testing is confirmed
 
+**Every endpoint must have aactl operator tooling — no raw curl in tests.** (established 2026-02-25, Session 12)
+- If an endpoint is operator-facing, add an `aactl` command for it as part of the fix
+- Docker live tests should use `aactl` commands, not hand-crafted curl chains
+- Raw curl is only acceptable for truly public/unauthenticated endpoints (health, challenge)
+- An endpoint without tooling is not shippable (same lesson as Session 3 with list-sidecars)
+
 **Docker live test process — every fix/feature.** (established 2026-02-25, Session 10)
 1. `./scripts/stack_up.sh` — bring up the stack
 2. `curl http://127.0.0.1:8080/v1/health` — verify broker is healthy
@@ -116,10 +122,47 @@ The next session must redesign before writing any code. Here is everything neede
 - 5 user story files (`tests/fix2-*` through `tests/fix6-*`)
 
 ### Local branches
-- `fix/audience-validation` (current)
+- `fix/token-release` (current)
 - `develop`
 - `main`
 - `develop-harness-backup` (dead/reference only)
+
+## 2026-02-25 (Session 12)
+
+### Git operations
+- Merged `fix/audience-validation` into `develop` (fast-forward, `457c81d..f1212a9`), deleted branch
+- Created `fix/token-release` off `develop`
+- Commits: `2a61b84` (handler + test + wiring), `7fa20e0` (aactl tooling + changelog)
+- Branch NOT yet merged — ready for merge
+
+### What happened
+Implemented Fix 4 (token release) from `docs/plans/2026-02-25-fix4-token-release.md`.
+
+- `internal/audit/audit_log.go`: `EventTokenReleased` constant
+- `internal/authz/val_mw.go`: `ContextWithClaims()` test helper
+- `internal/handler/release_hdl.go`: new handler — extract claims, revoke JTI, audit, 204
+- `cmd/broker/main.go`: wired `POST /v1/token/release` through `valMw.Wrap()`
+- `cmd/aactl/token.go`: `aactl token release --token <jwt>` operator command
+- `cmd/aactl/client.go`: `doPostWithToken()` for agent-facing endpoints
+
+### Docker live test — PASSED (via aactl)
+
+1. `./scripts/stack_up.sh` — stack up, broker healthy
+2. Story 1: admin auth → `aactl token release --token <jwt>` → token validate shows `valid: False`
+3. Story 2: `aactl audit events --json` → `token_released` event with correct agent_id
+4. Story 3: second `aactl token release --token <same>` → "Token already released (revoked)" (idempotent)
+5. `docker compose down -v`
+
+### User feedback (Session 12)
+- "are you hacking the systems" — called out manual curl chaining as hacky and unrealistic
+- "we should have the admin tooling" — every endpoint needs aactl tooling, not curl hacks
+- "we should have made that part of the fix build the tooling" — tooling is part of the fix, not separate
+- Standing rule added: no endpoint without aactl tooling, no curl in tests
+
+### What's next: IMPLEMENT FIX 1
+- Branch: `fix/broker-tls` off `develop`
+- Plan: `docs/plans/2026-02-25-fix1-native-tls-mtls.md`
+- After Fix 1 → Fix 5 → Fix 6
 
 ## 2026-02-25 (Session 11)
 

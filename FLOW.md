@@ -234,3 +234,23 @@ Key decisions:
 The plan identified 3 issuance paths (IdSvc.Register, TknSvc.Renew, DelegSvc.Delegate). Reality had 5 more: AdminSvc.Authenticate, AdminSvc.ActivateSidecar, handler.TokenExchange, plus seedAdmin and CreateSidecarActivationToken (last two use special-purpose audiences). When adding a claim to all tokens, grep for `tknSvc.Issue(` to find every path.
 
 → Artifact: `fix/audience-validation` branch (5 commits)
+
+---
+
+## 2026-02-25 (Session 12)
+
+### Executing-Plans: Fix 4 — Token Release
+
+Executed `docs/plans/2026-02-25-fix4-token-release.md`. Implementation was straightforward — ~45 lines of handler code, 4 unit tests, route wiring.
+
+Key decisions:
+1. **No scope gate** — release is self-revocation, any authenticated agent can release its own token. No admin scope needed.
+2. **aactl tooling as part of the fix** — user called out manual curl testing as unshippable. Added `aactl token release --token <jwt>`.
+3. **Double-release idempotency** — middleware rejects already-revoked tokens with 403. aactl treats "token has been revoked" 403 as idempotent success.
+4. **`ContextWithClaims` test helper** — exported for handler tests that need to inject claims without going through full middleware.
+
+### Lesson: every endpoint needs operator tooling
+
+User feedback: "are you hacking the systems" when seeing manual curl chains for Docker live testing. Endpoints without aactl commands are not shippable — same lesson as Session 3 (list-sidecars). Standing rule added: no endpoint ships without aactl tooling, no raw curl in tests (except public/unauthed endpoints).
+
+→ Artifact: `fix/token-release` branch (2 commits)
