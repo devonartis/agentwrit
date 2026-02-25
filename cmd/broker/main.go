@@ -104,6 +104,14 @@ func main() {
 	obs.Ok("BROKER", "main", "sidecars loaded", fmt.Sprintf("count=%d", len(sidecarCeilings)))
 	obs.SidecarsTotal.WithLabelValues("active").Set(float64(len(sidecarCeilings)))
 
+	// Load existing revocations from SQLite
+	revEntries, err := sqlStore.LoadAllRevocations()
+	if err != nil {
+		obs.Fail("BROKER", "main", "revocation load failed", "error="+err.Error())
+		fmt.Fprintf(os.Stderr, "FATAL: load revocations: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Initialize audit log with persistence
 	var auditLog *audit.AuditLog
 	if len(existingEvents) > 0 {
@@ -112,7 +120,15 @@ func main() {
 		auditLog = audit.NewAuditLog(sqlStore)
 	}
 	tknSvc := token.NewTknSvc(privKey, pubKey, c)
-	revSvc := revoke.NewRevSvc()
+	revSvc := revoke.NewRevSvc(sqlStore)
+	if len(revEntries) > 0 {
+		typed := make([]struct{ Level, Target string }, len(revEntries))
+		for i, e := range revEntries {
+			typed[i] = struct{ Level, Target string }{e.Level, e.Target}
+		}
+		revSvc.LoadFromEntries(typed)
+		obs.Ok("BROKER", "main", "revocations loaded", fmt.Sprintf("count=%d", len(revEntries)))
+	}
 	idSvc := identity.NewIdSvc(sqlStore, tknSvc, c.TrustDomain, auditLog)
 	delegSvc := deleg.NewDelegSvc(tknSvc, sqlStore, auditLog, privKey)
 	adminSvc := admin.NewAdminSvc(c.AdminSecret, tknSvc, sqlStore, auditLog)

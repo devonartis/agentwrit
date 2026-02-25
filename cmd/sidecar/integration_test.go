@@ -49,7 +49,7 @@ func startTestBroker(t *testing.T, secret string) *httptest.Server {
 	sqlStore := store.NewSqlStore()
 	auditLog := audit.NewAuditLog(nil)
 	tknSvc := token.NewTknSvc(privKey, pubKey, c)
-	revSvc := revoke.NewRevSvc()
+	revSvc := revoke.NewRevSvc(nil)
 	idSvc := identity.NewIdSvc(sqlStore, tknSvc, c.TrustDomain, auditLog)
 	adminSvc := admin.NewAdminSvc(c.AdminSecret, tknSvc, sqlStore, auditLog)
 	valMw := authz.NewValMw(tknSvc, revSvc, auditLog)

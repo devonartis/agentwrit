@@ -44,7 +44,7 @@ func TestHeartbeatMissedAccumulates(t *testing.T) {
 }
 
 func TestHeartbeatAutoRevocation(t *testing.T) {
-	revSvc := revoke.NewRevSvc()
+	revSvc := revoke.NewRevSvc(nil)
 	hb := NewHeartbeatMgr(revSvc)
 	hb.interval = 10 * time.Millisecond
 	hb.maxMiss = 2
