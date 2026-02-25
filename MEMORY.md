@@ -1,13 +1,114 @@
 # MEMORY.md
 
-## Standing Rule (established 2026-02-24)
+## Standing Rules
 
-**Live tests require Docker — the app must be running in containers.**
+**Live tests require Docker — the app must be running in containers.** (established 2026-02-24)
 - Self-hosted binary tests are NOT live tests — they are quick local checks only
 - Real live tests run against the Docker stack (`./scripts/stack_up.sh` first)
 - Every fix/feature must have a Docker live test before merge
 - User stories go in `tests/<name>-user-stories.md` before writing any test code
 - `docker-compose.yml` must be updated when a fix adds new env vars
+
+**MEMORY.md records git operations and user reasoning.** (established 2026-02-25)
+- Log every branch create/delete, merge, push
+- Capture user feedback, rants, and reasoning — paraphrased or quoted — so future sessions know *what the user was thinking* and *why* decisions were made, not just what changed
+- Keep it short: links to commits/files instead of full descriptions where possible
+
+**Before any branch delete, merge, or push — verify the feature's Docker live test passed.** (established 2026-02-25)
+- Check standing rules first, act second
+- Don't delete branches or push until testing is confirmed
+
+## 2026-02-25 (Session 8)
+
+### Git operations
+- Deleted merged `fix/broker-tls` branch (was `ea1c936`)
+- Pushed `develop` to origin (`dcff7ec..829172b`)
+- Created `fix/broker-tls-docker-test` branch off develop
+- Commits on that branch: `056e164` (design doc), `9055430` (impl plan), `3c9b9d0` (TLS Docker test infrastructure), `cd12501` (WIP sidecar TLS client)
+- Branch NOT merged — pending redesign decision
+
+### What happened
+Fix 1 (broker TLS) was merged to develop in Session 7 without a Docker live test. Session 8 discovered this, created `fix/broker-tls-docker-test` to build Docker TLS test infrastructure.
+
+Docker test results:
+- **HTTP mode: 9/9 PASSED** — baseline, no TLS
+- **TLS mode: 10/10 PASSED** — one-way TLS with self-signed certs
+- **mTLS mode: NOT RUNNABLE** — sidecar has no TLS client support (see critical finding below)
+
+### Critical finding: Fix 1 design was incomplete
+Fix 1 only implemented the broker's TLS server side. For mTLS to work end-to-end, the sidecar must also be an mTLS client — it needs to present a client cert and verify the broker's cert. The sidecar's `brokerClient` uses a plain `http.Client` with zero TLS config. This was missed in the original design (`plans/design-solution.md` line 90: "Files: `internal/cfg/cfg.go`, `cmd/broker/main.go`" — sidecar not mentioned).
+
+Additionally, when TLS is enabled on the broker:
+- Sidecar's `AA_BROKER_URL` must change from `http://` to `https://`
+- Sidecar needs CA cert access to verify broker (via `SSL_CERT_FILE` env var for system trust, or custom config)
+- For mTLS, sidecar needs `AA_SIDECAR_TLS_CERT`, `AA_SIDECAR_TLS_KEY`, `AA_SIDECAR_TLS_CA` env vars
+
+The operator docs already noted this at `getting-started-operator.md:204` but the implementation plan didn't account for it.
+
+### Decision: go back to design
+All 6 fixes need re-evaluation. The original plan said they were "all independently implementable" but Fix 1 (TLS) actually depends on sidecar client TLS support, and Fix 5 (UDS) also touches the sidecar. Dependencies between fixes need to be mapped properly before implementation continues.
+
+Branch `fix/broker-tls-docker-test` has working Docker TLS test infrastructure that can be reused. The compose overlay pattern (docker-compose.tls.yml, docker-compose.mtls.yml) and test script changes are solid.
+
+### User feedback (Session 8)
+- Frustrated that Fix 1 was merged without Docker test, then the branch was deleted and pushed — making it worse
+- "THIS IS BULLSHIT YOU ARE REALLY OVER ENGINEERING SHIT" — too much ceremony (brainstorming skill → design doc → impl plan → subagent-driven-development) for what should have been straightforward
+- "no randomize port that is not good" — test should use fixed ports like production
+- "isnt that what the pattern says we need to have mtls" — mTLS is the recommended production mode per the security pattern, so Fix 1 not supporting it is a real gap
+- "so maybe you design the whole thing wrong with the initial fix" — Fix 1 needs redesign to include sidecar client side
+- "lets commit what we have and go back to design to ensure we design and review everything over first"
+
+### What's next: REDESIGN ALL 6 FIXES
+
+The next session must redesign before writing any code. Here is everything needed.
+
+**The 6 fixes** (from `plans/design-solution.md` and `plans/implementation-plan.md`):
+
+| # | Fix | What it does | Current state |
+|---|-----|-------------|---------------|
+| 1 | Native TLS/mTLS | Encrypt broker ↔ sidecar traffic, require client certs | Broker server side done on develop (`ea1c936`). Sidecar client side NOT done. mTLS is broken. |
+| 2 | Revocation persistence | Persist revocations to SQLite so they survive restart | Not started. Design in `plans/design-solution.md`. User stories in `tests/fix2-*`. |
+| 3 | Audience validation | Set and check `aud` field on all JWTs | Not started. Design in `plans/design-solution.md`. User stories in `tests/fix3-*`. |
+| 4 | Token release | `POST /v1/token/release` for task completion signal | Not started. Design in `plans/design-solution.md`. User stories in `tests/fix4-*`. |
+| 5 | Sidecar UDS | Unix domain socket listen mode to eliminate port sprawl | Not started. Design in `plans/design-solution.md`. User stories in `tests/fix5-*`. |
+| 6 | Structured audit | Typed fields instead of free-form Detail string | Not started. Design in `plans/design-solution.md`. User stories in `tests/fix6-*`. |
+
+**Known dependency issues with the old plan:**
+1. Fix 1 and Fix 5 both modify sidecar transport — Fix 1 changes how sidecar talks TO the broker (outbound HTTP client → HTTPS/mTLS client), Fix 5 changes how apps talk TO the sidecar (inbound TCP listener → UDS listener). They touch different sides but both modify `cmd/sidecar/`.
+2. Fix 1 is incomplete — the broker server TLS is on develop but the sidecar client TLS is missing. Need to decide: complete Fix 1 (add sidecar TLS client) or redesign Fix 1 scope.
+3. The old plan claimed all fixes were independent. That's wrong. Need to map which fixes touch which files and identify real conflicts.
+
+**Files each fix touches** (from design + what we learned):
+- Fix 1: `internal/cfg/cfg.go`, `cmd/broker/main.go` (done), `cmd/sidecar/broker_client.go`, `cmd/sidecar/config.go`, `cmd/sidecar/main.go` (not done), `docker-compose.yml`, `docker-compose.tls.yml`, `docker-compose.mtls.yml`
+- Fix 2: `internal/revoke/rev_svc.go`, `internal/store/sql_store.go`, `cmd/broker/main.go`
+- Fix 3: `internal/cfg/cfg.go`, `internal/token/tkn_claims.go`, `internal/token/tkn_svc.go`, `internal/authz/val_mw.go`, `internal/identity/id_svc.go`, `internal/deleg/deleg_svc.go`
+- Fix 4: new `internal/handler/release_hdl.go`, `internal/audit/audit_log.go`, `cmd/broker/main.go`
+- Fix 5: `cmd/sidecar/config.go`, `cmd/sidecar/main.go`
+- Fix 6: `internal/audit/audit_log.go`, `internal/store/sql_store.go`, ~6 callers
+
+**What the redesign must produce:**
+1. Correct dependency graph showing which fixes must come before which
+2. Identify fixes that truly conflict vs. ones that can be parallel
+3. New phase ordering (the old Phase 1/2/3 was wrong)
+4. Updated scope for Fix 1 — must include sidecar TLS client
+5. Each fix must have a Docker live test defined as part of its spec
+6. New implementation plan replacing `plans/implementation-plan.md`
+
+**Docker test infrastructure to rebuild** (was on deleted branch):
+- Compose overlay pattern: `docker-compose.tls.yml` (one-way TLS), `docker-compose.mtls.yml` (mutual TLS)
+- `live_test_docker.sh` needs `--tls` and `--mtls` flags
+- Runtime cert generation via openssl (no certs checked into repo)
+- Key configs: sidecar needs `AA_BROKER_URL=https://...`, `SSL_CERT_FILE` for CA trust, cert volume mounts
+- TLS-specific assertions: plain HTTP returns 400 (not connection refused) from Go's TLS server
+
+### Uncommitted on develop
+- `agentauth.db` (runtime artifact)
+- 5 user story files (`tests/fix2-*` through `tests/fix6-*`)
+
+### Local branches
+- `develop` (current)
+- `main`
+- `develop-harness-backup` (dead/reference only)
 
 ## 2026-02-24 (Session 7)
 

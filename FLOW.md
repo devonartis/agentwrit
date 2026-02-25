@@ -100,3 +100,53 @@ Four independent reviewers evaluated develop against the Ephemeral Agent Credent
 ### Fix 1 (broker TLS/mTLS) — In Progress
 
 TDD RED confirmed: 3 cfg tests + 3 loadCA tests all failing before any production code written. GREEN: added `TLSMode`, `TLSCert`, `TLSKey`, `TLSClientCA` fields to `internal/cfg/cfg.go`, added `serve.go` + `loadCA()` to `cmd/broker/`, wired `serve()` into `main.go`. All 8 unit tests pass. Live test (`--tls`, `--mtls`) added to `live_test.sh`. User stories saved to `tests/fix1-broker-tls-user-stories.md`. Docker live test still needed — `docker-compose.yml` update pending.
+
+---
+
+## 2026-02-25 (Session 8)
+
+### Docker TLS live test — revealed Fix 1 design gap
+
+Built Docker TLS test infrastructure on `fix/broker-tls-docker-test` branch. Compose overlay pattern: `docker-compose.tls.yml` and `docker-compose.mtls.yml` layer TLS config on top of base compose file. Runtime cert generation via openssl (no certs in repo). Test script `live_test_docker.sh` extended with `--tls` and `--mtls` flags.
+
+**TLS test (one-way) passed 10/10.** Key learnings during debugging:
+- Sidecar needs `AA_BROKER_URL=https://broker:8080` when broker has TLS (was `http://`)
+- Sidecar needs `SSL_CERT_FILE=/certs/cert.pem` for Go's crypto/tls to trust self-signed certs
+- Go's TLS server returns HTTP 400 (not connection refused) when receiving plain HTTP — test assertion updated
+- Certs must be mounted into sidecar container too (not just broker) since test curl runs inside sidecar
+
+**mTLS test not runnable — design gap found.** The sidecar's `brokerClient` (`cmd/sidecar/broker_client.go`) uses a plain `http.Client` with no TLS configuration. It cannot present a client certificate. mTLS requires both sides to present certs. Fix 1 only implemented the broker server side.
+
+### Decision: Fix 1 design was incomplete — redesign needed
+
+The original design (`plans/design-solution.md`, Fix 1) scoped the work as broker-only: "Files: `internal/cfg/cfg.go`, `cmd/broker/main.go`". This was wrong. For mTLS to work in production:
+1. Broker presents server cert + requires client certs (done)
+2. Sidecar presents client cert + verifies broker cert (not done)
+3. Sidecar's `AA_BROKER_URL` must switch to HTTPS (config, not code)
+
+The implementation plan also claimed all 6 fixes were "independently implementable." This is incorrect — Fix 1 (TLS) requires sidecar client TLS, and Fix 5 (UDS) also modifies sidecar transport. They share the sidecar as a dependency and should be coordinated.
+
+### Decision: go back to design before continuing implementation
+
+User directed: commit what we have, go back to develop, redesign all 6 fixes with correct dependency ordering. The original phase ordering was:
+```
+Phase 1: Fix 1 (mTLS) + Fix 2 (revocation)
+Phase 2: Fix 3 (audience) + Fix 4 (token release)
+Phase 3: Fix 5 (UDS) + Fix 6 (audit)
+```
+
+This needs revision. Fix 1 and Fix 5 both touch sidecar transport and should be considered together. New design must map real dependencies.
+
+### Lesson: over-engineering ceremony vs. just doing the work
+
+User frustrated with brainstorming skill → design doc → implementation plan → subagent-driven-development chain for what was essentially "write 3 files and run tests." The ceremony added significant overhead without proportional value. For tactical work (test infrastructure, config fixes), just do the work. Reserve the full skill chain for genuinely complex design decisions.
+
+### Lesson: Docker live tests catch real integration issues
+
+The TLS Docker test caught two categories of bugs that unit tests cannot:
+1. **Configuration gaps**: sidecar `AA_BROKER_URL` not switching to HTTPS, cert mounting
+2. **Design gaps**: sidecar missing TLS client support entirely
+
+This validates the standing rule. The Docker test should have been part of Fix 1 from the start.
+
+→ Artifacts: `fix/broker-tls-docker-test` branch (compose overlays, test script, WIP sidecar TLS)
