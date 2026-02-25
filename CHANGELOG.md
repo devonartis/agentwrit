@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Fix 3: Audience Validation (P1 Compliance — Pattern v1.2 §3.1)
+
+**Summary:** Tokens were issued without an `aud` (audience) claim, meaning a token from
+one broker instance could be replayed against another. This fix adds `AA_AUDIENCE`
+configuration, populates `aud` in all token issuance paths, and validates it in the
+authentication middleware. Backward compatible — unset or empty `AA_AUDIENCE` skips
+the check.
+
+#### Modified: `internal/cfg/cfg.go`
+- New `Audience` field on `Cfg` struct.
+- `Load()` uses `os.LookupEnv` to distinguish unset (default "agentauth") from empty (skip).
+
+#### Modified: `internal/authz/val_mw.go`
+- `ValMw` gains `audience` field; `NewValMw()` accepts audience param.
+- `Wrap()` checks `claims.Aud` contains the configured audience after revocation check.
+- New `containsAudience()` helper.
+
+#### Modified: `internal/identity/id_svc.go`
+- `IdSvc` gains `audience` field; `NewIdSvc()` accepts audience param.
+- `Register()` populates `Aud` on issued tokens via `audienceSlice()`.
+
+#### Modified: `internal/token/tkn_svc.go`
+- `Renew()` preserves `Aud` from the original token across renewal.
+
+#### Modified: `internal/deleg/deleg_svc.go`
+- `Delegate()` propagates `Aud` from delegator to delegate token.
+
+#### Modified: `internal/admin/admin_svc.go`
+- `AdminSvc` gains `audience` field; `NewAdminSvc()` accepts audience param.
+- `Authenticate()` and `ActivateSidecar()` populate `Aud` on issued tokens.
+
+#### Modified: `internal/handler/token_exchange_hdl.go`
+- Token exchange propagates `Aud` from caller (sidecar) token to issued agent token.
+
+#### Modified: `docker-compose.yml`
+- `AA_AUDIENCE` env var passed through to broker container.
+
 ### Added — Fix 2: Revocation Persistence (P0 Compliance — Pattern v1.2 §4.2)
 
 **Summary:** Revocations were previously stored only in memory — a broker restart
