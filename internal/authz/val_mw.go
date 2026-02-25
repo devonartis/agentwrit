@@ -142,6 +142,11 @@ func (m *ValMw) RequireScope(scope string, next http.Handler) http.Handler {
 	})
 }
 
+// ContextWithClaims stores claims in context. Exported for testing.
+func ContextWithClaims(ctx context.Context, claims *token.TknClaims) context.Context {
+	return context.WithValue(ctx, claimsKey, claims)
+}
+
 // ClaimsFromContext extracts the [token.TknClaims] stored by [ValMw.Wrap]
 // from the request context. It returns nil if no claims are present.
 func ClaimsFromContext(ctx context.Context) *token.TknClaims {

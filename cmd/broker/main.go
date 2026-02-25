@@ -17,6 +17,7 @@
 //	POST /v1/token/validate      – verify a token (public)
 //	POST /v1/token/renew         – renew a token (Bearer auth)
 //	POST /v1/token/exchange      – sidecar token exchange (Bearer auth + sidecar scope)
+//	POST /v1/token/release       – agent self-revocation (Bearer auth)
 //	POST /v1/delegate            – scope-attenuated delegation (Bearer auth)
 //	POST /v1/revoke              – revoke tokens (admin scope)
 //	GET  /v1/audit/events        – query audit trail (admin scope)
@@ -148,6 +149,7 @@ func main() {
 	valHdl := handler.NewValHdl(tknSvc, revSvc)
 	renewHdl := handler.NewRenewHdl(tknSvc, auditLog, sqlStore)
 	revokeHdl := handler.NewRevokeHdl(revSvc, auditLog)
+	releaseHdl := handler.NewReleaseHdl(revSvc, auditLog)
 	delegHdl := handler.NewDelegHdl(delegSvc)
 	tokenExchangeHdl := handler.NewTokenExchangeHdl(tknSvc, sqlStore, auditLog)
 	auditHdl := handler.NewAuditHdl(auditLog)
@@ -174,6 +176,7 @@ func main() {
 	mux.Handle("POST /v1/token/exchange",
 		problemdetails.MaxBytesBody(valMw.Wrap(valMw.RequireScope("sidecar:manage:*", tokenExchangeHdl))))
 	mux.Handle("POST /v1/delegate", problemdetails.MaxBytesBody(valMw.Wrap(delegHdl)))
+	mux.Handle("POST /v1/token/release", problemdetails.MaxBytesBody(valMw.Wrap(releaseHdl)))
 
 	// Admin endpoints (Bearer + admin scope)
 	mux.Handle("POST /v1/revoke",

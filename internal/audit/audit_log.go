@@ -39,6 +39,7 @@ const (
 	EventTokenIssued             = "token_issued"
 	EventTokenRevoked            = "token_revoked"
 	EventTokenRenewed            = "token_renewed"
+	EventTokenReleased           = "token_released"
 	EventTokenRenewalFailed      = "token_renewal_failed"
 	EventDelegationCreated       = "delegation_created"
 	EventResourceAccessed         = "resource_accessed"
