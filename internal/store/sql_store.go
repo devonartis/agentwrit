@@ -297,6 +297,16 @@ CREATE INDEX IF NOT EXISTS idx_audit_agent_id   ON audit_events(agent_id);
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp  ON audit_events(timestamp);
 `
 
+const createRevocationsTable = `
+CREATE TABLE IF NOT EXISTS revocations (
+	id         INTEGER PRIMARY KEY AUTOINCREMENT,
+	level      TEXT NOT NULL,
+	target     TEXT NOT NULL,
+	revoked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE(level, target)
+);
+`
+
 const createSidecarsTable = `
 CREATE TABLE IF NOT EXISTS sidecars (
 	id         TEXT PRIMARY KEY,
@@ -328,6 +338,12 @@ func (s *SqlStore) InitDB(path string) error {
 		obs.Fail("store", "sqlite", "failed to create sidecars table", "error="+err.Error())
 		obs.DBErrorsTotal.WithLabelValues("create_table").Inc()
 		return fmt.Errorf("create sidecars table: %w", err)
+	}
+	if _, err = db.Exec(createRevocationsTable); err != nil {
+		db.Close()
+		obs.Fail("store", "sqlite", "failed to create revocations table", "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("create_table").Inc()
+		return fmt.Errorf("create revocations table: %w", err)
 	}
 	s.db = db
 	obs.Ok("store", "sqlite", "database initialized", "path="+path)
@@ -697,6 +713,55 @@ func (s *SqlStore) LoadAllSidecars() (map[string][]string, error) {
 	}
 	obs.Ok("store", "sqlite", "active sidecars loaded", fmt.Sprintf("count=%d", len(ceilings)))
 	return ceilings, nil
+}
+
+// ---------------------------------------------------------------------------
+// SQLite revocation persistence
+// ---------------------------------------------------------------------------
+
+// RevocationEntry represents a single persisted revocation.
+type RevocationEntry struct {
+	Level  string
+	Target string
+}
+
+// SaveRevocation persists a revocation entry. The UNIQUE constraint
+// makes this idempotent — re-revoking the same level+target is a no-op.
+func (s *SqlStore) SaveRevocation(level, target string) error {
+	if s.db == nil {
+		return errors.New("database not initialized: call InitDB first")
+	}
+	const q = `INSERT OR IGNORE INTO revocations (level, target) VALUES (?, ?)`
+	_, err := s.db.Exec(q, level, target)
+	if err != nil {
+		obs.DBErrorsTotal.WithLabelValues("save_revocation").Inc()
+		return fmt.Errorf("save revocation %s/%s: %w", level, target, err)
+	}
+	return nil
+}
+
+// LoadAllRevocations returns all persisted revocations. Called at broker
+// startup to rebuild the in-memory revocation maps.
+func (s *SqlStore) LoadAllRevocations() ([]RevocationEntry, error) {
+	if s.db == nil {
+		return nil, errors.New("database not initialized: call InitDB first")
+	}
+	rows, err := s.db.Query(`SELECT level, target FROM revocations ORDER BY id ASC`)
+	if err != nil {
+		obs.DBErrorsTotal.WithLabelValues("load_revocations").Inc()
+		return nil, fmt.Errorf("load revocations: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []RevocationEntry
+	for rows.Next() {
+		var e RevocationEntry
+		if err := rows.Scan(&e.Level, &e.Target); err != nil {
+			return nil, fmt.Errorf("scan revocation row: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
 }
 
 // HasDB reports whether the store has an active SQLite database connection.
