@@ -150,3 +150,67 @@ The TLS Docker test caught two categories of bugs that unit tests cannot:
 This validates the standing rule. The Docker test should have been part of Fix 1 from the start.
 
 → Artifacts: `fix/broker-tls-docker-test` branch (compose overlays, test script, WIP sidecar TLS)
+
+---
+
+## 2026-02-25 (Session 9)
+
+### Brainstorming: Redesign all 6 compliance fixes
+
+Old design claimed all fixes were "independently implementable" — Session 8 Docker testing proved this wrong. Redesigned from scratch using first-principles ordering:
+
+1. **Security gaps before compliance gaps** — Fix 2 (revocations lost on restart) is exploitable; Fix 1 (TLS) is a spec checkbox
+2. **Foundations before dependents** — Fix 4 calls `revSvc.Revoke()`, needs Fix 2 for persistence
+3. **Widest change last** — Fix 6 touches ~9 files, goes last to pick up all new callers
+4. **Same-binary changes adjacent** — Fix 1 and Fix 5 both modify sidecar, done back-to-back
+5. **Small fast wins early** — Fix 2, 3, 4 are all under 120 lines
+
+Fix 1 scope corrected to include sidecar TLS client (broker_client.go, config.go) — the gap Session 8 found.
+
+→ Artifact: `plans/design-solution.md` (v2, from scratch)
+
+### Writing-Plans: 6 implementation plans
+
+One plan file per fix. Each follows TDD pattern: write failing test → implement → verify → commit. Each plan ends with gates + Docker live test. Plans are in execution order: fix2 → fix3 → fix4 → fix1 → fix5 → fix6.
+
+User feedback drove key decisions: don't patch old broken designs (rewrite from scratch), separate files per fix, recommend with reasoning instead of asking which approach.
+
+→ Artifacts: `docs/plans/2026-02-25-fix{1-6}-*.md`
+
+---
+
+## 2026-02-25 (Session 10)
+
+### Executing-Plans: Fix 2 — Revocation Persistence
+
+Executed `docs/plans/2026-02-25-fix2-revocation-persistence.md` via TDD. Plan was accurate — no deviations needed.
+
+Key implementation decisions:
+1. **Write-through pattern** matches existing audit/sidecar persistence
+2. **`INSERT OR IGNORE`** with `UNIQUE(level, target)` — idempotent by design
+3. **Store is optional** (`nil`) — existing code works unchanged
+4. **Persistence failure is non-blocking** — warns but doesn't fail the revocation
+5. **`LoadFromEntries` uses anonymous struct** — keeps revoke package decoupled from store
+
+→ Artifact: `fix/revocation-persistence` branch (5 commits)
+
+### Process established: Docker live test for every fix
+
+**The correct process for Docker live testing:**
+1. `./scripts/stack_up.sh` — bring up the stack
+2. Verify healthy: `curl http://127.0.0.1:8080/v1/health`
+3. Run the user story commands against the running stack (admin auth, revoke, validate, restart, check SQLite, etc.)
+4. Verify each story passes
+5. `docker compose down -v` — tear down
+
+**Do NOT use `live_test_docker.sh` for manual testing** — it creates its own isolated stack and conflicts with `stack_up.sh`. The automated script is for CI. Manual testing runs commands directly against the stack.
+
+**The test must be designed BEFORE implementation.** Read user stories, understand the test infrastructure, identify constraints (like ephemeral signing keys), then code. Not the other way around.
+
+### Lesson: ephemeral signing keys affect revocation testing
+
+Signing keys are regenerated on every startup. After restart, ALL pre-restart tokens fail signature verification before the revocation check runs. Cannot distinguish "revoked" from "bad signature" on pre-restart tokens via validate. Must test persistence via: SQLite inspection, broker startup logs (`revocations loaded count=N`), and fresh tokens for false-positive testing.
+
+This should have been understood before coding — it shapes the entire test design.
+
+→ Artifact: Docker live test steps documented in MEMORY.md Session 10

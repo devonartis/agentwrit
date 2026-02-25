@@ -18,6 +18,16 @@
 - Check standing rules first, act second
 - Don't delete branches or push until testing is confirmed
 
+**Docker live test process — every fix/feature.** (established 2026-02-25, Session 10)
+1. `./scripts/stack_up.sh` — bring up the stack
+2. `curl http://127.0.0.1:8080/v1/health` — verify broker is healthy
+3. Run user story commands against the running stack (admin auth, the fix-specific operations, restarts, SQLite checks, etc.)
+4. Verify each story passes on the running stack
+5. `docker compose down -v` — tear down
+- Do NOT use `live_test_docker.sh` for manual testing — it creates its own stack and conflicts
+- Design the test BEFORE implementation: read user stories, understand constraints, then code
+- The test is part of the fix, not a separate task to defer
+
 ## 2026-02-25 (Session 8)
 
 ### Git operations
@@ -107,6 +117,64 @@ The next session must redesign before writing any code. Here is everything neede
 
 ### Local branches
 - `develop` (current)
+- `main`
+- `develop-harness-backup` (dead/reference only)
+
+## 2026-02-25 (Session 10)
+
+### Git operations
+- Created `fix/revocation-persistence` off `develop`
+- Commits: `e457274`, `9d4dc3d`, `37b6d1e`, `eadd8b1`, `ac14850`
+- Branch NOT yet merged — ready for merge
+
+### What happened
+Implemented Fix 2 (revocation persistence) from `docs/plans/2026-02-25-fix2-revocation-persistence.md`. TDD throughout.
+
+- `internal/store/sql_store.go`: `revocations` table, `SaveRevocation()`, `LoadAllRevocations()`
+- `internal/revoke/rev_svc.go`: `RevocationStore` interface, write-through in `Revoke()`, `LoadFromEntries()`
+- `cmd/broker/main.go`: loads revocations on startup, passes `sqlStore` to `NewRevSvc()`
+- `Dockerfile`: added `sqlite` to broker image for DB inspection
+- `scripts/live_test_docker.sh`: extended with Fix 2 persistence tests
+- Updated 4 test files for new `NewRevSvc(nil)` signature
+
+Gates: 3 PASS, 0 FAIL, 1 WARN (gosec, non-blocking).
+
+### Docker live test — PASSED
+
+**Steps to run live test manually:**
+1. `./scripts/stack_up.sh` — bring up Docker stack, wait for healthy
+2. `curl http://127.0.0.1:8080/v1/health` — verify broker is up
+3. Admin auth: `POST /v1/admin/auth` with `change-me-in-production`
+4. Revoke: `POST /v1/revoke` with `{"level":"token","target":"..."}` and `{"level":"agent","target":"..."}`
+5. Check SQLite: `docker compose exec broker sqlite3 /data/agentauth.db "SELECT * FROM revocations"`
+6. Restart broker: `docker compose restart broker`
+7. Wait for healthy, check logs: `docker compose logs broker --tail=20 | grep revocat`
+8. Verify SQLite still has entries after restart
+9. Admin auth again (new keys after restart), validate fresh token — should be `valid:true` (no false positive)
+10. `docker compose down -v` — tear down
+
+**Results:**
+- Story 1: 2 revocations persisted to SQLite, broker logged `revocations loaded count=2` after restart
+- Story 2: Fresh post-restart token validated `valid:true` — no false positives
+- Story 3: SQLite entries visible before and after restart
+
+### Testing constraint: ephemeral signing keys
+Signing keys are regenerated on every startup. After restart, ALL pre-restart tokens fail signature verification before the revocation check runs. You cannot distinguish "revoked" from "bad signature" on a pre-restart token via the validate endpoint. The test works around this by checking SQLite directly + broker logs for persistence proof, and using fresh tokens for false-positive testing.
+
+### Process lessons
+1. **Understand the test before you code.** Should have read user stories, test infrastructure, and figured out the signing key constraint before writing implementation. Instead discovered it at test time.
+2. **Don't punt Docker tests.** Tried to defer live test to "next session" — that's wrong. The live test is part of the fix.
+3. **`live_test_docker.sh` creates its own stack.** It spins up an isolated project with random ports, which conflicts with a stack from `stack_up.sh`. The manual test steps above are how to properly test against a running stack.
+4. **`stack_up.sh` first, then test.** The correct process: bring up stack, verify healthy, run commands against it. Not a single script that does everything.
+
+### What's next
+- Merge `fix/revocation-persistence` to `develop`
+- Start Fix 3 (audience validation): `docs/plans/2026-02-25-fix3-audience-validation.md`
+- **For Fix 3: read user stories and test infrastructure FIRST, design Docker test, then implement**
+
+### Local branches
+- `fix/revocation-persistence` (current, 5 commits ahead of develop)
+- `develop`
 - `main`
 - `develop-harness-backup` (dead/reference only)
 
