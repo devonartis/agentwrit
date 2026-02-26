@@ -67,12 +67,24 @@ Ran a 4-agent collaborative debate to answer the 6 architecture questions from S
 - "why would you put stuff in the application docs WTF" — agents wrote to `docs/plans/` instead of `plans/`
 - Directed: convert decision to ADR, create KNOWN-ISSUES.md, merge to develop, create post-merge TODO for docs + SDK
 
+### Compliance fix status — 5 of 6 done, Fix 6 NOT started
+
+| Fix | Status | Session |
+|-----|--------|---------|
+| Fix 2 — Revocation Persistence | DONE | Session 10 |
+| Fix 3 — Audience Validation | DONE | Session 11 |
+| Fix 4 — Token Release | DONE | Session 12 |
+| Fix 1 — Sidecar TLS Client | DONE | Session 13 |
+| Fix 5 — Sidecar UDS | DONE | Session 14 |
+| **Fix 6 — Structured Audit** | **NOT STARTED** | Preempted by architecture brainstorm (Sessions 14-15) |
+
+Fix 6 was always "next" after the current fix but never got picked up. Session 14 raised the sidecar architecture questions which blocked Fix 5's merge and consumed Session 15 entirely. Fix 6 is the only compliance fix remaining. Design is in `plans/design-solution.md` (lines 246-300), user stories at `tests/fix6-structured-audit-user-stories.md`.
+
 ### What's next
-1. **Merge `fix/sidecar-uds` to `develop`** (this session)
-2. **Fix 6** (structured audit) — last compliance fix
-3. **Documentation deep dive** — operator guide, developer guide, architecture FAQ (see `plans/2026-02-25-post-merge-roadmap.md`)
-4. **Admin secret narrowing** (KI-001 fix) — new broker endpoint
-5. **SDK development** — Python + TypeScript
+1. **Fix 6** (structured audit) — last compliance fix, design ready, never started
+2. **Documentation deep dive** — operator guide, developer guide, architecture FAQ (see `plans/2026-02-25-post-merge-roadmap.md`)
+3. **Admin secret narrowing** (KI-001 fix) — new broker endpoint
+4. **SDK development** — Python + TypeScript
 
 ### Local branches
 - `fix/sidecar-uds` (current, merging to develop)

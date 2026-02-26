@@ -53,11 +53,17 @@ Key lessons: neutral positions > assigned positions, broadcast > DMs, shared pro
 
 → Artifact: Team pattern documented in Obsidian insights (AI-Systems-Building)
 
+### Fix 6 (Structured Audit) — preempted, not forgotten
+
+Fix 6 was always the last fix in the sequence (2→3→4→1→5→6). Every session from 10 onward listed "then Fix 6" as the next step. Session 14 preempted it — user raised fundamental sidecar architecture questions that blocked Fix 5's merge. Session 15 was entirely consumed by the 4-agent architecture debate. Fix 6 was never claimed as done — it was deferred twice and is the only compliance fix remaining.
+
+Design is ready (`plans/design-solution.md` lines 246-300). User stories exist (`tests/fix6-structured-audit-user-stories.md`). No code written, no branch created.
+
 ### Post-Merge Roadmap Created
 
 Priorities after merging fix/sidecar-uds:
-1. Documentation deep dive (operator guide, developer guide, architecture FAQ)
-2. Fix 6 (structured audit) — last compliance fix
+1. Fix 6 (structured audit) — last compliance fix, part of the original 6-fix plan, should be completed before docs/SDK work
+2. Documentation deep dive (operator guide, developer guide, architecture FAQ)
 3. Admin secret narrowing (KI-001) — new broker endpoint
 4. SDK development (Python + TypeScript) — for operators and developers
 5. Merge develop to main (release)
