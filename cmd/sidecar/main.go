@@ -54,15 +54,27 @@ func main() {
 	mux.Handle("/v1/health", healthH)
 	mux.Handle("/v1/metrics", promhttp.Handler())
 
-	// Start HTTP server immediately so health probes get a response.
-	addr := ":" + cfg.Port
+	// Start listener (UDS or TCP).
+	ln, cleanup, err := startListener(cfg.SocketPath, cfg.Port)
+	if err != nil {
+		obs.Fail("SIDECAR", "MAIN", "listen failed", err.Error())
+		os.Exit(1)
+	}
+	defer cleanup()
+
 	go func() {
-		if err := http.ListenAndServe(addr, mux); err != nil {
-			obs.Fail("SIDECAR", "MAIN", "listen failed", err.Error())
+		if err := http.Serve(ln, mux); err != nil {
+			obs.Fail("SIDECAR", "MAIN", "serve failed", err.Error())
 			os.Exit(1)
 		}
 	}()
-	obs.Ok("SIDECAR", "MAIN", "http server started (pre-bootstrap)", "addr="+addr)
+
+	listenAddr := ln.Addr().String()
+	if cfg.SocketPath != "" {
+		obs.Ok("SIDECAR", "MAIN", "server started (pre-bootstrap)", "socket="+cfg.SocketPath)
+	} else {
+		obs.Ok("SIDECAR", "MAIN", "http server started (pre-bootstrap)", "addr=:"+cfg.Port)
+	}
 
 	// Bootstrap with retry.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -124,7 +136,7 @@ func main() {
 		fmt.Sprintf("probe_interval=%ds", cfg.CBProbeInterval),
 	)
 
-	obs.Ok("SIDECAR", "MAIN", "ready", "addr="+addr, "sidecar_id="+state.sidecarID)
+	obs.Ok("SIDECAR", "MAIN", "ready", "listen="+listenAddr, "sidecar_id="+state.sidecarID)
 
 	// Block until shutdown.
 	<-ctx.Done()
