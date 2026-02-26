@@ -34,6 +34,52 @@
 - Design the test BEFORE implementation: read user stories, understand constraints, then code
 - The test is part of the fix, not a separate task to defer
 
+## 2026-02-25 (Session 15)
+
+### Git operations
+- On `fix/sidecar-uds` branch (no new code commits — this session was architecture decision + docs)
+- Created `plans/2026-02-25-sidecar-architecture-decision.md` (ADR-002)
+- Archived original to `plans/archive/2026-02-25-sidecar-architecture-decision-original.md`
+- Created `KNOWN-ISSUES.md` (4 known issues: KI-001 through KI-004)
+- Created `plans/2026-02-25-post-merge-roadmap.md` (post-merge TODO)
+- Removed stale `docs/plans/2026-02-25-sidecar-architecture-decision.md` (agents wrote to wrong dir)
+- Merging `fix/sidecar-uds` to `develop` (this session)
+
+### What happened
+Ran a 4-agent collaborative debate to answer the 6 architecture questions from Session 14. Three iterations of team orchestration before getting it right (see FLOW.md for team lessons). Final team: 3 neutral analysts + 1 devil's advocate with veto power, shared prompt, broadcast messaging.
+
+**Architecture decision (ADR-002): Keep sidecars as primary and only model.**
+- Admin secret blast radius is unbounded (KI-001) — highest priority security fix
+- Scope ceiling enforcement is real security (dual enforcement, cryptographically bound)
+- Direct broker access blocked by code (`sidecarAllowedScopes()` requires `sidecar:scope:X` claims) — future work
+- One sidecar per trust boundary as hard architectural rule
+- All sidecars indistinguishable in audit (KI-003) — needs per-sidecar credentials
+- TCP default is a security gap (KI-002) — UDS should be production default
+
+**Rejected alternatives:**
+- Direct broker access (`client_id`/`client_secret`) — broker code doesn't support it yet
+- Hybrid (both sidecar + direct) — "complexity of both models with clean guarantees of neither"
+- Remove sidecars entirely — loses DX, resilience, UDS access control, scope siloing
+
+### User feedback (Session 15)
+- Frustrated with team orchestration failures: "they should not have picked a side from the beginning" (pre-assigned positions), "aint no way they have even talked to each other" (agents working in isolation), "why arent they talking to each other and collaborating" (DMs vs broadcast)
+- Approved the final decision document
+- "why would you put stuff in the application docs WTF" — agents wrote to `docs/plans/` instead of `plans/`
+- Directed: convert decision to ADR, create KNOWN-ISSUES.md, merge to develop, create post-merge TODO for docs + SDK
+
+### What's next
+1. **Merge `fix/sidecar-uds` to `develop`** (this session)
+2. **Fix 6** (structured audit) — last compliance fix
+3. **Documentation deep dive** — operator guide, developer guide, architecture FAQ (see `plans/2026-02-25-post-merge-roadmap.md`)
+4. **Admin secret narrowing** (KI-001 fix) — new broker endpoint
+5. **SDK development** — Python + TypeScript
+
+### Local branches
+- `fix/sidecar-uds` (current, merging to develop)
+- `develop`
+- `main`
+- `develop-harness-backup` (dead/reference only)
+
 ## 2026-02-26 (Session 14)
 
 ### Git operations

@@ -25,6 +25,47 @@ Format:
 
 ---
 
+## 2026-02-25 (Session 15)
+
+### Architecture Decision: Keep Sidecar Model (ADR-002)
+
+4-agent collaborative debate resolved the 6 architecture questions from Session 14. Decision: keep sidecars as the primary and only current model.
+
+Key findings:
+1. **Admin secret blast radius is unbounded** — every sidecar holds `AA_ADMIN_SECRET` which grants full admin scope. Scope ceiling enforcement does NOT bound admin credentials. This is a genuine security weakness, not theater.
+2. **Scope ceiling enforcement is real** — dual enforcement at sidecar (`handler.go:78`) and broker (`token_exchange_hdl.go:131`) with cryptographically bound JWT claims. Anti-spoof protection on `sid` field.
+3. **Direct broker access requires code changes** — `sidecarAllowedScopes()` specifically reads `sidecar:scope:X` prefix. App credentials don't have these. Not a config change — broker code must be extended.
+4. **One sidecar per trust boundary** — the scaling unit is trust boundaries, not applications. This answers "N apps = N sidecars = N ports."
+
+Rejected: direct broker access (requires broker changes, no use case today), hybrid model (doubles maintenance, "complexity of both with guarantees of neither"), remove sidecars entirely (loses DX, resilience, UDS, scope siloing).
+
+→ Artifact: `plans/2026-02-25-sidecar-architecture-decision.md` (ADR-002)
+→ Known issues: `KNOWN-ISSUES.md` (KI-001 through KI-004)
+
+### Multi-Agent Team Orchestration Lessons
+
+Three iterations to get team orchestration right:
+1. **Team 1 (biased):** Pre-assigned FOR/AGAINST positions forced confirmation bias. Agents advocated rather than analyzed.
+2. **Team 2 (isolated):** Separate prompts, separate files. Agents worked in silos, never communicated.
+3. **Team 3 (collaborative):** Shared prompt, broadcast messaging, devil's advocate veto, one output file. Followed `plans/archive/agent-team-prompt.md` pattern exactly. Worked.
+
+Key lessons: neutral positions > assigned positions, broadcast > DMs, shared prompt > separate prompts, DA veto is the quality gate. Agent shutdown is unreliable (multiple nudges needed).
+
+→ Artifact: Team pattern documented in Obsidian insights (AI-Systems-Building)
+
+### Post-Merge Roadmap Created
+
+Priorities after merging fix/sidecar-uds:
+1. Documentation deep dive (operator guide, developer guide, architecture FAQ)
+2. Fix 6 (structured audit) — last compliance fix
+3. Admin secret narrowing (KI-001) — new broker endpoint
+4. SDK development (Python + TypeScript) — for operators and developers
+5. Merge develop to main (release)
+
+→ Artifact: `plans/2026-02-25-post-merge-roadmap.md`
+
+---
+
 ## 2026-02-26 (Session 14)
 
 ### Executing-Plans: Fix 5 — Sidecar UDS Listen Mode

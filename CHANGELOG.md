@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — ADR-002: Sidecar Architecture Decision
+
+**Summary:** Collaborative 4-agent architecture review resolved 6 open questions about the
+sidecar model. Decision: keep sidecars as the primary and only current model. Direct broker
+access deferred as future work (blocked by broker code changes). Admin secret blast radius
+identified as highest priority security fix (KI-001).
+
+- `plans/2026-02-25-sidecar-architecture-decision.md` — full decision document (ADR-002)
+- `KNOWN-ISSUES.md` — 4 known issues: admin secret blast radius (KI-001), TCP default (KI-002),
+  audit indistinguishability (KI-003), ephemeral registry (KI-004)
+- `plans/2026-02-25-post-merge-roadmap.md` — post-merge TODO (docs, Fix 6, admin secret fix, SDKs)
+
 ### Added — Fix 5: Sidecar UDS Listen Mode (P1 Compliance — Pattern v1.2 §3.3)
 
 **Summary:** The sidecar previously only listened on TCP, exposing agent-to-sidecar

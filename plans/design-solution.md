@@ -1,348 +1,364 @@
-# Design Solution: Full Compliance and Sidecar Sprawl Fix
+# Design Solution v2: Compliance Fixes and Sidecar Transport
 
-**Date:** 2026-02-20
-**Authors:** integration-lead, security-architect, system-designer, code-planner, devils-advocate
-**Branch:** develop (all code references are to develop branch)
-**Status:** APPROVED (devils-advocate reviewed and signed off)
-
----
-
-## Executive Summary
-
-Four independent compliance reviewers (India, Juliet, Kilo, Lima) evaluated the AgentAuth develop branch against the Ephemeral Agent Credentialing Security Pattern v1.2. The codebase achieved 92-96% compliance across reviewers with zero NOT COMPLIANT findings. This design addresses every partial compliance item plus one gap the reviewers missed (audience validation), and solves the sidecar port sprawl problem (N apps = N sidecars = N ports).
-
-**Six fixes, all independently implementable:**
-
-| # | Fix | Compliance Gap | Priority | Scope |
-|---|-----|---------------|----------|-------|
-| 1 | Native TLS/mTLS in broker | 3.3 mTLS (all 4 reviewers) | P0 | Medium |
-| 2 | Revocation persistence to SQLite | Revocations lost on restart (real security gap) | P0 | Small |
-| 3 | Audience validation enforcement | Token aud field never set or checked (all paths) | P1 | Small |
-| 4 | Token release endpoint | 4.4 task-completion signal (Juliet) | P1 | Small |
-| 5 | Sidecar UDS listen mode | Sidecar port sprawl (N ports) | P1 | Small |
-| 6 | Structured audit log fields | 5.2 free-form Detail field (Kilo) | P2 | Large |
+**Date:** 2026-02-25
+**Branch:** develop
+**Supersedes:** archive/design-solution-v1.md (2026-02-20)
+**Ordering rationale:** 2026-02-25-fix-ordering-analysis.md
 
 ---
 
-## Compliance Gap Analysis
+## Context
 
-### Findings Consolidated Across All Four Reviewers
+Four independent compliance reviewers scored AgentAuth develop at 92-96% against the Ephemeral Agent Credentialing Security Pattern v1.2. Zero NOT COMPLIANT findings. Six fixes address every PARTIAL finding plus one gap all reviewers missed (audience validation).
 
-| Finding | India | Juliet | Kilo | Lima | Consensus |
-|---------|-------|--------|------|------|-----------|
-| No native TLS/mTLS (3.3) | PARTIAL | PARTIAL | PARTIAL | PARTIAL | All 4 |
-| No task-completion signal (4.4) | -- | PARTIAL | -- | -- | 1 reviewer |
-| Anomaly detection heartbeat-only (4.5) | -- | PARTIAL | -- | PARTIAL | 2 reviewers (pattern says optional) |
-| Revocation single-instance only (4.4) | -- | -- | PARTIAL | -- | 1 reviewer |
-| Audit log Detail is free-form (5.2) | -- | -- | PARTIAL | -- | 1 reviewer |
-
-### Additional Gaps Discovered During Team Analysis
-
-**Audience validation not enforced (missed by all 4 reviewers):**
-- `internal/token/tkn_claims.go`: `Validate()` checks `iss`, `sub`, `jti`, `exp`, `nbf` but never checks `aud`
-- `IssueReq.Aud` exists in the struct but is never populated by `Register()`, `Renew()`, or `Delegate()` — all three issue tokens with empty audience
-- Impact: a token intended for one resource server can be presented to any other; broker-internal tokens have no audience binding
-
-**Revocation loss on restart is a real security gap, not just operational inconvenience:**
-- `internal/revoke/rev_svc.go`: `RevSvc` holds four in-memory maps only — all revocations are lost when the broker process exits
-- Impact: a token revoked for compromise becomes valid again after broker restart, until its `exp` elapses
-- Fix 2 addresses this directly
-
-### Known Limitation: Ephemeral Signing Key
-
-AgentAuth v2.x generates a fresh Ed25519 signing key pair on every broker startup (`cmd/broker/main.go`). Outstanding tokens issued before a broker restart will fail signature verification after restart, even if their `exp` has not elapsed.
-
-**Impact:** This does NOT satisfy the security pattern's stated guarantee that "existing valid credentials continue to work during broker outage." Agents must implement retry logic — a 401 after a previously valid token should trigger re-registration.
-
-**Rationale for deferral:** Short TTLs (default 5 min) bound the operational impact window. Key persistence requires a dedicated design (file permissions, rotation procedures). Deferred to a future release (`AA_SIGNING_KEY_PATH`).
-
-**Required mitigation:** Document in SECURITY.md and docs/architecture.md. Agents implement exponential backoff and re-register on persistent 401 responses.
-
-### Items Explicitly Deferred
-
-| Item | Reason |
-|------|--------|
-| Behavioral anomaly detection | Pattern marks as "Optional but Recommended." Heartbeat monitoring sufficient. |
-| Multi-instance revocation propagation | Single-instance deployment. Fix 2 ensures restart survival. |
-| SPIRE Workload API integration | File-based TLS certs (Fix 1) are the immediate path. |
-| Signing key persistence | Deferred with explicit documentation of the limitation above. |
+Session 8 Docker testing revealed the v1 design had an incomplete scope for Fix 1 (broker TLS only, sidecar client missing) and false independence claims between fixes. This v2 design is written from scratch against verified code state on develop.
 
 ---
 
-## Design Solutions
+## Fix Ordering
 
-### Fix 1: Native TLS/mTLS in Broker
+Derived from first principles (see `2026-02-25-fix-ordering-analysis.md`):
 
-**Problem:** Broker uses `http.ListenAndServe()` (plain HTTP) at `cmd/broker/main.go:174`. All four reviewers flagged this.
+```
+1. Fix 2  Revocation Persistence     P0  Security gap
+2. Fix 3  Audience Validation         P1  Compliance gap
+3. Fix 4  Token Release               P1  Compliance (depends on Fix 2)
+4. Fix 1  Sidecar TLS Client          P0  Compliance (broker side done)
+5. Fix 5  Sidecar UDS Listen Mode     P1  Operations
+6. Fix 6  Structured Audit Fields     P2  Compliance (widest change)
+```
 
-**Design:** Config-driven TLS with three modes:
-
-| Mode | Config | Behavior |
-|------|--------|----------|
-| `none` (default) | No TLS env vars set | Plain HTTP (dev, proxy-terminated) |
-| `tls` | `AA_TLS_CERT` + `AA_TLS_KEY` | Server-side TLS only |
-| `mtls` | `AA_TLS_CERT` + `AA_TLS_KEY` + `AA_TLS_CLIENT_CA` | Full mutual TLS |
-
-- Minimum TLS version: 1.3
-- Client auth for mTLS: `tls.RequireAndVerifyClientCert`
-- Backward compatible: default `none`
-
-**Files:** `internal/cfg/cfg.go`, `cmd/broker/main.go`
-**Dependencies:** None.
+Each fix merges to develop independently. Each requires `gates.sh` + Docker live test before merge.
 
 ---
 
-### Fix 2: Revocation Persistence to SQLite
+## Fix 2: Revocation Persistence to SQLite
 
-**Problem:** `internal/revoke/rev_svc.go` uses in-memory maps only. Broker restart clears revocations. Real security gap.
+### Problem
 
-**Design:** SQLite persistence (write-through on `Revoke()`, bulk load on startup).
+`internal/revoke/rev_svc.go` holds four in-memory maps (`tokens`, `agents`, `tasks`, `chains`). All revocations are lost on broker restart. A token revoked for compromise becomes valid again after restart until its `exp` elapses.
 
-**Schema (no expires_at):**
+Note: because signing keys are ephemeral (regenerated on startup), pre-restart tokens fail signature verification anyway. But the revocation layer must be correct independently — signing key persistence is a planned future feature, and when it ships, revocation persistence must already be in place.
+
+### Design
+
+**Write-through persistence.** Every `Revoke()` call writes to both the in-memory map and SQLite. On startup, `LoadAllRevocations()` populates the in-memory maps from SQLite.
+
+**Schema:**
+
 ```sql
 CREATE TABLE IF NOT EXISTS revocations (
-    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    level     TEXT NOT NULL,
-    target    TEXT NOT NULL,
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    level      TEXT NOT NULL,
+    target     TEXT NOT NULL,
     revoked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(level, target)
 );
 ```
 
-The `expires_at` column is intentionally omitted. Revocation entries are permanent and never cleaned up automatically. Rationale: if cleanup runs before a token's `exp` elapses, the revoked token becomes valid again — a security regression. The table is small; even at high volume SQLite handles millions of rows without issue. Safe cleanup logic (only remove entries where `revoked_at + max_system_ttl < now`) is deferred to a future PR requiring explicit safety analysis.
+No `expires_at` column. Revocation entries are permanent. Rationale: if cleanup runs before a revoked token's `exp` elapses, the token becomes valid again — a security regression. Safe cleanup (only remove entries where `revoked_at + max_system_ttl < now`) is deferred to a future PR.
 
-The `UNIQUE(level, target)` constraint makes `Revoke()` idempotent.
+The `UNIQUE(level, target)` constraint makes `Revoke()` idempotent — re-revoking the same target is a no-op at the DB level.
 
-**Files:** `internal/revoke/rev_svc.go`, `internal/store/sql_store.go`, `cmd/broker/main.go`
-**Dependencies:** None.
+### Changes
 
----
+| File | What Changes |
+|------|-------------|
+| `internal/store/sql_store.go` | Add `revocations` table to `InitDB()`. Add `SaveRevocation(level, target string) error` and `LoadAllRevocations() ([]struct{Level, Target string}, error)` methods. |
+| `internal/revoke/rev_svc.go` | Add `store` field to `RevSvc`. `NewRevSvc()` accepts optional store. `Revoke()` calls `store.SaveRevocation()` after in-memory write. Add `LoadFromStore()` method called at startup. |
+| `cmd/broker/main.go` | Pass `sqlStore` to `NewRevSvc()`. Call `revSvc.LoadFromStore()` after DB init (between lines 105-114). |
 
-### Fix 3: Audience Validation Enforcement
+### Docker Live Test
 
-**Problem:** `TknClaims.Validate()` never checks `Aud`. `IssueReq.Aud` exists but is never populated in `Register()`, `Renew()`, or `Delegate()`. All four reviewers missed this. Impact: tokens have no audience binding — a broker-internal token can be replayed to any external service and vice versa.
-
-**Design: Two-part fix**
-
-**Part A — Broker populates and validates audience for its own tokens:**
-- `Register()` in `id_svc.go` sets `Aud: []string{"agentauth"}` on every issued token
-- `TknSvc.Renew()` propagates `Aud` from existing claims so it is preserved across renewals
-- `Delegate()` in `deleg_svc.go` propagates `Aud` from delegator claims
-- `ValMw.Wrap()` validates that token `Aud` contains the configured `AA_AUDIENCE` string; skip validation when `AA_AUDIENCE` is empty (opt-in for backward compatibility during rollout)
-- New cfg field: `AA_AUDIENCE` (default `"agentauth"`)
-
-**Part B — Agents may specify audience at registration (optional):**
-- `RegisterReq` accepts an optional `Aud []string` field. If present, it is passed through to `IssueReq.Aud`, overriding the default. This allows agents to pre-bind tokens to specific external resource servers.
-- If not provided, the default `["agentauth"]` from Part A applies.
-
-**Migration note:** Existing deployed tokens have no `aud` claim. Set `AA_AUDIENCE=""` during rollout to skip validation until all tokens have cycled (max one TTL window). Then set `AA_AUDIENCE="agentauth"` to enforce.
-
-**Files:** `internal/cfg/cfg.go` (add `Audience string`), `internal/token/tkn_claims.go` (add `ValidateWithAudience()`), `internal/token/tkn_svc.go` (propagate Aud in Renew), `internal/authz/val_mw.go` (call audience check), `internal/identity/id_svc.go` (set default Aud), `internal/deleg/deleg_svc.go` (propagate Aud)
-**Dependencies:** None.
+Per user stories in `tests/fix2-revocation-persistence-user-stories.md`:
+1. Register agent, revoke token, verify rejection
+2. Restart broker container (`docker compose restart broker`)
+3. Verify revoked token is still rejected after restart
+4. Verify non-revoked tokens are not false-positived
 
 ---
 
-### Fix 4: Token Release Endpoint
+## Fix 3: Audience Validation Enforcement
 
-**Problem:** No explicit task-completion signal endpoint.
+### Problem
 
-**Design:** `POST /v1/token/release` -- agent presents Bearer token, broker revokes JTI, records `token_released` audit event.
+`TknClaims.Aud` field exists (`tkn_claims.go:33`) but is never populated or validated. `Register()` in `id_svc.go` issues tokens with empty `Aud`. `Renew()` in `tkn_svc.go` drops `Aud` when building the renewal `IssueReq` (line 175 — `Aud` not included). `Delegate()` in `deleg_svc.go` also issues with empty `Aud` (line 151). Impact: a token has no audience binding — it can be presented to any service.
 
-**Files:** New `internal/handler/release_hdl.go`, `internal/audit/audit_log.go`, `cmd/broker/main.go`
-**Dependencies:** Uses existing `revSvc` and `valMw`.
+### Design
+
+**Two-part fix:**
+
+**Part A — Broker sets and validates audience on its own tokens:**
+- `Register()` sets `Aud: []string{cfg.Audience}` on every `IssueReq` (when `cfg.Audience` is non-empty)
+- `Renew()` propagates `Aud` from existing claims: add `Aud: claims.Aud` to the `IssueReq`
+- `Delegate()` propagates `Aud` from delegator claims: add `Aud: delegatorClaims.Aud` to the `IssueReq`
+- `ValMw.Wrap()` checks that token `Aud` contains `cfg.Audience` after `Verify()` succeeds. When `cfg.Audience` is empty, the check is skipped entirely (not fail-closed).
+
+**Part B — Config:**
+- New env var: `AA_AUDIENCE` (default `"agentauth"`)
+- Migration: set `AA_AUDIENCE=""` during rollout until all old tokens cycle (max one TTL window), then set to `"agentauth"`
+
+### Changes
+
+| File | What Changes |
+|------|-------------|
+| `internal/cfg/cfg.go` | Add `Audience string` field. Load from `AA_AUDIENCE` env var, default `"agentauth"`. |
+| `internal/token/tkn_svc.go` | `Renew()`: add `Aud: claims.Aud` to `IssueReq` (line ~175). |
+| `internal/authz/val_mw.go` | Add `audience string` field to `ValMw`. `NewValMw()` accepts audience param. In `Wrap()`, after `Verify()` succeeds: if `audience != ""`, check `claims.Aud` contains it; reject with 401 if not. |
+| `internal/identity/id_svc.go` | `Register()`: set `Aud: []string{cfg.Audience}` in `IssueReq` when audience is configured. |
+| `internal/deleg/deleg_svc.go` | `Delegate()`: set `Aud: delegatorClaims.Aud` in `IssueReq`. |
+| `cmd/broker/main.go` | Pass `c.Audience` to `NewValMw()`. |
+
+### Docker Live Test
+
+Per user stories in `tests/fix3-audience-validation-user-stories.md`:
+1. Start broker with `AA_AUDIENCE=broker-production`, verify wrong-audience tokens are rejected
+2. Start broker with `AA_AUDIENCE` unset, verify all tokens accepted (backward compatible)
+3. Start broker with `AA_AUDIENCE=broker-production`, verify correct-audience tokens pass
 
 ---
 
-### Fix 5: Sidecar UDS Listen Mode (Port Sprawl Solution)
+## Fix 4: Token Release Endpoint
 
-**Problem:** N apps = N sidecars = N TCP ports.
+### Problem
 
-**Decision: UDS per-app sidecars (not shared gateway)**
+No explicit task-completion signal. Pattern v1.2 section 4.4 expects agents to surrender tokens when done.
 
-| Approach | Verdict | Rationale |
-|----------|---------|-----------|
-| UDS per-app sidecar | SELECTED | Eliminates port sprawl, preserves isolation, kernel ACL |
-| Shared gateway | Rejected v1 | Cross-app blast radius violates isolation principles |
+### Design
 
-**What UDS solves:** Moves from port namespace to filesystem namespace. N sidecars still means N processes — process count is unchanged. The sprawl eliminated is port assignment overhead, firewall rules, and port conflict risk.
+`POST /v1/token/release` — agent presents its Bearer token, broker revokes the token's JTI via `revSvc.Revoke("token", jti)`, records a `token_released` audit event.
 
-**Config:**
+This is effectively self-revocation. Unlike admin `POST /v1/revoke` (which requires `admin:revoke:*` scope), the release endpoint requires only valid Bearer auth — the agent can only release its own token.
+
+With Fix 2 already in place, the released token's JTI is persisted to SQLite automatically through the existing write-through path. No additional persistence work needed.
+
+Double-release is idempotent: the `UNIQUE(level, target)` constraint in the revocations table handles re-revocation silently, and `IsRevoked()` returns true on the second call before `Revoke()` is even reached.
+
+### Changes
+
+| File | What Changes |
+|------|-------------|
+| `internal/audit/audit_log.go` | Add `EventTokenReleased = "token_released"` constant. |
+| `internal/handler/release_hdl.go` | **New file.** `ReleaseHdl` struct with `tknSvc`, `revSvc`, `auditLog` fields. `ServeHTTP()` extracts claims from context, calls `revSvc.Revoke("token", claims.Jti)`, records audit event. Returns 204. |
+| `cmd/broker/main.go` | Wire `ReleaseHdl`. Add route: `POST /v1/token/release` behind `valMw.Wrap()` (Bearer auth, no scope requirement). |
+
+### Docker Live Test
+
+Per user stories in `tests/fix4-token-release-user-stories.md`:
+1. Register, release, verify token rejected afterward
+2. Verify `token_released` audit event recorded
+3. Double-release returns success (idempotent)
+
+---
+
+## Fix 1: Complete Sidecar TLS Client
+
+### Problem
+
+Broker-side TLS is complete (`cmd/broker/serve.go`). The broker can serve in `none`, `tls`, or `mtls` modes. But the sidecar's `brokerClient` in `cmd/sidecar/broker_client.go` uses a plain `http.Client` (line 38: `&http.Client{Timeout: 10 * time.Second}`). The sidecar cannot:
+- Connect to a broker serving TLS (no CA trust)
+- Present client certificates for mTLS
+
+This was the design gap discovered in Session 8. The v1 design listed only broker files and missed the sidecar entirely.
+
+### Design
+
+**Sidecar TLS client config** — mirror the broker's three modes:
+
+| Mode | Sidecar Config | Behavior |
+|------|---------------|----------|
+| `none` (default) | No TLS env vars | Plain HTTP client (current behavior) |
+| `tls` | `AA_SIDECAR_CA_CERT` | HTTPS client, verifies broker cert against CA |
+| `mtls` | `AA_SIDECAR_CA_CERT` + `AA_SIDECAR_TLS_CERT` + `AA_SIDECAR_TLS_KEY` | HTTPS client with client cert presentation |
+
+When `AA_SIDECAR_CA_CERT` is set, the sidecar builds a custom `tls.Config` with the CA pool and (optionally) client certificate, then constructs `http.Client{Transport: &http.Transport{TLSClientConfig: tlsCfg}}`.
+
+The sidecar must also switch its `BrokerURL` from `http://` to `https://` when TLS is active. This is operator-configured via `AA_BROKER_URL` — no auto-detection.
+
+### Changes
+
+| File | What Changes |
+|------|-------------|
+| `cmd/sidecar/config.go` | Add fields to `sidecarConfig`: `CACert string` (`AA_SIDECAR_CA_CERT`), `TLSCert string` (`AA_SIDECAR_TLS_CERT`), `TLSKey string` (`AA_SIDECAR_TLS_KEY`). Load in `loadConfig()`. |
+| `cmd/sidecar/broker_client.go` | `newBrokerClient()` accepts TLS config. When CA cert is provided: load CA pool, optionally load client cert pair, build `tls.Config`, create `http.Transport` with it, use as `http.Client.Transport`. |
+| `cmd/sidecar/main.go` | Pass TLS config from `sidecarConfig` to `newBrokerClient()`. |
+
+### Docker Live Test
+
+Extends the Docker TLS test infrastructure from Session 8 (not merged but reusable):
+1. HTTP mode: sidecar connects to broker over plain HTTP — all operations work
+2. TLS mode: broker serves TLS, sidecar trusts broker CA — all operations work over HTTPS
+3. mTLS mode: broker requires client certs, sidecar presents them — all operations work
+4. mTLS rejection: sidecar without client cert cannot connect to mTLS broker
+
+---
+
+## Fix 5: Sidecar UDS Listen Mode
+
+### Problem
+
+N applications = N sidecars = N TCP ports. Port assignment, firewall rules, and collision risk scale linearly.
+
+### Design
+
+Move from port namespace to filesystem namespace. The sidecar listens on a Unix domain socket instead of TCP when configured.
 
 | Mode | Config | Behavior |
 |------|--------|----------|
-| `tcp` (default) | `AA_SIDECAR_PORT=8081` | Listen on TCP port (current behavior) |
-| `uds` | `AA_SOCKET_PATH=/var/run/agentauth/myapp.sock` | Listen on Unix domain socket |
+| TCP (default) | `AA_SIDECAR_PORT=8081` | Listen on TCP port (current) |
+| UDS | `AA_SOCKET_PATH=/var/run/agentauth/myapp.sock` | Listen on Unix domain socket |
 
-**Socket ownership model:**
-- The sidecar creates the socket file at `AA_SOCKET_PATH` on startup, owned by the sidecar process UID/GID
-- Default permissions: `0660` (owner + group read/write)
-- The connecting app must run as the same user or same group
-- In Kubernetes: mount a shared `emptyDir` volume at `/var/run/agentauth/` in both sidecar and app containers; set matching `securityContext.runAsGroup` in the pod spec
+When `AA_SOCKET_PATH` is set, the sidecar:
+1. Calls `net.Listen("unix", socketPath)` instead of the TCP listener
+2. Sets socket permissions to `0660` (owner + group)
+3. Defers `os.Remove(socketPath)` for cleanup on shutdown
+4. Logs a startup message with the socket path
+5. Does NOT open any TCP port
 
-**Socket path is operator-set at deploy time:**
-- `AA_SOCKET_PATH` is a static env var — no runtime derivation from sidecar ID needed
-- Example: `AA_SOCKET_PATH=/var/run/agentauth/myapp.sock` (operator chooses a name per app)
-- The app is configured with the same path to know where to connect — same pattern as configuring a TCP port
+When `AA_SOCKET_PATH` is unset, the sidecar falls back to TCP on `AA_SIDECAR_PORT` and logs a `WARN` that agent-to-sidecar traffic is network-exposed.
 
-**Sidecar cleans up socket on shutdown** via `os.Remove(cfg.SocketPath)` in a deferred call or signal handler.
+Socket path is static — set by operator at deploy time via env var. Not derived from sidecar ID (which is only available after bootstrap).
 
-**Files:** `cmd/sidecar/config.go` (add `ListenMode`, `SocketPath`), `cmd/sidecar/main.go` (switch to `net.Listen("unix", path)` when mode is `uds`)
-**Dependencies:** None. Backward compatible (default `tcp`).
+### Changes
 
----
+| File | What Changes |
+|------|-------------|
+| `cmd/sidecar/config.go` | Add `SocketPath string` field (`AA_SOCKET_PATH`). Load in `loadConfig()`. |
+| `cmd/sidecar/main.go` | Replace `http.ListenAndServe(addr, mux)` with conditional: if `cfg.SocketPath != ""`, use `net.Listen("unix", cfg.SocketPath)` + `http.Serve(ln, mux)` with cleanup. Otherwise TCP as today. Log warning on TCP fallback. |
 
-### Application Onboarding: How a New App Authenticates With the Broker
+### Interaction with Fix 1
 
-**The core question:** An application starts with zero credentials. How does it prove its identity and get its first Bearer token?
+Fix 1 modifies the sidecar's **outbound** connection (broker client TLS). Fix 5 modifies the sidecar's **inbound** listener (app-facing transport). These are different code paths:
+- Fix 1: `broker_client.go` → `newBrokerClient()` → `http.Client.Transport`
+- Fix 5: `main.go` → `http.ListenAndServe()` → `net.Listen()`
 
-**Answer:** The app receives a one-time **launch token** from an operator or orchestrator. The launch token is the "secret zero" -- it is NOT the Bearer credential itself, but a one-time authorization code that the app exchanges for a JWT through a cryptographic challenge-response protocol.
+No function-level overlap. Doing them back-to-back (steps 4 and 5) minimizes the window where both are in-flight on the same files.
 
-#### Broker-Direct Onboarding (No Sidecar)
+### Docker Live Test
 
-Fully implemented on develop (`internal/identity/id_svc.go:Register()`). Three phases:
-
-**Phase A -- Operator provisions the app (before app starts):**
-
-1. Operator authenticates with broker: `POST /v1/admin/auth` with `AA_ADMIN_SECRET`
-2. Operator creates a launch token for the app:
-   ```
-   POST /v1/admin/launch-tokens
-   {
-     "agent_name": "my-data-processor",
-     "allowed_scope": ["read:customers:*", "write:reports:*"],
-     "max_ttl": 600,
-     "single_use": true,
-     "ttl": 3600
-   }
-   ```
-   Response: `{ "launch_token": "a1b2c3d4..." }` (64 hex chars, cryptographically random)
-3. Operator delivers launch token to app via secure channel:
-   - Kubernetes: `Secret` resource mounted as env var `AA_LAUNCH_TOKEN`
-   - Cloud: Secrets Manager (AWS SSM, Azure Key Vault, GCP Secret Manager)
-   - CI/CD: Pipeline secret injected at deploy time
-   - This is the ONLY secret the app needs at startup
-
-**Phase B -- App registers with the broker (first startup):**
-
-4. App generates a fresh Ed25519 keypair locally (in-memory, private key never leaves process)
-5. App gets a one-time nonce: `GET /v1/challenge` (30-second TTL, single-use)
-6. App signs the nonce with its Ed25519 private key
-7. App calls `POST /v1/register` with:
-   ```json
-   {
-     "launch_token": "a1b2c3d4...",
-     "nonce": "f8e7d6c5...",
-     "public_key": "<base64 Ed25519 public key>",
-     "signature": "<base64 signature of nonce>",
-     "orch_id": "data-pipeline-v2",
-     "task_id": "daily-report-20260220",
-     "requested_scope": ["read:customers:active"]
-   }
-   ```
-8. Broker validates (10-step process in `id_svc.go:Register()`):
-   - Validates required fields
-   - Looks up launch token, checks not expired/consumed
-   - Enforces scope attenuation: `requested_scope` must be subset of `allowed_scope`
-   - Consumes nonce (one-time use)
-   - Validates Ed25519 public key (32 bytes)
-   - Verifies nonce signature against public key
-   - Consumes launch token (if single-use)
-   - Generates SPIFFE ID: `spiffe://{domain}/agent/{orch_id}/{task_id}/{instance_id}`
-   - Issues JWT with granted scope, SPIFFE subject, configured TTL
-   - Persists agent record to SQLite
-9. Broker returns: `{agent_id: "spiffe://...", access_token: "eyJ...", expires_in: 300}`
-
-**Phase C -- App operates (ongoing):**
-
-10. App uses `access_token` as Bearer token for all authenticated API calls
-11. App renews before expiry: `POST /v1/token/renew` with current Bearer token
-12. App releases when done: `POST /v1/token/release` (Fix 4)
-
-**Security properties:** Single-use launch tokens consumed on registration (no reuse). Ed25519 challenge-response proves key possession (broker never sees private key). Scope attenuation enforced. Nonce one-time-use with 30s TTL prevents replay. JWT has short TTL (default 5 min) bound to SPIFFE identity.
-
-#### Sidecar-Mediated Onboarding (Recommended for Production)
-
-The sidecar automates the entire flow. The app never sees any secrets:
-
-1. Operator deploys sidecar with `AA_ADMIN_SECRET` and `AA_SIDECAR_SCOPE_CEILING`
-2. Sidecar auto-bootstraps: admin auth -> activation token -> activate -> sidecar credential
-3. App requests tokens from sidecar (local HTTP or UDS) -> sidecar exchanges with broker
-
-With Fix 5 (UDS), App-to-Sidecar uses Unix domain socket. Bootstrap logic unchanged.
-
-#### Orchestrator-Managed Onboarding (Multi-Agent)
-
-1. Orchestrator (admin-scoped) creates per-agent single-use launch tokens dynamically
-2. Spawns agent with launch token injected
-3. Agent executes broker-direct flow above
-
-#### What This Design Changes About Onboarding
-
-No new code for onboarding flows. All three work on develop today. Fixes enhance them: Fix 1 (mTLS) secures registration transport, Fix 3 (audience validation) audience-binds tokens, Fix 4 (token release) adds completion signal, Fix 5 (UDS) changes only App-to-Sidecar transport.
+Per user stories in `tests/fix5-sidecar-uds-user-stories.md`:
+1. Start sidecar with `AA_SOCKET_PATH`, verify socket file exists, `curl --unix-socket` returns 200
+2. Request token via Unix socket — works
+3. Start sidecar without `AA_SOCKET_PATH`, verify TCP works and WARN is logged
 
 ---
 
-### Fix 6: Structured Audit Log Fields
+## Fix 6: Structured Audit Log Fields
 
-**Problem:** `AuditEvent.Detail` is a free-form string. Kilo flagged.
+### Problem
 
-**Design:** Extend `AuditEvent` with `Resource`, `Outcome`, `DelegDepth`, `DelegChainHash`, `BytesTransferred`. Use functional options for backward compatibility.
+`AuditEvent.Detail` is a free-form string (`audit_log.go:66`). Compliance queries require parsing unstructured text.
 
-**SQLite migration:** `ALTER TABLE ... ADD COLUMN ... DEFAULT NULL` per field. No backfill.
+### Design
 
-**Files:** `internal/audit/audit_log.go`, `internal/store/sql_store.go`, ~6 callers
-**Dependencies:** High touch count. Do last.
+Add structured fields to `AuditEvent` alongside (not replacing) `Detail`:
+
+```go
+type AuditEvent struct {
+    // ... existing fields ...
+    Detail    string `json:"detail"`
+    // New structured fields
+    Resource        string `json:"resource,omitempty"`
+    Outcome         string `json:"outcome,omitempty"`         // "success" or "denied"
+    DelegDepth      int    `json:"deleg_depth,omitempty"`
+    DelegChainHash  string `json:"deleg_chain_hash,omitempty"`
+    BytesTransferred int64 `json:"bytes_transferred,omitempty"`
+    // ... Hash, PrevHash ...
+}
+```
+
+**Functional options** for backward compatibility — existing `Record()` callers continue to work. New callers use options:
+
+```go
+func WithResource(r string) RecordOption { ... }
+func WithOutcome(o string) RecordOption { ... }
+func WithDelegDepth(d int) RecordOption { ... }
+```
+
+**Hash coverage:** All new fields MUST be included in `computeHash()` input. Omitting them means a tampered value wouldn't break the chain.
+
+**SQLite migration:** `ALTER TABLE audit_events ADD COLUMN resource TEXT DEFAULT NULL` (etc.) for each new field. No backfill — existing events keep NULL.
+
+**Query support:** Add `outcome` filter to `QueryFilters` and the query path.
+
+### Changes
+
+| File | What Changes |
+|------|-------------|
+| `internal/audit/audit_log.go` | Add fields to `AuditEvent`. Add `RecordOption` type and option functions. Update `Record()` to accept variadic options. Update `computeHash()` to include new fields. Add `outcome` to `QueryFilters`. |
+| `internal/store/sql_store.go` | ALTER TABLE migration for new columns. Update `SaveAuditEvent()`, `LoadAllAuditEvents()`, `QueryAuditEvents()` to handle new fields. |
+| ~9 caller files | Update `Record()` calls to pass structured options where the data is available. Callers that don't have structured data keep working as-is (no options = empty fields). |
+
+Caller files: `val_mw.go` (5 calls), `id_svc.go` (3), `deleg_svc.go` (2), `revoke_hdl.go` (1), `renew_hdl.go` (2), `token_exchange_hdl.go` (2), `admin_svc.go` (4+), `admin_hdl.go` (4+), plus the new `release_hdl.go` from Fix 4.
+
+### Docker Live Test
+
+Per user stories in `tests/fix6-structured-audit-user-stories.md`:
+1. Trigger operations, verify structured fields in audit event JSON
+2. Filter by `outcome=denied`, verify only denied events returned
+3. Verify hash chain integrity covers new fields
 
 ---
 
 ## Design Decisions
 
-### Decision 1: UDS per-app sidecars over shared gateway
-Shared gateway introduces cross-app blast radius. UDS eliminates port sprawl without new trust boundaries.
+### Decision 1: Dependency-driven ordering over thematic grouping
+v1 grouped by theme (Security / Compliance / Operations). This hid the real dependency: Fix 4 needs Fix 2's persistence. The new ordering (2 → 3 → 4 → 1 → 5 → 6) follows code dependencies.
 
-### Decision 2: File-based TLS over SPIRE integration
-SPIRE adds infrastructure dependency. File-based TLS closes compliance immediately. Config is certificate-source-agnostic for future SPIRE.
+### Decision 2: Fix 1 scope includes sidecar client
+v1 listed only broker files. The sidecar's `brokerClient` uses plain HTTP. mTLS requires both sides. Fix 1 now covers `cmd/sidecar/broker_client.go` and `cmd/sidecar/config.go`.
 
-### Decision 3: Token-level release over task-level release
-Finer-grained control. Task-level revocation available via existing `POST /v1/revoke`.
+### Decision 3: UDS per-app sidecars over shared gateway
+Shared gateway introduces cross-app blast radius. UDS eliminates port sprawl without new trust boundaries. (Unchanged from v1.)
 
-### Decision 4: Functional options for audit Record()
-Backward compatible. Existing callers unchanged. Idiomatic Go.
+### Decision 4: File-based TLS over SPIRE integration
+SPIRE adds infrastructure dependency. File-based TLS closes compliance immediately. Config is cert-source-agnostic for future SPIRE. (Unchanged from v1.)
 
 ### Decision 5: No expires_at in revocations table
-Security correctness over table size. An expires_at column creates a gap: if cleanup runs before the revoked token's exp elapses, the token becomes valid again. Revocation entries are permanent until a future PR implements safe TTL-aware cleanup.
+Security correctness over table size. Cleanup that runs too early silently un-revokes tokens. (Unchanged from v1.)
 
-### Decision 6: New audit fields included in hash computation
-Tamper evidence requires all structured fields to be covered by the hash. Excluding new fields would create gaps that bypass chain integrity. The schema version boundary (pre/post migration) is documented in the operator runbook.
+### Decision 6: Functional options for audit Record()
+Backward compatible. Existing callers unchanged. New callers pass structured data. Idiomatic Go. (Unchanged from v1.)
 
-### Decision 7: Audience validation opt-in via AA_AUDIENCE
-Default AA_AUDIENCE="agentauth" for new deployments. Upgrading deployments set AA_AUDIENCE="" during the token rollover window, then enable enforcement. Ensures backward compatibility without a flag day.
+### Decision 7: New audit fields included in hash computation
+Tamper evidence requires all fields covered. Excluding new fields creates integrity gaps. (Unchanged from v1.)
 
-### Decision 8: Ephemeral signing key deferred, not hidden
-The key restart limitation is explicitly documented (not silently accepted) so operators understand the guarantee gap and design agents accordingly.
+### Decision 8: Audience validation opt-in via AA_AUDIENCE
+Default `"agentauth"` for new deployments. Empty string skips validation for backward compatibility during rollover. (Unchanged from v1.)
+
+### Decision 9: Sidecar TLS config is separate from broker TLS config
+Sidecar env vars use `AA_SIDECAR_*` prefix. Broker uses `AA_TLS_*`. They're different binaries with different roles — the sidecar is a TLS client, the broker is a TLS server. Sharing config would conflate client and server concerns.
 
 ---
 
-## Appendix A: Compliance Review Cross-Reference
+## Known Limitation: Ephemeral Signing Key
 
-| Reviewer | Total | COMPLIANT | PARTIAL | NOT COMPLIANT |
-|----------|-------|-----------|---------|---------------|
-| India | 25 | 24 | 1 | 0 |
-| Juliet | 29 | 26 | 3 | 0 |
-| Kilo | 28 | 25 | 3 | 0 |
-| Lima | 25 | 23 | 2 | 0 |
+AgentAuth generates a fresh Ed25519 key pair on every broker startup. Pre-restart tokens fail signature verification. This does NOT satisfy the pattern's guarantee that credentials survive broker outage. Agents must retry on 401.
 
-## Appendix B: Risk Assessment
+Deferred to future release (`AA_SIGNING_KEY_PATH`). Short TTLs (default 5 min) bound the impact window.
+
+---
+
+## Risk Assessment
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| TLS config errors | Medium | High | Docker stack testing; setup guide |
-| Audit hash schema boundary | Low | Medium | New fields included in hash; document migration timestamp in runbook |
-| UDS permissions wrong | Low | Medium | Default 0660; document K8s securityContext.runAsGroup |
-| Revocation table growth | Low | Low | No expires_at by design; safe cleanup deferred to future PR |
-| Audience migration breaks existing tokens | Medium | Medium | Set AA_AUDIENCE="" during rollout window; enable after tokens cycle |
-| Ephemeral key on broker restart | Medium | Medium | Agents retry on 401; short TTL bounds impact window |
+| Revocation table growth | Low | Low | No expires_at by design; safe cleanup deferred |
+| Sidecar TLS misconfiguration | Medium | High | Docker test matrix covers all 3 modes |
+| Audience migration breaks tokens | Medium | Medium | AA_AUDIENCE="" during rollout window |
+| UDS permissions wrong | Low | Medium | Default 0660; document K8s securityContext |
+| Audit hash schema boundary | Low | Medium | New fields in hash; migration timestamp in runbook |
+| Ephemeral key on restart | Medium | Medium | Agents retry on 401; short TTL bounds window |
 
 ---
 
-**END OF DESIGN SOLUTION**
+## Compliance Mapping
+
+| Requirement | Before | After | Fix |
+|------------|--------|-------|-----|
+| Revocation persistence | PARTIAL | COMPLIANT | 2 |
+| Token audience binding | NOT CHECKED | COMPLIANT | 3 |
+| Task-completion signal (4.4) | PARTIAL | COMPLIANT | 4 |
+| mTLS transport (3.3) | PARTIAL | COMPLIANT | 1 |
+| Sidecar port sprawl | N/A (ops) | RESOLVED | 5 |
+| Structured audit schema (5.2) | PARTIAL | COMPLIANT | 6 |
