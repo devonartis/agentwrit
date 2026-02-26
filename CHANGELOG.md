@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Fix 5: Sidecar UDS Listen Mode (P1 Compliance — Pattern v1.2 §3.3)
+
+**Summary:** The sidecar previously only listened on TCP, exposing agent-to-sidecar
+traffic on the network and requiring unique port allocation per sidecar. This fix adds
+`AA_SOCKET_PATH` — when set, the sidecar listens on a Unix domain socket instead of TCP.
+Socket permissions (`0660`) restrict access to owner + group. Stale sockets are cleaned
+on startup. TCP fallback logs a WARN for operator awareness.
+
+#### New: `cmd/sidecar/listener.go`
+- `startListener()` — creates UDS or TCP listener based on `socketPath` parameter.
+- UDS mode: removes stale socket, binds, sets `0660` permissions, returns cleanup func.
+- TCP mode: binds on port, logs WARN about network exposure.
+
+#### Modified: `cmd/sidecar/config.go`
+- New `SocketPath` field on `sidecarConfig`, loaded from `AA_SOCKET_PATH`.
+
+#### Modified: `cmd/sidecar/main.go`
+- Replaced inline `http.ListenAndServe` with `startListener()` + `http.Serve`.
+- Deferred socket cleanup on shutdown.
+
+#### Modified: `docker-compose.yml`
+- `AA_SOCKET_PATH` env var passed through to sidecar container.
+
+#### Modified: `docs/getting-started-operator.md`
+- `AA_SOCKET_PATH` added to sidecar configuration table.
+- New "Unix domain socket (UDS) mode" section with examples.
+
+#### New: `cmd/sidecar/listener_test.go`
+- `TestStartListener_UDS` — creates socket, connects via UDS client, verifies HTTP response.
+- `TestStartListener_TCP` — verifies TCP fallback with port 0.
+- `TestStartListener_UDS_CleansUpStaleSocket` — verifies stale socket replacement.
+
+#### New: `cmd/sidecar/listener_integration_test.go`
+- `TestMultiSidecarUDS` — two sidecars on different UDS paths, concurrent client access.
+
 ### Added — Fix 1 (Sidecar): TLS/mTLS Client Support (P0 Compliance — Pattern v1.2 §3.3)
 
 **Summary:** The broker-side TLS was already on `develop`, but the sidecar had no TLS

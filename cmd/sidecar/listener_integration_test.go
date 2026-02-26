@@ -37,10 +37,10 @@ func TestMultiSidecarUDS(t *testing.T) {
 	// Each sidecar serves a unique identity response (simulating /v1/health).
 	serve := func(ln net.Listener, id string) {
 		mux := http.NewServeMux()
-		mux.HandleFunc("/v1/health", func(w http.ResponseWriter, r *http.Request) {
-			fmt.Fprintf(w, `{"sidecar_id":"%s","status":"ok"}`, id)
+		mux.HandleFunc("/v1/health", func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = fmt.Fprintf(w, `{"sidecar_id":"%s","status":"ok"}`, id)
 		})
-		http.Serve(ln, mux)
+		_ = http.Serve(ln, mux)
 	}
 	go serve(ln1, "sidecar-app1")
 	go serve(ln2, "sidecar-app2")

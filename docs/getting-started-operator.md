@@ -274,6 +274,36 @@ The sidecar is a developer-facing proxy that auto-bootstraps with the broker. It
 | `AA_SIDECAR_CA_CERT` | string | *(none)* | If TLS | Path to the CA certificate PEM file for verifying the broker's TLS certificate. When set, the sidecar connects to the broker over HTTPS. Also set `AA_BROKER_URL` to `https://...`. |
 | `AA_SIDECAR_TLS_CERT` | string | *(none)* | If mTLS | Path to the sidecar's client certificate PEM file. Required when the broker uses `AA_TLS_MODE=mtls`. |
 | `AA_SIDECAR_TLS_KEY` | string | *(none)* | If mTLS | Path to the sidecar's client private key PEM file. Required when the broker uses `AA_TLS_MODE=mtls`. |
+| `AA_SOCKET_PATH` | string | *(none)* | No | Unix domain socket path. When set, the sidecar listens on UDS instead of TCP. The socket file is created on startup (permissions `0660`) and removed on shutdown. Unset = TCP mode on `AA_SIDECAR_PORT`. |
+
+### Unix domain socket (UDS) mode
+
+By default, the sidecar listens on a TCP port (`AA_SIDECAR_PORT`). In production with multiple sidecars per host, TCP creates port sprawl and exposes agent-to-sidecar traffic on the network. Setting `AA_SOCKET_PATH` switches the sidecar to a Unix domain socket — no port allocation, no network exposure, and filesystem permissions control access.
+
+```bash
+# Sidecar listens on UDS instead of TCP
+export AA_SOCKET_PATH=/var/run/agentauth/myapp.sock
+```
+
+Agents connect via the socket path instead of `http://localhost:8081`:
+
+```bash
+curl --unix-socket /var/run/agentauth/myapp.sock http://localhost/v1/health
+```
+
+**Multiple sidecars on one host** — each gets a unique socket path:
+
+```bash
+# Sidecar for app1
+AA_SOCKET_PATH=/var/run/agentauth/app1.sock
+
+# Sidecar for app2
+AA_SOCKET_PATH=/var/run/agentauth/app2.sock
+```
+
+The socket is created with `0660` permissions (owner + group read/write). Stale socket files from a previous crash are cleaned up automatically on startup.
+
+When `AA_SOCKET_PATH` is unset, the sidecar falls back to TCP and logs a `WARN` message: "listening on TCP — consider AA_SOCKET_PATH for production deployments."
 
 ### Scope ceiling design
 

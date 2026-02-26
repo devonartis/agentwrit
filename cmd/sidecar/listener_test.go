@@ -26,10 +26,10 @@ func TestStartListener_UDS(t *testing.T) {
 
 	// Serve a ping handler on the socket.
 	mux := http.NewServeMux()
-	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("pong"))
+	mux.HandleFunc("/ping", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("pong"))
 	})
-	go http.Serve(ln, mux)
+	go func() { _ = http.Serve(ln, mux) }()
 
 	// Connect via UDS.
 	client := &http.Client{

@@ -40,6 +40,7 @@ services:
       - AA_SIDECAR_CA_CERT=${AA_SIDECAR_CA_CERT:-}
       - AA_SIDECAR_TLS_CERT=${AA_SIDECAR_TLS_CERT:-}
       - AA_SIDECAR_TLS_KEY=${AA_SIDECAR_TLS_KEY:-}
+      - AA_SOCKET_PATH=${AA_SOCKET_PATH:-}
     depends_on:
       broker:
         condition: service_healthy
