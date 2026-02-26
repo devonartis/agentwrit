@@ -45,6 +45,10 @@ type sidecarConfig struct {
 	// TLSKey is the path to the sidecar's client private key PEM file
 	// for mTLS. Only used when CACert is also set.
 	TLSKey string
+	// SocketPath is the Unix domain socket path for the sidecar listener.
+	// When set, the sidecar listens on UDS instead of TCP. The socket file
+	// is created on startup and removed on shutdown. Default: empty (TCP mode).
+	SocketPath string
 }
 
 func loadConfig() sidecarConfig {
@@ -80,6 +84,8 @@ func loadConfig() sidecarConfig {
 	cfg.CACert = os.Getenv("AA_SIDECAR_CA_CERT")
 	cfg.TLSCert = os.Getenv("AA_SIDECAR_TLS_CERT")
 	cfg.TLSKey = os.Getenv("AA_SIDECAR_TLS_KEY")
+
+	cfg.SocketPath = os.Getenv("AA_SOCKET_PATH")
 
 	return cfg
 }

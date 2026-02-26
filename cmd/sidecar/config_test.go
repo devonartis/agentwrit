@@ -136,6 +136,24 @@ func TestLoadConfig_TLSFieldsDefault(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_SocketPath(t *testing.T) {
+	os.Setenv("AA_SOCKET_PATH", "/var/run/agentauth/myapp.sock")
+	defer os.Unsetenv("AA_SOCKET_PATH")
+
+	cfg := loadConfig()
+	if cfg.SocketPath != "/var/run/agentauth/myapp.sock" {
+		t.Fatalf("expected socket path, got %q", cfg.SocketPath)
+	}
+}
+
+func TestLoadConfig_SocketPathDefault(t *testing.T) {
+	os.Unsetenv("AA_SOCKET_PATH")
+	cfg := loadConfig()
+	if cfg.SocketPath != "" {
+		t.Fatalf("expected empty socket path by default, got %q", cfg.SocketPath)
+	}
+}
+
 func TestLoadConfig_MissingRequired(t *testing.T) {
 	os.Unsetenv("AA_ADMIN_SECRET")
 	os.Unsetenv("AA_SIDECAR_SCOPE_CEILING")
