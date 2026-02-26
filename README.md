@@ -1,5 +1,10 @@
 # AgentAuth
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/divineartis/agentauth.svg)](https://pkg.go.dev/github.com/divineartis/agentauth)
+[![Go Report Card](https://goreportcard.com/badge/github.com/divineartis/agentauth)](https://goreportcard.com/report/github.com/divineartis/agentauth)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/devonartis/agentAuth)](https://go.dev/)
+
 **Ephemeral agent credentialing for AI systems.**
 
 AgentAuth is a credential broker that issues short-lived, scope-attenuated tokens to AI agents through Ed25519 challenge-response identity verification. Each agent instance receives a unique [SPIFFE](https://spiffe.io/)-format identity and operates with only the permissions its task requires. Tokens expire in minutes — not hours — eliminating the credential exposure window that plagues traditional IAM approaches to AI agent security.
