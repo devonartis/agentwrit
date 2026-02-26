@@ -122,10 +122,48 @@ The next session must redesign before writing any code. Here is everything neede
 - 5 user story files (`tests/fix2-*` through `tests/fix6-*`)
 
 ### Local branches
-- `fix/token-release` (current)
-- `develop`
+- `develop` (current)
 - `main`
 - `develop-harness-backup` (dead/reference only)
+
+## 2026-02-25 (Session 13)
+
+### Git operations
+- Merged `fix/token-release` into `develop` (was already merged from Session 12, branch cleaned up)
+- Created `fix/sidecar-tls-client` off `develop`
+- Commits: `9d7c8e8` (TLS/mTLS client support), `3ba4ede` (Docker test infra), `a82068e` (docs + changelog)
+- Merged `fix/sidecar-tls-client` into `develop` (fast-forward, `3512eb7..a82068e`), deleted branch
+
+### What happened
+Implemented Fix 1 (sidecar TLS client) from `docs/plans/2026-02-25-fix1-sidecar-tls-client.md`.
+
+- `cmd/sidecar/config.go`: 3 new fields — `CACert`, `TLSCert`, `TLSKey`
+- `cmd/sidecar/broker_client.go`: `newBrokerClient()` takes TLS params, new `buildTLSConfig()` with TLS 1.3 min
+- `cmd/sidecar/main.go`: passes TLS config to broker client
+- `docker-compose.yml`: 3 new sidecar TLS env vars
+- `docker-compose.tls.yml`: compose overlay for one-way TLS testing
+- `docker-compose.mtls.yml`: compose overlay for mutual TLS testing
+- `scripts/gen_test_certs.sh`: generates CA + broker + sidecar certs (ECDSA P-256, SHA-256)
+- `Dockerfile`: added `curl` to broker image for mTLS healthcheck
+- `docs/getting-started-operator.md`: sidecar TLS env vars in config table, new "Sidecar TLS client" section
+- 40 test call sites updated for new `newBrokerClient` signature, 8 new unit tests for `buildTLSConfig`
+
+### Docker live test — PASSED (all 4 stories)
+
+1. **HTTP baseline**: `./scripts/stack_up.sh` → broker + sidecar healthy, no regression
+2. **TLS (one-way)**: `docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d` → sidecar bootstraps over HTTPS, broker health responds, plain HTTP rejected with "Client sent an HTTP request to an HTTPS server"
+3. **mTLS (mutual)**: `docker compose -f docker-compose.yml -f docker-compose.mtls.yml up -d` → sidecar presents client cert, broker verifies, full bootstrap succeeds
+4. **mTLS rejection**: `curl --cacert ca.pem https://localhost:8080/v1/health` (no client cert) → TLS handshake fails
+5. `docker compose down -v` after each mode
+
+### Debugging notes
+- First cert generation used SHA-1 (openssl default) — TLS 1.3 rejects SHA-1 signed certs with "CA signature digest algorithm too weak". Fixed by adding `-sha256` to all `openssl` commands.
+- mTLS healthcheck: Alpine's BusyBox `wget` doesn't support `--certificate`/`--private-key`. Added `curl` to broker Dockerfile and switched healthcheck to `curl` with `--cert`/`--key`.
+
+### What's next: IMPLEMENT FIX 5
+- Branch: `fix/sidecar-uds` off `develop`
+- Plan: `docs/plans/2026-02-25-fix5-sidecar-uds.md`
+- After Fix 5 → Fix 6
 
 ## 2026-02-25 (Session 12)
 

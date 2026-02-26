@@ -25,6 +25,22 @@ Format:
 
 ---
 
+## 2026-02-25 (Session 13)
+
+### Executing-Plans: Fix 1 — Sidecar TLS Client
+
+Executed `docs/plans/2026-02-25-fix1-sidecar-tls-client.md`. Three tasks: config fields, broker client TLS, Docker live test.
+
+Key decisions:
+1. **TLS 1.3 minimum** — `buildTLSConfig` sets `MinVersion: tls.VersionTLS13`. Broker doesn't explicitly set MinVersion (defaults to TLS 1.2+), but negotiation works since TLS 1.3 clients can connect to TLS 1.2+ servers.
+2. **Graceful fallback** — invalid CA cert logs a warning and falls back to plain HTTP rather than crashing. Bootstrap health check will fail and retry with backoff.
+3. **SHA-256 certs required** — openssl defaults to SHA-1 for `x509 -req` signing, which TLS 1.3 rejects. Added `-sha256` to all signing commands in `gen_test_certs.sh`.
+4. **curl in broker Dockerfile** — Alpine BusyBox wget doesn't support client cert flags. Added curl for mTLS healthcheck.
+
+→ Artifact: `fix/sidecar-tls-client` branch (3 commits, merged to develop)
+
+---
+
 ## 2026-02-19 (Session 5)
 
 - Merged `feature/list-sidecars-endpoint` to `develop` — feature was complete, tests passing, no blockers.
