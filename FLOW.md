@@ -25,6 +25,41 @@ Format:
 
 ---
 
+## 2026-02-26 (Session 14)
+
+### Executing-Plans: Fix 5 — Sidecar UDS Listen Mode
+
+Executed `docs/plans/2026-02-25-fix5-sidecar-uds.md`. Three tasks: config field, UDS listener, Docker live test.
+
+Key decisions:
+1. **`startListener()` abstraction** — single function returns `net.Listener` + cleanup func. `http.Serve(ln, mux)` works identically for UDS and TCP — transport is decoupled from protocol.
+2. **Socket permissions `0660`** — owner + group read/write. Restricts token requests to processes sharing the socket's group. Tighter than TCP's any-process-on-host model.
+3. **Stale socket cleanup** — `os.Remove(socketPath)` before `net.Listen("unix", ...)`. Handles crashed sidecars that left socket files behind.
+4. **TCP WARN log** — when `AA_SOCKET_PATH` unset, sidecar logs a warning about network exposure. Operator is never silently in a less-secure config.
+
+→ Artifact: `fix/sidecar-uds` branch (5 commits, NOT merged — blocked on brainstorm)
+
+### Finding: SQLITE_BUSY on concurrent sidecar activation
+
+When two sidecars bootstrap at the exact same moment, concurrent `SaveSidecar` SQLite writes cause `SQLITE_BUSY`. One sidecar's persist fails (in-memory ceiling still works, tokens still issue). Pre-existing bug, not caused by Fix 5. Staggering startup avoids it. Proper fix: write mutex or WAL mode in SqlStore.
+
+### Decision: HOLD merge — sidecar architecture brainstorm needed
+
+User raised fundamental questions that go beyond Fix 5 implementation:
+- Why do sidecars exist? What's the alternative?
+- Can apps talk directly to the broker with client_id/client_secret instead?
+- How would scope siloing work without sidecars?
+- How do operators deploy sidecars for new apps?
+- How do 3rd-party SDK consumers onboard?
+
+These are architecture-level questions about the entire sidecar model, not Fix 5 bugs. The code works — the model needs to be justified and documented before it ships. Brainstorm must happen before merge.
+
+**If sidecars stay:** comprehensive docs are a hard requirement before merge — operator guide (deploying sidecars for new apps), developer guide (SDK consumer onboarding), FAQ (why sidecars, alternatives), architecture updates. Current docs explain the *what* but not the *why* or the end-to-end *how*.
+
+→ Artifact: questions captured in MEMORY.md Session 14
+
+---
+
 ## 2026-02-25 (Session 13)
 
 ### Executing-Plans: Fix 1 — Sidecar TLS Client

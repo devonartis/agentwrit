@@ -34,6 +34,65 @@
 - Design the test BEFORE implementation: read user stories, understand constraints, then code
 - The test is part of the fix, not a separate task to defer
 
+## 2026-02-26 (Session 14)
+
+### Git operations
+- Created `fix/sidecar-uds` off `develop`
+- Commits: `f272ab4` (config field), `a5daba7` (UDS listener), `286aaf2` (multi-sidecar integration test), `4113f47` (docs + changelog + lint), `d9b3c18` (Docker live test infra)
+- Branch NOT merged — **blocked on sidecar architecture brainstorm** (see below)
+
+### What happened
+Implemented Fix 5 (sidecar UDS listen mode) from `docs/plans/2026-02-25-fix5-sidecar-uds.md`. TDD throughout.
+
+- `cmd/sidecar/config.go`: new `SocketPath` field, loaded from `AA_SOCKET_PATH`
+- `cmd/sidecar/listener.go`: `startListener()` — UDS or TCP based on config, `0660` permissions, stale socket cleanup
+- `cmd/sidecar/main.go`: replaced `http.ListenAndServe` with `startListener()` + `http.Serve`
+- `docker-compose.yml`: `AA_SOCKET_PATH` env var
+- `docker-compose.uds.yml`: compose overlay — 2 sidecars on different UDS paths + test-client container
+- `docs/getting-started-operator.md`: `AA_SOCKET_PATH` in config table, new "Unix domain socket (UDS) mode" section
+
+### Docker live test — PASSED (all 4 stories)
+
+1. **Two sidecars healthy via UDS**: `app1.sock` (scopes: `read:data:*,write:data:*`) and `app2.sock` (scopes: `read:logs:*`) — unique sidecar IDs, both responding via `curl --unix-socket`
+2. **Client token requests via UDS**: `data-agent` got token from app1.sock, `log-reader` got token from app2.sock — different `sid` fields confirm isolation
+3. **`aactl sidecars list`**: shows both sidecars (Total: 2) with correct scopes and status
+4. **TCP fallback**: sidecar without `AA_SOCKET_PATH` works on TCP, logs `WARN: listening on TCP — consider AA_SOCKET_PATH for production deployments`
+
+### Debugging notes
+- First run: both sidecars started simultaneously → `SQLITE_BUSY` on concurrent `SaveSidecar` writes. One sidecar missing from `ListSidecars` (SQLite), but present in memory (issued tokens fine). Pre-existing concurrency bug in store, not Fix 5. Workaround: stagger sidecar startups. Future fix needed: write mutex or WAL mode in SqlStore.
+- `curlimages/curl` runs as uid 101 — can't access `0660` root-owned sockets. Set `user: "0:0"` on test-client container.
+
+### BLOCKED: Sidecar architecture brainstorm required before merge
+
+User raised fundamental questions about the sidecar model that must be answered and documented before this branch (and the project overall) merges to main. These are not Fix 5 bugs — they're architecture-level questions about *why sidecars exist* and *what alternatives operators have*.
+
+**Questions to brainstorm:**
+1. **How do operators create new sidecars?** Step-by-step for deploying a sidecar for a new app?
+2. **How do 3rd-party SDK consumers register apps to use sidecars?** What's the developer workflow?
+3. **FAQ: Why sidecars?** Rationale vs. direct broker access? What does the sidecar buy you?
+4. **Can we remove sidecars entirely?** Could we have a mode where operators create an "app" with client_id/client_secret that talks directly to the broker?
+5. **How would we silo scopes without sidecars?** If apps talk directly to the broker, how do we enforce per-app scope ceilings?
+6. **How do operators configure sidecars for specific applications?** One per app? Per team? Per trust boundary?
+
+### User feedback (Session 14)
+- "we need to figure out really professionally documentation to understand how to use the sidecars and how to register application to ensure sidecars"
+- "why we cant register application without using sidecars why cant we remove the sidecars totally"
+- "how would we silo scopes for apps if we dont use it"
+- Code is done but the *why* and *how* for operators/developers needs to be clear before merge
+
+### What's next
+1. **Brainstorm sidecar architecture questions** — resolve the 6 questions above
+2. **If we keep sidecars: comprehensive documentation required before merge** — operator guide (how to deploy sidecars for new apps, sidecar-per-app vs per-team guidance), developer guide (SDK consumer onboarding, connecting to sidecar, UDS vs TCP), FAQ (why sidecars exist, what they buy you, alternatives considered), architecture doc updates (sidecar role in the security model). Current docs explain *what* the sidecar does but not *why* it exists or *how* operators/developers are supposed to use it end-to-end.
+3. **If we remove sidecars: design the alternative** — app registration model, client_id/client_secret, scope siloing without sidecar ceilings
+4. **Then merge** `fix/sidecar-uds` to `develop`
+5. **Then Fix 6** (structured audit) — last fix
+
+### Local branches
+- `fix/sidecar-uds` (current, NOT merged)
+- `develop`
+- `main`
+- `develop-harness-backup` (dead/reference only)
+
 ## 2026-02-25 (Session 8)
 
 ### Git operations
