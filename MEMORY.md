@@ -56,11 +56,13 @@ Implementing Fix 6 (structured audit log fields). Completed 6 of 10 tasks:
 
 **Key blocker hit:** Changing `Record()` to accept `...RecordOption` broke `AuditRecorder` interfaces in `authz/val_mw.go` and `identity/id_svc.go` — Go structural typing means every interface that declared the old exact signature needed updating. Fixed by adding `...audit.RecordOption` to both interfaces. Also added `audit` import to `identity/id_svc.go` (no circular dependency).
 
+### Additional commits (continued session)
+- `0e02ca9` — feat(audit): annotate all Record() callers with structured options (9 files, 52 insertions)
+- `d014d69` — feat(aactl): add --outcome flag to audit events command
+- Gates: build PASS, lint PASS (fixed errcheck in test), unit tests PASS, security WARN (pre-existing gosec findings)
+
 ### What's next
-- Update all ~20 Record() callers with structured options (Task 7 — in progress, files already read)
-- aactl `--outcome` flag (Task 8)
-- Gates + CHANGELOG (Task 9)
-- Docker live test (Task 10)
+- Docker live test (Task 10) — then merge to `develop`
 
 ## 2026-02-25 (Session 15)
 

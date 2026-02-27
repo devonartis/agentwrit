@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Fix 6: Structured Audit Log Fields (P1 Compliance)
+
+**Summary:** Audit events now carry structured fields (`resource`, `outcome`, `deleg_depth`,
+`deleg_chain_hash`, `bytes_transferred`) via a backward-compatible functional options pattern
+(`RecordOption`). All ~20 `Record()` call sites annotated with `WithOutcome`. Hash chain
+tamper evidence covers all structured fields. Outcome filtering available via query API and
+`aactl audit events --outcome`.
+
+#### Modified: `internal/audit/audit_log.go`
+- `AuditEvent` struct: 5 new fields (`Resource`, `Outcome`, `DelegDepth`, `DelegChainHash`, `BytesTransferred`)
+- `RecordOption` type + 5 option functions (`WithResource`, `WithOutcome`, `WithDelegDepth`, `WithDelegChainHash`, `WithBytesTransferred`)
+- `Record()` accepts variadic `...RecordOption` — all existing callers unchanged
+- `computeHash()` includes structured fields for tamper evidence
+- `QueryFilters.Outcome` field + filter clause in `Query()`
+
+#### Modified: `internal/store/sql_store.go`
+- 5 new `audit_events` columns (`resource`, `outcome`, `deleg_depth`, `deleg_chain_hash`, `bytes_transferred`) with `DEFAULT NULL`
+- `SaveAuditEvent`, `LoadAllAuditEvents`, `QueryAuditEvents` updated with nullable types
+- `idx_audit_outcome` index for efficient outcome filtering
+
+#### Modified: `internal/handler/audit_hdl.go`
+- `outcome` query param mapped to `QueryFilters.Outcome`
+
+#### Modified: `cmd/aactl/audit.go`
+- `--outcome` flag on `aactl audit events` command
+- `OUTCOME` column in table output
+
+#### Modified: All `Record()` callers
+- `authz/val_mw.go`, `identity/id_svc.go`, `deleg/deleg_svc.go`, `handler/*.go`, `admin/admin_svc.go`, `admin/admin_hdl.go`
+- Every call site annotated with `WithOutcome("success"|"denied")`
+- Delegation callers include `WithDelegDepth`, `WithDelegChainHash`
+- Validation middleware includes `WithResource`
+
 ### Added — ADR-002: Sidecar Architecture Decision
 
 **Summary:** Collaborative 4-agent architecture review resolved 6 open questions about the

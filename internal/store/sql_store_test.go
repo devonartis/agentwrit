@@ -690,10 +690,14 @@ func TestSQLite_QueryByOutcome(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s.SaveAuditEvent(audit.AuditEvent{ID: "evt-1", Timestamp: time.Now().UTC(),
-		EventType: "token_issued", Hash: "h1", PrevHash: "p1", Outcome: "success"})
-	s.SaveAuditEvent(audit.AuditEvent{ID: "evt-2", Timestamp: time.Now().UTC(),
-		EventType: "scope_violation", Hash: "h2", PrevHash: "h1", Outcome: "denied"})
+	if err := s.SaveAuditEvent(audit.AuditEvent{ID: "evt-1", Timestamp: time.Now().UTC(),
+		EventType: "token_issued", Hash: "h1", PrevHash: "p1", Outcome: "success"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveAuditEvent(audit.AuditEvent{ID: "evt-2", Timestamp: time.Now().UTC(),
+		EventType: "scope_violation", Hash: "h2", PrevHash: "h1", Outcome: "denied"}); err != nil {
+		t.Fatal(err)
+	}
 
 	events, total, err := s.QueryAuditEvents(audit.QueryFilters{Outcome: "denied"})
 	if err != nil {

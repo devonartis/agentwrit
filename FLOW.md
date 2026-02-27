@@ -41,6 +41,10 @@ Changing `Record()` signature to `Record(..., opts ...RecordOption)` broke the `
 
 New audit columns use `DEFAULT NULL` + `sql.NullString`/`sql.NullInt64` scan types so existing rows with NULL values don't break `LoadAllAuditEvents`. Helper funcs `nullableString()` and `nullableInt()` map zero-values to NULL on write (zero-value fields → NULL in DB, non-zero → real value).
 
+### Executing-Plans: Fix 6 — All 9 code tasks complete
+
+Tasks 1-9 done. All ~20 `Record()` callers annotated with `WithOutcome`. Lint gate required fixing errcheck on two `SaveAuditEvent` calls in test code. Gates: build PASS, lint PASS, unit tests PASS, security WARN (pre-existing). Docker live test (Task 10) remaining before merge.
+
 ---
 
 ## 2026-02-25 (Session 15)
