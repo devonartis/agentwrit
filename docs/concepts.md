@@ -167,6 +167,7 @@ stateDiagram-v2
 
     Valid --> Valid: Used for authorized requests
     Valid --> Renewed: POST /v1/token/renew<br/>(before expiration)
+    Valid --> Released: POST /v1/token/release<br/>(task complete)
     Valid --> Expired: TTL elapsed
     Valid --> Revoked: Admin revokes at any<br/>of 4 levels
 
@@ -174,6 +175,7 @@ stateDiagram-v2
     Renewed --> Expired: TTL elapsed
     Renewed --> Revoked: Admin revokes
 
+    Released --> [*]: Token explicitly completed<br/>(audit logged)
     Expired --> [*]: Token is permanently unusable
     Revoked --> [*]: Token is permanently unusable
 ```
@@ -184,6 +186,7 @@ stateDiagram-v2
 - Default TTL of 300 seconds (5 minutes), configurable via `AA_DEFAULT_TTL`
 - Scope attenuation enforced at registration, delegation, and token exchange
 - Token renewal via `POST /v1/token/renew` issues fresh timestamps while preserving identity and scope
+- Token release via `POST /v1/token/release` signals task completion (optional but recommended for audit clarity)
 
 ---
 
@@ -260,7 +263,7 @@ flowchart TB
 | **Chain** | Delegation chain exploited (privilege escalation) | The root delegator's agent ID |
 
 **What AgentAuth implements:**
-- `RevSvc` maintains in-memory revocation lists at all 4 levels
+- `RevSvc` maintains revocation lists at all 4 levels, persisted to SQLite for durability across broker restarts
 - `POST /v1/revoke` requires admin scope (`admin:revoke:*`)
 - Every token validation checks all 4 revocation levels via `RevSvc.IsRevoked()`
 - Time-based expiration is enforced during signature verification -- expired tokens are rejected regardless of revocation state
@@ -293,9 +296,11 @@ Each hash is computed over: `prev_hash | event_id | timestamp | event_type | age
 
 **What AgentAuth implements:**
 - `AuditLog` provides append-only storage with automatic hash chaining using SHA-256
-- 17 event types covering the full lifecycle: `admin_auth`, `agent_registered`, `token_issued`, `token_revoked`, `token_renewed`, `delegation_created`, and more
+- Audit events persist to SQLite (configured via `AA_DB_PATH`); if no database path is set, events are stored in memory only
+- 17 event types covering the full lifecycle: `admin_auth`, `agent_registered`, `token_issued`, `token_revoked`, `token_renewed`, `delegation_created`, `token_released`, and more
+- Structured audit fields include: `resource` (resource being accessed), `outcome` (success/failure/completed), `deleg_depth` (delegation chain depth), `deleg_chain_hash` (chain integrity hash), `bytes_transferred` (data size)
 - PII sanitization automatically redacts values associated with `secret`, `password`, `token_value`, and `private_key`
-- `GET /v1/audit/events` supports filtering by `agent_id`, `task_id`, `event_type`, `since`, `until`, with pagination via `limit` and `offset`
+- `GET /v1/audit/events` supports filtering by `agent_id`, `task_id`, `event_type`, `outcome`, `since`, `until`, with pagination via `limit` and `offset`
 - Every event includes the hash chain fields, enabling verification of trail integrity
 
 ---

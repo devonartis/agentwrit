@@ -629,3 +629,126 @@ This is expected behavior. After a broker restart:
 3. **Check file permissions.** The broker process must have read-write access to both the database file and its parent directory (SQLite creates WAL/journal files alongside the main database).
 
 4. **Fallback:** If SQLite is unavailable, the broker still operates normally with in-memory-only audit events. Set `AA_DB_PATH=""` to explicitly disable persistence.
+
+---
+
+### Sidecar UDS Socket Permission Issues
+
+**Symptom:**
+
+```
+[AA:SIDECAR:FAIL] ... | LISTEN | socket permission denied
+```
+
+Or when connecting to the socket:
+
+```
+Permission denied: /var/run/agentauth/myapp.sock
+```
+
+**Cause:** The UDS socket file (`AA_SOCKET_PATH`) has incorrect permissions, or the agent process lacks read-write access. The sidecar creates the socket with `0660` permissions (owner + group read/write) by default.
+
+**Fix:**
+
+1. **Check socket file permissions:**
+
+```bash
+ls -la /var/run/agentauth/myapp.sock
+# Should show -rw-rw---- (0660) permissions
+```
+
+2. **Ensure the agent process is in the same group as the sidecar process**, or run both as the same user.
+
+3. **Check the parent directory is accessible:**
+
+```bash
+ls -la /var/run/agentauth/
+# Directory should be readable and writable
+```
+
+4. **Clean up stale sockets** from previous crashes:
+
+```bash
+rm -f /var/run/agentauth/myapp.sock
+# Restart the sidecar
+```
+
+5. **The sidecar cleans up stale sockets automatically on startup**, but if it crashes unexpectedly, manual cleanup may be needed.
+
+---
+
+### TLS/mTLS Certificate Issues
+
+**Symptom:**
+
+Sidecar logs:
+
+```
+[AA:SIDECAR:WARN] ... | BOOTSTRAP | TLS handshake failed, retrying
+```
+
+Or token requests fail with 502:
+
+```json
+{
+  "error": "Bad Gateway",
+  "detail": "TLS certificate verification failed"
+}
+```
+
+**Cause:** TLS certificate configuration is incorrect or certificates are invalid. Common issues:
+- `AA_SIDECAR_CA_CERT` path does not exist or is unreadable
+- CA certificate does not match the broker's certificate
+- Broker's certificate CN/SAN does not match `AA_BROKER_URL` hostname
+- Client certificate (`AA_SIDECAR_TLS_CERT`) or key (`AA_SIDECAR_TLS_KEY`) is missing or malformed
+- Certificate has expired
+
+**Fix:**
+
+1. **Verify CA certificate exists and is readable:**
+
+```bash
+ls -la /path/to/ca.crt
+openssl x509 -in /path/to/ca.crt -text -noout
+```
+
+2. **Verify the broker's certificate matches the CA:**
+
+```bash
+openssl s_client -connect localhost:8080 -CAfile /path/to/ca.crt
+# Should show "Verify return code: 0 (ok)"
+```
+
+3. **If using mTLS, verify client certificate and key exist:**
+
+```bash
+ls -la /path/to/sidecar.crt /path/to/sidecar.key
+```
+
+4. **Check certificate validity dates:**
+
+```bash
+openssl x509 -in /path/to/sidecar.crt -noout -dates
+```
+
+5. **Ensure the broker's certificate CN or SAN includes the hostname used in `AA_BROKER_URL`:**
+
+```bash
+# If AA_BROKER_URL=https://broker:8080, the cert should have CN=broker or SAN=broker
+openssl x509 -in /path/to/broker.crt -noout -text | grep -A2 "Subject Alternative Name"
+```
+
+6. **In Docker Compose, mount certificates correctly:**
+
+```yaml
+sidecar:
+  environment:
+    - AA_BROKER_URL=https://broker:8080
+    - AA_SIDECAR_CA_CERT=/certs/ca.crt
+    - AA_SIDECAR_TLS_CERT=/certs/sidecar.crt
+    - AA_SIDECAR_TLS_KEY=/certs/sidecar.key
+  volumes:
+    - /etc/agentauth/certs:/certs:ro
+```
+
+7. **The sidecar will retry bootstrap with exponential backoff** if TLS verification fails. Once certificates are corrected, it will succeed automatically.

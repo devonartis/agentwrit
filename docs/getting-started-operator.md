@@ -91,10 +91,14 @@ aactl revoke --level agent  --target spiffe://...
 aactl revoke --level task   --target task-001
 aactl revoke --level chain  --target spiffe://...
 
+# Token Release
+aactl token release --token <jwt>
+
 # Audit
 aactl audit events
 aactl audit events --event-type token_revoked
 aactl audit events --agent-id spiffe://...
+aactl audit events --outcome success
 aactl audit events --since 2026-02-19T00:00:00Z --limit 50
 aactl audit events --json
 ```
@@ -416,7 +420,7 @@ curl -s "http://localhost:8080/v1/audit/events?event_type=scope_ceiling_updated"
 
 ## Audit Persistence (AA_DB_PATH)
 
-By default, audit events are stored in memory and are lost when the broker restarts. To persist the audit trail across restarts, configure a SQLite database path:
+The broker persists audit events, revocations, and sidecar registrations to SQLite. To configure the database path:
 
 | Variable | Type | Default | Required | Description |
 |----------|------|---------|----------|-------------|
@@ -553,6 +557,31 @@ Response (201 Created):
 ```
 
 The sidecar uses this activation token in a single-use exchange at `POST /v1/sidecar/activate` to obtain its own bearer token.
+
+---
+
+## Token Release (Task Completion Signal)
+
+When an agent completes its task, it can optionally signal task completion by releasing its token. This triggers audit logging and allows the broker to perform cleanup operations.
+
+```bash
+# Agent releases its token when task is complete
+curl -s -X POST "http://localhost:8080/v1/token/release" \
+  -H "Authorization: Bearer <agent-token>"
+```
+
+Response (204 No Content):
+
+```
+HTTP/1.1 204 No Content
+```
+
+This endpoint records the token release in the audit trail and marks the token as explicitly completed. Token release is optional -- tokens are also automatically recorded as expired when their TTL elapses. Token release can be used for:
+
+- **Task completion audit trails** -- mark exactly when a task finished
+- **Cleanup operations** -- trigger resource deallocation
+- **Billing/metering** -- record precise duration of task execution
+- **Compliance** -- demonstrate explicit credential deactivation
 
 ---
 

@@ -673,6 +673,7 @@ Query the hash-chained audit trail with filters and pagination.
 | `agent_id` | string | -- | Filter by agent SPIFFE ID |
 | `task_id` | string | -- | Filter by task ID |
 | `event_type` | string | -- | Filter by event type |
+| `outcome` | string | -- | Filter by outcome (e.g. `success`, `denied`) |
 | `since` | string | -- | RFC3339 timestamp lower bound |
 | `until` | string | -- | RFC3339 timestamp upper bound |
 | `limit` | int | 100 | Max events to return (max 1000) |
@@ -693,15 +694,20 @@ Each `AuditEvent`:
 |---|---|---|
 | `id` | string | Sequential ID (`evt-000001`) |
 | `timestamp` | string | RFC3339 timestamp |
-| `event_type` | string | One of 22 event types |
+| `event_type` | string | One of 23 event types |
 | `agent_id` | string | Agent SPIFFE ID (if applicable) |
 | `task_id` | string | Task ID (if applicable) |
 | `orch_id` | string | Orchestration ID (if applicable) |
 | `detail` | string | Human-readable description (PII-sanitized) |
+| `resource` | string | Target resource path (e.g. API endpoint) |
+| `outcome` | string | Event outcome: `success` or `denied` |
+| `deleg_depth` | int | Delegation chain depth (0 = direct) |
+| `deleg_chain_hash` | string | SHA-256 hash of the delegation chain |
+| `bytes_transferred` | int | Bytes transferred (for metered operations) |
 | `hash` | string | SHA-256 hex hash of this event |
 | `prev_hash` | string | SHA-256 hex hash of the previous event |
 
-The 22 event types include the original lifecycle events (`admin_auth`, `agent_registered`, `token_issued`, `token_revoked`, `token_renewed`, `delegation_created`, etc.) plus 5 enforcement audit events:
+The 23 event types include the original lifecycle events (`admin_auth`, `agent_registered`, `token_issued`, `token_revoked`, `token_renewed`, `delegation_created`, etc.) plus 6 enforcement audit events:
 
 | Event Type | Description |
 |---|---|
@@ -710,6 +716,7 @@ The 22 event types include the original lifecycle events (`admin_auth`, `agent_r
 | `scope_violation` | Token lacks required scope for endpoint |
 | `scope_ceiling_exceeded` | Sidecar scope ceiling exceeded |
 | `delegation_attenuation_violation` | Delegation attempted to widen scope |
+| `token_released` | Agent voluntarily surrendered its credential |
 
 **Error responses:**
 
@@ -824,6 +831,34 @@ curl -X POST http://localhost:8080/v1/token/exchange \
   "agent_id": "spiffe://agentauth.local/agent/orch/task/instance",
   "sidecar_id": "abc123..."
 }
+```
+
+---
+
+#### POST /v1/token/release
+
+Agent self-revocation. An authenticated agent surrenders its credential by revoking its own token's JTI. This is a task-completion signal — the agent is done and no longer needs its token.
+
+**Auth:** Bearer token (any valid token — no admin scope required)
+
+**Request body:** None (the Bearer token in the Authorization header identifies the token to release)
+
+**Response 204:** No Content (success)
+
+**Error responses:**
+
+| Status | Type | Condition |
+|---|---|---|
+| 401 | `unauthorized` | Missing or invalid Bearer token |
+| 403 | `insufficient_scope` | Token already revoked |
+
+**Idempotency:** Releasing an already-released token returns 403 (token already revoked via the ValMw middleware). The `aactl` CLI treats this as idempotent success.
+
+**Audit event:** `token_released` with the agent's SPIFFE ID and JTI.
+
+```bash
+curl -X POST http://localhost:8080/v1/token/release \
+  -H "Authorization: Bearer eyJ..."
 ```
 
 ---
