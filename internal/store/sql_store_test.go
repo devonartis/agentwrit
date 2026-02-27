@@ -640,6 +640,77 @@ func TestLoadAllSidecars(t *testing.T) {
 	}
 }
 
+func TestSQLite_StructuredAuditFields(t *testing.T) {
+	s := NewSqlStore()
+	defer s.Close()
+	if err := s.InitDB(":memory:"); err != nil {
+		t.Fatal(err)
+	}
+
+	evt := audit.AuditEvent{
+		ID: "evt-000001", Timestamp: time.Now().UTC(),
+		EventType: "token_issued", AgentID: "a1", TaskID: "t1", OrchID: "o1",
+		Detail: "issued", Hash: "abc", PrevHash: "000",
+		Resource: "data:reports", Outcome: "success", DelegDepth: 2,
+		DelegChainHash: "chainhash", BytesTransferred: 1024,
+	}
+	if err := s.SaveAuditEvent(evt); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := s.LoadAllAuditEvents()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(loaded))
+	}
+	got := loaded[0]
+	if got.Resource != "data:reports" {
+		t.Errorf("resource mismatch: %s", got.Resource)
+	}
+	if got.Outcome != "success" {
+		t.Errorf("outcome mismatch: %s", got.Outcome)
+	}
+	if got.DelegDepth != 2 {
+		t.Errorf("deleg_depth mismatch: %d", got.DelegDepth)
+	}
+	if got.DelegChainHash != "chainhash" {
+		t.Errorf("deleg_chain_hash mismatch: %s", got.DelegChainHash)
+	}
+	if got.BytesTransferred != 1024 {
+		t.Errorf("bytes_transferred mismatch: %d", got.BytesTransferred)
+	}
+}
+
+func TestSQLite_QueryByOutcome(t *testing.T) {
+	s := NewSqlStore()
+	defer s.Close()
+	if err := s.InitDB(":memory:"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.SaveAuditEvent(audit.AuditEvent{ID: "evt-1", Timestamp: time.Now().UTC(),
+		EventType: "token_issued", Hash: "h1", PrevHash: "p1", Outcome: "success"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveAuditEvent(audit.AuditEvent{ID: "evt-2", Timestamp: time.Now().UTC(),
+		EventType: "scope_violation", Hash: "h2", PrevHash: "h1", Outcome: "denied"}); err != nil {
+		t.Fatal(err)
+	}
+
+	events, total, err := s.QueryAuditEvents(audit.QueryFilters{Outcome: "denied"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 {
+		t.Errorf("expected 1 denied, got %d", total)
+	}
+	if len(events) != 1 || events[0].Outcome != "denied" {
+		t.Errorf("expected denied event, got %v", events)
+	}
+}
+
 func TestQueryAuditEvents_TimestampFilters(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	s := NewSqlStore()

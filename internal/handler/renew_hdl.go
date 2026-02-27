@@ -50,7 +50,8 @@ func (h *RenewHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if h.auditLog != nil && claims != nil {
 			h.auditLog.Record(audit.EventTokenRenewalFailed, claims.Sub, claims.TaskId, claims.OrchId,
-				fmt.Sprintf("token renewal failed for agent=%s: %s", claims.Sub, err.Error()))
+				fmt.Sprintf("token renewal failed for agent=%s: %s", claims.Sub, err.Error()),
+			audit.WithOutcome("denied"))
 		}
 		problemdetails.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "token renewal failed: "+err.Error(), r.URL.Path)
 		return
@@ -58,7 +59,8 @@ func (h *RenewHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if h.auditLog != nil && claims != nil {
 		h.auditLog.Record(audit.EventTokenRenewed, claims.Sub, claims.TaskId, claims.OrchId,
-			fmt.Sprintf("token renewed for agent=%s new_jti=%s", claims.Sub, resp.Claims.Jti))
+			fmt.Sprintf("token renewed for agent=%s new_jti=%s", claims.Sub, resp.Claims.Jti),
+			audit.WithOutcome("success"))
 	}
 
 	rr := renewResp{

@@ -38,7 +38,8 @@ func (h *ReleaseHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if h.auditLog != nil {
 		h.auditLog.Record(audit.EventTokenReleased, claims.Sub, claims.TaskId, claims.OrchId,
-			"token released | jti="+claims.Jti)
+			"token released | jti="+claims.Jti,
+			audit.WithOutcome("success"))
 	}
 	obs.TokensRevokedTotal.WithLabelValues("release").Inc()
 

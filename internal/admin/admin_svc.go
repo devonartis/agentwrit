@@ -171,7 +171,8 @@ func (s *AdminSvc) Authenticate(clientID, clientSecret string) (*token.IssueResp
 		obs.Warn(mod, cmp, "authentication failed", "client_id="+clientID)
 		if s.auditLog != nil {
 			s.auditLog.Record(audit.EventAdminAuthFailed, "", "", "",
-				fmt.Sprintf("failed authentication attempt for client_id=%s", clientID))
+				fmt.Sprintf("failed authentication attempt for client_id=%s", clientID),
+				audit.WithOutcome("denied"))
 		}
 		return nil, ErrInvalidSecret
 	}
@@ -191,7 +192,8 @@ func (s *AdminSvc) Authenticate(clientID, clientSecret string) (*token.IssueResp
 	obs.Ok(mod, cmp, "admin authenticated", "client_id="+clientID)
 	if s.auditLog != nil {
 		s.auditLog.Record(audit.EventAdminAuth, "", "", "",
-			fmt.Sprintf("admin authenticated as %s", adminSub))
+			fmt.Sprintf("admin authenticated as %s", adminSub),
+			audit.WithOutcome("success"))
 	}
 
 	return resp, nil
@@ -256,7 +258,8 @@ func (s *AdminSvc) CreateLaunchToken(req CreateLaunchTokenReq, createdBy string)
 	if s.auditLog != nil {
 		s.auditLog.Record(audit.EventLaunchTokenIssued, "", "", "",
 			fmt.Sprintf("launch token issued for agent=%s scope=%v max_ttl=%d created_by=%s",
-				req.AgentName, req.AllowedScope, maxTTL, createdBy))
+				req.AgentName, req.AllowedScope, maxTTL, createdBy),
+			audit.WithOutcome("success"))
 	}
 
 	return &CreateLaunchTokenResp{
@@ -305,6 +308,7 @@ func (s *AdminSvc) CreateSidecarActivationToken(req CreateSidecarActivationReq, 
 			"",
 			"",
 			fmt.Sprintf("issued sidecar activation token scopes=%v exp=%s", scopes, expiresAt.Format(time.RFC3339)),
+			audit.WithOutcome("success"),
 		)
 	}
 
@@ -338,7 +342,8 @@ func (s *AdminSvc) ActivateSidecar(req ActivateSidecarReq) (*ActivateSidecarResp
 	if err := s.store.ConsumeActivationToken(claims.Jti, claims.Exp); err != nil {
 		if errors.Is(err, store.ErrTokenConsumed) {
 			if s.auditLog != nil {
-				s.auditLog.Record(audit.EventSidecarActivationFailed, "", "", "", "activation token replay detected")
+				s.auditLog.Record(audit.EventSidecarActivationFailed, "", "", "", "activation token replay detected",
+				audit.WithOutcome("denied"))
 			}
 			return nil, ErrActivationTokenReplayed
 		}
@@ -392,6 +397,7 @@ func (s *AdminSvc) ActivateSidecar(req ActivateSidecarReq) (*ActivateSidecarResp
 			"",
 			"",
 			fmt.Sprintf("sidecar activated with scope_ceiling=%v", sidecarScopes),
+			audit.WithOutcome("success"),
 		)
 	}
 
@@ -455,6 +461,7 @@ func (s *AdminSvc) UpdateSidecarCeiling(sidecarID string, newCeiling []string, u
 			"",
 			fmt.Sprintf("sidecar=%s old_ceiling=%v new_ceiling=%v narrowed=%t updated_by=%s",
 				sidecarID, oldCeiling, newCeiling, narrowed, updatedBy),
+			audit.WithOutcome("success"),
 		)
 	}
 

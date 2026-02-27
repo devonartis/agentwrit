@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/authz"
 	"github.com/divineartis/agentauth/internal/obs"
 	"github.com/divineartis/agentauth/internal/store"
@@ -61,7 +62,7 @@ type RegisterResp struct {
 // registration. It is satisfied by [audit.AuditLog]. A nil value
 // disables audit recording.
 type AuditRecorder interface {
-	Record(eventType, agentID, taskID, orchID, detail string)
+	Record(eventType, agentID, taskID, orchID, detail string, opts ...audit.RecordOption)
 }
 
 // IdSvc is the identity service responsible for the full agent registration
@@ -136,7 +137,8 @@ func (s *IdSvc) Register(req RegisterReq) (*RegisterResp, error) {
 	if !authz.ScopeIsSubset(req.RequestedScope, ltRec.AllowedScope) {
 		if s.auditLog != nil {
 			s.auditLog.Record("registration_policy_violation", "", req.TaskID, req.OrchID,
-				fmt.Sprintf("scope violation: requested %v exceeds allowed %v", req.RequestedScope, ltRec.AllowedScope))
+				fmt.Sprintf("scope violation: requested %v exceeds allowed %v", req.RequestedScope, ltRec.AllowedScope),
+			audit.WithOutcome("denied"))
 		}
 		obs.RegistrationsTotal.WithLabelValues("failure").Inc()
 		obs.Warn("IDENTITY", "Register", "scope violation",
@@ -233,9 +235,11 @@ func (s *IdSvc) Register(req RegisterReq) (*RegisterResp, error) {
 	// Audit events
 	if s.auditLog != nil {
 		s.auditLog.Record("agent_registered", agentID, req.TaskID, req.OrchID,
-			fmt.Sprintf("Agent registered with scope %v", req.RequestedScope))
+			fmt.Sprintf("Agent registered with scope %v", req.RequestedScope),
+			audit.WithOutcome("success"))
 		s.auditLog.Record("token_issued", agentID, req.TaskID, req.OrchID,
-			fmt.Sprintf("Token issued, jti=%s, ttl=%d", issResp.Claims.Jti, ttl))
+			fmt.Sprintf("Token issued, jti=%s, ttl=%d", issResp.Claims.Jti, ttl),
+			audit.WithOutcome("success"))
 	}
 
 	// Metrics

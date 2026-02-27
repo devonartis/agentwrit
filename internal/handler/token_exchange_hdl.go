@@ -222,13 +222,15 @@ func (h *TokenExchangeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (h *TokenExchangeHdl) recordSuccess(agentID, taskID, orchID, detail string) {
 	if h.auditLog != nil {
-		h.auditLog.Record(audit.EventSidecarExchangeSuccess, agentID, taskID, orchID, detail)
+		h.auditLog.Record(audit.EventSidecarExchangeSuccess, agentID, taskID, orchID, detail,
+			audit.WithOutcome("success"))
 	}
 }
 
 func (h *TokenExchangeHdl) recordDenial(agentID, taskID, orchID, detail string) {
 	if h.auditLog != nil {
-		h.auditLog.Record(audit.EventSidecarExchangeDenied, agentID, taskID, orchID, detail)
+		h.auditLog.Record(audit.EventSidecarExchangeDenied, agentID, taskID, orchID, detail,
+			audit.WithOutcome("denied"))
 	}
 }
 

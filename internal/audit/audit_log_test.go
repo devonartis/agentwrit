@@ -284,6 +284,77 @@ func TestEvents_ReturnsCopy(t *testing.T) {
 	}
 }
 
+func TestQuery_FilterByOutcome(t *testing.T) {
+	al := NewAuditLog(nil)
+	al.Record(EventTokenIssued, "a1", "t1", "o1", "issued", WithOutcome("success"))
+	al.Record(EventScopeViolation, "a2", "t2", "o2", "denied", WithOutcome("denied"))
+	al.Record(EventTokenRenewed, "a3", "t3", "o3", "renewed", WithOutcome("success"))
+
+	events, total := al.Query(QueryFilters{Outcome: "denied"})
+	if total != 1 {
+		t.Errorf("expected total=1 denied, got %d", total)
+	}
+	if len(events) != 1 || events[0].Outcome != "denied" {
+		t.Errorf("expected 1 denied event, got %v", events)
+	}
+}
+
+func TestRecord_WithOptions(t *testing.T) {
+	al := NewAuditLog(nil)
+	al.Record(EventTokenIssued, "a1", "t1", "o1", "issued token",
+		WithResource("data:reports"),
+		WithOutcome("success"),
+		WithDelegDepth(0),
+	)
+	events := al.Events()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	evt := events[0]
+	if evt.Resource != "data:reports" {
+		t.Errorf("expected resource=data:reports, got %s", evt.Resource)
+	}
+	if evt.Outcome != "success" {
+		t.Errorf("expected outcome=success, got %s", evt.Outcome)
+	}
+	if evt.DelegDepth != 0 {
+		t.Errorf("expected deleg_depth=0, got %d", evt.DelegDepth)
+	}
+}
+
+func TestRecord_StructuredFieldsAffectHash(t *testing.T) {
+	al1 := NewAuditLog(nil)
+	al1.Record(EventTokenIssued, "a1", "t1", "o1", "same detail",
+		WithOutcome("success"),
+	)
+
+	al2 := NewAuditLog(nil)
+	al2.Record(EventTokenIssued, "a1", "t1", "o1", "same detail",
+		WithOutcome("denied"),
+	)
+
+	h1 := al1.Events()[0].Hash
+	h2 := al2.Events()[0].Hash
+	if h1 == h2 {
+		t.Error("different outcome values should produce different hashes")
+	}
+}
+
+func TestRecord_WithoutOptions_StillWorks(t *testing.T) {
+	al := NewAuditLog(nil)
+	al.Record(EventTokenIssued, "a1", "t1", "o1", "no options")
+	events := al.Events()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Resource != "" {
+		t.Error("expected empty resource when no option used")
+	}
+	if events[0].Outcome != "" {
+		t.Error("expected empty outcome when no option used")
+	}
+}
+
 // mockStore implements AuditStore for testing.
 type mockStore struct {
 	events []AuditEvent

@@ -110,7 +110,8 @@ func (s *DelegSvc) Delegate(delegatorClaims *token.TknClaims, req DelegReq) (*De
 			s.auditLog.Record(audit.EventDelegationAttenuationViolation,
 				delegatorClaims.Sub, delegatorClaims.TaskId, delegatorClaims.OrchId,
 				fmt.Sprintf("delegation_attenuation_violation | delegator=%s | target=%s | requested=%v | allowed=%v",
-					delegatorClaims.Sub, req.DelegateTo, req.Scope, delegatorClaims.Scope))
+					delegatorClaims.Sub, req.DelegateTo, req.Scope, delegatorClaims.Scope),
+			audit.WithOutcome("denied"), audit.WithDelegDepth(currentDepth))
 		}
 		return nil, ErrScopeViolation
 	}
@@ -165,7 +166,8 @@ func (s *DelegSvc) Delegate(delegatorClaims *token.TknClaims, req DelegReq) (*De
 	// Audit
 	if s.auditLog != nil {
 		s.auditLog.Record(audit.EventDelegationCreated, req.DelegateTo, delegatorClaims.TaskId, delegatorClaims.OrchId,
-			fmt.Sprintf("delegation from %s to %s scope=%v depth=%d", delegatorClaims.Sub, req.DelegateTo, req.Scope, currentDepth+1))
+			fmt.Sprintf("delegation from %s to %s scope=%v depth=%d", delegatorClaims.Sub, req.DelegateTo, req.Scope, currentDepth+1),
+			audit.WithOutcome("success"), audit.WithDelegDepth(currentDepth+1), audit.WithDelegChainHash(chainHash))
 	}
 
 	obs.Ok("DELEG", "DelegSvc", "delegation created",

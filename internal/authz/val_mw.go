@@ -32,7 +32,7 @@ type RevocationChecker interface {
 // AuditRecorder records structured audit events. It is satisfied by
 // [audit.AuditLog].
 type AuditRecorder interface {
-	Record(eventType, agentID, taskID, orchID, detail string)
+	Record(eventType, agentID, taskID, orchID, detail string, opts ...audit.RecordOption)
 }
 
 // ValMw is the validation middleware. It extracts the Bearer token from the
@@ -69,7 +69,8 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
 			if m.auditLog != nil {
-				m.auditLog.Record(audit.EventTokenAuthFailed, "", "", "", "missing authorization header | path="+r.URL.Path)
+				m.auditLog.Record(audit.EventTokenAuthFailed, "", "", "", "missing authorization header | path="+r.URL.Path,
+				audit.WithOutcome("denied"), audit.WithResource(r.URL.Path))
 			}
 			problemdetails.WriteProblem(r.Context(), w, 401, "unauthorized", "missing authorization header", r.URL.Path)
 			return
@@ -77,7 +78,8 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 
 		if !strings.HasPrefix(authHeader, "Bearer ") {
 			if m.auditLog != nil {
-				m.auditLog.Record(audit.EventTokenAuthFailed, "", "", "", "invalid authorization scheme | path="+r.URL.Path)
+				m.auditLog.Record(audit.EventTokenAuthFailed, "", "", "", "invalid authorization scheme | path="+r.URL.Path,
+				audit.WithOutcome("denied"), audit.WithResource(r.URL.Path))
 			}
 			problemdetails.WriteProblem(r.Context(), w, 401, "unauthorized", "invalid authorization scheme", r.URL.Path)
 			return
@@ -87,7 +89,8 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 		claims, err := m.tknSvc.Verify(tokenStr)
 		if err != nil {
 			if m.auditLog != nil {
-				m.auditLog.Record(audit.EventTokenAuthFailed, "", "", "", "token verification failed: "+err.Error()+" | path="+r.URL.Path)
+				m.auditLog.Record(audit.EventTokenAuthFailed, "", "", "", "token verification failed: "+err.Error()+" | path="+r.URL.Path,
+				audit.WithOutcome("denied"), audit.WithResource(r.URL.Path))
 			}
 			problemdetails.WriteProblem(r.Context(), w, 401, "unauthorized", "token verification failed: "+err.Error(), r.URL.Path)
 			return
@@ -95,7 +98,8 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 
 		if m.revSvc != nil && m.revSvc.IsRevoked(claims) {
 			if m.auditLog != nil {
-				m.auditLog.Record(audit.EventTokenRevokedAccess, claims.Sub, claims.TaskId, claims.OrchId, "revoked token used | path="+r.URL.Path)
+				m.auditLog.Record(audit.EventTokenRevokedAccess, claims.Sub, claims.TaskId, claims.OrchId, "revoked token used | path="+r.URL.Path,
+				audit.WithOutcome("denied"), audit.WithResource(r.URL.Path))
 			}
 			problemdetails.WriteProblem(r.Context(), w, 403, "insufficient_scope", "token has been revoked", r.URL.Path)
 			return
@@ -105,7 +109,8 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 		if m.audience != "" && !containsAudience(claims.Aud, m.audience) {
 			if m.auditLog != nil {
 				m.auditLog.Record(audit.EventTokenAuthFailed, claims.Sub, claims.TaskId, claims.OrchId,
-					"audience mismatch | expected="+m.audience+" | path="+r.URL.Path)
+					"audience mismatch | expected="+m.audience+" | path="+r.URL.Path,
+				audit.WithOutcome("denied"), audit.WithResource(r.URL.Path))
 			}
 			problemdetails.WriteProblem(r.Context(), w, 401, "unauthorized", "token audience mismatch", r.URL.Path)
 			return
@@ -132,7 +137,8 @@ func (m *ValMw) RequireScope(scope string, next http.Handler) http.Handler {
 		if !ScopeIsSubset([]string{scope}, claims.Scope) {
 			if m.auditLog != nil {
 				m.auditLog.Record(audit.EventScopeViolation, claims.Sub, claims.TaskId, claims.OrchId,
-					"scope_violation | required="+scope+" | actual="+strings.Join(claims.Scope, ",")+" | path="+r.URL.Path)
+					"scope_violation | required="+scope+" | actual="+strings.Join(claims.Scope, ",")+" | path="+r.URL.Path,
+				audit.WithOutcome("denied"), audit.WithResource(r.URL.Path))
 			}
 			problemdetails.WriteProblem(r.Context(), w, 403, "insufficient_scope", "token lacks required scope: "+scope, r.URL.Path)
 			return

@@ -34,6 +34,48 @@
 - Design the test BEFORE implementation: read user stories, understand constraints, then code
 - The test is part of the fix, not a separate task to defer
 
+**Docker live test evidence — save to `tests/<fix-name>-evidence/`.** (established 2026-02-26, Session 16)
+- Every Docker live test must produce a `tests/<fix-name>-evidence/` folder
+- Folder contains: `README.md` (overview + story table), `story-N-<name>.md` per story (plain English, reproduction steps, raw output, what to look for, verdict), `smoketest-output.txt`
+- Anyone should be able to open the evidence folder and understand what was tested and whether it passed without running anything
+- This is not optional — a live test without saved evidence is incomplete
+
+## 2026-02-26 (Session 16)
+
+### Git operations
+- Created `fix/structured-audit` off `develop`
+- `05efc0f` — docs: session 16 kickoff
+- `c7e07d1` — feat(audit): add structured fields and RecordOption to AuditEvent
+- `253dbea` — feat(audit): include structured fields in computeHash for tamper evidence
+- `55e837f` — feat(audit): add outcome filter to QueryFilters
+- `06b76a0` — feat(store): SQLite migration for structured audit fields + outcome filter
+- `f35635c` — feat(handler): add outcome query param to audit events endpoint (+ interface fixes)
+
+### What happened
+Implementing Fix 6 (structured audit log fields). Completed 6 of 10 tasks:
+1. Branch + docs — done
+2. Added 5 structured fields to `AuditEvent`, created `RecordOption` functional options type, updated `Record()` with variadic options — 22 tests pass
+3. Updated `computeHash` to include all structured fields for tamper evidence
+4. Added `Outcome` field to `QueryFilters` with filter clause in `Query()`
+5. SQLite migration — 5 new columns, updated `SaveAuditEvent`/`LoadAllAuditEvents`/`QueryAuditEvents` with nullable types, outcome index
+6. Added `outcome` query param to `audit_hdl.go`, updated `AuditRecorder` interfaces in `authz` and `identity` packages (variadic `...RecordOption` broke the old interface signatures)
+
+**Key blocker hit:** Changing `Record()` to accept `...RecordOption` broke `AuditRecorder` interfaces in `authz/val_mw.go` and `identity/id_svc.go` — Go structural typing means every interface that declared the old exact signature needed updating. Fixed by adding `...audit.RecordOption` to both interfaces. Also added `audit` import to `identity/id_svc.go` (no circular dependency).
+
+### Additional commits (continued session)
+- `0e02ca9` — feat(audit): annotate all Record() callers with structured options (9 files, 52 insertions)
+- `d014d69` — feat(aactl): add --outcome flag to audit events command
+- Gates: build PASS, lint PASS (fixed errcheck in test), unit tests PASS, security WARN (pre-existing gosec findings)
+
+### Docker live test results
+- Smoketest: 12/12 PASS (full sidecar lifecycle including exchange + scope escalation denial)
+- Story 1: PASS — all 18 audit events have `outcome` field populated (`success`/`denied`), `resource` on auth failures
+- Story 2: PASS — `--outcome denied` filter returns exactly 3 events, all denied
+- Story 3: PASS — hash chain intact across all 20 events, every `prev_hash` links correctly
+
+### What's next
+- Merge `fix/structured-audit` to `develop` — all 10 tasks complete, all gates + Docker live test pass
+
 ## 2026-02-25 (Session 15)
 
 ### Git operations

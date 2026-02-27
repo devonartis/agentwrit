@@ -73,7 +73,8 @@ func (h *RevokeHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Audit
 	if h.auditLog != nil {
 		h.auditLog.Record(audit.EventTokenRevoked, req.Target, "", "",
-			"revoked at level="+req.Level+" target="+req.Target)
+			"revoked at level="+req.Level+" target="+req.Target,
+			audit.WithOutcome("success"))
 	}
 	obs.TokensRevokedTotal.WithLabelValues(req.Level).Inc()
 
