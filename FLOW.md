@@ -25,6 +25,16 @@ Format:
 
 ---
 
+## 2026-02-26 (Session 16)
+
+### Executing-Plans: Fix 6 — Structured Audit Log Fields
+
+Implementing the last compliance fix. Functional options pattern (`RecordOption`) chosen to keep existing `Record()` callers backward-compatible — variadic `...RecordOption` means zero-option calls compile unchanged. New structured fields (`resource`, `outcome`, `deleg_depth`, `deleg_chain_hash`, `bytes_transferred`) added to `AuditEvent`, included in `computeHash()` for tamper evidence, persisted via SQLite migration, and exposed through query API with `outcome` filtering.
+
+→ Plan: transcript plan from session 16
+
+---
+
 ## 2026-02-25 (Session 15)
 
 ### Architecture Decision: Keep Sidecar Model (ADR-002)

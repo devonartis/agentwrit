@@ -34,6 +34,20 @@
 - Design the test BEFORE implementation: read user stories, understand constraints, then code
 - The test is part of the fix, not a separate task to defer
 
+## 2026-02-26 (Session 16)
+
+### Git operations
+- Created `fix/structured-audit` off `develop`
+
+### What happened
+Implementing Fix 6 (structured audit log fields) — the last compliance fix. Adding `resource`, `outcome`, `deleg_depth`, `deleg_chain_hash`, `bytes_transferred` to `AuditEvent`. Functional options pattern (`RecordOption`) for backward compatibility. Outcome filtering in query API. SQLite migration for new columns.
+
+### What's next
+- TDD implementation of structured fields, hash coverage, query filtering, SQLite persistence
+- Update all Record() callers with structured options
+- aactl `--outcome` flag
+- Docker live test
+
 ## 2026-02-25 (Session 15)
 
 ### Git operations
