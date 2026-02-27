@@ -284,6 +284,44 @@ func TestEvents_ReturnsCopy(t *testing.T) {
 	}
 }
 
+func TestRecord_WithOptions(t *testing.T) {
+	al := NewAuditLog(nil)
+	al.Record(EventTokenIssued, "a1", "t1", "o1", "issued token",
+		WithResource("data:reports"),
+		WithOutcome("success"),
+		WithDelegDepth(0),
+	)
+	events := al.Events()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	evt := events[0]
+	if evt.Resource != "data:reports" {
+		t.Errorf("expected resource=data:reports, got %s", evt.Resource)
+	}
+	if evt.Outcome != "success" {
+		t.Errorf("expected outcome=success, got %s", evt.Outcome)
+	}
+	if evt.DelegDepth != 0 {
+		t.Errorf("expected deleg_depth=0, got %d", evt.DelegDepth)
+	}
+}
+
+func TestRecord_WithoutOptions_StillWorks(t *testing.T) {
+	al := NewAuditLog(nil)
+	al.Record(EventTokenIssued, "a1", "t1", "o1", "no options")
+	events := al.Events()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Resource != "" {
+		t.Error("expected empty resource when no option used")
+	}
+	if events[0].Outcome != "" {
+		t.Error("expected empty outcome when no option used")
+	}
+}
+
 // mockStore implements AuditStore for testing.
 type mockStore struct {
 	events []AuditEvent

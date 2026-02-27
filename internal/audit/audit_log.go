@@ -64,9 +64,35 @@ type AuditEvent struct {
 	AgentID   string    `json:"agent_id,omitempty"`
 	TaskID    string    `json:"task_id,omitempty"`
 	OrchID    string    `json:"orch_id,omitempty"`
-	Detail    string    `json:"detail"`
-	Hash      string    `json:"hash"`
-	PrevHash  string    `json:"prev_hash"`
+	Detail           string    `json:"detail"`
+	Resource         string    `json:"resource,omitempty"`
+	Outcome          string    `json:"outcome,omitempty"`
+	DelegDepth       int       `json:"deleg_depth,omitempty"`
+	DelegChainHash   string    `json:"deleg_chain_hash,omitempty"`
+	BytesTransferred int64     `json:"bytes_transferred,omitempty"`
+	Hash             string    `json:"hash"`
+	PrevHash         string    `json:"prev_hash"`
+}
+
+// RecordOption is a functional option for adding structured fields to an
+// audit event. Pass zero or more options to [AuditLog.Record].
+type RecordOption func(*AuditEvent)
+
+// WithResource sets the resource field on an audit event.
+func WithResource(r string) RecordOption { return func(e *AuditEvent) { e.Resource = r } }
+
+// WithOutcome sets the outcome field (e.g. "success", "denied") on an audit event.
+func WithOutcome(o string) RecordOption { return func(e *AuditEvent) { e.Outcome = o } }
+
+// WithDelegDepth sets the delegation depth on an audit event.
+func WithDelegDepth(d int) RecordOption { return func(e *AuditEvent) { e.DelegDepth = d } }
+
+// WithDelegChainHash sets the delegation chain hash on an audit event.
+func WithDelegChainHash(h string) RecordOption { return func(e *AuditEvent) { e.DelegChainHash = h } }
+
+// WithBytesTransferred sets the bytes transferred on an audit event.
+func WithBytesTransferred(b int64) RecordOption {
+	return func(e *AuditEvent) { e.BytesTransferred = b }
 }
 
 // QueryFilters defines optional filters for [AuditLog.Query]. Zero-value
@@ -133,7 +159,7 @@ func NewAuditLogWithEvents(store AuditStore, events []AuditEvent) *AuditLog {
 // automatically sanitized to redact known sensitive keywords. The event's
 // Hash is computed as SHA-256(prevHash | id | timestamp | fields) to
 // maintain chain integrity.
-func (a *AuditLog) Record(eventType, agentID, taskID, orchID, detail string) {
+func (a *AuditLog) Record(eventType, agentID, taskID, orchID, detail string, opts ...RecordOption) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -149,6 +175,11 @@ func (a *AuditLog) Record(eventType, agentID, taskID, orchID, detail string) {
 		OrchID:    orchID,
 		Detail:    sanitized,
 		PrevHash:  a.prevHash,
+	}
+
+	// Apply functional options for structured fields
+	for _, opt := range opts {
+		opt(&evt)
 	}
 
 	// Hash chain: H(prev_hash + event_data)
