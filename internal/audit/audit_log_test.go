@@ -307,6 +307,24 @@ func TestRecord_WithOptions(t *testing.T) {
 	}
 }
 
+func TestRecord_StructuredFieldsAffectHash(t *testing.T) {
+	al1 := NewAuditLog(nil)
+	al1.Record(EventTokenIssued, "a1", "t1", "o1", "same detail",
+		WithOutcome("success"),
+	)
+
+	al2 := NewAuditLog(nil)
+	al2.Record(EventTokenIssued, "a1", "t1", "o1", "same detail",
+		WithOutcome("denied"),
+	)
+
+	h1 := al1.Events()[0].Hash
+	h2 := al2.Events()[0].Hash
+	if h1 == h2 {
+		t.Error("different outcome values should produce different hashes")
+	}
+}
+
 func TestRecord_WithoutOptions_StillWorks(t *testing.T) {
 	al := NewAuditLog(nil)
 	al.Record(EventTokenIssued, "a1", "t1", "o1", "no options")

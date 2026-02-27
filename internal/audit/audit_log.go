@@ -262,9 +262,10 @@ func (a *AuditLog) Events() []AuditEvent {
 }
 
 func computeHash(evt AuditEvent) string {
-	data := fmt.Sprintf("%s|%s|%s|%s|%s|%s|%s|%s",
+	data := fmt.Sprintf("%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%d|%s|%d",
 		evt.PrevHash, evt.ID, evt.Timestamp.Format(time.RFC3339Nano),
-		evt.EventType, evt.AgentID, evt.TaskID, evt.OrchID, evt.Detail)
+		evt.EventType, evt.AgentID, evt.TaskID, evt.OrchID, evt.Detail,
+		evt.Resource, evt.Outcome, evt.DelegDepth, evt.DelegChainHash, evt.BytesTransferred)
 	h := sha256.Sum256([]byte(data))
 	return hex.EncodeToString(h[:])
 }
