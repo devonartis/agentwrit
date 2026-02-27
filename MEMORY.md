@@ -38,15 +38,29 @@
 
 ### Git operations
 - Created `fix/structured-audit` off `develop`
+- `05efc0f` — docs: session 16 kickoff
+- `c7e07d1` — feat(audit): add structured fields and RecordOption to AuditEvent
+- `253dbea` — feat(audit): include structured fields in computeHash for tamper evidence
+- `55e837f` — feat(audit): add outcome filter to QueryFilters
+- `06b76a0` — feat(store): SQLite migration for structured audit fields + outcome filter
+- `f35635c` — feat(handler): add outcome query param to audit events endpoint (+ interface fixes)
 
 ### What happened
-Implementing Fix 6 (structured audit log fields) — the last compliance fix. Adding `resource`, `outcome`, `deleg_depth`, `deleg_chain_hash`, `bytes_transferred` to `AuditEvent`. Functional options pattern (`RecordOption`) for backward compatibility. Outcome filtering in query API. SQLite migration for new columns.
+Implementing Fix 6 (structured audit log fields). Completed 6 of 10 tasks:
+1. Branch + docs — done
+2. Added 5 structured fields to `AuditEvent`, created `RecordOption` functional options type, updated `Record()` with variadic options — 22 tests pass
+3. Updated `computeHash` to include all structured fields for tamper evidence
+4. Added `Outcome` field to `QueryFilters` with filter clause in `Query()`
+5. SQLite migration — 5 new columns, updated `SaveAuditEvent`/`LoadAllAuditEvents`/`QueryAuditEvents` with nullable types, outcome index
+6. Added `outcome` query param to `audit_hdl.go`, updated `AuditRecorder` interfaces in `authz` and `identity` packages (variadic `...RecordOption` broke the old interface signatures)
+
+**Key blocker hit:** Changing `Record()` to accept `...RecordOption` broke `AuditRecorder` interfaces in `authz/val_mw.go` and `identity/id_svc.go` — Go structural typing means every interface that declared the old exact signature needed updating. Fixed by adding `...audit.RecordOption` to both interfaces. Also added `audit` import to `identity/id_svc.go` (no circular dependency).
 
 ### What's next
-- TDD implementation of structured fields, hash coverage, query filtering, SQLite persistence
-- Update all Record() callers with structured options
-- aactl `--outcome` flag
-- Docker live test
+- Update all ~20 Record() callers with structured options (Task 7 — in progress, files already read)
+- aactl `--outcome` flag (Task 8)
+- Gates + CHANGELOG (Task 9)
+- Docker live test (Task 10)
 
 ## 2026-02-25 (Session 15)
 

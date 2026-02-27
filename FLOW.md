@@ -33,6 +33,14 @@ Implementing the last compliance fix. Functional options pattern (`RecordOption`
 
 → Plan: transcript plan from session 16
 
+### Decision: AuditRecorder Interface Update
+
+Changing `Record()` signature to `Record(..., opts ...RecordOption)` broke the `AuditRecorder` interfaces in `authz` and `identity` packages. Go structural typing means variadic params change the function signature — concrete types compile fine but interfaces with the old exact signature break. Fixed by updating both interfaces. Added `audit` import to `identity/id_svc.go` (verified no circular dependency: `audit` doesn't import `identity`).
+
+### Decision: SQLite Nullable Columns for Backward Compat
+
+New audit columns use `DEFAULT NULL` + `sql.NullString`/`sql.NullInt64` scan types so existing rows with NULL values don't break `LoadAllAuditEvents`. Helper funcs `nullableString()` and `nullableInt()` map zero-values to NULL on write (zero-value fields → NULL in DB, non-zero → real value).
+
 ---
 
 ## 2026-02-25 (Session 15)
