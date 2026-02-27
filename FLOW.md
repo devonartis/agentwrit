@@ -45,6 +45,10 @@ New audit columns use `DEFAULT NULL` + `sql.NullString`/`sql.NullInt64` scan typ
 
 Tasks 1-10 done. All ~20 `Record()` callers annotated with `WithOutcome`. Lint gate required fixing errcheck on two `SaveAuditEvent` calls in test code. Gates: build PASS, lint PASS, unit tests PASS, security WARN (pre-existing). Docker live test passed all 3 stories. Evidence saved to `tests/fix6-structured-audit-evidence/`.
 
+### Decision: Pre-Release Cleanup — Remove Internal Artifacts
+
+Moved `plans/`, `docs/plans/`, `generate-presentation.js`, and `generate-roadmap.js` out of the repo to `/Users/divineartis/agentAuth_Backup_docs/`. These are session planning artifacts (architecture decisions, reviewer reports, roadmap presentations, cost basis slides, one-off generation scripts) — internal working documents, not application code or user-facing docs. They were cluttering the repo and would confuse anyone pulling the release. The `docs/` folder now contains only application documentation (API, architecture, getting-started guides, troubleshooting). Backup location is outside the repo so nothing is lost.
+
 ### Decision: Test Evidence Structure
 
 Every fix/feature Docker live test now produces a `tests/<fix-name>-evidence/` folder containing:

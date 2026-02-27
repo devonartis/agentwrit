@@ -73,8 +73,18 @@ Implementing Fix 6 (structured audit log fields). Completed 6 of 10 tasks:
 - Story 2: PASS — `--outcome denied` filter returns exactly 3 events, all denied
 - Story 3: PASS — hash chain intact across all 20 events, every `prev_hash` links correctly
 
+### Fix 6 merge + pre-release cleanup
+- Merged `fix/structured-audit` into `develop` (no-ff merge)
+- Deleted `fix/structured-audit` branch
+- **Pre-release cleanup:** Moved internal-use-only folders and files out of the repo to `/Users/divineartis/agentAuth_Backup_docs/`:
+  - `plans/` → `agentAuth_Backup_docs/plans` (session plans, architecture decisions, reviewer reports, archive)
+  - `docs/plans/` → `agentAuth_Backup_docs/docs-plans` (ROADMAP presentations, cost basis docs, slide images)
+  - `generate-presentation.js` → backup (one-off script for generating roadmap slides)
+  - `generate-roadmap.js` → backup (one-off script for generating roadmap docs)
+- These are session artifacts, internal planning docs, and one-off scripts — not application code or user-facing documentation. They don't belong in a release.
+
 ### What's next
-- Merge `fix/structured-audit` to `develop` — all 10 tasks complete, all gates + Docker live test pass
+- All 6 P1 compliance fixes are on `develop`. Ready for release preparation.
 
 ## 2026-02-25 (Session 15)
 
