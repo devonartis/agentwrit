@@ -135,7 +135,8 @@ func (h *AdminHdl) handleCreateLaunchToken(w http.ResponseWriter, r *http.Reques
 		if h.auditLog != nil {
 			h.auditLog.Record(audit.EventLaunchTokenDenied, claims.Sub, "", "",
 				fmt.Sprintf("launch token denied for agent=%s by=%s reason=%s",
-					req.AgentName, claims.Sub, err.Error()))
+					req.AgentName, claims.Sub, err.Error()),
+				audit.WithOutcome("denied"))
 		}
 		switch {
 		case errors.Is(err, ErrAgentNameEmpty):
@@ -174,7 +175,8 @@ func (h *AdminHdl) handleCreateSidecarActivation(w http.ResponseWriter, r *http.
 	if err != nil {
 		if h.auditLog != nil {
 			h.auditLog.Record(audit.EventSidecarActivationFailed, claims.Sub, "", "",
-				fmt.Sprintf("sidecar activation token creation denied: %v", err))
+				fmt.Sprintf("sidecar activation token creation denied: %v", err),
+				audit.WithOutcome("denied"))
 		}
 		switch {
 		case errors.Is(err, ErrActivationScopeEmpty):
@@ -204,7 +206,8 @@ func (h *AdminHdl) handleActivateSidecar(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		if !errors.Is(err, ErrActivationTokenReplayed) && h.auditLog != nil {
 			h.auditLog.Record(audit.EventSidecarActivationFailed, "", "", "",
-				fmt.Sprintf("sidecar activation failed: %v", err))
+				fmt.Sprintf("sidecar activation failed: %v", err),
+				audit.WithOutcome("denied"))
 		}
 		switch {
 		case errors.Is(err, ErrActivationTokenReplayed):
@@ -367,6 +370,7 @@ func (h *AdminHdl) handleUpdateCeiling(w http.ResponseWriter, r *http.Request) {
 					"",
 					"",
 					fmt.Sprintf("auto-revoked on ceiling narrowing sidecar=%s by=%s", sidecarID, claims.Sub),
+					audit.WithOutcome("success"),
 				)
 			}
 		}
