@@ -83,8 +83,20 @@ Implementing Fix 6 (structured audit log fields). Completed 6 of 10 tasks:
   - `generate-roadmap.js` → backup (one-off script for generating roadmap docs)
 - These are session artifacts, internal planning docs, and one-off scripts — not application code or user-facing documentation. They don't belong in a release.
 
+### Known issues review — demo readiness assessment
+Reviewed all 4 known issues (KI-001 through KI-004). **None block the demo:**
+- **KI-001 (admin secret blast radius):** Production hardening. Demo environment is controlled — no risk of sidecar compromise during a presentation. Fix requires new broker endpoint + credential narrowing — post-demo work.
+- **KI-002 (TCP default):** TCP is actually easier to demo (visible curl commands). UDS mode exists and works. Mention "UDS available for production" during demo, show TCP for clarity.
+- **KI-003 (sidecar indistinguishability):** Blocked by KI-001 anyway. The `sid` field in tokens + Fix 6 structured audit gives sidecar-level traceability. With 1-2 sidecars in a demo, this is a non-issue.
+- **KI-004 (ephemeral registry):** By design. A few hundred ms re-registration latency after restart. Nobody notices in a demo.
+
+**Decision: Codebase is demo-ready.** Team can start building the demo flow. All 6 compliance fixes merged. Smoketest 12/12. Audit trail has structured fields with outcome filtering.
+
 ### What's next
-- All 6 P1 compliance fixes are on `develop`. Ready for release preparation.
+- **Python SDK for developers** — first demo audience is Python developers, they need an SDK to interact with AgentAuth (register agents, request tokens, release tokens). This is the critical missing piece for the demo.
+- TypeScript SDK is also needed but lower priority for first demo
+- Operator tooling already exists via `aactl` CLI
+- All 6 P1 compliance fixes are on `develop` — release preparation after SDK
 
 ## 2026-02-25 (Session 15)
 
