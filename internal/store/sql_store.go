@@ -283,19 +283,25 @@ func (s *SqlStore) GetCeiling(sidecarID string) ([]string, error) {
 
 const createAuditTable = `
 CREATE TABLE IF NOT EXISTS audit_events (
-	id          TEXT PRIMARY KEY,
-	timestamp   TEXT NOT NULL,
-	event_type  TEXT NOT NULL,
-	agent_id    TEXT NOT NULL DEFAULT '',
-	task_id     TEXT NOT NULL DEFAULT '',
-	orch_id     TEXT NOT NULL DEFAULT '',
-	detail      TEXT NOT NULL DEFAULT '',
-	hash        TEXT NOT NULL,
-	prev_hash   TEXT NOT NULL
+	id                TEXT PRIMARY KEY,
+	timestamp         TEXT NOT NULL,
+	event_type        TEXT NOT NULL,
+	agent_id          TEXT NOT NULL DEFAULT '',
+	task_id           TEXT NOT NULL DEFAULT '',
+	orch_id           TEXT NOT NULL DEFAULT '',
+	detail            TEXT NOT NULL DEFAULT '',
+	resource          TEXT DEFAULT NULL,
+	outcome           TEXT DEFAULT NULL,
+	deleg_depth       INTEGER DEFAULT NULL,
+	deleg_chain_hash  TEXT DEFAULT NULL,
+	bytes_transferred INTEGER DEFAULT NULL,
+	hash              TEXT NOT NULL,
+	prev_hash         TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_audit_event_type ON audit_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_audit_agent_id   ON audit_events(agent_id);
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp  ON audit_events(timestamp);
+CREATE INDEX IF NOT EXISTS idx_audit_outcome    ON audit_events(outcome);
 `
 
 const createRevocationsTable = `
@@ -365,8 +371,10 @@ func (s *SqlStore) SaveAuditEvent(evt audit.AuditEvent) error {
 	}()
 
 	const q = `INSERT INTO audit_events
-		(id, timestamp, event_type, agent_id, task_id, orch_id, detail, hash, prev_hash)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		(id, timestamp, event_type, agent_id, task_id, orch_id, detail,
+		 resource, outcome, deleg_depth, deleg_chain_hash, bytes_transferred,
+		 hash, prev_hash)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err := s.db.Exec(q,
 		evt.ID,
@@ -376,6 +384,11 @@ func (s *SqlStore) SaveAuditEvent(evt audit.AuditEvent) error {
 		evt.TaskID,
 		evt.OrchID,
 		evt.Detail,
+		nullableString(evt.Resource),
+		nullableString(evt.Outcome),
+		nullableInt(int64(evt.DelegDepth)),
+		nullableString(evt.DelegChainHash),
+		nullableInt(evt.BytesTransferred),
 		evt.Hash,
 		evt.PrevHash,
 	)
@@ -394,7 +407,9 @@ func (s *SqlStore) LoadAllAuditEvents() ([]audit.AuditEvent, error) {
 	if s.db == nil {
 		return nil, errors.New("database not initialized: call InitDB first")
 	}
-	const q = `SELECT id, timestamp, event_type, agent_id, task_id, orch_id, detail, hash, prev_hash
+	const q = `SELECT id, timestamp, event_type, agent_id, task_id, orch_id, detail,
+		resource, outcome, deleg_depth, deleg_chain_hash, bytes_transferred,
+		hash, prev_hash
 		FROM audit_events ORDER BY id ASC`
 
 	rows, err := s.db.Query(q)
@@ -409,8 +424,12 @@ func (s *SqlStore) LoadAllAuditEvents() ([]audit.AuditEvent, error) {
 	for rows.Next() {
 		var evt audit.AuditEvent
 		var tsStr string
+		var resource, outcome, delegChainHash sql.NullString
+		var delegDepth, bytesTransferred sql.NullInt64
 		if err := rows.Scan(&evt.ID, &tsStr, &evt.EventType, &evt.AgentID, &evt.TaskID,
-			&evt.OrchID, &evt.Detail, &evt.Hash, &evt.PrevHash); err != nil {
+			&evt.OrchID, &evt.Detail,
+			&resource, &outcome, &delegDepth, &delegChainHash, &bytesTransferred,
+			&evt.Hash, &evt.PrevHash); err != nil {
 			obs.Fail("store", "sqlite", "failed to scan audit event row", "error="+err.Error())
 			obs.DBErrorsTotal.WithLabelValues("scan_audit_event").Inc()
 			return nil, fmt.Errorf("scan audit event: %w", err)
@@ -420,6 +439,11 @@ func (s *SqlStore) LoadAllAuditEvents() ([]audit.AuditEvent, error) {
 			return nil, fmt.Errorf("parse timestamp %q: %w", tsStr, err)
 		}
 		evt.Timestamp = ts
+		evt.Resource = resource.String
+		evt.Outcome = outcome.String
+		evt.DelegDepth = int(delegDepth.Int64)
+		evt.DelegChainHash = delegChainHash.String
+		evt.BytesTransferred = bytesTransferred.Int64
 		events = append(events, evt)
 	}
 	if err := rows.Err(); err != nil {
@@ -463,6 +487,10 @@ func (s *SqlStore) QueryAuditEvents(filters audit.QueryFilters) ([]audit.AuditEv
 		whereClauses = append(whereClauses, "timestamp <= ?")
 		args = append(args, filters.Until.UTC().Format(time.RFC3339Nano))
 	}
+	if filters.Outcome != "" {
+		whereClauses = append(whereClauses, "outcome = ?")
+		args = append(args, filters.Outcome)
+	}
 
 	where := ""
 	if len(whereClauses) > 0 {
@@ -491,7 +519,9 @@ func (s *SqlStore) QueryAuditEvents(filters audit.QueryFilters) ([]audit.AuditEv
 		offset = 0
 	}
 
-	selectQ := "SELECT id, timestamp, event_type, agent_id, task_id, orch_id, detail, hash, prev_hash FROM audit_events" +
+	selectQ := "SELECT id, timestamp, event_type, agent_id, task_id, orch_id, detail, " +
+		"resource, outcome, deleg_depth, deleg_chain_hash, bytes_transferred, " +
+		"hash, prev_hash FROM audit_events" +
 		where + " ORDER BY id ASC LIMIT ? OFFSET ?"
 	queryArgs := append(args, limit, offset)
 
@@ -507,8 +537,12 @@ func (s *SqlStore) QueryAuditEvents(filters audit.QueryFilters) ([]audit.AuditEv
 	for rows.Next() {
 		var evt audit.AuditEvent
 		var tsStr string
+		var resource, outcome, delegChainHash sql.NullString
+		var delegDepth, bytesTransferred sql.NullInt64
 		if err := rows.Scan(&evt.ID, &tsStr, &evt.EventType, &evt.AgentID, &evt.TaskID,
-			&evt.OrchID, &evt.Detail, &evt.Hash, &evt.PrevHash); err != nil {
+			&evt.OrchID, &evt.Detail,
+			&resource, &outcome, &delegDepth, &delegChainHash, &bytesTransferred,
+			&evt.Hash, &evt.PrevHash); err != nil {
 			obs.Fail("store", "sqlite", "failed to scan audit event", "error="+err.Error())
 			obs.DBErrorsTotal.WithLabelValues("scan_audit_event").Inc()
 			return nil, 0, fmt.Errorf("scan audit event: %w", err)
@@ -518,6 +552,11 @@ func (s *SqlStore) QueryAuditEvents(filters audit.QueryFilters) ([]audit.AuditEv
 			return nil, 0, fmt.Errorf("parse timestamp %q: %w", tsStr, err)
 		}
 		evt.Timestamp = ts
+		evt.Resource = resource.String
+		evt.Outcome = outcome.String
+		evt.DelegDepth = int(delegDepth.Int64)
+		evt.DelegChainHash = delegChainHash.String
+		evt.BytesTransferred = bytesTransferred.Int64
 		events = append(events, evt)
 	}
 	if err := rows.Err(); err != nil {
@@ -763,6 +802,22 @@ func (s *SqlStore) LoadAllRevocations() ([]RevocationEntry, error) {
 		entries = append(entries, e)
 	}
 	return entries, rows.Err()
+}
+
+// nullableString returns a sql.NullString for SQLite nullable text columns.
+func nullableString(s string) sql.NullString {
+	if s == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: s, Valid: true}
+}
+
+// nullableInt returns a sql.NullInt64 for SQLite nullable integer columns.
+func nullableInt(n int64) sql.NullInt64 {
+	if n == 0 {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: n, Valid: true}
 }
 
 // HasDB reports whether the store has an active SQLite database connection.
