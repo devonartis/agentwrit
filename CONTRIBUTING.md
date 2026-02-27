@@ -101,15 +101,25 @@ These scripts check for:
 agentauth/
 ├── cmd/
 │   ├── broker/          # Authorization broker server
-│   └── sidecar/         # Token sidecar service
+│   ├── sidecar/         # Token sidecar service
+│   ├── aactl/           # Operator CLI (admin auth, sidecars, revocation, audit)
+│   └── smoketest/       # End-to-end smoke test runner
 ├── internal/
+│   ├── admin/           # Admin authentication, launch tokens, sidecar activation
+│   ├── audit/           # Hash-chain tamper-evident audit trail
+│   ├── authz/           # Bearer token validation and scope enforcement middleware
+│   ├── deleg/           # Scope-attenuated delegation with chain verification
 │   ├── handler/         # HTTP request handlers
-│   ├── token/           # Token generation and validation
-│   ├── audit/           # Audit logging
+│   ├── identity/        # Challenge-response registration, SPIFFE ID generation
+│   ├── mutauth/         # Mutual authentication handshake protocol
+│   ├── obs/             # Structured logging and Prometheus metrics
 │   ├── problemdetails/  # RFC 7807 error responses
-│   └── obs/             # Structured logging
+│   ├── revoke/          # 4-level revocation (token, agent, task, chain)
+│   ├── store/           # SQLite-backed persistence (audit, revocations, sidecars)
+│   └── token/           # EdDSA JWT issuance, verification, and renewal
 ├── docs/                # Documentation
-├── scripts/             # Build and test scripts
+├── scripts/             # Build, test, and deployment scripts
+├── tests/               # Test evidence and user stories
 └── go.mod
 ```
 
@@ -229,15 +239,15 @@ Examples:
 
 ## Branch Naming
 
-Use descriptive branch names with prefixes:
+This project uses GitFlow. All branches are based off `develop`:
 
 - `feature/description` - New features
-- `bugfix/description` - Bug fixes
+- `fix/description` - Bug fixes and compliance fixes
 - `docs/description` - Documentation updates
 - `refactor/description` - Code refactoring
 - `test/description` - Test improvements
 
-Example: `feature/ed25519-key-rotation`, `bugfix/audit-race-condition`
+Example: `feature/ed25519-key-rotation`, `fix/structured-audit`
 
 ## Adding a New Endpoint
 
@@ -267,24 +277,27 @@ Reference the existing handler pattern in `internal/handler/` for consistency.
 
 When adding a new event that should be audited:
 
-1. **Define the event** in `internal/audit/events.go`:
+1. **Define the event constant** in `internal/audit/audit_log.go`:
    ```go
-   const EventTypeNewOperation = "new_operation"
+   const EventNewOperation = "new_operation"
    ```
 
-2. **Log the event** when it occurs:
+2. **Record the event** using the `Record()` method with functional options:
    ```go
-   audit.Log(ctx, audit.Event{
-       Type:      audit.EventTypeNewOperation,
-       TokenID:   tokenID,
-       Scope:     scope,
-       Result:    "success",
-   })
+   auditLog.Record(
+       audit.EventNewOperation,
+       agentID,    // agent performing the action
+       taskID,     // associated task
+       orchID,     // orchestrator ID
+       "human-readable detail",
+       audit.WithOutcome("success"),          // or "denied"
+       audit.WithResource("data:reports"),    // resource being accessed
+   )
    ```
 
-3. **Document the event** in docs/audit-events.md
+3. **Update the API docs** in `docs/api.md` (event types table)
 
-All authorization decisions and security-relevant operations must be audited.
+All authorization decisions and security-relevant operations must be audited. Every `Record()` call should include `WithOutcome()` at minimum.
 
 ## Documentation Requirements
 

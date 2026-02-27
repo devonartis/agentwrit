@@ -16,7 +16,7 @@ The admin secret is used at runtime for every new agent registration (`handler.g
 
 **Mitigation (current):** Operators must treat sidecar environments as having the same trust level as the broker itself. Use UDS mode (`AA_SOCKET_PATH`) to limit local access. Restrict container/host access to sidecar processes.
 
-**Fix (planned):** New `POST /v1/sidecar/launch-tokens` broker endpoint gated behind `sidecar:manage:*` (already held by sidecar bearer token). Sidecars use their existing bearer for all operations; `AA_ADMIN_SECRET` needed only once at bootstrap and never stored afterward. See [ADR-002](plans/2026-02-25-sidecar-architecture-decision.md) Action Plan item 3.
+**Fix (planned):** New `POST /v1/sidecar/launch-tokens` broker endpoint gated behind `sidecar:manage:*` (already held by sidecar bearer token). Sidecars use their existing bearer for all operations; `AA_ADMIN_SECRET` needed only once at bootstrap and never stored afterward. See ADR-002 (archived — sidecar architecture decision) Action Plan item 3.
 
 ---
 

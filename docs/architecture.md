@@ -58,7 +58,7 @@ flowchart TB
         subgraph Foundation["Foundation Layer"]
             CFG["cfg\nEnv var config"]
             OBS["obs\nStructured logging\nPrometheus metrics"]
-            STORE["store\nSqlStore\nIn-memory maps"]
+            STORE["store\nSqlStore\nSQLite + In-memory"]
         end
 
         subgraph Security["Security Layer"]
@@ -112,6 +112,7 @@ agentauth/
 |   |   |-- main.go              # Bootstrap loop, route registration, shutdown
 |   |   |-- config.go            # Environment variable parsing
 |   |   |-- handler.go           # tokenHandler, renewHandler, healthHandler
+|   |   |-- listener.go           # UDS/TCP listener abstraction
 |   |   |-- bootstrap.go         # sidecarState, bootstrap(), waitForBroker()
 |   |   |-- broker_client.go     # HTTP client for all broker interactions
 |   |   |-- registry.go          # In-memory agent store with per-agent locking
@@ -126,6 +127,7 @@ agentauth/
 |   |   |-- sidecars.go          # sidecars list / ceiling get / ceiling set
 |   |   |-- revoke.go            # revoke --level --target
 |   |   |-- audit.go             # audit events with filters
+|   |   |-- token.go              # token release command
 |   |   +-- output.go            # Table and JSON output helpers
 |   +-- smoketest/               # Container smoke test binary
 |-- internal/
@@ -140,7 +142,7 @@ agentauth/
 |   |-- obs/                     # Structured logging and Prometheus metrics
 |   |-- problemdetails/          # RFC 7807 errors, request ID, body limits
 |   |-- revoke/                  # Four-level token revocation
-|   |-- store/                   # In-memory storage (nonces, agents, launch tokens)
+|   |-- store/                   # SQLite-backed persistence + in-memory maps
 |   +-- token/                   # EdDSA JWT issuance, verification, renewal
 |-- scripts/                     # Gate checks, Docker helpers, E2E test scripts
 |-- docs/                        # Documentation
@@ -244,8 +246,8 @@ The 7-component Ephemeral Agent Credentialing pattern maps directly to Go packag
 | 1. Ephemeral Identity Issuance | `identity`, `store`, `handler` | `IdSvc`, `RegHdl`, `ChallengeHdl`, `SqlStore` | `IdSvc.Register()`, `NewSpiffeId()` |
 | 2. Short-Lived Task-Scoped Tokens | `token`, `authz` | `TknSvc`, `TknClaims`, `IssueReq` | `TknSvc.Issue()`, `TknSvc.Renew()` |
 | 3. Zero-Trust Enforcement | `authz`, `handler` | `ValMw`, `RateLimiter` | `ValMw.Wrap()`, `ValMw.RequireScope()`, `ScopeIsSubset()` |
-| 4. Automatic Expiration & Revocation | `revoke`, `handler` | `RevSvc`, `RevokeHdl` | `RevSvc.Revoke()`, `RevSvc.IsRevoked()` |
-| 5. Immutable Audit Logging | `audit`, `handler` | `AuditLog`, `AuditEvent`, `AuditHdl` | `AuditLog.Record()`, `AuditLog.Query()` |
+| 4. Automatic Expiration & Revocation | `revoke`, `handler` | `RevSvc`, `RevokeHdl`, `ReleaseHdl` | `RevSvc.Revoke()`, `RevSvc.IsRevoked()`, `RevSvc.LoadFromEntries()` |
+| 5. Immutable Audit Logging | `audit`, `handler` | `AuditLog`, `AuditEvent`, `AuditHdl`, `RecordOption` | `AuditLog.Record()`, `AuditLog.Query()`, `WithOutcome()`, `WithResource()` |
 | 6. Agent-to-Agent Mutual Auth | `mutauth` | `MutAuthHdl`, `DiscoveryRegistry`, `HeartbeatMgr` | `InitiateHandshake()`, `RespondToHandshake()`, `CompleteHandshake()` |
 | 7. Delegation Chain Verification | `deleg`, `handler` | `DelegSvc`, `DelegHdl`, `DelegRecord` | `DelegSvc.Delegate()` |
 
@@ -486,12 +488,14 @@ flowchart LR
 | `POST /v1/admin/launch-tokens` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
 | `POST /v1/admin/sidecar-activations` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
 | `POST /v1/sidecar/activate` | RequestID -> Logging -> RateLimiter(5/s, burst 10) -> Handler |
+| `POST /v1/token/release` | RequestID -> Logging -> MaxBytesBody -> ValMw -> Handler |
+| `GET /v1/admin/sidecars` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
 
 ---
 
 ## Key Design Decisions
 
-1. **In-memory storage.** All state (nonces, agents, launch tokens, revocations, audit events) lives in memory behind `sync.RWMutex`. The type is named `SqlStore` as a placeholder for a planned SQL migration. Restarting the broker clears all state.
+1. **Hybrid persistence.** Critical state (audit events, revocations, sidecar registrations) is persisted to SQLite via write-through from in-memory structures. Transient state (nonces, agent records, launch tokens) lives in memory behind `sync.RWMutex` and is cleared on restart. This design ensures the audit trail and revocation list survive broker restarts while keeping the hot path fast.
 
 2. **Fresh Ed25519 keys every startup.** The broker generates a new signing key pair on each start via `crypto/rand`. All previously issued tokens become unverifiable. This is intentional -- long-lived tokens are an anti-pattern for ephemeral credentialing.
 
@@ -519,7 +523,7 @@ These are explicit trust boundaries and limitations of the current implementatio
 
 - **X-Forwarded-For trusted unconditionally.** The `clientIP()` function in `internal/authz/rate_mw.go` trusts the first entry in `X-Forwarded-For` without validation. In production, the broker must sit behind a trusted reverse proxy that sets this header correctly. Without a trusted proxy, rate limiting can be bypassed via header spoofing.
 
-- **In-memory state is mostly not persistent.** A broker restart clears nonces, agent records, launch tokens, and revocation entries. All previously issued tokens become unverifiable (new signing keys). **Exception:** Audit events are now persisted to SQLite when `AA_DB_PATH` is configured. On startup, the broker reloads all audit events from SQLite and rebuilds the in-memory hash chain. This means the audit trail survives restarts, but all other operational state is lost.
+- **Persistent and transient state split.** Audit events, revocations, and sidecar registrations are persisted to SQLite and reloaded on startup. Nonces, agent records, and launch tokens are transient (memory only). All previously issued tokens become unverifiable after restart (new signing keys). The split is intentional — audit and revocation are security-critical; nonces and agent records are ephemeral by design.
 
 - **Single broker instance.** There is no replication, consensus, or shared state mechanism. The broker is a single process. Running multiple instances would result in split-brain token verification (each instance has its own signing key).
 

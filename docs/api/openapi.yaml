@@ -9,7 +9,8 @@ info:
   contact:
     name: AgentAuth
   license:
-    name: MIT
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
 
 servers:
   - url: http://localhost:8080
@@ -21,7 +22,7 @@ tags:
   - name: Identity
     description: Agent challenge-response registration
   - name: Token
-    description: Token validation, renewal
+    description: Token validation, renewal, exchange, and release
   - name: Delegation
     description: Scope-attenuated token delegation
   - name: Revocation
@@ -165,8 +166,6 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "500":
-          $ref: "#/components/responses/InternalError"
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
@@ -181,6 +180,25 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetail"
+
+  /v1/token/release:
+    post:
+      tags: [Token]
+      summary: Release (self-revoke) a token
+      description: >
+        An authenticated agent surrenders its credential by revoking its own
+        token's JTI. This is a self-revocation — no admin scope is required.
+        The operation is idempotent; re-releasing an already-revoked token is
+        a no-op. Returns 204 No Content on success. Use this as a task
+        completion signal to indicate the agent has finished its work.
+      operationId: releaseToken
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: Token released successfully (no body)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /v1/delegate:
     post:
@@ -252,8 +270,6 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -306,7 +322,15 @@ paths:
               - scope_violation
               - scope_ceiling_exceeded
               - delegation_attenuation_violation
+              - token_released
+              - scopes_ceiling_updated
           description: Filter by event type
+        - name: outcome
+          in: query
+          schema:
+            type: string
+            enum: [success, denied]
+          description: Filter by outcome (success or denied)
         - name: since
           in: query
           schema:
@@ -490,6 +514,107 @@ paths:
               schema:
                 type: integer
                 example: 1
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+
+  /v1/admin/sidecars:
+    get:
+      tags: [Admin]
+      summary: List registered sidecars
+      description: >
+        Returns all registered sidecars with their scope ceilings, status,
+        and creation timestamps. Requires the `admin:launch-tokens:*` scope.
+      operationId: listSidecars
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of registered sidecars
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SidecarListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /v1/admin/sidecars/{sidecar_id}/ceiling:
+    get:
+      tags: [Admin]
+      summary: Get sidecar scope ceiling
+      description: >
+        Retrieves the current scope ceiling for a registered sidecar.
+        Requires the `admin:launch-tokens:*` scope.
+      operationId: getSidecarCeiling
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sidecar_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Sidecar identifier
+      responses:
+        "200":
+          description: Sidecar ceiling
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SidecarCeilingResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Sidecar not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+    put:
+      tags: [Admin]
+      summary: Update sidecar scope ceiling
+      description: >
+        Updates the scope ceiling for a registered sidecar. The new ceiling
+        must be narrower than or equal to the current ceiling (scopes can
+        only narrow, never expand). If the ceiling is narrowed, existing
+        tokens whose scopes exceed the new ceiling are automatically revoked.
+        Requires the `admin:launch-tokens:*` scope.
+      operationId: updateSidecarCeiling
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sidecar_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Sidecar identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSidecarCeilingRequest"
+      responses:
+        "200":
+          description: Ceiling updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateSidecarCeilingResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Sidecar not found
           content:
             application/problem+json:
               schema:
@@ -855,6 +980,23 @@ components:
         detail:
           type: string
           description: Human-readable event description (PII sanitized)
+        resource:
+          type: string
+          description: Resource identifier affected by this event (optional)
+        outcome:
+          type: string
+          description: Event outcome — "success" or "denied" (optional)
+          enum: [success, denied]
+        deleg_depth:
+          type: integer
+          description: Delegation chain depth at time of event (optional)
+        deleg_chain_hash:
+          type: string
+          description: SHA-256 hash of the delegation chain (optional)
+        bytes_transferred:
+          type: integer
+          format: int64
+          description: Number of bytes transferred during the operation (optional)
         hash:
           type: string
           description: SHA-256 hash of this event (chains to next event's prev_hash)
@@ -1031,6 +1173,14 @@ components:
           type: integer
           description: Uptime in seconds
           example: 3600
+        db_connected:
+          type: boolean
+          description: Whether the SQLite database is connected and healthy
+          example: true
+        audit_events_count:
+          type: integer
+          description: Total number of audit events in the hash chain
+          example: 1542
 
     TknClaims:
       type: object
@@ -1120,3 +1270,85 @@ components:
             Hex-encoded Ed25519 signature over canonical content
             (agent|scope_csv|delegated_at). Produced by the broker's
             signing key when the delegation is created.
+
+    SidecarListResponse:
+      type: object
+      required: [sidecars]
+      properties:
+        sidecars:
+          type: array
+          items:
+            $ref: "#/components/schemas/SidecarInfo"
+
+    SidecarInfo:
+      type: object
+      required: [id, scopes, status, created_at]
+      properties:
+        id:
+          type: string
+          description: Stable sidecar identifier
+          example: "e2b7777781a064686237079634888b11"
+        scopes:
+          type: array
+          items:
+            type: string
+          description: Current scope ceiling
+          example: ["read:data:*", "write:data:*"]
+        status:
+          type: string
+          description: Sidecar status
+          example: "active"
+        created_at:
+          type: string
+          format: date-time
+          description: Registration timestamp
+
+    SidecarCeilingResponse:
+      type: object
+      required: [sidecar_id, scope_ceiling]
+      properties:
+        sidecar_id:
+          type: string
+          description: Sidecar identifier
+        scope_ceiling:
+          type: array
+          items:
+            type: string
+          description: Current scope ceiling entries
+
+    UpdateSidecarCeilingRequest:
+      type: object
+      required: [scope_ceiling]
+      properties:
+        scope_ceiling:
+          type: array
+          items:
+            type: string
+          description: >
+            New scope ceiling. Must be narrower than or equal to the current
+            ceiling. Scopes can only narrow, never expand.
+          example: ["read:data:*"]
+
+    UpdateSidecarCeilingResponse:
+      type: object
+      required: [old_ceiling, new_ceiling, narrowed, revoked, revoked_count]
+      properties:
+        old_ceiling:
+          type: array
+          items:
+            type: string
+          description: Previous scope ceiling
+        new_ceiling:
+          type: array
+          items:
+            type: string
+          description: Updated scope ceiling
+        narrowed:
+          type: boolean
+          description: Whether the ceiling was actually narrowed
+        revoked:
+          type: boolean
+          description: Whether any tokens were revoked due to the narrowing
+        revoked_count:
+          type: integer
+          description: Number of tokens revoked

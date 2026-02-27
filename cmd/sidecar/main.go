@@ -1,3 +1,23 @@
+// Command sidecar starts the AgentAuth sidecar proxy.
+//
+// The sidecar simplifies agent credential management by exposing a
+// developer-friendly API on a local port or Unix domain socket. On
+// startup it bootstraps with the broker using admin auth and a
+// single-use activation token, then lazily registers agents and
+// exchanges tokens on demand.
+//
+// Key features:
+//
+//   - Automatic Ed25519 key generation and challenge-response registration
+//   - Scope ceiling enforcement (dual: sidecar + broker)
+//   - Circuit breaker for broker connectivity with cached-token fallback
+//   - Background token renewal at configurable TTL buffer
+//   - UDS listener mode for production (AA_SOCKET_PATH)
+//   - TLS/mTLS client support for encrypted broker communication
+//   - BYOK registration proxy for developers with their own key pairs
+//
+// Configuration is via AA_* environment variables. See sidecarConfig
+// and loadConfig for the full list and defaults.
 package main
 
 import (

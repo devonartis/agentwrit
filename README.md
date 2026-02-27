@@ -3,7 +3,11 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/divineartis/agentauth.svg)](https://pkg.go.dev/github.com/divineartis/agentauth)
 [![Go Report Card](https://goreportcard.com/badge/github.com/divineartis/agentauth)](https://goreportcard.com/report/github.com/divineartis/agentauth)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/devonartis/agentAuth)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.24%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![Security Policy](https://img.shields.io/badge/Security-Policy-green?logo=shield)](SECURITY.md)
+[![EdDSA](https://img.shields.io/badge/Signing-Ed25519%20EdDSA-8B5CF6)](https://ed25519.cr.yp.to/)
+[![SPIFFE](https://img.shields.io/badge/Identity-SPIFFE-0F9D58)](https://spiffe.io/)
 
 **Ephemeral agent credentialing for AI systems.**
 
@@ -65,13 +69,15 @@ flowchart TB
     end
 
     subgraph AA["AgentAuth System"]
-        SIDECAR["Sidecar :8081\nSimplified API"]
+        SIDECAR["Sidecar :8081\nSimplified API\nUDS or TCP"]
         BROKER["Broker :8080\nIdentity · Token · Authz\nRevocation · Audit · Delegation"]
+        AACTL["aactl\nOperator CLI"]
     end
 
     DEV -- "POST /v1/token" --> SIDECAR
     SIDECAR -- "challenge, register,\nexchange, renew" --> BROKER
-    ADMIN -- "admin auth,\nlaunch tokens,\nrevocation" --> BROKER
+    ADMIN -- "sidecars, revoke,\naudit, ceiling" --> AACTL
+    AACTL -- "admin API calls" --> BROKER
     DEV -- "Bearer token" --> RS
 ```
 
@@ -85,6 +91,7 @@ flowchart TB
 | Delegation Service | `internal/deleg` | Scope-attenuated delegation with chain verification |
 | Admin Service | `internal/admin` | Admin authentication, launch token lifecycle, sidecar activation |
 | Observability | `internal/obs` | Structured logging, Prometheus metrics |
+| Store | `internal/store` | SQLite-backed persistence for audit events, revocations, and sidecar registrations |
 
 See [Architecture](docs/architecture.md) for detailed component diagrams, data flow diagrams, and the package dependency graph.
 
@@ -99,11 +106,13 @@ See [Architecture](docs/architecture.md) for detailed component diagrams, data f
 | `POST` | `/v1/token/validate` | None | Verify a token and return decoded claims |
 | `POST` | `/v1/token/renew` | Bearer | Renew a token with fresh timestamps |
 | `POST` | `/v1/delegate` | Bearer | Create scope-attenuated delegation token |
+| `POST` | `/v1/token/release` | Bearer | Agent self-revocation (task completion signal) |
 | `POST` | `/v1/revoke` | Bearer + `admin:revoke:*` | Revoke tokens at 4 levels |
 | `GET` | `/v1/audit/events` | Bearer + `admin:audit:*` | Query the audit trail |
 | `POST` | `/v1/admin/auth` | None (rate-limited) | Authenticate admin with shared secret |
 | `POST` | `/v1/admin/launch-tokens` | Bearer + `admin:launch-tokens:*` | Create launch tokens |
 | `POST` | `/v1/admin/sidecar-activations` | Bearer + `admin:launch-tokens:*` | Create sidecar activation token |
+| `GET` | `/v1/admin/sidecars` | Bearer + `admin:launch-tokens:*` | List registered sidecars |
 | `POST` | `/v1/sidecar/activate` | Activation token | Exchange activation for sidecar Bearer token |
 | `POST` | `/v1/token/exchange` | Bearer + `sidecar:manage:*` | Sidecar-mediated token issuance |
 | `GET` | `/v1/health` | None | Health check (status, version, uptime) |
@@ -126,8 +135,13 @@ All environment variables use the `AA_` prefix:
 | `AA_DEFAULT_TTL` | `300` | Default token TTL in seconds |
 | `AA_DB_PATH` | `./agentauth.db` | SQLite path for audit persistence (set `""` to disable) |
 | `AA_SEED_TOKENS` | `false` | Print seed tokens on startup (dev only) |
+| `AA_AUDIENCE` | `agentauth` | JWT audience claim. Set empty to disable validation. |
+| `AA_TLS_MODE` | `none` | Transport security: `none`, `tls`, or `mtls` |
+| `AA_TLS_CERT` | -- | TLS certificate path (required for `tls`/`mtls` modes) |
+| `AA_TLS_KEY` | -- | TLS private key path (required for `tls`/`mtls` modes) |
+| `AA_TLS_CLIENT_CA` | -- | Client CA cert path (required for `mtls` mode) |
 
-Sidecar configuration: `AA_SIDECAR_SCOPE_CEILING`, `AA_BROKER_URL`, `AA_SIDECAR_PORT`, and circuit breaker tuning (`AA_SIDECAR_CB_*`). See [Getting Started: Operator](docs/getting-started-operator.md) for full sidecar configuration.
+Sidecar configuration: `AA_SIDECAR_SCOPE_CEILING`, `AA_BROKER_URL`, `AA_SIDECAR_PORT`, `AA_SOCKET_PATH` (UDS mode), `AA_SIDECAR_CA_CERT`/`AA_SIDECAR_TLS_CERT`/`AA_SIDECAR_TLS_KEY` (TLS client), and circuit breaker tuning (`AA_SIDECAR_CB_*`). See [Getting Started: Operator](docs/getting-started-operator.md) for full sidecar configuration.
 
 ---
 
@@ -158,9 +172,49 @@ go test ./internal/token/...      # single package
 
 ---
 
+## Operator CLI (aactl)
+
+`aactl` provides operator tooling for the AgentAuth broker. It auto-authenticates via environment variables and supports table and JSON output.
+
+```bash
+# Build
+go build -o aactl ./cmd/aactl/
+
+# Configure
+export AACTL_BROKER_URL=http://localhost:8080
+export AACTL_ADMIN_SECRET=change-me-in-production
+
+# Commands
+aactl sidecars list                     # List all sidecars
+aactl sidecars ceiling get <id>         # Get scope ceiling
+aactl sidecars ceiling set <id> --scopes read:data:*
+aactl revoke --level token --target <jti>
+aactl audit events --outcome denied     # Filter audit trail
+aactl token release --token <jwt>       # Release (self-revoke) a token
+```
+
+See [Getting Started: Operator](docs/getting-started-operator.md) for full documentation.
+
+---
+
 ## Production Deployment
 
-The broker listens on plain HTTP by default. **Production deployments must use a TLS-terminating reverse proxy** (nginx, envoy, Caddy) or a load balancer with TLS termination.
+AgentAuth supports native TLS and mutual TLS (mTLS) for encrypted broker communication:
+
+```bash
+# One-way TLS
+export AA_TLS_MODE=tls
+export AA_TLS_CERT=/path/to/cert.pem
+export AA_TLS_KEY=/path/to/key.pem
+
+# Mutual TLS (recommended for production)
+export AA_TLS_MODE=mtls
+export AA_TLS_CERT=/path/to/cert.pem
+export AA_TLS_KEY=/path/to/key.pem
+export AA_TLS_CLIENT_CA=/path/to/ca.pem
+```
+
+For environments where TLS termination is handled externally, use a reverse proxy (nginx, Envoy, Caddy):
 
 ```nginx
 server {
@@ -175,6 +229,12 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 }
+```
+
+The sidecar supports UDS listeners for production deployments where network exposure is unacceptable:
+
+```bash
+export AA_SOCKET_PATH=/var/run/agentauth/sidecar.sock
 ```
 
 ---
@@ -194,16 +254,24 @@ server {
 | Document | Description |
 |----------|-------------|
 | [API Reference](docs/api.md) | Complete endpoint documentation with schemas and examples |
+| [OpenAPI Spec](docs/api/openapi.yaml) | Machine-readable API contract (OpenAPI 3.0.3) |
 | [Architecture](docs/architecture.md) | Component diagrams, data flows, middleware stack, design decisions |
 | [Concepts](docs/concepts.md) | Security pattern, threat model, 7-component breakdown, CVE case study |
 | [Common Tasks](docs/common-tasks.md) | Step-by-step workflows for developers and operators |
 | [Troubleshooting](docs/troubleshooting.md) | Error messages, diagnostic flowchart, fixes by role |
 
+### Guides
+
+| Document | Description |
+|----------|-------------|
+| [Integration Patterns](docs/integration-patterns.md) | 6 real-world patterns with Python examples: multi-agent pipelines, delegation chains, BYOK, token release, emergency revocation |
+| [Sidecar Deployment](docs/sidecar-deployment.md) | Docker Compose and systemd deployment, trust boundary sizing, operational procedures |
+| [aactl CLI Reference](docs/aactl-reference.md) | Complete operator CLI reference: all commands, flags, examples, and common workflows |
+
 ### Project
 
 | Document | Description |
 |----------|-------------|
-| [OpenAPI Spec](docs/api/openapi.yaml) | Machine-readable API contract |
 | [Contributing](CONTRIBUTING.md) | Development setup, coding conventions, PR process |
 | [Security Policy](SECURITY.md) | Vulnerability reporting, security design principles |
 | [Changelog](CHANGELOG.md) | Release history |

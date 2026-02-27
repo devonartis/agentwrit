@@ -1,3 +1,29 @@
+// Package mutauth provides agent-to-agent mutual authentication using a
+// three-step cryptographic handshake protocol.
+//
+// The protocol guarantees that both communicating agents hold valid
+// AgentAuth tokens and registered Ed25519 key pairs. The three steps are:
+//
+//  1. [MutAuthHdl.InitiateHandshake] — the initiator verifies its own
+//     token and the target agent's registration, then produces a
+//     random nonce.
+//  2. [MutAuthHdl.RespondToHandshake] — the responder verifies the
+//     initiator's token and identity, signs the nonce with its private
+//     key, and returns a counter-nonce.
+//  3. [MutAuthHdl.CompleteHandshake] — the initiator looks up the
+//     responder's registered public key and verifies the nonce
+//     signature, confirming the responder's identity.
+//
+// Supplementary types:
+//
+//   - [DiscoveryRegistry] maps agent SPIFFE IDs to network endpoints
+//     and provides identity-consistency checks during handshakes.
+//   - [HeartbeatMgr] tracks agent liveness via periodic heartbeats
+//     and optionally auto-revokes agents that miss too many windows.
+//
+// This package exposes a Go API only; it is not registered on any HTTP
+// mux in the current broker. HTTP exposure is planned for a future
+// release.
 package mutauth
 
 import (

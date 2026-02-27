@@ -27,7 +27,7 @@ Think of it like AWS IAM:
 
 - Sidecar URL from your operator (e.g., `https://sidecar.internal.company.com`)
 - Your allowed scopes from your operator (e.g., `read:data:*`, `write:data:*`)
-- Python 3.8+ with `requests` installed (`pip install requests`)
+- Python 3.8+ with `requests` installed (`uv pip install requests`)
 
 You do not need an admin secret. You do not need to deploy anything. The sidecar handles all cryptographic operations and broker communication for you.
 
@@ -255,6 +255,43 @@ function scopeCovers(allowed: string[], required: string): boolean {
   });
 }
 ```
+
+---
+
+## Token Renewal and Release
+
+Tokens are short-lived (default 5 minutes). Renew before expiry to avoid interruption. When your task completes, you can optionally release the token to signal completion.
+
+### Token Release
+
+When your agent completes its task, call the release endpoint to signal completion. This is optional but recommended for:
+- Audit trail clarity (exact completion time)
+- Resource cleanup
+- Billing/metering accuracy
+- Compliance documentation
+
+```python
+import requests
+
+BROKER = "http://localhost:8080"
+
+def release_token(broker, token):
+    """Signal token release when task completes."""
+    resp = requests.post(
+        f"{broker}/v1/token/release",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    if resp.status_code == 204:
+        print("Token released successfully")
+    else:
+        print(f"Release failed: {resp.status_code}")
+
+# When your task is done
+release_token(BROKER, your_token)
+```
+
+Response: 204 No Content (or 401 if token is invalid/expired).
 
 ---
 

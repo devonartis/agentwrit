@@ -75,7 +75,7 @@ export AGENTAUTH_BROKER_URL="http://localhost:8080"
 export AGENTAUTH_SIDECAR_URL="http://localhost:8081"
 
 # Install Python dependencies
-pip install requests cryptography
+uv pip install requests cryptography
 ```
 
 This is for local testing only. In production, the broker and sidecar are deployed as centralized services behind your organization's internal DNS or service mesh.

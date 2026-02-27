@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — New Enterprise Documentation
+
+- **docs/integration-patterns.md**: 6 real-world integration patterns with mermaid diagrams,
+  production Python code, security analysis, and dangerous-path comparisons: Multi-Agent Pipeline,
+  Sidecar-Per-Microservice, Token Release as Task Completion, Delegation Chain with Scope Narrowing,
+  Emergency Revocation Cascade, BYOK Registration
+- **docs/aactl-reference.md**: Complete aactl CLI reference with all commands (`audit events`,
+  `token release`, `revoke`, `sidecars list`, `sidecars ceiling get/set`), flags, output examples
+  (table + JSON), common workflows, security best practices, and FAQ
+- **docs/api/openapi.yaml**: Major update — added `POST /v1/token/release`, `GET /v1/admin/sidecars`,
+  `GET/PUT /v1/admin/sidecars/{id}/ceiling`, `outcome` query parameter, structured audit fields,
+  `token_released` and `scopes_ceiling_updated` event types, `db_connected`/`audit_events_count`
+  in HealthResponse, sidecar management schemas. Fixed license (MIT → Apache 2.0), removed
+  duplicate response keys
+
+### Changed — Documentation Upgrade (Pre-Release Polish)
+
+**Summary:** Comprehensive documentation review and upgrade for demo readiness.
+All docs updated to reflect the current codebase including all 6 compliance fixes.
+
+- **README.md**: Professional badge suite (Go Reference, Report Card, Docker, Security Policy,
+  Ed25519, SPIFFE), added aactl CLI section, native TLS/mTLS production deployment guide,
+  UDS mode documentation, missing endpoints (`/v1/token/release`, `/v1/admin/sidecars`),
+  expanded configuration table (`AA_AUDIENCE`, `AA_TLS_*`), updated architecture diagram
+  with aactl, added Store component to package table
+- **docs/architecture.md**: Updated store description from "in-memory" to "hybrid persistence"
+  (SQLite + in-memory), added listener.go and token.go to directory layout, added token
+  release and admin sidecars to middleware stack, updated Pattern Components table with
+  `RecordOption`/`ReleaseHdl`, corrected Security Assumptions for persistent revocations
+- **docs/api.md**: Added `POST /v1/token/release` endpoint documentation, added `outcome`
+  query parameter to audit events, added 5 structured audit fields to AuditEvent schema,
+  added `token_released` event type (23 event types total)
+- **docs/getting-started-operator.md**: Added `aactl token release` to quick reference,
+  `--outcome` flag for audit events, new "Token Release" section
+- **docs/getting-started-developer.md**: Added token release subsection with Python example
+- **docs/common-tasks.md**: Added "Release a Token" task, outcome filter examples
+- **docs/concepts.md**: Updated audit persistence description, structured fields,
+  token lifecycle diagram with release state
+- **docs/troubleshooting.md**: Added UDS socket permission troubleshooting, TLS/mTLS
+  certificate diagnostics with openssl examples
+- **Go code documentation**: Added package-level godoc to `cmd/sidecar` (19-line overview
+  of features and configuration) and `internal/mutauth` (comprehensive protocol description
+  with 3-step handshake, DiscoveryRegistry, HeartbeatMgr)
+
 ### Added — Fix 6: Structured Audit Log Fields (P1 Compliance)
 
 **Summary:** Audit events now carry structured fields (`resource`, `outcome`, `deleg_depth`,
@@ -47,10 +91,9 @@ sidecar model. Decision: keep sidecars as the primary and only current model. Di
 access deferred as future work (blocked by broker code changes). Admin secret blast radius
 identified as highest priority security fix (KI-001).
 
-- `plans/2026-02-25-sidecar-architecture-decision.md` — full decision document (ADR-002)
+- ADR-002: sidecar architecture decision document (archived during pre-release cleanup)
 - `KNOWN-ISSUES.md` — 4 known issues: admin secret blast radius (KI-001), TCP default (KI-002),
   audit indistinguishability (KI-003), ephemeral registry (KI-004)
-- `plans/2026-02-25-post-merge-roadmap.md` — post-merge TODO (docs, Fix 6, admin secret fix, SDKs)
 
 ### Added — Fix 5: Sidecar UDS Listen Mode (P1 Compliance — Pattern v1.2 §3.3)
 

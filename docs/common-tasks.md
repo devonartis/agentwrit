@@ -17,6 +17,7 @@ Enterprise-grade step-by-step instructions for AgentAuth workflows, organized by
 | Get a Token | `POST /v1/token` | Developer | Sidecar |
 | Validate a Token | `POST /v1/token/validate` | Developer | Broker |
 | Renew a Token | `POST /v1/token/renew` | Developer | Sidecar |
+| Release a Token | `POST /v1/token/release` | Developer | Broker |
 | Delegate a Token | `POST /v1/delegate` | Developer | Broker |
 | Check Sidecar Health | `GET /v1/health` | Developer | Sidecar |
 | Authenticate as Admin | `POST /v1/admin/auth` | Operator | Broker |
@@ -177,6 +178,52 @@ try {
 | 403 | Requested scope exceeds sidecar ceiling | Request a narrower scope; ask your operator what scopes are available |
 | 502 | Sidecar cannot reach broker | Retry with exponential backoff; check broker health |
 | 503 | Broker unavailable but sidecar has cached token | Retry; sidecar may serve cached token if available |
+
+---
+
+### Release a Token
+
+Signal task completion by releasing your token. This is optional but creates an explicit audit trail entry.
+
+**What's happening:** Token release records the exact moment your task completed. This allows the broker to track task duration precisely and enables resource cleanup. Released tokens are immediately marked as completed in the audit trail.
+
+**Python example:**
+
+```python
+import requests
+
+BROKER = "http://localhost:8080"
+
+def release_token(broker, token):
+    """Release a token when task is complete."""
+    resp = requests.post(
+        f"{broker}/v1/token/release",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    if resp.status_code == 204:
+        return True
+    elif resp.status_code == 401:
+        raise RuntimeError("Token invalid or expired")
+    else:
+        raise RuntimeError(f"Release failed: {resp.status_code}")
+
+# When task completes
+try:
+    release_token(BROKER, your_token)
+    print("Task completed and token released")
+except RuntimeError as e:
+    print(f"Release failed: {e}")
+```
+
+**Expected response:** 204 No Content
+
+**If this fails:**
+
+| Status | Meaning | Action |
+|--------|---------|--------|
+| 204 | Success | Token has been released |
+| 401 | Token invalid or expired | Token cannot be released (already expired or revoked) |
 
 ---
 
@@ -1646,6 +1693,11 @@ echo "=== Events for specific task ==="
 curl -s "http://localhost:8080/v1/audit/events?task_id=task-001" \
   -H "Authorization: Bearer $ADMIN_TOKEN" | python3 -m json.tool
 
+# Filter by outcome (success, failure, or completed)
+echo "=== Failed operations ==="
+curl -s "http://localhost:8080/v1/audit/events?outcome=failure" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" | python3 -m json.tool
+
 # Paginate through large result sets
 echo "=== Paginated results (50 per page, skip first 100) ==="
 curl -s "http://localhost:8080/v1/audit/events?limit=50&offset=100" \
@@ -1800,6 +1852,7 @@ except Exception as e:
 | `agent_id` | string | Filter by agent SPIFFE ID |
 | `task_id` | string | Filter by task ID |
 | `event_type` | string | Filter by event type (e.g., `token_acquired`, `token_revoked`, `delegation_issued`) |
+| `outcome` | string | Filter by outcome: `success`, `failure`, or `completed` |
 | `since` | string | Start time (RFC 3339 format, e.g., `2026-02-15T00:00:00Z`) |
 | `until` | string | End time (RFC 3339 format) |
 | `limit` | int | Max results (default: 100, max: 1000) |

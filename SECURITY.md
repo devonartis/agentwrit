@@ -64,10 +64,12 @@ AgentAuth is built on these core security principles:
 Users should be aware of these limitations when deploying AgentAuth:
 
 - **Single Broker Instance**: The broker is designed as a single instance within a secure network. It does not support clustering or horizontal scaling. High availability requires load balancer failover.
-- **In-Memory State**: Token state is stored in memory. Broker restarts will clear state, including pending authorization requests.
+- **Ephemeral Signing Keys**: The broker generates a fresh Ed25519 key pair on every startup. All previously issued tokens become invalid after a broker restart. Key persistence is not currently supported.
+- **Hybrid Persistence**: Critical state (audit events, revocations, sidecar registrations) persists to SQLite via `AA_DB_PATH`. Transient state (nonces, agent records, launch tokens) lives in memory and is cleared on restart.
 - **X-Forwarded-For Trust**: The broker trusts `X-Forwarded-For` headers for request attribution in audit logs. This requires proper reverse proxy configuration and should only be used in trusted networks.
 - **No Built-In Rate Limiting**: Rate limiting must be implemented at the load balancer or reverse proxy layer.
-- **No Persistence Layer**: There is no built-in persistent storage. Audit logs and tokens exist only in the running process.
+
+See [KNOWN-ISSUES.md](KNOWN-ISSUES.md) for tracked security and operational issues with mitigations.
 
 ## Threat Model
 
