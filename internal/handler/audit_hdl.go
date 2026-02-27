@@ -43,6 +43,7 @@ func (h *AuditHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		AgentID:   q.Get("agent_id"),
 		TaskID:    q.Get("task_id"),
 		EventType: q.Get("event_type"),
+		Outcome:   q.Get("outcome"),
 	}
 
 	if since := q.Get("since"); since != "" {

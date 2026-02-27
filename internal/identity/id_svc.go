@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/authz"
 	"github.com/divineartis/agentauth/internal/obs"
 	"github.com/divineartis/agentauth/internal/store"
@@ -61,7 +62,7 @@ type RegisterResp struct {
 // registration. It is satisfied by [audit.AuditLog]. A nil value
 // disables audit recording.
 type AuditRecorder interface {
-	Record(eventType, agentID, taskID, orchID, detail string)
+	Record(eventType, agentID, taskID, orchID, detail string, opts ...audit.RecordOption)
 }
 
 // IdSvc is the identity service responsible for the full agent registration

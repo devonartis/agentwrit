@@ -32,7 +32,7 @@ type RevocationChecker interface {
 // AuditRecorder records structured audit events. It is satisfied by
 // [audit.AuditLog].
 type AuditRecorder interface {
-	Record(eventType, agentID, taskID, orchID, detail string)
+	Record(eventType, agentID, taskID, orchID, detail string, opts ...audit.RecordOption)
 }
 
 // ValMw is the validation middleware. It extracts the Bearer token from the

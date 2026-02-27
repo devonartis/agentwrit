@@ -1511,6 +1511,32 @@ func TestAudit_QueryParams(t *testing.T) {
 	if total3 != 0 {
 		t.Errorf("expected 0 events in far future, got %.0f", total3)
 	}
+
+	// Query by outcome.
+	b.auditLog.Record(audit.EventScopeViolation, "agent-z", "task-3", "orch-3", "denied access",
+		audit.WithOutcome("denied"))
+	b.auditLog.Record(audit.EventTokenIssued, "agent-z", "task-3", "orch-3", "issued ok",
+		audit.WithOutcome("success"))
+
+	req4 := httptest.NewRequest("GET", "/v1/audit/events?outcome=denied", nil)
+	req4.Header.Set("Authorization", "Bearer "+adminToken)
+	rr4 := b.do(req4)
+	if rr4.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr4.Code)
+	}
+	var resp4 map[string]any
+	_ = json.NewDecoder(rr4.Body).Decode(&resp4) //nolint:errcheck // test assertion
+	events4, _ := resp4["events"].([]any)
+	for _, e := range events4 {
+		evt := e.(map[string]any)
+		if outcome, ok := evt["outcome"].(string); ok && outcome != "denied" {
+			t.Errorf("expected only denied events, got outcome=%s", outcome)
+		}
+	}
+	total4, _ := resp4["total"].(float64)
+	if total4 < 1 {
+		t.Errorf("expected at least 1 denied event, got %.0f", total4)
+	}
 }
 
 // --- Layer 1 Security: Nonce replay rejected (HTTP level) ---
