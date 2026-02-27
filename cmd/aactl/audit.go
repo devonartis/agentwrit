@@ -38,6 +38,9 @@ var auditLimit int
 // auditOffset sets the pagination offset.
 var auditOffset int
 
+// auditOutcome filters events by outcome (success, denied).
+var auditOutcome string
+
 // auditEventsCmd lists audit events with optional filters.
 // Output is a table (default) or raw JSON (--json flag).
 // Detail column is truncated to 60 characters for readability.
@@ -72,6 +75,9 @@ var auditEventsCmd = &cobra.Command{
 		if auditOffset > 0 {
 			params.Set("offset", strconv.Itoa(auditOffset))
 		}
+		if auditOutcome != "" {
+			params.Set("outcome", auditOutcome)
+		}
 
 		path := "/v1/audit/events"
 		if len(params) > 0 {
@@ -93,6 +99,7 @@ var auditEventsCmd = &cobra.Command{
 				Timestamp string `json:"timestamp"`
 				EventType string `json:"event_type"`
 				AgentID   string `json:"agent_id"`
+				Outcome   string `json:"outcome"`
 				Detail    string `json:"detail"`
 			} `json:"events"`
 			Total  int `json:"total"`
@@ -109,9 +116,9 @@ var auditEventsCmd = &cobra.Command{
 			if len(detail) > 60 {
 				detail = detail[:57] + "..."
 			}
-			rows[i] = []string{e.ID, e.Timestamp, e.EventType, e.AgentID, detail}
+			rows[i] = []string{e.ID, e.Timestamp, e.EventType, e.AgentID, e.Outcome, detail}
 		}
-		printTable([]string{"ID", "TIMESTAMP", "EVENT TYPE", "AGENT ID", "DETAIL"}, rows)
+		printTable([]string{"ID", "TIMESTAMP", "EVENT TYPE", "AGENT ID", "OUTCOME", "DETAIL"}, rows)
 		fmt.Fprintf(os.Stderr, "Showing %d of %d events (offset=%d, limit=%d)\n",
 			len(resp.Events), resp.Total, resp.Offset, resp.Limit)
 		return nil
@@ -126,6 +133,7 @@ func init() {
 	auditEventsCmd.Flags().StringVar(&auditUntil, "until", "", "events before this time (RFC3339)")
 	auditEventsCmd.Flags().IntVar(&auditLimit, "limit", 0, "max results (default 100)")
 	auditEventsCmd.Flags().IntVar(&auditOffset, "offset", 0, "pagination offset")
+	auditEventsCmd.Flags().StringVar(&auditOutcome, "outcome", "", "filter by outcome (success, denied)")
 	auditCmd.AddCommand(auditEventsCmd)
 	rootCmd.AddCommand(auditCmd)
 }
