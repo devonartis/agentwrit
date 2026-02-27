@@ -101,6 +101,7 @@ type QueryFilters struct {
 	AgentID   string
 	TaskID    string
 	EventType string
+	Outcome   string
 	Since     *time.Time
 	Until     *time.Time
 	Limit     int
@@ -215,6 +216,9 @@ func (a *AuditLog) Query(filters QueryFilters) ([]AuditEvent, int) {
 			continue
 		}
 		if filters.EventType != "" && evt.EventType != filters.EventType {
+			continue
+		}
+		if filters.Outcome != "" && evt.Outcome != filters.Outcome {
 			continue
 		}
 		if filters.Since != nil && evt.Timestamp.Before(*filters.Since) {

@@ -284,6 +284,21 @@ func TestEvents_ReturnsCopy(t *testing.T) {
 	}
 }
 
+func TestQuery_FilterByOutcome(t *testing.T) {
+	al := NewAuditLog(nil)
+	al.Record(EventTokenIssued, "a1", "t1", "o1", "issued", WithOutcome("success"))
+	al.Record(EventScopeViolation, "a2", "t2", "o2", "denied", WithOutcome("denied"))
+	al.Record(EventTokenRenewed, "a3", "t3", "o3", "renewed", WithOutcome("success"))
+
+	events, total := al.Query(QueryFilters{Outcome: "denied"})
+	if total != 1 {
+		t.Errorf("expected total=1 denied, got %d", total)
+	}
+	if len(events) != 1 || events[0].Outcome != "denied" {
+		t.Errorf("expected 1 denied event, got %v", events)
+	}
+}
+
 func TestRecord_WithOptions(t *testing.T) {
 	al := NewAuditLog(nil)
 	al.Record(EventTokenIssued, "a1", "t1", "o1", "issued token",
