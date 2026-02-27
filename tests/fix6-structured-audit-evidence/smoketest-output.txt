@@ -1,0 +1,20 @@
+=== AgentAuth Sidecar Smoke Test ===
+  broker: http://127.0.0.1:8080
+
+  PASS: Step 1: GET /v1/health
+  PASS: Step 2: GET /v1/metrics
+  PASS: Step 3: POST /v1/admin/auth
+  PASS: Step 4: POST /v1/admin/launch-tokens
+  PASS: Step 5: GET /v1/challenge
+  PASS: Step 6: POST /v1/register
+  PASS: Step 7: POST /v1/admin/sidecar-activations
+  PASS: Step 8: POST /v1/sidecar/activate
+  PASS: Step 9: POST /v1/sidecar/activate (replay)
+  PASS: Step 10: POST /v1/token/exchange
+  PASS: Step 11: POST /v1/token/exchange (escalation)
+  PASS: Step 12: POST /v1/token/validate
+
+=== Smoke Test Summary ===
+  PASS: 12
+  FAIL: 0
+RESULT: PASSED

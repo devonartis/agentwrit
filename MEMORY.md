@@ -34,6 +34,12 @@
 - Design the test BEFORE implementation: read user stories, understand constraints, then code
 - The test is part of the fix, not a separate task to defer
 
+**Docker live test evidence — save to `tests/<fix-name>-evidence/`.** (established 2026-02-26, Session 16)
+- Every Docker live test must produce a `tests/<fix-name>-evidence/` folder
+- Folder contains: `README.md` (overview + story table), `story-N-<name>.md` per story (plain English, reproduction steps, raw output, what to look for, verdict), `smoketest-output.txt`
+- Anyone should be able to open the evidence folder and understand what was tested and whether it passed without running anything
+- This is not optional — a live test without saved evidence is incomplete
+
 ## 2026-02-26 (Session 16)
 
 ### Git operations

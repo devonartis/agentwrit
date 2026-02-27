@@ -41,9 +41,18 @@ Changing `Record()` signature to `Record(..., opts ...RecordOption)` broke the `
 
 New audit columns use `DEFAULT NULL` + `sql.NullString`/`sql.NullInt64` scan types so existing rows with NULL values don't break `LoadAllAuditEvents`. Helper funcs `nullableString()` and `nullableInt()` map zero-values to NULL on write (zero-value fields → NULL in DB, non-zero → real value).
 
-### Executing-Plans: Fix 6 — All 9 code tasks complete
+### Executing-Plans: Fix 6 — All 10 tasks complete
 
-Tasks 1-9 done. All ~20 `Record()` callers annotated with `WithOutcome`. Lint gate required fixing errcheck on two `SaveAuditEvent` calls in test code. Gates: build PASS, lint PASS, unit tests PASS, security WARN (pre-existing). Docker live test (Task 10) remaining before merge.
+Tasks 1-10 done. All ~20 `Record()` callers annotated with `WithOutcome`. Lint gate required fixing errcheck on two `SaveAuditEvent` calls in test code. Gates: build PASS, lint PASS, unit tests PASS, security WARN (pre-existing). Docker live test passed all 3 stories. Evidence saved to `tests/fix6-structured-audit-evidence/`.
+
+### Decision: Test Evidence Structure
+
+Every fix/feature Docker live test now produces a `tests/<fix-name>-evidence/` folder containing:
+1. `README.md` — overview of what was tested, table of stories, how events were generated
+2. `story-N-<name>.md` — per-story evidence: plain English explanation, reproduction steps, raw JSON output, what to look for, pass/fail verdict
+3. `smoketest-output.txt` — raw smoketest output
+
+The goal: anyone can open the evidence folder and understand what was tested and whether it passed without running anything. This is the introspection record — not just "it passed" but "here's exactly what the API returned and why that proves the story."
 
 ---
 
