@@ -61,8 +61,14 @@ Implementing Fix 6 (structured audit log fields). Completed 6 of 10 tasks:
 - `d014d69` — feat(aactl): add --outcome flag to audit events command
 - Gates: build PASS, lint PASS (fixed errcheck in test), unit tests PASS, security WARN (pre-existing gosec findings)
 
+### Docker live test results
+- Smoketest: 12/12 PASS (full sidecar lifecycle including exchange + scope escalation denial)
+- Story 1: PASS — all 18 audit events have `outcome` field populated (`success`/`denied`), `resource` on auth failures
+- Story 2: PASS — `--outcome denied` filter returns exactly 3 events, all denied
+- Story 3: PASS — hash chain intact across all 20 events, every `prev_hash` links correctly
+
 ### What's next
-- Docker live test (Task 10) — then merge to `develop`
+- Merge `fix/structured-audit` to `develop` — all 10 tasks complete, all gates + Docker live test pass
 
 ## 2026-02-25 (Session 15)
 
