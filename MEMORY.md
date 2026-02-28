@@ -1,5 +1,9 @@
 # MEMORY.md
 
+## Source Pattern
+
+**[Ephemeral Agent Credentialing v1.2](https://github.com/devonartis/AI-Security-Blueprints/blob/main/patterns/ephemeral-agent-credentialing/versions/v1.2.md)** — the security pattern AgentAuth implements. Every feature, fix, and design decision traces to this document. Read it before making architectural choices.
+
 ## Standing Rules
 
 **Live tests require Docker — the app must be running in containers.** (established 2026-02-24)
@@ -34,11 +38,89 @@
 - Design the test BEFORE implementation: read user stories, understand constraints, then code
 - The test is part of the fix, not a separate task to defer
 
+**When `/obsidian:daily` runs, analyze — don't just execute steps.** (established 2026-02-27)
+- Read what Divine wrote in the note — morning entries, rants, reflections, carried-over todos
+- Respond to what's there as a person: what's stuck, what's moving, what he's feeling, what's being avoided
+- If the same todos have been carried over for a week, say something — push, don't just copy
+- If medications/supplements are already logged, don't re-ask
+- The skill steps are mechanics. The analysis is the point. No checklist running.
+
 **Docker live test evidence — save to `tests/<fix-name>-evidence/`.** (established 2026-02-26, Session 16)
 - Every Docker live test must produce a `tests/<fix-name>-evidence/` folder
 - Folder contains: `README.md` (overview + story table), `story-N-<name>.md` per story (plain English, reproduction steps, raw output, what to look for, verdict), `smoketest-output.txt`
 - Anyone should be able to open the evidence folder and understand what was tested and whether it passed without running anything
 - This is not optional — a live test without saved evidence is incomplete
+
+## 2026-02-28 (Session 18)
+
+### What happened
+Cleanup: moved `.plans/` directory out of the repo to `/Users/divineartis/agentAuth_Backup_docs/dot-plans/`. This was missed during the Session 16 pre-release cleanup — that commit (`5626f13`) only removed `plans/` (no dot), leaving `.plans/` behind. Contents were all stale session artifacts from early sessions (roadmap, backlog, list-sidecars design docs, completed P0 plans, and the old `USER-STORIES-PLAN.md`).
+
+Also confirmed: the demo application user stories live in `agentAuthDemoApps/app_ideas_stories/` (external repo), not in this repo. The `USER-STORIES-PLAN.md` in `.plans/active/` was old material from Session 1, not the current demo work from Session 17.
+
+### Git operations
+- No branch changes (cleanup only, `.plans/` was untracked after the restore in Session 1)
+
+### User feedback (Session 18)
+- "I specifically said move .plans/" — the Session 16 cleanup missed it, should have been moved with `plans/`
+- "Look through memory" — corrected me for grepping git log instead of reading MEMORY.md first. MEMORY.md is the source of truth for session context, not git log.
+
+### Created feature catalog for agentauth-app
+Cataloged all AgentAuth broker features (endpoints, env vars, aactl commands, audit events, token claims, all 6 fixes) and saved to `/Users/divineartis/proj/agentauth-app/new-features-agentauth.md` at the root. This gives the app repo full knowledge of what the current broker exposes. Should have used `git log --oneline -30 develop` instead of sending an Explore agent — commit messages had everything. Use git history when commits are well-structured.
+
+### Plan: finish agentauth-app demo, then merge develop to main
+Working on the original demo app (`agentauth-app`) next. Once the demo app is tested and working against the current broker (all 6 fixes), merge `develop` to `main` in authAgent2. The demo app validation is the gate for the release merge.
+
+### Two demo app directories — context and plan
+There are two separate directories for demo/consumer apps:
+
+1. **`/Users/divineartis/proj/agentauth-app`** — the original showcase app (Python, FastAPI, SDK, CLI, dashboard, demo agents). Customer service triage demo. Has SDK in `app/sdk/`, tests, docs. Branch `feature/p0-audit-app-integration` with an unexecuted 8-task impl plan for dual-broker testing. Pinned broker is ~50 commits behind current `develop`. Root is cluttered with `.docx`, `.jsx`, `.png`, `.patch` files and a stale `agentauth-ctl` binary. Only 1 session logged (Feb 26).
+
+2. **`/Users/divineartis/proj/agentAuthDemoApps`** — the three scenario demos from Session 17 (stolen key, rogue delegate, who did it). Design docs only, no code yet.
+
+**Plan:** Work on `agentauth-app` first — pull the current broker repo so it has the freshest content (all 6 fixes), finish that demo. Then come back to `agentAuthDemoApps` for the three scenario demos. Open question for later: should we merge `agentAuthDemoApps` into `agentauth-app`, make it a new standalone repo, or keep demo apps in a separate directory from the auth agent?
+
+### What's next
+1. **Finish agentauth-app demo first** — pull current broker, update SDK for new endpoints, complete the demo
+2. **Then: three scenario demos** in agentAuthDemoApps (Scenario 1 → 2 → 3)
+3. **Then: decide repo structure** — merge demos into one place or keep separate
+
+## 2026-02-27 (Session 17)
+
+### What happened
+Designed demo application stories for AgentAuth. Three scenarios that show the danger of treating agent identity like traditional IAM, each mapping to one of the pattern's "Current Inadequate Approaches":
+1. "The Stolen Key" — credential exfiltration (LangGrinch CVE, Pattern Problem Row 2)
+2. "The Rogue Delegate" — privilege escalation via delegation (Pattern Problem Row 3)
+3. "Who Did It?" — forensics failure with shared service accounts (Pattern Problem Row 1)
+
+Each demo is one app with a `--mode vulnerable | --mode secure` toggle — same business logic, different credential model. Apps pull AgentAuth from https://github.com/devonartis/agentAuth/tree/develop and run against the real live stack. No mocks.
+
+### Artifacts produced
+- `agentAuthDemoApps/app_ideas_stories/scenario-1-stolen-key.md`
+- `agentAuthDemoApps/app_ideas_stories/scenario-2-rogue-delegate.md`
+- `agentAuthDemoApps/app_ideas_stories/scenario-3-who-did-it.md`
+- `agentAuthDemoApps/app_ideas_stories/design-doc.md`
+
+### Changes to this repo
+- Pinned pattern URL in CLAUDE.md (under project description)
+- Pinned pattern URL in MEMORY.md (top, before standing rules)
+- Added standing rule: when `/obsidian:daily` runs, analyze the note — don't just execute steps
+
+### User feedback (Session 17)
+- "You should always start with the pattern" — I explored the codebase instead of starting from the pattern's Problem section. Wrong direction. The pattern defines the stories, not the code.
+- "These docs should not go into my design docs folder" — demo stories belong in the consumer repo (`agentAuthDemoApps/`), not the product repo
+- "We need to be able to turn it on and off so people can see" — one app, two modes, not two separate apps
+- "This is not mock either we are doing really live app" — demos run against the real AgentAuth stack, no fake resource servers
+- Frustrated that I didn't read MEMORY.md or FLOW.md at session start, didn't follow CORE identity/voice, ran daily skill as a checklist, wrote insights in documentation voice instead of journal voice
+
+### Git operations
+- No branch changes (design-only session, artifacts in external repo)
+- Edited CLAUDE.md and MEMORY.md on develop
+
+### What's next
+1. **Implementation plan** for Scenario 1 — invoke writing-plans skill
+2. **Python SDK** — the secure mode of the demos drives the SDK interface
+3. Build order: Scenario 1 → Scenario 2 → Scenario 3
 
 ## 2026-02-26 (Session 16)
 

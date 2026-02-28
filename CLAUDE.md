@@ -8,6 +8,8 @@ Go broker issuing short-lived scoped JWTs to AI agents via Ed25519 challenge-res
 
 Module: `github.com/divineartis/agentauth`
 
+**Source Pattern:** [Ephemeral Agent Credentialing v1.2](https://github.com/devonartis/AI-Security-Blueprints/blob/main/patterns/ephemeral-agent-credentialing/versions/v1.2.md) — this is the security pattern AgentAuth implements. All design decisions trace back to this document.
+
 ## Repo Layout
 
 - `cmd/broker/` — broker entry point

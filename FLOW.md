@@ -25,6 +25,56 @@ Format:
 
 ---
 
+## 2026-02-28 (Session 18)
+
+### Cleanup: Moved `.plans/` to backup
+
+`.plans/` was missed during the Session 16 pre-release cleanup (`5626f13`). That commit removed `plans/` but not `.plans/` — two different directories. Contents were all stale: roadmap, backlog, list-sidecars design docs, completed P0 plans, and an old `USER-STORIES-PLAN.md` from Session 1. Moved to `/Users/divineartis/agentAuth_Backup_docs/dot-plans/`. Nothing in `.plans/` is needed for current work — the active demo stories are in `agentAuthDemoApps/app_ideas_stories/` (confirmed via MEMORY.md Session 17 artifacts).
+
+### Decision: Demo app validation gates the develop → main merge
+
+AgentAuth `develop` has all 6 compliance fixes but hasn't been merged to `main` yet. The gate: get `agentauth-app` working against the current broker, test the demo end-to-end. Once the demo app validates the broker works correctly, merge `develop` to `main`. The demo is the acceptance test for the release.
+
+### Feature catalog saved to agentauth-app
+
+Created `new-features-agentauth.md` at the root of `agentauth-app` — full catalog of broker endpoints, sidecar endpoints, aactl commands, env vars, audit events, token claims, and all 6 fix summaries. Lesson: should have used `git log -30` instead of an Explore agent — the commit messages already had everything needed.
+
+### Decision: Finish agentauth-app demo before new scenario demos
+
+Two demo app directories exist. `agentauth-app` is the original showcase (Python, SDK, dashboard, agents) but it's pinned to a stale broker (~50 commits behind). `agentAuthDemoApps` has the three scenario design docs from Session 17 but no code. User wants to finish the original demo first — pull the current broker with all 6 fixes, update the SDK, get it working with the latest features. Then build the three scenario demos. Open question deferred: whether to merge everything into one repo, keep separate, or restructure.
+
+### Lesson: MEMORY.md is the source of truth, not git log
+
+When asked "where are the demo user stories?", grepped git log and FLOW.md instead of reading MEMORY.md first. MEMORY.md Session 17 lines 65-68 had the exact answer: `agentAuthDemoApps/app_ideas_stories/`. The standing rule in CLAUDE.md says "Read MEMORY.md and FLOW.md first every session" — that applies to mid-session lookups too, not just session start.
+
+---
+
+## 2026-02-27 (Session 17)
+
+### Brainstorming: Demo Application Stories
+
+Designed three demo apps to prove AgentAuth solves the agent identity problem. Started wrong — explored the codebase instead of the pattern. Divine corrected: the Ephemeral Agent Credentialing Pattern v1.2's Problem section already defines the three inadequate approaches. Stories map 1:1 to those rows, not independently brainstormed from code.
+
+→ Artifact: `agentAuthDemoApps/app_ideas_stories/` (3 scenario docs + design-doc.md)
+
+### Decision: One App, Two Modes — Not Separate Codebases
+
+Each demo is a single Python app with `--mode vulnerable` and `--mode secure`. Same business logic, same task, different credential model. This makes the comparison visceral — toggle it and watch. Rejected the original design of separate `vulnerable/` and `secure/` directories. The audience needs to see the same app behave differently, not two different apps.
+
+### Decision: Pull AgentAuth from GitHub, Not Local
+
+Demo apps pull AgentAuth from https://github.com/devonartis/agentAuth/tree/develop. No dependency on having the authAgent2 repo locally. The demo repo is self-contained — clone it, `docker compose up`, everything runs. This is how a real developer would encounter AgentAuth.
+
+### Decision: Real Live Stack, No Mocks
+
+Demos run against the real AgentAuth broker and sidecar. No mock resource servers, no simulated responses. The denials, audit trails, scope violations, and revocations are all real. The audience sees actual API responses, actual JWT claims, actual hash-chained audit entries.
+
+### Decision: Pin Pattern URL in Session Context
+
+The pattern URL was not in CLAUDE.md or MEMORY.md — the two files read at session start. Pinned it in both. Standing rule: critical reference documents must be linked where the AI reads them on startup, not just known to the human.
+
+---
+
 ## 2026-02-26 (Session 16)
 
 ### Executing-Plans: Fix 6 — Structured Audit Log Fields
