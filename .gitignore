@@ -19,3 +19,13 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 .worktrees/
+
+# Compiled binaries (rebuild via: go build ./cmd/aactl, go build ./cmd/sidecar)
+/aactl
+/sidecar
+
+# Database files
+*.db
+
+# Utility scripts
+/generate_pdf.py

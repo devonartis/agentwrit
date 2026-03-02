@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 780" font-family="Segoe UI, system-ui, sans-serif">
+  <rect width="1000" height="780" fill="#f8f9fa" rx="8"/>
+
+  <text x="500" y="36" text-anchor="middle" font-size="22" font-weight="700" fill="#16213e">Gap Summary — 24 Total</text>
+  <text x="500" y="54" text-anchor="middle" font-size="12" fill="#6b7280">All 6 blockers trace to the same root cause: apps don't exist as a concept in the system</text>
+
+  <!-- Summary cards -->
+  <rect x="50" y="75" width="260" height="80" rx="10" fill="#dc2626"/>
+  <text x="180" y="110" text-anchor="middle" font-size="40" font-weight="800" fill="white">6</text>
+  <text x="180" y="135" text-anchor="middle" font-size="14" fill="white" opacity="0.9">BLOCKERS</text>
+
+  <rect x="370" y="75" width="260" height="80" rx="10" fill="#f59e0b"/>
+  <text x="500" y="110" text-anchor="middle" font-size="40" font-weight="800" fill="white">7</text>
+  <text x="500" y="135" text-anchor="middle" font-size="14" fill="white" opacity="0.9">MAJOR</text>
+
+  <rect x="690" y="75" width="260" height="80" rx="10" fill="#6b7280"/>
+  <text x="820" y="110" text-anchor="middle" font-size="40" font-weight="800" fill="white">11</text>
+  <text x="820" y="135" text-anchor="middle" font-size="14" fill="white" opacity="0.9">MINOR</text>
+
+  <!-- ===== BLOCKERS ===== -->
+  <text x="50" y="195" font-size="14" font-weight="700" fill="#dc2626">BLOCKERS — Must fix before production</text>
+
+  <!-- G-1 -->
+  <rect x="50" y="210" width="900" height="32" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="50" y="210" width="4" height="32" rx="2" fill="#dc2626"/>
+  <rect x="66" y="216" width="36" height="20" rx="4" fill="#dc2626"/>
+  <text x="84" y="231" text-anchor="middle" font-size="10" font-weight="700" fill="white">G-1</text>
+  <text x="116" y="231" font-size="11" fill="#991b1b" font-weight="600">No App entity in system</text>
+  <text x="480" y="231" font-size="10" fill="#7f1d1d">Apps are invisible. Can't track, manage, or audit by app.</text>
+
+  <!-- G-2 -->
+  <rect x="50" y="248" width="900" height="32" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="50" y="248" width="4" height="32" rx="2" fill="#dc2626"/>
+  <rect x="66" y="254" width="36" height="20" rx="4" fill="#dc2626"/>
+  <text x="84" y="269" text-anchor="middle" font-size="10" font-weight="700" fill="white">G-2</text>
+  <text x="116" y="269" font-size="11" fill="#991b1b" font-weight="600">No API to register apps</text>
+  <text x="480" y="269" font-size="10" fill="#7f1d1d">Must edit infrastructure files. No CLI, no API endpoint.</text>
+
+  <!-- G-3 -->
+  <rect x="50" y="286" width="900" height="32" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="50" y="286" width="4" height="32" rx="2" fill="#dc2626"/>
+  <rect x="66" y="292" width="36" height="20" rx="4" fill="#dc2626"/>
+  <text x="84" y="307" text-anchor="middle" font-size="10" font-weight="700" fill="white">G-3</text>
+  <text x="116" y="307" font-size="11" fill="#991b1b" font-weight="600">Every helper holds the master key</text>
+  <text x="480" y="307" font-size="10" fill="#7f1d1d">1 compromised helper = full admin access to everything.</text>
+
+  <!-- G-4 -->
+  <rect x="50" y="324" width="900" height="32" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="50" y="324" width="4" height="32" rx="2" fill="#dc2626"/>
+  <rect x="66" y="330" width="36" height="20" rx="4" fill="#dc2626"/>
+  <text x="84" y="345" text-anchor="middle" font-size="10" font-weight="700" fill="white">G-4</text>
+  <text x="116" y="345" font-size="11" fill="#991b1b" font-weight="600">Helper self-provisions (bypasses activation)</text>
+  <text x="480" y="345" font-size="10" fill="#7f1d1d">Activation endpoint exists but nothing external uses it.</text>
+
+  <!-- G-5 -->
+  <rect x="50" y="362" width="900" height="32" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="50" y="362" width="4" height="32" rx="2" fill="#dc2626"/>
+  <rect x="66" y="368" width="36" height="20" rx="4" fill="#dc2626"/>
+  <text x="84" y="383" text-anchor="middle" font-size="10" font-weight="700" fill="white">G-5</text>
+  <text x="116" y="383" font-size="11" fill="#991b1b" font-weight="600">No app-to-helper binding</text>
+  <text x="480" y="383" font-size="10" fill="#7f1d1d">Can't answer "which app does this helper serve?"</text>
+
+  <!-- G-6 -->
+  <rect x="50" y="400" width="900" height="32" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="50" y="400" width="4" height="32" rx="2" fill="#dc2626"/>
+  <rect x="66" y="406" width="36" height="20" rx="4" fill="#dc2626"/>
+  <text x="84" y="421" text-anchor="middle" font-size="10" font-weight="700" fill="white">G-6</text>
+  <text x="116" y="421" font-size="11" fill="#991b1b" font-weight="600">Helpers boot without apps</text>
+  <text x="480" y="421" font-size="10" fill="#7f1d1d">Proxy with nothing to proxy. Wastes resources, creates attack surface.</text>
+
+  <!-- ===== MAJOR ===== -->
+  <text x="50" y="465" font-size="14" font-weight="700" fill="#d97706">MAJOR — Security and operational risk</text>
+
+  <!-- G-9 through G-22 -->
+  <rect x="50" y="480" width="900" height="28" rx="5" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="50" y="480" width="4" height="28" rx="2" fill="#f59e0b"/>
+  <rect x="66" y="484" width="36" height="20" rx="4" fill="#f59e0b"/>
+  <text x="84" y="499" text-anchor="middle" font-size="9" font-weight="700" fill="white">G-9</text>
+  <text x="116" y="499" font-size="10" fill="#92400e">Helper uses master key to register agents</text>
+
+  <rect x="50" y="512" width="900" height="28" rx="5" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="50" y="512" width="4" height="28" rx="2" fill="#f59e0b"/>
+  <rect x="66" y="516" width="40" height="20" rx="4" fill="#f59e0b"/>
+  <text x="86" y="531" text-anchor="middle" font-size="9" font-weight="700" fill="white">G-10</text>
+  <text x="120" y="531" font-size="10" fill="#92400e">Signing key lost on broker restart — all keys become invalid</text>
+
+  <rect x="50" y="544" width="900" height="28" rx="5" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="50" y="544" width="4" height="28" rx="2" fill="#f59e0b"/>
+  <rect x="66" y="548" width="40" height="20" rx="4" fill="#f59e0b"/>
+  <text x="86" y="563" text-anchor="middle" font-size="9" font-weight="700" fill="white">G-12</text>
+  <text x="120" y="563" font-size="10" fill="#92400e">Revocation single-server only — multiple brokers don't share</text>
+
+  <rect x="50" y="576" width="900" height="28" rx="5" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="50" y="576" width="4" height="28" rx="2" fill="#f59e0b"/>
+  <rect x="66" y="580" width="40" height="20" rx="4" fill="#f59e0b"/>
+  <text x="86" y="595" text-anchor="middle" font-size="9" font-weight="700" fill="white">G-13</text>
+  <text x="120" y="595" font-size="10" fill="#92400e">Agent registration uses admin JWT instead of scoped credentials</text>
+
+  <rect x="50" y="608" width="900" height="28" rx="5" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="50" y="608" width="4" height="28" rx="2" fill="#f59e0b"/>
+  <rect x="66" y="612" width="40" height="20" rx="4" fill="#f59e0b"/>
+  <text x="86" y="627" text-anchor="middle" font-size="9" font-weight="700" fill="white">G-18</text>
+  <text x="120" y="627" font-size="10" fill="#92400e">No hash chain verification command — tamper-proof log can't be verified</text>
+
+  <rect x="50" y="640" width="900" height="28" rx="5" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="50" y="640" width="4" height="28" rx="2" fill="#f59e0b"/>
+  <rect x="66" y="644" width="40" height="20" rx="4" fill="#f59e0b"/>
+  <text x="86" y="659" text-anchor="middle" font-size="9" font-weight="700" fill="white">G-21</text>
+  <text x="120" y="659" font-size="10" fill="#92400e">No app-level audit queries (depends on G-1)</text>
+
+  <rect x="50" y="672" width="900" height="28" rx="5" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="50" y="672" width="4" height="28" rx="2" fill="#f59e0b"/>
+  <rect x="66" y="676" width="40" height="20" rx="4" fill="#f59e0b"/>
+  <text x="86" y="691" text-anchor="middle" font-size="9" font-weight="700" fill="white">G-22</text>
+  <text x="120" y="691" font-size="10" fill="#92400e">No secret rotation mechanism — changing master key requires full restart</text>
+
+  <!-- Root cause -->
+  <rect x="50" y="720" width="900" height="44" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="2"/>
+  <text x="70" y="740" font-size="12" font-weight="700" fill="#1e40af">Root Cause:</text>
+  <text x="160" y="740" font-size="12" fill="#1e3a5f">All 6 blockers trace to one problem — apps don't exist in the system. Fix G-1 (add App entity)</text>
+  <text x="70" y="756" font-size="12" fill="#1e3a5f">and the activation endpoint that already exists can be wired into the correct workflow.</text>
+</svg>

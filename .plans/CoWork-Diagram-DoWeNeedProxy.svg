@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="900" viewBox="0 0 1200 900" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrowhead-dark" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <polygon points="0 0, 12 6, 0 12" fill="#425466"/>
+    </marker>
+    <marker id="arrowhead-white" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <polygon points="0 0, 12 6, 0 12" fill="#FFFFFF"/>
+    </marker>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+      * { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+      .title { font-size: 22px; font-weight: 700; fill: #FFFFFF; }
+      .header { font-size: 16px; font-weight: 600; fill: #0A2540; }
+      .subheader { font-size: 14px; font-weight: 600; fill: #0A2540; }
+      .step-text { font-size: 13px; font-weight: 400; fill: #0A2540; }
+      .subtext { font-size: 11px; font-weight: 400; fill: #425466; }
+      .banner-text { font-size: 14px; font-weight: 600; fill: #FFFFFF; }
+      .pill-text { font-size: 10px; font-weight: 700; fill: #FFFFFF; text-anchor: middle; }
+    </style>
+  </defs>
+  <rect width="1200" height="900" fill="#FFFFFF"/>
+  <!-- Title Bar -->
+  <rect x="0" y="0" width="1200" height="60" fill="#0A2540" rx="0"/>
+  <text x="600.0" y="38.0" text-anchor="middle" class="title">The Fundamental Question: Do We Need the Token Proxy?</text>
+  <!-- LEFT COLUMN: WITH PROXY -->
+  <rect x="20" y="80" width="540" height="45" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="8"/>
+  <text x="290" y="108" text-anchor="middle" class="subheader">With Token Proxy</text>
+
+  <!-- Diagram -->
+  <rect x="80" y="145" width="100" height="60" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="130" y="178" text-anchor="middle" class="step-text" font-weight="600">App</text>
+
+  <line x1="180" y1="175" x2="230" y2="175" stroke="#425466" stroke-width="2" marker-end="url(#arrowhead-dark)"/>
+
+  <rect x="230" y="145" width="120" height="60" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="290" y="178" text-anchor="middle" class="step-text" font-weight="600">Token Proxy</text>
+
+  <line x1="350" y1="175" x2="400" y2="175" stroke="#425466" stroke-width="2" marker-end="url(#arrowhead-dark)"/>
+
+  <rect x="400" y="145" width="100" height="60" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="450" y="178" text-anchor="middle" class="step-text" font-weight="600">Broker</text>
+
+  <!-- Benefits -->
+  <rect x="40" y="230" width="240" height="140" fill="#FFFFFF" stroke="#1A7F37" stroke-width="1" rx="6"/>
+  <text x="160" y="255" text-anchor="middle" class="subtext" font-weight="600" fill="#1A7F37">✓ Benefits</text>
+  <text x="55" y="280" class="step-text">• 1 call vs 5-10</text>
+  <text x="55" y="302" class="step-text">• Handles crypto</text>
+  <text x="55" y="324" class="step-text">• Circuit breaker</text>
+  <text x="55" y="346" class="step-text">• Local scope check</text>
+
+  <!-- Problems -->
+  <rect x="300" y="230" width="240" height="140" fill="#FFFFFF" stroke="#CF222E" stroke-width="1" rx="6"/>
+  <text x="420" y="255" text-anchor="middle" class="subtext" font-weight="600" fill="#CF222E">✗ Problems</text>
+  <text x="315" y="280" class="step-text">• Every proxy has master</text>
+  <text x="315" y="302" class="step-text">  key (security risk)</text>
+  <text x="315" y="324" class="step-text">• Adding app = infra change</text>
+  <text x="315" y="346" class="step-text">• N proxies = N keys</text>
+  <!-- RIGHT COLUMN: WITHOUT PROXY -->
+  <rect x="640" y="80" width="540" height="45" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="8"/>
+  <text x="910" y="108" text-anchor="middle" class="subheader">Without Token Proxy</text>
+
+  <!-- Diagram -->
+  <rect x="700" y="145" width="100" height="60" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="750" y="178" text-anchor="middle" class="step-text" font-weight="600">App</text>
+
+  <line x1="800" y1="175" x2="850" y2="175" stroke="#425466" stroke-width="2" marker-end="url(#arrowhead-dark)"/>
+
+  <rect x="850" y="145" width="100" height="60" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="900" y="178" text-anchor="middle" class="step-text" font-weight="600">Broker</text>
+
+  <!-- Benefits -->
+  <rect x="660" y="230" width="240" height="140" fill="#FFFFFF" stroke="#1A7F37" stroke-width="1" rx="6"/>
+  <text x="780" y="255" text-anchor="middle" class="subtext" font-weight="600" fill="#1A7F37">✓ Benefits</text>
+  <text x="675" y="280" class="step-text">• No middleware layer</text>
+  <text x="675" y="302" class="step-text">• Master key with operator</text>
+  <text x="675" y="324" class="step-text">• API registration</text>
+  <text x="675" y="346" class="step-text">• Unique credentials</text>
+
+  <!-- Problems -->
+  <rect x="920" y="230" width="240" height="140" fill="#FFFFFF" stroke="#CF222E" stroke-width="1" rx="6"/>
+  <text x="1040" y="255" text-anchor="middle" class="subtext" font-weight="600" fill="#CF222E">✗ Problems</text>
+  <text x="935" y="280" class="step-text">• Developers handle 5-10</text>
+  <text x="935" y="302" class="step-text">  calls</text>
+  <text x="935" y="324" class="step-text">• Need SDK (not yet built)</text>
+  <text x="935" y="346" class="step-text">• No local scope enforcement</text>
+  <!-- BOTTOM RECOMMENDATION -->
+  <rect x="40" y="430" width="1120" height="120" fill="#FFFFFF" stroke="#0969DA" stroke-width="2" rx="8"/>
+  <rect x="40" y="430" width="4" height="120" fill="#0969DA" rx="8 0 0 8"/>
+  <text x="60" y="460" class="subheader">RECOMMENDATION</text>
+  <text x="60" y="490" class="step-text">The Token Proxy should be OPTIONAL. Apps should register directly with the broker</text>
+  <text x="60" y="513" class="step-text">via an SDK. The proxy adds value as an optimization layer but cannot be the only path.</text>
+  <text x="60" y="536" class="step-text">Production workloads need to choose the right model for their use case.</text>
+</svg>

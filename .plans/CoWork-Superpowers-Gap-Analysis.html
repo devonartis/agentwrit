@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Superpowers + Context-First Development: Gap Analysis & New Skills</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #F7F8FA;
+    color: #425466;
+    line-height: 1.7;
+  }
+
+  .hero {
+    background: linear-gradient(135deg, #0A2540 0%, #1B3A5C 50%, #0A2540 100%);
+    color: #FFFFFF;
+    padding: 80px 40px 60px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: radial-gradient(ellipse at 30% 50%, rgba(0, 212, 170, 0.08) 0%, transparent 60%),
+                radial-gradient(ellipse at 70% 50%, rgba(99, 91, 255, 0.06) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .hero h1 { font-size: 42px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 16px; position: relative; }
+  .hero .subtitle { font-size: 18px; color: rgba(255,255,255,0.7); max-width: 750px; margin: 0 auto 24px; position: relative; }
+  .hero .meta { font-size: 13px; color: rgba(255,255,255,0.4); position: relative; }
+
+  .container { max-width: 1000px; margin: 0 auto; padding: 40px 24px; }
+  h2 { font-size: 28px; font-weight: 700; color: #0A2540; margin: 48px 0 16px; letter-spacing: -0.3px; }
+  h3 { font-size: 20px; font-weight: 600; color: #0A2540; margin: 32px 0 12px; }
+  p { margin-bottom: 16px; }
+  hr.divider { border: none; border-top: 2px solid #E9ECF0; margin: 48px 0; }
+
+  .callout {
+    background: #FFFFFF;
+    border-left: 4px solid #635BFF;
+    padding: 20px 24px;
+    margin: 24px 0;
+    border-radius: 0 8px 8px 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .callout.teal { border-left-color: #00D4AA; }
+  .callout.coral { border-left-color: #E25950; }
+  .callout.navy { border-left-color: #0A2540; }
+  .callout strong { color: #0A2540; }
+
+  /* Master table */
+  table.master {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 24px 0;
+    font-size: 14px;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  }
+  table.master th {
+    background: #0A2540;
+    color: white;
+    padding: 12px 14px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  table.master td {
+    padding: 12px 14px;
+    border-bottom: 1px solid #E9ECF0;
+    background: white;
+    vertical-align: top;
+  }
+  table.master tr:nth-child(even) td { background: #FAFBFC; }
+
+  /* Status pills */
+  .pill {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    white-space: nowrap;
+  }
+  .pill-covered { background: #D4FAF0; color: #0A7D60; }
+  .pill-partial { background: #FFF3E0; color: #E65100; }
+  .pill-missing { background: #FFE8E7; color: #E25950; }
+  .pill-new { background: #E8E5FF; color: #635BFF; }
+  .pill-sp { background: #0A2540; color: #00D4AA; font-size: 10px; }
+
+  /* Skill cards */
+  .skill-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 24px 0;
+  }
+  @media (max-width: 700px) { .skill-grid { grid-template-columns: 1fr; } }
+
+  .skill-card {
+    background: #FFFFFF;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    border-top: 4px solid #635BFF;
+  }
+  .skill-card.exists { border-top-color: #00D4AA; }
+  .skill-card.new-skill { border-top-color: #E25950; }
+
+  .skill-card .skill-name {
+    font-size: 16px;
+    font-weight: 700;
+    color: #0A2540;
+    margin-bottom: 4px;
+  }
+  .skill-card .skill-phase {
+    font-size: 12px;
+    color: #8898AA;
+    margin-bottom: 12px;
+  }
+  .skill-card .skill-desc {
+    font-size: 14px;
+    color: #425466;
+    margin-bottom: 12px;
+  }
+  .skill-card .skill-deliverable {
+    font-size: 12px;
+    color: #635BFF;
+    font-weight: 600;
+  }
+  .skill-card .skill-deliverable.agent { color: #0A7D60; }
+
+  /* Flow diagram */
+  .flow-container {
+    background: #FFFFFF;
+    border-radius: 12px;
+    padding: 32px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    margin: 24px 0;
+    overflow-x: auto;
+  }
+  .flow-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 0;
+    flex-wrap: wrap;
+  }
+  .flow-box {
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .flow-sp { background: #0A2540; color: #00D4AA; }
+  .flow-new { background: #E25950; color: white; }
+  .flow-arrow { color: #C4CDD5; font-size: 18px; }
+  .flow-phase-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #8898AA;
+    width: 80px;
+    flex-shrink: 0;
+  }
+
+  /* Code block */
+  .code-block {
+    background: #0A2540;
+    color: #E0E6ED;
+    padding: 20px 24px;
+    border-radius: 8px;
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 16px 0;
+    overflow-x: auto;
+  }
+  .code-block .comment { color: #68788D; }
+  .code-block .key { color: #00D4AA; }
+  .code-block .value { color: #635BFF; }
+  .code-block .highlight { color: #E25950; }
+
+  .footer {
+    text-align: center;
+    padding: 40px;
+    color: #8898AA;
+    font-size: 13px;
+  }
+
+  blockquote {
+    border-left: 3px solid #00D4AA;
+    padding: 12px 20px;
+    margin: 16px 0;
+    background: #F0FBF8;
+    border-radius: 0 8px 8px 0;
+    font-style: italic;
+    color: #3C5063;
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>Superpowers + Context-First Development</h1>
+  <div class="subtitle">Gap analysis of the Superpowers skill framework against the full development lifecycle — and the 5 new skills needed to close the gaps.</div>
+  <div class="meta">AgentAuth Project &middot; March 2026 &middot; Based on obra/superpowers + real session experience</div>
+</div>
+
+<div class="container">
+
+<!-- ============ INTRO ============ -->
+<h2>What Superpowers Already Covers (and What It Doesn't)</h2>
+
+<p>Superpowers is an excellent skill framework. It covers the <strong>design → plan → build → verify</strong> pipeline thoroughly, with strong opinions on TDD, verification evidence, code review, and subagent orchestration. But it focuses on the execution side — <em>how to build correctly</em>.</p>
+
+<p>What's missing is the <strong>discovery and impact analysis side</strong> — <em>how to understand what exists before you build</em>. This is the gap we hit repeatedly during the AgentAuth session. Every mid-session correction ("you missed the full flow," "we don't use SPIRE," "we can't fix one thing and break other things") traces back to insufficient pre-build context.</p>
+
+<div class="callout coral">
+  <strong>The analogy:</strong> Superpowers teaches the contractor how to build (measure twice, cut once, test-drive every board). But it doesn't include a site survey skill — the step where you walk the property and map what's already there before you start cutting. That's the gap.
+</div>
+
+<hr class="divider">
+
+<!-- ============ MASTER MAP ============ -->
+<h2>Master Map: CFD Steps → Superpowers Skills</h2>
+
+<table class="master">
+  <tr>
+    <th>Phase</th>
+    <th>CFD Step</th>
+    <th>Superpowers Skill</th>
+    <th>Coverage</th>
+    <th>Gap</th>
+  </tr>
+  <!-- DISCOVER -->
+  <tr>
+    <td rowspan="3" style="background:#F0EEFF; color:#635BFF; font-weight:700;">DISCOVER</td>
+    <td>1.1 Current State Inventory</td>
+    <td>—</td>
+    <td><span class="pill pill-missing">MISSING</span></td>
+    <td>No skill for mapping existing capabilities before designing changes</td>
+  </tr>
+  <tr>
+    <td>1.2 Brainstorm / Pattern Input</td>
+    <td><span class="pill pill-sp">brainstorming</span></td>
+    <td><span class="pill pill-covered">COVERED</span></td>
+    <td>Good — explores context, asks questions, proposes approaches. Could add pattern requirement extraction.</td>
+  </tr>
+  <tr>
+    <td>1.3 Constraint & Compliance Check</td>
+    <td>—</td>
+    <td><span class="pill pill-missing">MISSING</span></td>
+    <td>No skill for checking current state against pattern/standard requirements</td>
+  </tr>
+  <!-- DESIGN -->
+  <tr>
+    <td rowspan="4" style="background:#D4FAF0; color:#0A7D60; font-weight:700;">DESIGN</td>
+    <td>2.1 PRD + Architecture Decisions</td>
+    <td><span class="pill pill-sp">brainstorming</span></td>
+    <td><span class="pill pill-partial">PARTIAL</span></td>
+    <td>Brainstorming covers design docs. Missing: ADR format, "MUST NOT change" section</td>
+  </tr>
+  <tr>
+    <td>2.2 Impact Analysis</td>
+    <td>—</td>
+    <td><span class="pill pill-missing">MISSING</span></td>
+    <td><strong>Biggest gap.</strong> No skill for proving changes don't break existing capabilities</td>
+  </tr>
+  <tr>
+    <td>2.3 Implementation Details</td>
+    <td><span class="pill pill-sp">writing-plans</span></td>
+    <td><span class="pill pill-partial">PARTIAL</span></td>
+    <td>writing-plans covers task-level detail. Missing: explicit "do not touch" file lists</td>
+  </tr>
+  <tr>
+    <td>2.4 Peer Review Gate</td>
+    <td><span class="pill pill-sp">requesting-code-review</span></td>
+    <td><span class="pill pill-partial">PARTIAL</span></td>
+    <td>Code review exists but only for CODE. No design-level review before coding starts</td>
+  </tr>
+  <!-- BUILD -->
+  <tr>
+    <td rowspan="4" style="background:#E8EDF2; color:#0A2540; font-weight:700;">BUILD</td>
+    <td>3.0 Agent Context Briefing</td>
+    <td>—</td>
+    <td><span class="pill pill-missing">MISSING</span></td>
+    <td>No skill for compiling a TASK-BRIEF.md from all discovery + design outputs</td>
+  </tr>
+  <tr>
+    <td>3.1 Task Breakdown</td>
+    <td><span class="pill pill-sp">writing-plans</span></td>
+    <td><span class="pill pill-covered">COVERED</span></td>
+    <td>Excellent — bite-sized tasks with exact code, verification commands, commit steps</td>
+  </tr>
+  <tr>
+    <td>3.2 User Stories + Negative Cases</td>
+    <td><span class="pill pill-sp">test-driven-development</span></td>
+    <td><span class="pill pill-partial">PARTIAL</span></td>
+    <td>TDD covers test-first methodology. Missing: formal user story format + negative cases as a deliverable</td>
+  </tr>
+  <tr>
+    <td>3.3 Implementation</td>
+    <td><span class="pill pill-sp">executing-plans</span> <span class="pill pill-sp">subagent-driven-dev</span></td>
+    <td><span class="pill pill-covered">COVERED</span></td>
+    <td>Excellent — two approaches (parallel session vs subagent per task), both with review gates</td>
+  </tr>
+  <!-- VERIFY -->
+  <tr>
+    <td rowspan="3" style="background:#FFE8E7; color:#E25950; font-weight:700;">VERIFY</td>
+    <td>4.1 Verification Tasks</td>
+    <td><span class="pill pill-sp">verification-before-completion</span></td>
+    <td><span class="pill pill-covered">COVERED</span></td>
+    <td>Excellent — "evidence before claims, always." Iron law of verification.</td>
+  </tr>
+  <tr>
+    <td>4.2 Regression Verification</td>
+    <td>—</td>
+    <td><span class="pill pill-missing">MISSING</span></td>
+    <td>verification-before-completion proves NEW work passes. No skill for proving OLD work still passes.</td>
+  </tr>
+  <tr>
+    <td>4.3 Post-Build Review</td>
+    <td><span class="pill pill-sp">requesting-code-review</span> <span class="pill pill-sp">finishing-a-dev-branch</span></td>
+    <td><span class="pill pill-partial">PARTIAL</span></td>
+    <td>Code review + branch completion exist. Missing: design-vs-actual comparison ("did we build what we designed?")</td>
+  </tr>
+</table>
+
+<div class="callout">
+  <strong>Score: 4 fully covered, 5 partially covered, 5 missing.</strong> The coverage is strong on the BUILD and VERIFY phases. The gaps are concentrated in DISCOVER and early DESIGN — the pre-coding context-building work.
+</div>
+
+<hr class="divider">
+
+<!-- ============ THE 5 NEW SKILLS ============ -->
+<h2>The 5 New Skills Needed</h2>
+
+<p>These fill the gaps in Superpowers. They follow the same conventions: announcement at start, specific deliverables, clear handoff to the next skill, and red flags section.</p>
+
+<div class="skill-grid">
+
+<!-- SKILL 1 -->
+<div class="skill-card new-skill">
+  <div class="skill-name">1. codebase-archaeology</div>
+  <div class="skill-phase">Phase 1: DISCOVER &middot; Step 1.1 + 1.3</div>
+  <div class="skill-desc">
+    Maps the territory before any design begins. The agent explores the codebase and produces a comprehensive inventory of every capability, endpoint, flow, data model, security property, and integration point. Then compares it against any source pattern or standard to produce a compliance matrix.
+    <br><br>
+    <strong>Why it's missing:</strong> Superpowers' brainstorming skill explores project context, but it's focused on <em>understanding the idea</em>, not <em>inventorying what exists</em>. Those are different activities. Brainstorming asks "what should we build?" This skill answers "what's already here?"
+    <br><br>
+    <strong>Real example:</strong> If we'd had this skill before the AgentAuth session, we would have mapped all 17 endpoints, 13 capabilities, and 10 security invariants BEFORE designing anything. Every mid-session correction ("you missed the full flow," "we don't use SPIRE") would have been caught upfront.
+  </div>
+  <div class="skill-deliverable">Deliverables: capability-inventory.md, compliance-matrix.md</div>
+  <br>
+  <div class="skill-deliverable agent">Handoff: brainstorming skill (feeds the design phase with complete context)</div>
+</div>
+
+<!-- SKILL 2 -->
+<div class="skill-card new-skill">
+  <div class="skill-name">2. impact-analysis</div>
+  <div class="skill-phase">Phase 2: DESIGN &middot; Step 2.2</div>
+  <div class="skill-desc">
+    Proves the proposed design doesn't break existing capabilities. Takes the capability inventory (from codebase-archaeology) and the design (from brainstorming) and produces a capability-by-capability matrix: PRESERVED / ENHANCED / NEW / REMOVED. Also verifies security invariants.
+    <br><br>
+    <strong>Why it's missing:</strong> Superpowers has strong verification for <em>new code</em> (TDD, verification-before-completion). But nothing for <em>existing code</em> — proving what's already working will continue to work after the change.
+    <br><br>
+    <strong>Real example:</strong> "We can't fix one thing and break other things." The Full Pattern Flow section — 17-row capability table + 10 security invariants — is exactly what this skill produces.
+    <br><br>
+    <strong>The rule:</strong> If you can't fill the preservation matrix completely, you don't understand the change well enough to build it.
+  </div>
+  <div class="skill-deliverable">Deliverables: impact-analysis.md, security-invariants.md</div>
+  <br>
+  <div class="skill-deliverable agent">Handoff: writing-plans skill (feeds task breakdown with change/no-change lists)</div>
+</div>
+
+<!-- SKILL 3 -->
+<div class="skill-card new-skill">
+  <div class="skill-name">3. design-review</div>
+  <div class="skill-phase">Phase 2: DESIGN &middot; Step 2.4</div>
+  <div class="skill-desc">
+    Architecture-level review of the design BEFORE coding starts. Different from requesting-code-review (which reviews CODE after it's written). This reviews the DESIGN — the PRD, impact analysis, and implementation plan — looking for gaps, contradictions, and missing edge cases.
+    <br><br>
+    <strong>Why it's missing:</strong> Superpowers' requesting-code-review dispatches a code-reviewer subagent to look at diffs. This skill dispatches a design-reviewer subagent to look at the plan documents.
+    <br><br>
+    <strong>Real example:</strong> The 3rd-party developer found 7 implementation gaps AFTER the design was "done." If we'd had a design-review gate, those gaps would have been caught before task breakdown.
+    <br><br>
+    <strong>Format:</strong> Reviewer identifies gaps → each gap gets a decision → decisions documented with rationale and phase assignment.
+  </div>
+  <div class="skill-deliverable">Deliverables: review-decisions.md, updated design docs</div>
+  <br>
+  <div class="skill-deliverable agent">Handoff: writing-plans skill (design is now review-approved, ready for task breakdown)</div>
+</div>
+
+<!-- SKILL 4 -->
+<div class="skill-card new-skill">
+  <div class="skill-name">4. task-briefing</div>
+  <div class="skill-phase">Phase 3: BUILD &middot; Step 3.0</div>
+  <div class="skill-desc">
+    Compiles a single TASK-BRIEF.md from all discovery and design outputs. This is the bridge between human-led design and agent-led implementation. The brief tells the agent: here's what exists, here's what we're building, here's what you must not touch, and here's how to verify.
+    <br><br>
+    <strong>Why it's missing:</strong> writing-plans creates detailed implementation plans. But the plan assumes the agent knows the codebase. TASK-BRIEF.md bridges the gap — it's "CLAUDE.md for this specific feature."
+    <br><br>
+    <strong>Key sections:</strong> Context + Current State links + Design Decisions + DO NOT TOUCH list + CHANGE list + NEW list + Verification commands + Success criteria.
+    <br><br>
+    <strong>Cross-agent compatible:</strong> Any agent that reads files can follow TASK-BRIEF.md. Claude reads it via CLAUDE.md reference, Cursor via .cursorrules, etc.
+  </div>
+  <div class="skill-deliverable">Deliverables: TASK-BRIEF.md</div>
+  <br>
+  <div class="skill-deliverable agent">Handoff: executing-plans or subagent-driven-development (agent reads brief, then executes plan)</div>
+</div>
+
+<!-- SKILL 5 -->
+<div class="skill-card new-skill">
+  <div class="skill-name">5. regression-verification</div>
+  <div class="skill-phase">Phase 4: VERIFY &middot; Step 4.2 + 4.3</div>
+  <div class="skill-desc">
+    Proves existing capabilities still work after the change. Takes the impact analysis matrix and runs targeted tests for every capability marked PRESERVED or ENHANCED. Also compares the actual implementation against the design to detect drift.
+    <br><br>
+    <strong>Why it's missing:</strong> verification-before-completion answers "does the new thing work?" This skill answers "does the old thing still work?" and "did we build what we designed?"
+    <br><br>
+    <strong>Real example:</strong> After building the app registration feature, we'd run regression-verification to prove Ed25519 challenge-response, scope enforcement, delegation chains, revocation, and audit trail all still work exactly as before.
+    <br><br>
+    <strong>Also includes:</strong> Design-vs-actual comparison — diff the implementation against the implementation details doc. Flag any "do not touch" files that were modified, any unplanned changes, any design drift.
+  </div>
+  <div class="skill-deliverable">Deliverables: regression-results.md, post-build-review.md</div>
+  <br>
+  <div class="skill-deliverable agent">Handoff: finishing-a-development-branch (all verification complete, ready to merge)</div>
+</div>
+
+</div><!-- end skill-grid -->
+
+<hr class="divider">
+
+<!-- ============ THE COMPLETE FLOW ============ -->
+<h2>The Complete Skill Chain</h2>
+
+<p>Here's how the 14 existing Superpowers skills and the 5 new skills chain together into a complete development lifecycle:</p>
+
+<div class="flow-container">
+  <div class="flow-row">
+    <span class="flow-phase-label">DISCOVER</span>
+    <span class="flow-box flow-new">codebase-archaeology</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box flow-sp">brainstorming</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box flow-new">(compliance check inside codebase-archaeology)</span>
+  </div>
+  <div class="flow-row">
+    <span class="flow-phase-label">DESIGN</span>
+    <span class="flow-box flow-sp">brainstorming → design doc</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box flow-new">impact-analysis</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box flow-sp">writing-plans</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box flow-new">design-review</span>
+  </div>
+  <div class="flow-row">
+    <span class="flow-phase-label">BUILD</span>
+    <span class="flow-box flow-new">task-briefing</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box flow-sp">using-git-worktrees</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box flow-sp">subagent-driven-dev / executing-plans</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box flow-sp">test-driven-development</span>
+  </div>
+  <div class="flow-row">
+    <span class="flow-phase-label">VERIFY</span>
+    <span class="flow-box flow-sp">verification-before-completion</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box flow-new">regression-verification</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box flow-sp">requesting-code-review</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-box flow-sp">finishing-a-dev-branch</span>
+  </div>
+  <div style="margin-top: 16px; display: flex; gap: 16px; align-items: center;">
+    <span class="flow-box flow-sp" style="font-size: 11px;">Existing Superpowers skill</span>
+    <span class="flow-box flow-new" style="font-size: 11px;">NEW skill to create</span>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ============ ENHANCEMENTS TO EXISTING SKILLS ============ -->
+<h2>Enhancements to Existing Superpowers Skills</h2>
+
+<p>Besides the 5 new skills, some existing Superpowers skills could use targeted enhancements to better support the full lifecycle:</p>
+
+<table class="master">
+  <tr>
+    <th>Existing Skill</th>
+    <th>Enhancement</th>
+    <th>Why</th>
+  </tr>
+  <tr>
+    <td><span class="pill pill-sp">brainstorming</span></td>
+    <td>Add "What MUST NOT Change" section to design doc template. Add ADR (Architecture Decision Record) format for "do we need X?" questions.</td>
+    <td>Constraints and opt-outs need a formal home. The SPIRE confusion and sidecar question were both ADRs without a format.</td>
+  </tr>
+  <tr>
+    <td><span class="pill pill-sp">writing-plans</span></td>
+    <td>Add "DO NOT TOUCH" file list per task. Add "files NOT affected" alongside "files to change."</td>
+    <td>Agents sometimes refactor files they shouldn't. Explicit boundaries prevent this. Think of it as a "fence" around preserved code.</td>
+  </tr>
+  <tr>
+    <td><span class="pill pill-sp">requesting-code-review</span></td>
+    <td>Add a design-review prompt template alongside the code-review template. The design-review subagent reads plan docs, not diffs.</td>
+    <td>Code review catches implementation bugs. Design review catches architectural gaps. Both are needed at different stages.</td>
+  </tr>
+  <tr>
+    <td><span class="pill pill-sp">verification-before-completion</span></td>
+    <td>Add a "regression" category to the verification table: "Existing tests still pass" with same iron-law enforcement.</td>
+    <td>The current skill verifies new work. Extending it to verify preserved work means one skill covers both forward and backward verification.</td>
+  </tr>
+  <tr>
+    <td><span class="pill pill-sp">test-driven-development</span></td>
+    <td>Add a "negative test case" pattern: "given X, this should NOT happen." Add user story → test mapping format.</td>
+    <td>TDD focuses on "what should work." Negative cases focus on "what should fail." Both are needed for complete coverage.</td>
+  </tr>
+</table>
+
+<hr class="divider">
+
+<!-- ============ YOUR 7 STEPS REMAPPED ============ -->
+<h2>Your Original 7 Steps → Skills</h2>
+
+<p>Here's how your current process maps to the complete skill chain:</p>
+
+<table class="master">
+  <tr>
+    <th>Your Step</th>
+    <th>Skills (existing + new)</th>
+    <th>What Changes</th>
+  </tr>
+  <tr>
+    <td>1. Brainstorm Idea / Give Pattern</td>
+    <td><span class="pill pill-new">codebase-archaeology</span> → <span class="pill pill-sp">brainstorming</span></td>
+    <td><strong>Inventory FIRST, then brainstorm.</strong> The archaeology skill feeds context to the brainstorming skill.</td>
+  </tr>
+  <tr>
+    <td>2. Design PRD</td>
+    <td><span class="pill pill-sp">brainstorming</span> (design doc output)</td>
+    <td>Add "MUST NOT Change" section + ADR format</td>
+  </tr>
+  <tr>
+    <td>3. Design & Develop Spec</td>
+    <td><span class="pill pill-sp">brainstorming</span> + <span class="pill pill-new">impact-analysis</span></td>
+    <td><strong>Impact analysis is the new mandatory gate.</strong> Spec now includes capability preservation proof.</td>
+  </tr>
+  <tr>
+    <td>4. Design Implementation Details</td>
+    <td><span class="pill pill-sp">writing-plans</span> + <span class="pill pill-new">design-review</span></td>
+    <td><strong>Peer review before task breakdown, not after.</strong> Plans include DO NOT TOUCH lists.</td>
+  </tr>
+  <tr>
+    <td>5. Break Down to Tasks</td>
+    <td><span class="pill pill-sp">writing-plans</span> + <span class="pill pill-new">task-briefing</span></td>
+    <td><strong>Task brief compiles everything into one agent-readable doc.</strong></td>
+  </tr>
+  <tr>
+    <td>6. Develop User Stories</td>
+    <td><span class="pill pill-sp">test-driven-development</span></td>
+    <td>Add negative test cases and formal story format</td>
+  </tr>
+  <tr>
+    <td>7. Develop Verification Tasks</td>
+    <td><span class="pill pill-sp">verification-before-completion</span> + <span class="pill pill-new">regression-verification</span></td>
+    <td><strong>Two verification passes:</strong> forward (new work) + backward (preserved work)</td>
+  </tr>
+</table>
+
+<hr class="divider">
+
+<!-- ============ IMPLEMENTATION APPROACH ============ -->
+<h2>How to Build These Skills</h2>
+
+<p>You already have Superpowers' <span class="pill pill-sp">writing-skills</span> skill, which teaches how to create new skills. Each new skill follows the same structure as existing Superpowers skills:</p>
+
+<div class="code-block">
+<span class="key">skills/</span>
+  <span class="key">codebase-archaeology/</span>
+    <span class="key">SKILL.md</span>          <span class="comment"># Main skill doc (announcement, steps, deliverables, red flags)</span>
+  <span class="key">impact-analysis/</span>
+    <span class="key">SKILL.md</span>
+    <span class="key">templates/</span>
+      <span class="key">preservation-matrix.md</span>  <span class="comment"># Template for the capability table</span>
+      <span class="key">invariants-checklist.md</span> <span class="comment"># Template for security invariant verification</span>
+  <span class="key">design-review/</span>
+    <span class="key">SKILL.md</span>
+    <span class="key">design-reviewer-prompt.md</span>  <span class="comment"># Subagent prompt (like code-quality-reviewer-prompt.md)</span>
+  <span class="key">task-briefing/</span>
+    <span class="key">SKILL.md</span>
+    <span class="key">templates/</span>
+      <span class="key">TASK-BRIEF-TEMPLATE.md</span>  <span class="comment"># The standard brief format</span>
+  <span class="key">regression-verification/</span>
+    <span class="key">SKILL.md</span>
+    <span class="key">templates/</span>
+      <span class="key">regression-results.md</span>  <span class="comment"># Template for capability-by-capability verification</span>
+      <span class="key">post-build-review.md</span>   <span class="comment"># Template for design-vs-actual comparison</span>
+</div>
+
+<div class="callout teal">
+  <strong>Build order recommendation:</strong> Start with <strong>codebase-archaeology</strong> (it feeds everything else) and <strong>impact-analysis</strong> (it's the biggest gap). Then task-briefing, design-review, and regression-verification. Each skill can be built and tested independently.
+</div>
+
+<hr class="divider">
+
+<!-- ============ SUMMARY ============ -->
+<h2>Summary</h2>
+
+<table class="master">
+  <tr>
+    <th>Category</th>
+    <th>Count</th>
+    <th>Details</th>
+  </tr>
+  <tr>
+    <td>Existing Superpowers skills (no changes needed)</td>
+    <td><strong>9</strong></td>
+    <td>using-superpowers, using-git-worktrees, executing-plans, subagent-driven-development, dispatching-parallel-agents, systematic-debugging, receiving-code-review, finishing-a-development-branch, writing-skills</td>
+  </tr>
+  <tr>
+    <td>Existing Superpowers skills (enhance)</td>
+    <td><strong>5</strong></td>
+    <td>brainstorming (add ADRs + "must not change"), writing-plans (add DO NOT TOUCH), requesting-code-review (add design review), verification-before-completion (add regression), test-driven-development (add negative cases)</td>
+  </tr>
+  <tr>
+    <td>New skills to create</td>
+    <td><strong>5</strong></td>
+    <td>codebase-archaeology, impact-analysis, design-review, task-briefing, regression-verification</td>
+  </tr>
+  <tr>
+    <td><strong>Total skill count after</strong></td>
+    <td><strong>19</strong></td>
+    <td>14 existing + 5 new = complete lifecycle coverage</td>
+  </tr>
+</table>
+
+<div class="footer">
+  Superpowers + Context-First Development &middot; Gap Analysis &middot; AgentAuth Project &middot; March 2026
+</div>
+
+</div>
+</body>
+</html>

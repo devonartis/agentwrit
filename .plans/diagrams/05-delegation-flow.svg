@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 420" font-family="Segoe UI, system-ui, sans-serif">
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#6b7280"/>
+    </marker>
+    <marker id="a-r" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#dc2626"/>
+    </marker>
+  </defs>
+
+  <rect width="1000" height="420" fill="#f8f9fa" rx="8"/>
+
+  <text x="500" y="36" text-anchor="middle" font-size="22" font-weight="700" fill="#16213e">Delegation — Permissions Only Get Narrower</text>
+  <text x="500" y="54" text-anchor="middle" font-size="12" fill="#6b7280">Agent A gives Agent B limited access. Like copying a key that opens fewer doors.</text>
+
+  <!-- ===== DELEGATION CHAIN ===== -->
+
+  <!-- Agent A -->
+  <rect x="30" y="90" width="180" height="100" rx="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+  <text x="120" y="118" text-anchor="middle" font-size="14" font-weight="700" fill="#1e40af">Agent A</text>
+  <text x="120" y="140" text-anchor="middle" font-size="10" fill="#1e3a5f">Permissions:</text>
+  <text x="120" y="156" text-anchor="middle" font-size="11" font-weight="600" fill="#1e40af">read:code:*</text>
+  <text x="120" y="172" text-anchor="middle" font-size="11" font-weight="600" fill="#1e40af">write:reviews:*</text>
+
+  <!-- Arrow A → B -->
+  <line x1="210" y1="140" x2="260" y2="140" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#a)"/>
+  <text x="235" y="132" text-anchor="middle" font-size="9" fill="#3b82f6" font-weight="600">delegates</text>
+  <text x="235" y="155" text-anchor="middle" font-size="9" fill="#3b82f6">(narrower)</text>
+
+  <!-- Agent B -->
+  <rect x="265" y="90" width="180" height="100" rx="10" fill="#e0e7ff" stroke="#6366f1" stroke-width="2"/>
+  <text x="355" y="118" text-anchor="middle" font-size="14" font-weight="700" fill="#4338ca">Agent B</text>
+  <text x="355" y="140" text-anchor="middle" font-size="10" fill="#3730a3">Permissions:</text>
+  <text x="355" y="156" text-anchor="middle" font-size="11" font-weight="600" fill="#4338ca">read:code:proj-42</text>
+  <text x="355" y="172" text-anchor="middle" font-size="10" fill="#6b7280" font-style="italic">(no write access)</text>
+
+  <!-- Arrow B → C -->
+  <line x1="445" y1="140" x2="495" y2="140" stroke="#6366f1" stroke-width="2.5" marker-end="url(#a)"/>
+  <text x="470" y="132" text-anchor="middle" font-size="9" fill="#6366f1" font-weight="600">delegates</text>
+  <text x="470" y="155" text-anchor="middle" font-size="9" fill="#6366f1">(even narrower)</text>
+
+  <!-- Agent C -->
+  <rect x="500" y="90" width="180" height="100" rx="10" fill="#f3e8ff" stroke="#8b5cf6" stroke-width="2"/>
+  <text x="590" y="118" text-anchor="middle" font-size="14" font-weight="700" fill="#6d28d9">Agent C</text>
+  <text x="590" y="140" text-anchor="middle" font-size="10" fill="#5b21b6">Permissions:</text>
+  <text x="590" y="156" text-anchor="middle" font-size="11" font-weight="600" fill="#6d28d9">read:code:file.py</text>
+  <text x="590" y="172" text-anchor="middle" font-size="10" fill="#6b7280" font-style="italic">(one file only)</text>
+
+  <!-- Max depth indicator -->
+  <rect x="720" y="100" width="250" height="80" rx="8" fill="white" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="845" y="125" text-anchor="middle" font-size="12" font-weight="700" fill="#374151">Rules</text>
+  <text x="740" y="145" font-size="11" fill="#374151">Max chain depth: 5 levels</text>
+  <text x="740" y="163" font-size="11" fill="#374151">Scope only narrows, never widens</text>
+
+  <!-- ===== REVOCATION ILLUSTRATION ===== -->
+  <rect x="30" y="220" width="940" height="30" rx="4" fill="#fef2f2"/>
+  <text x="500" y="240" text-anchor="middle" font-size="12" font-weight="700" fill="#dc2626">What happens when the chain root is revoked?</text>
+
+  <!-- Revoked Agent A -->
+  <rect x="30" y="270" width="180" height="60" rx="10" fill="#fef2f2" stroke="#ef4444" stroke-width="2"/>
+  <line x1="30" y1="270" x2="210" y2="330" stroke="#ef4444" stroke-width="2"/>
+  <line x1="210" y1="270" x2="30" y2="330" stroke="#ef4444" stroke-width="2"/>
+  <text x="120" y="305" text-anchor="middle" font-size="12" font-weight="700" fill="#dc2626">Agent A REVOKED</text>
+
+  <!-- Arrow -->
+  <line x1="210" y1="300" x2="260" y2="300" stroke="#dc2626" stroke-width="2" marker-end="url(#a-r)"/>
+
+  <!-- Revoked Agent B -->
+  <rect x="265" y="270" width="180" height="60" rx="10" fill="#fef2f2" stroke="#ef4444" stroke-width="2"/>
+  <line x1="265" y1="270" x2="445" y2="330" stroke="#ef4444" stroke-width="2"/>
+  <line x1="445" y1="270" x2="265" y2="330" stroke="#ef4444" stroke-width="2"/>
+  <text x="355" y="305" text-anchor="middle" font-size="12" font-weight="700" fill="#dc2626">Agent B DEAD</text>
+
+  <!-- Arrow -->
+  <line x1="445" y1="300" x2="495" y2="300" stroke="#dc2626" stroke-width="2" marker-end="url(#a-r)"/>
+
+  <!-- Revoked Agent C -->
+  <rect x="500" y="270" width="180" height="60" rx="10" fill="#fef2f2" stroke="#ef4444" stroke-width="2"/>
+  <line x1="500" y1="270" x2="680" y2="330" stroke="#ef4444" stroke-width="2"/>
+  <line x1="680" y1="270" x2="500" y2="330" stroke="#ef4444" stroke-width="2"/>
+  <text x="590" y="305" text-anchor="middle" font-size="12" font-weight="700" fill="#dc2626">Agent C DEAD</text>
+
+  <!-- Explanation -->
+  <rect x="720" y="265" width="250" height="70" rx="8" fill="white" stroke="#fca5a5" stroke-width="1.5"/>
+  <text x="845" y="290" text-anchor="middle" font-size="11" font-weight="600" fill="#dc2626">Chain-level revocation</text>
+  <text x="845" y="310" text-anchor="middle" font-size="10" fill="#7f1d1d">Revoke the root (Agent A)</text>
+  <text x="845" y="325" text-anchor="middle" font-size="10" fill="#7f1d1d">= entire chain dies instantly</text>
+
+  <!-- Status -->
+  <rect x="30" y="365" width="940" height="35" rx="6" fill="#d1fae5" stroke="#86efac" stroke-width="1"/>
+  <text x="500" y="387" text-anchor="middle" font-size="12" font-weight="600" fill="#166534">STATUS: Delegation works correctly. Scope attenuation, depth limits, chain hashing, and chain-level revocation all implemented.</text>
+</svg>

@@ -25,11 +25,140 @@ Format:
 
 ---
 
+## 2026-03-02 (Session 20 — Claude CoWork, continued)
+
+### Architecture: Full Pattern Flow Added to Design Doc
+
+The architecture doc (`.plans/CoWork-Architecture-Direct-Broker.md`) originally only answered "do we need the sidecar?" Divine's feedback: "you also missed the full flow of everything" and "we can't fix one thing and break other things." Added a complete 9-stage walkthrough proving every capability is preserved, enhanced, or explicitly new. Result: 8 preserved, 5 enhanced, 4 new, 0 removed. All 10 security invariants maintained.
+
+**Why this matters:** An architecture change that only talks about what it fixes — without proving what it preserves — is incomplete. The Full Pattern Flow is the proof that the Ephemeral Agent Credentialing Pattern still works end-to-end after making the sidecar optional.
+
+→ Artifact: `.plans/CoWork-Architecture-Direct-Broker.md` (Section: "Full Pattern Flow")
+→ Artifact: `.plans/CoWork-Diagram-FullLifecycle.svg`
+
+### Decision: Named the Pre-Coding Process — "Context-First Development" (CFD)
+
+Divine asked: "how do we include this level of process before developing in the future? what would we call it and how would we do it with coding agents?"
+
+Every mid-session correction in Sessions 18-20 traces to insufficient pre-build context. The agent didn't know about SPIRE opt-outs, didn't inventory all capabilities before designing, didn't prove preserved capabilities, didn't get design reviewed before task breakdown. **Context-First Development** formalizes the fix: 4 phases, 13 steps, with explicit "build the map before you build the code" sequencing.
+
+**Phase 1: DISCOVER** — map what exists (codebase archaeology), extract pattern requirements, check constraints and compliance
+**Phase 2: DESIGN** — PRD with "MUST NOT change" section, impact analysis (PRESERVED/ENHANCED/NEW/REMOVED per capability), implementation details with DO NOT TOUCH lists, peer review gate
+**Phase 3: BUILD** — compile TASK-BRIEF.md (the one doc the agent reads first), break into tasks, write user stories + negative cases, agent implements
+**Phase 4: VERIFY** — verification tasks (forward), regression verification (backward), post-build review (design vs actual)
+
+→ Artifact: `.plans/CoWork-Context-First-Development.md` (compact reference for repo)
+→ Artifact: `.plans/CoWork-Agent-Development-Lifecycle.html` (full visual guide with case study)
+
+### Decision: 5 New Skills to Fill Superpowers Gaps
+
+Divine pointed to [obra/superpowers](https://github.com/obra/superpowers/tree/main/skills) as the execution framework. Mapped all 14 existing Superpowers skills against the CFD process. Finding: strong on BUILD + VERIFY, gaps in DISCOVER + early DESIGN.
+
+**Existing skills that cover CFD steps:** brainstorming (Step 1.2), writing-plans (Step 3.1), executing-plans (Step 3.3), subagent-driven-development (Step 3.3), test-driven-development (Step 3.2), verification-before-completion (Step 4.1), requesting-code-review (Step 2.4 partial), finishing-a-dev-branch (Step 4.3 partial)
+
+**5 new skills to create (in build order):**
+1. **codebase-archaeology** — map every capability before designing. Would have prevented "you missed the full flow."
+2. **impact-analysis** — capability preservation matrix. Would have prevented "we can't fix one thing and break other things."
+3. **design-review** — architecture review BEFORE coding (vs code review AFTER). Would have caught the 7 peer review gaps earlier.
+4. **task-briefing** — compile TASK-BRIEF.md from all Phase 1-2 outputs. The bridge between human design and agent execution.
+5. **regression-verification** — prove OLD capabilities still work after changes. Superpowers' verification-before-completion only proves NEW work passes.
+
+**5 enhancements to existing skills:**
+- brainstorming: add ADR format + "MUST NOT change" section
+- writing-plans: add DO NOT TOUCH file lists per task
+- requesting-code-review: add design-review prompt template
+- verification-before-completion: add regression category
+- test-driven-development: add negative test cases + user story format
+
+→ Artifact: `.plans/CoWork-Superpowers-Gap-Analysis.html`
+
+### Lesson: Impact Analysis Is the Missing Gate
+
+The 3-step process from Session 18 (Architecture Challenge → Gap Analysis → Process Maps) was correct but incomplete. It answers "should this exist?" and "what's broken?" but not "what breaks if we change this?" The impact analysis step — the capability preservation matrix — is the gate that prevents the "fix one thing, break another" failure mode. This is now Step 2.2 in CFD.
+
+### Lesson: TASK-BRIEF.md Is the Universal Agent Interface
+
+No matter which coding agent you use (Claude Code, Cursor, Copilot, etc.), they all read files. TASK-BRIEF.md is a standard markdown file that any agent can follow. The only difference is HOW each agent discovers it: CLAUDE.md for Claude, .cursorrules for Cursor, etc. This means the process is agent-agnostic — the human writes one briefing doc, any agent can execute from it.
+
+---
+
+## 2026-02-28 (Session 18 — continued)
+
+### Architecture Challenge: ADR-002 Invalidated
+
+ADR-002 (Session 15) kept sidecars mandatory based on code analysis. CoWork Architecture doc (`.plans/CoWork-Architecture-Direct-Broker.md`) correctly challenged this from the pattern and user needs. The Ephemeral Agent Credentialing v1.2 pattern does NOT require sidecars. 3rd-party developers should not need to deploy sidecars. Apps need client_id + client_secret, not activation tokens that expire on first use.
+
+ADR-002 is now invalidated. The agreed architecture is: apps as first-class entities, sidecar optional (3 paths: SDK/Proxy/HTTP), client_id+client_secret for persistent app credentials.
+
+→ Artifact: `.plans/CoWork-Architecture-Direct-Broker.md`
+
+### Gap Analysis: 24 Gaps Identified Against Current Implementation
+
+Full inventory of current system against production needs. 6 BLOCKERS (all app registration — apps don't exist as entities), 7 MAJOR (security/operational), 11 MINOR (polish). All 6 blockers trace to one root cause: no App entity in the system.
+
+→ Artifact: `.plans/01-gap-analysis-process-map.md`
+
+### Process Maps: 4 Personas in Plain Language
+
+Documented production flows for Operator (Building Manager), 3rd Party Developer (Tenant), Running App (Software), AI Agent (Guest). Used hotel/building analogies throughout — JWT → "key card", Sidecar → "helper", Broker → "security desk". SVG visual diagrams created for VS Code viewing.
+
+→ Artifact: `.plans/02-production-process-maps.md`, `.plans/diagrams/01-06.svg`
+
+### Decision: Named the Three-Step Development Process
+
+Established taxonomy: (1) Architecture Challenge — question fundamentals, (2) Gap Analysis — inventory what's broken, (3) Process Maps — document flows per persona. Order matters — Step 2 without Step 1 means analyzing the wrong architecture. This is what happened: gap analysis ran before architecture was settled.
+
+→ Artifact: `PROCESS-LESSON.md`
+
+### Lesson: Pushback Priority
+
+When reviewing architecture proposals, push back on architecture decisions (high value), not on time estimates (trivial). User quote: "so to push back on size you should have pushed back on the sidecar now to agree with it."
+
+### Lesson: "Why does this exist?" Has a Specific Answer Source
+
+When someone asks "should X exist?" — the answer comes from (1) user's question, (2) the pattern, (3) production needs. NOT from reading the current code. Code says what IS. The question is about what SHOULD BE. Standing rule added to MEMORY.md.
+
+---
+
+## 2026-03-02 (Session 19 — Claude CoWork)
+
+### Shift: Engineering → Product Strategy & Thought Leadership
+
+Session pivoted from code to product positioning. All work done in Claude CoWork desktop app (not Claude Code). Triggered by user question about whether AgentAuth should be commercial vs open-source given zero community engagement on the published pattern.
+
+### Decision: Open-Core Business Model
+
+Analyzed competitive landscape and chose open-core: free self-hosted core + paid hosted tiers. Rationale: captures both thought leadership credibility (open pattern/code) and revenue (hosted service removes deployment friction for SMBs). Bootstrap-viable — no funding needed to start. Key insight: no competitor actually solves credential *issuance* for AI agents. Enterprise vendors do governance/discovery. Developer platforms extend OAuth. AgentAuth fills the gap.
+
+→ Artifact: `.plans/gtm-strategy/AgentAuth-Competitive-Brief.docx`, `.plans/gtm-strategy/AgentAuth-GTM-Strategy.docx`
+
+### Decision: NIST Public Comment as Thought Leadership Entry Point
+
+NIST NCCoE published "Accelerating the Adoption of Software and AI Agent Identity and Authorization" (Feb 5, 2026) with public comment period ending April 2, 2026. This is the highest-ROI immediate action for establishing authority — the pattern maps directly to NIST's 4 focus areas. Submission based on the pattern and architecture design (not dependent on code completion). User can position as independent practitioner who has both the theory (pattern) and working implementation (AgentAuth).
+
+→ Artifact: `.plans/nist-submission/NIST-NCCoE-Public-Comment-AgentAuth.docx`
+
+### Decision: DeepSecure is Not a Real Competitor
+
+DeepSecure/DeepTrail (Python, 44 GitHub stars, LangChain integration) validates market existence but has architectural weaknesses: Python for security infrastructure (wrong language for performance/reliability), framework coupling (LangChain dependency limits adoption). AgentAuth's Go implementation and framework-agnostic design are strategic advantages, not just preferences.
+
+---
+
 ## 2026-02-28 (Session 18)
 
 ### Cleanup: Moved `.plans/` to backup
 
 `.plans/` was missed during the Session 16 pre-release cleanup (`5626f13`). That commit removed `plans/` but not `.plans/` — two different directories. Contents were all stale: roadmap, backlog, list-sidecars design docs, completed P0 plans, and an old `USER-STORIES-PLAN.md` from Session 1. Moved to `/Users/divineartis/agentAuth_Backup_docs/dot-plans/`. Nothing in `.plans/` is needed for current work — the active demo stories are in `agentAuthDemoApps/app_ideas_stories/` (confirmed via MEMORY.md Session 17 artifacts).
+
+### Agent team attempt — failed, agents couldn't collaborate
+
+Spawned 5 agents (pattern-analyst, code-auditor, operator-analyst, developer-analyst, security-analyst) on a TeamCreate team but they couldn't message each other — "Not in a team context" error. Agents ran independently and sent solo reports instead of debating. The security analyst found useful things (admin secret used in 3 runtime locations, two security gates on token exchange, dependency order for changes) but it worked alone, not as a council. User wanted a real debate — agents sharing, challenging, arriving at ONE answer together. Failed to deliver that. Need to understand CLAUDE_CODE_TEAM_NAME setup before trying again.
+
+### BLOCKER FOUND: App registration workflow is broken — blocks demo and merge
+
+While testing agentauth-app, discovered the sidecar bootstrap is fundamentally flawed. Every sidecar self-provisions with the admin secret. Apps don't exist as entities in the broker. Onboarding an app means editing docker-compose — not using an API. This goes deeper than KI-001 (admin secret blast radius) — this is about the identity model itself. User's key point: "Docker is infrastructure. This should run on someone's virtual server. If it can't, it's wrong." Must fix before demo.
+
+→ Artifact: `BIG_BAD_GAP.md`
 
 ### Decision: Demo app validation gates the develop → main merge
 

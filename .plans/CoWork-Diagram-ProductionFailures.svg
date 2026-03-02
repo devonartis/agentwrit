@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1400" height="1000" viewBox="0 0 1400 1000" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrowhead-dark" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <polygon points="0 0, 12 6, 0 12" fill="#425466"/>
+    </marker>
+    <marker id="arrowhead-white" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <polygon points="0 0, 12 6, 0 12" fill="#FFFFFF"/>
+    </marker>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+      * { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+      .title { font-size: 22px; font-weight: 700; fill: #FFFFFF; }
+      .header { font-size: 16px; font-weight: 600; fill: #0A2540; }
+      .subheader { font-size: 14px; font-weight: 600; fill: #0A2540; }
+      .step-text { font-size: 13px; font-weight: 400; fill: #0A2540; }
+      .subtext { font-size: 11px; font-weight: 400; fill: #425466; }
+      .banner-text { font-size: 14px; font-weight: 600; fill: #FFFFFF; }
+      .pill-text { font-size: 10px; font-weight: 700; fill: #FFFFFF; text-anchor: middle; }
+    </style>
+  </defs>
+  <rect width="1400" height="1000" fill="#FFFFFF"/>
+  <!-- Title Bar -->
+  <rect x="0" y="0" width="1400" height="60" fill="#0A2540" rx="0"/>
+  <text x="700.0" y="38.0" text-anchor="middle" class="title">What Breaks in Production — Failure Analysis</text>
+  <!-- Broker Restart -->
+  <rect x="20" y="80" width="1360" height="150" fill="#FFFFFF" stroke="#D0D7DE" stroke-width="1" rx="8"/>
+  <rect x="20" y="80" width="4" height="150" fill="#CF222E" rx="8 0 0 8"/>
+  <text x="40" y="108" class="subheader">Broker Restart</text>
+
+  <!-- Chain -->
+  <rect x="300" y="95" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="365" y="123" text-anchor="middle" class="step-text">Broker stops</text>
+  <line x1="430" y1="120" x2="460" y2="120" stroke="#425466" stroke-width="2" marker-end="url(#arrowhead-dark)"/>
+  <rect x="470" y="95" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="535" y="123" text-anchor="middle" class="step-text">New signing keys</text>
+  <line x1="600" y1="120" x2="630" y2="120" stroke="#425466" stroke-width="2" marker-end="url(#arrowhead-dark)"/>
+  <rect x="640" y="95" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="705" y="123" text-anchor="middle" class="step-text">ALL tokens invalid</text>
+  <line x1="770" y1="120" x2="800" y2="120" stroke="#425466" stroke-width="2" marker-end="url(#arrowhead-dark)"/>
+  <rect x="810" y="95" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="875" y="123" text-anchor="middle" class="step-text">ALL proxies re-bootstrap</text>
+  <line x1="940" y1="120" x2="970" y2="120" stroke="#425466" stroke-width="2" marker-end="url(#arrowhead-dark)"/>
+  <rect x="980" y="95" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="1045" y="123" text-anchor="middle" class="step-text">ALL agents re-register</text>
+  <!-- Impact -->
+  <rect x="1150" y="95" width="220" height="120" fill="#CF222E" rx="4"/>
+  <text x="1260" y="125" text-anchor="middle" class="banner-text">Total service disruption</text>
+  <!-- Proxy Compromise -->
+  <rect x="20" y="240" width="1360" height="150" fill="#FFFFFF" stroke="#D0D7DE" stroke-width="1" rx="8"/>
+  <rect x="20" y="240" width="4" height="150" fill="#CF222E" rx="8 0 0 8"/>
+  <text x="40" y="268" class="subheader">Proxy Compromise</text>
+
+  <!-- Chain -->
+  <rect x="300" y="255" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="365" y="283" text-anchor="middle" class="step-text">Attacker accesses any proxy</text>
+  <line x1="430" y1="280" x2="460" y2="280" stroke="#425466" stroke-width="2" marker-end="url(#arrowhead-dark)"/>
+  <rect x="470" y="255" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="535" y="283" text-anchor="middle" class="step-text">Proxy holds master key</text>
+  <line x1="600" y1="280" x2="630" y2="280" stroke="#425466" stroke-width="2" marker-end="url(#arrowhead-dark)"/>
+  <rect x="640" y="255" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="705" y="283" text-anchor="middle" class="step-text">Full admin access obtained</text>
+  <line x1="770" y1="280" x2="800" y2="280" stroke="#425466" stroke-width="2" marker-end="url(#arrowhead-dark)"/>
+  <rect x="810" y="255" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="875" y="283" text-anchor="middle" class="step-text">Can revoke, audit, create</text>
+  <!-- Impact -->
+  <rect x="1150" y="255" width="220" height="120" fill="#CF222E" rx="4"/>
+  <text x="1260" y="285" text-anchor="middle" class="banner-text">Complete system compromise</text>
+  <!-- Adding App #11 -->
+  <rect x="20" y="400" width="1360" height="150" fill="#FFFFFF" stroke="#D0D7DE" stroke-width="1" rx="8"/>
+  <rect x="20" y="400" width="4" height="150" fill="#9A6700" rx="8 0 0 8"/>
+  <text x="40" y="428" class="subheader">Adding App #11</text>
+
+  <!-- Chain -->
+  <rect x="300" y="415" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="365" y="443" text-anchor="middle" class="step-text">Business requests new app</text>
+  <line x1="430" y1="440" x2="460" y2="440" stroke="#425466" stroke-width="2" marker-end="url(#arrowhead-dark)"/>
+  <rect x="470" y="415" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="535" y="443" text-anchor="middle" class="step-text">Edit infrastructure config</text>
+  <line x1="600" y1="440" x2="630" y2="440" stroke="#425466" stroke-width="2" marker-end="url(#arrowhead-dark)"/>
+  <rect x="640" y="415" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="705" y="443" text-anchor="middle" class="step-text">Paste master key into config</text>
+  <line x1="770" y1="440" x2="800" y2="440" stroke="#425466" stroke-width="2" marker-end="url(#arrowhead-dark)"/>
+  <rect x="810" y="415" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="875" y="443" text-anchor="middle" class="step-text">Deploy new proxy instance</text>
+  <!-- Impact -->
+  <rect x="1150" y="415" width="220" height="120" fill="#9A6700" rx="4"/>
+  <text x="1260" y="445" text-anchor="middle" class="banner-text">Infrastructure change for business request</text>
+  <!-- Key Rotation -->
+  <rect x="20" y="560" width="1360" height="150" fill="#FFFFFF" stroke="#D0D7DE" stroke-width="1" rx="8"/>
+  <rect x="20" y="560" width="4" height="150" fill="#9A6700" rx="8 0 0 8"/>
+  <text x="40" y="588" class="subheader">Key Rotation</text>
+
+  <!-- Chain -->
+  <rect x="300" y="575" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="365" y="603" text-anchor="middle" class="step-text">Policy requires key rotation</text>
+  <line x1="430" y1="600" x2="460" y2="600" stroke="#425466" stroke-width="2" marker-end="url(#arrowhead-dark)"/>
+  <rect x="470" y="575" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="535" y="603" text-anchor="middle" class="step-text">Update broker signing keys</text>
+  <line x1="600" y1="600" x2="630" y2="600" stroke="#425466" stroke-width="2" marker-end="url(#arrowhead-dark)"/>
+  <rect x="640" y="575" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="705" y="603" text-anchor="middle" class="step-text">Update ALL proxy keys</text>
+  <line x1="770" y1="600" x2="800" y2="600" stroke="#425466" stroke-width="2" marker-end="url(#arrowhead-dark)"/>
+  <rect x="810" y="575" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="875" y="603" text-anchor="middle" class="step-text">Restart entire fleet</text>
+  <!-- Impact -->
+  <rect x="1150" y="575" width="220" height="120" fill="#9A6700" rx="4"/>
+  <text x="1260" y="605" text-anchor="middle" class="banner-text">Coordinated total outage</text>
+  <!-- Audit Investigation -->
+  <rect x="20" y="720" width="1360" height="150" fill="#FFFFFF" stroke="#D0D7DE" stroke-width="1" rx="8"/>
+  <rect x="20" y="720" width="4" height="150" fill="#CF222E" rx="8 0 0 8"/>
+  <text x="40" y="748" class="subheader">Audit Investigation</text>
+
+  <!-- Chain -->
+  <rect x="300" y="735" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="365" y="763" text-anchor="middle" class="step-text">Question: What did App C do?</text>
+  <line x1="430" y1="760" x2="460" y2="760" stroke="#425466" stroke-width="2" marker-end="url(#arrowhead-dark)"/>
+  <rect x="470" y="735" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="535" y="763" text-anchor="middle" class="step-text">All proxies show as 'proxy'</text>
+  <line x1="600" y1="760" x2="630" y2="760" stroke="#425466" stroke-width="2" marker-end="url(#arrowhead-dark)"/>
+  <rect x="640" y="735" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="705" y="763" text-anchor="middle" class="step-text">No app names in audit trail</text>
+  <line x1="770" y1="760" x2="800" y2="760" stroke="#425466" stroke-width="2" marker-end="url(#arrowhead-dark)"/>
+  <rect x="810" y="735" width="130" height="50" fill="#F6F8FA" stroke="#D0D7DE" stroke-width="1" rx="4"/>
+  <text x="875" y="763" text-anchor="middle" class="step-text">Manual log correlation needed</text>
+  <!-- Impact -->
+  <rect x="1150" y="735" width="220" height="120" fill="#CF222E" rx="4"/>
+  <text x="1260" y="765" text-anchor="middle" class="banner-text">Audit trail is useless for apps</text>
+  <!-- ROOT CAUSE SUMMARY -->
+  <rect x="20" y="900" width="1360" height="70" fill="#FFF0F0" stroke="#CF222E" stroke-width="2" rx="8"/>
+  <text x="700" y="930" text-anchor="middle" class="step-text" font-weight="600" fill="#CF222E">Root Cause: Token Proxy is mandatory, holds master key, apps don't exist as entities</text>
+  <text x="700" y="955" text-anchor="middle" class="step-text" font-weight="600" fill="#CF222E">Result: Any failure cascades to the entire fleet with no granular isolation.</text>
+</svg>

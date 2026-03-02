@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="1000" viewBox="0 0 1200 1000" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrowhead-dark" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <polygon points="0 0, 12 6, 0 12" fill="#425466"/>
+    </marker>
+    <marker id="arrowhead-white" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <polygon points="0 0, 12 6, 0 12" fill="#FFFFFF"/>
+    </marker>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+      * { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+      .title { font-size: 22px; font-weight: 700; fill: #FFFFFF; }
+      .header { font-size: 16px; font-weight: 600; fill: #0A2540; }
+      .subheader { font-size: 14px; font-weight: 600; fill: #0A2540; }
+      .step-text { font-size: 13px; font-weight: 400; fill: #0A2540; }
+      .subtext { font-size: 11px; font-weight: 400; fill: #425466; }
+      .banner-text { font-size: 14px; font-weight: 600; fill: #FFFFFF; }
+      .pill-text { font-size: 10px; font-weight: 700; fill: #FFFFFF; text-anchor: middle; }
+    </style>
+  </defs>
+  <rect width="1200" height="1000" fill="#FFFFFF"/>
+  <!-- Title Bar -->
+  <rect x="0" y="0" width="1200" height="60" fill="#0A2540" rx="0"/>
+  <text x="600.0" y="38.0" text-anchor="middle" class="title">Failure Cascade — How One Issue Creates Five Problems</text>
+  <!-- ROOT CAUSE 1: MASTER KEY -->
+  <circle cx="600" cy="200" r="80" fill="#FFFFFF" stroke="#CF222E" stroke-width="3"/>
+  <text x="600" y="190" text-anchor="middle" class="step-text" font-weight="600" fill="#CF222E">Admin Master Key</text>
+  <text x="600" y="210" text-anchor="middle" class="step-text" font-weight="600" fill="#CF222E">in Every Proxy</text>
+  <line x1="600" y1="280" x2="600" y2="110" stroke="#CF222E" stroke-width="2"/>
+  <rect x="530" y="80" width="140" height="80" fill="#FFFFFF" stroke="#CF222E" stroke-width="2" rx="6"/>
+  <text x="600" y="122" text-anchor="middle" class="step-text" font-weight="600" fill="#0A2540">Broker restart =
+total disruption</text>
+  <line x1="600" y1="280" x2="745" y2="175" stroke="#CF222E" stroke-width="2"/>
+  <rect x="675" y="145" width="140" height="80" fill="#FFFFFF" stroke="#CF222E" stroke-width="2" rx="6"/>
+  <text x="745" y="187" text-anchor="middle" class="step-text" font-weight="600" fill="#0A2540">Any proxy compromise
+= full admin access</text>
+  <line x1="600" y1="280" x2="785" y2="350" stroke="#CF222E" stroke-width="2"/>
+  <rect x="715" y="320" width="140" height="80" fill="#FFFFFF" stroke="#CF222E" stroke-width="2" rx="6"/>
+  <text x="785" y="362" text-anchor="middle" class="step-text" font-weight="600" fill="#0A2540">Adding app
+requires infra
+deployment</text>
+  <line x1="600" y1="280" x2="745" y2="485" stroke="#CF222E" stroke-width="2"/>
+  <rect x="675" y="455" width="140" height="80" fill="#FFFFFF" stroke="#CF222E" stroke-width="2" rx="6"/>
+  <text x="745" y="497" text-anchor="middle" class="step-text" font-weight="600" fill="#0A2540">Key rotation =
+coordinated
+outage</text>
+  <line x1="600" y1="280" x2="600" y2="550" stroke="#CF222E" stroke-width="2"/>
+  <rect x="530" y="520" width="140" height="80" fill="#FFFFFF" stroke="#CF222E" stroke-width="2" rx="6"/>
+  <text x="600" y="562" text-anchor="middle" class="step-text" font-weight="600" fill="#0A2540">Audit trail has
+no app attribution</text>
+  <!-- ROOT CAUSE 2: APPS DON'T EXIST -->
+  <circle cx="600" cy="700" r="70" fill="#FFFFFF" stroke="#CF222E" stroke-width="3"/>
+  <text x="600" y="690" text-anchor="middle" class="step-text" font-weight="600" fill="#CF222E">Apps Don't Exist</text>
+  <text x="600" y="710" text-anchor="middle" class="step-text" font-weight="600" fill="#CF222E">as Entities</text>
+  <!-- Consequences of Apps Not Being Entities -->
+  <line x1="550" y1="770" x2="430" y2="840" stroke="#CF222E" stroke-width="2"/>
+  <rect x="330" y="820" width="140" height="70" fill="#FFFFFF" stroke="#CF222E" stroke-width="2" rx="6"/>
+  <text x="400" y="855" text-anchor="middle" class="step-text" font-weight="600" fill="#0A2540">Cannot register
+via API</text>
+
+  <line x1="600" y1="770" x2="600" y2="820" stroke="#CF222E" stroke-width="2"/>
+  <rect x="530" y="820" width="140" height="70" fill="#FFFFFF" stroke="#CF222E" stroke-width="2" rx="6"/>
+  <text x="600" y="855" text-anchor="middle" class="step-text" font-weight="600" fill="#0A2540">Cannot revoke
+by app name</text>
+
+  <line x1="650" y1="770" x2="770" y2="840" stroke="#CF222E" stroke-width="2"/>
+  <rect x="730" y="820" width="140" height="70" fill="#FFFFFF" stroke="#CF222E" stroke-width="2" rx="6"/>
+  <text x="800" y="855" text-anchor="middle" class="step-text" font-weight="600" fill="#0A2540">Cannot audit
+by app</text>
+</svg>

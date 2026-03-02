@@ -1,0 +1,274 @@
+<svg viewBox="0 0 1200 900" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif; }
+      text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif; }
+    </style>
+
+    <filter id="shadowFilter" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.08" />
+    </filter>
+
+    <linearGradient id="coralGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#E25950;stop-opacity:0.05" />
+      <stop offset="100%" style="stop-color:#E25950;stop-opacity:0.02" />
+    </linearGradient>
+
+    <linearGradient id="tealGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#00D4AA;stop-opacity:0.05" />
+      <stop offset="100%" style="stop-color:#00D4AA;stop-opacity:0.02" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="900" fill="#FFFFFF"/>
+
+  <!-- Main title -->
+  <text x="600" y="50" font-size="32" font-weight="700" text-anchor="middle" fill="#0A2540">
+    Architecture Comparison: Agent Authentication
+  </text>
+
+  <!-- Subtitle -->
+  <text x="600" y="82" font-size="14" text-anchor="middle" fill="#425466">
+    Current vs. Proposed: Eliminating the Sidecar Bottleneck
+  </text>
+
+  <!-- LEFT SECTION HEADER -->
+  <rect x="30" y="120" width="540" height="50" fill="#FEF2F2" stroke="#E25950" stroke-width="1" rx="6" filter="url(#shadowFilter)"/>
+  <text x="300" y="155" font-size="20" font-weight="700" text-anchor="middle" fill="#0A2540">
+    Today: Sidecar-Mandatory
+  </text>
+
+  <!-- RIGHT SECTION HEADER -->
+  <rect x="630" y="120" width="540" height="50" fill="#F0FDF4" stroke="#00D4AA" stroke-width="1" rx="6" filter="url(#shadowFilter)"/>
+  <text x="900" y="155" font-size="20" font-weight="700" text-anchor="middle" fill="#0A2540">
+    Proposed: Direct + Optional Proxy
+  </text>
+
+  <!-- ===== LEFT SIDE (TODAY) ===== -->
+
+  <!-- Operator box -->
+  <rect x="50" y="200" width="500" height="80" fill="#FFFFFF" stroke="#E3E8EF" stroke-width="2" rx="6" filter="url(#shadowFilter)"/>
+  <text x="300" y="225" font-size="14" font-weight="600" text-anchor="middle" fill="#0A2540">
+    Operator
+  </text>
+  <text x="300" y="250" font-size="12" text-anchor="middle" fill="#425466">
+    Edits YAML/Config Files
+  </text>
+  <text x="300" y="268" font-size="11" text-anchor="middle" fill="#666666" font-style="italic">
+    Manages proxy deployments manually
+  </text>
+
+  <!-- Arrow: Operator → Token Proxy -->
+  <path d="M 300 280 L 300 340" stroke="#E25950" stroke-width="2" fill="none" marker-end="url(#arrowRed)"/>
+  <defs>
+    <marker id="arrowRed" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto">
+      <polygon points="0,0 10,5 0,10" fill="#E25950"/>
+    </marker>
+    <marker id="arrowTeal" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto">
+      <polygon points="0,0 10,5 0,10" fill="#00D4AA"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto">
+      <polygon points="0,0 10,5 0,10" fill="#0A2540"/>
+    </marker>
+  </defs>
+
+  <!-- Token Proxy box - DANGER -->
+  <rect x="50" y="340" width="500" height="100" fill="url(#coralGrad)" stroke="#E25950" stroke-width="2" rx="6" filter="url(#shadowFilter)"/>
+  <rect x="60" y="350" width="105" height="22" fill="#FEF2F2" stroke="#DC2626" stroke-width="1" rx="3"/>
+  <text x="112" y="366" font-size="11" font-weight="600" text-anchor="middle" fill="#DC2626">
+    PROBLEM
+  </text>
+  <text x="300" y="380" font-size="14" font-weight="600" text-anchor="middle" fill="#0A2540">
+    Token Proxy
+  </text>
+  <text x="300" y="402" font-size="11" text-anchor="middle" fill="#425466">
+    Holds MASTER KEY
+  </text>
+  <text x="300" y="420" font-size="11" text-anchor="middle" fill="#DC2626" font-weight="500">
+    One master key per environment
+  </text>
+
+  <!-- Arrow: Token Proxy → Broker -->
+  <path d="M 300 440 L 300 500" stroke="#E25950" stroke-width="2" fill="none" marker-end="url(#arrowRed)"/>
+
+  <!-- Broker box (left side) -->
+  <rect x="50" y="500" width="500" height="80" fill="#FFFFFF" stroke="#E3E8EF" stroke-width="2" rx="6" filter="url(#shadowFilter)"/>
+  <text x="300" y="525" font-size="14" font-weight="600" text-anchor="middle" fill="#0A2540">
+    Broker
+  </text>
+  <text x="300" y="550" font-size="12" text-anchor="middle" fill="#425466">
+    Issues JWT tokens
+  </text>
+  <text x="300" y="568" font-size="11" text-anchor="middle" fill="#666666" font-style="italic">
+    Proxy is indistinguishable in audit
+  </text>
+
+  <!-- Developer/App box (left) -->
+  <rect x="50" y="620" width="500" height="80" fill="#FFFFFF" stroke="#E3E8EF" stroke-width="2" rx="6" filter="url(#shadowFilter)"/>
+  <text x="300" y="645" font-size="14" font-weight="600" text-anchor="middle" fill="#0A2540">
+    Developer / App
+  </text>
+  <text x="300" y="670" font-size="12" text-anchor="middle" fill="#425466">
+    ONLY path: Through Token Proxy
+  </text>
+  <text x="300" y="688" font-size="11" text-anchor="middle" fill="#666666" font-style="italic">
+    No direct authentication possible
+  </text>
+
+  <!-- Arrow: Dev/App → Broker (through proxy) -->
+  <path d="M 300 620 L 300 580" stroke="#0A2540" stroke-width="2" fill="none" marker-end="url(#arrowBlue)" stroke-dasharray="5,5"/>
+  <text x="350" y="600" font-size="10" fill="#666666" font-style="italic">
+    indirect
+  </text>
+
+  <!-- Problems list (left) -->
+  <rect x="50" y="740" width="500" height="130" fill="#FEF2F2" stroke="#E25950" stroke-width="1" rx="6" filter="url(#shadowFilter)"/>
+  <text x="70" y="765" font-size="12" font-weight="600" fill="#0A2540">
+    Problems:
+  </text>
+  <text x="85" y="790" font-size="11" fill="#425466">
+    • No app entity — proxy is anonymous
+  </text>
+  <text x="85" y="812" font-size="11" fill="#425466">
+    • Master key in every proxy instance
+  </text>
+  <text x="85" y="834" font-size="11" fill="#425466">
+    • All proxies look identical in audit logs
+  </text>
+  <text x="85" y="856" font-size="11" fill="#425466">
+    • Manual config management at scale
+  </text>
+
+  <!-- ===== RIGHT SIDE (PROPOSED) ===== -->
+
+  <!-- Operator box (right) -->
+  <rect x="630" y="200" width="540" height="80" fill="#FFFFFF" stroke="#E3E8EF" stroke-width="2" rx="6" filter="url(#shadowFilter)"/>
+  <text x="900" y="225" font-size="14" font-weight="600" text-anchor="middle" fill="#0A2540">
+    Operator
+  </text>
+  <text x="900" y="250" font-size="12" text-anchor="middle" fill="#425466">
+    API Call: <tspan font-family="monospace" font-weight="500">aactl app register</tspan>
+  </text>
+  <text x="900" y="268" font-size="11" text-anchor="middle" fill="#666666" font-style="italic">
+    Programmatic app provisioning
+  </text>
+
+  <!-- Arrow: Operator → Broker -->
+  <path d="M 900 280 L 900 340" stroke="#00D4AA" stroke-width="2" fill="none" marker-end="url(#arrowTeal)"/>
+
+  <!-- Broker box (right) -->
+  <rect x="630" y="340" width="540" height="110" fill="url(#tealGrad)" stroke="#00D4AA" stroke-width="2" rx="6" filter="url(#shadowFilter)"/>
+  <text x="900" y="365" font-size="14" font-weight="600" text-anchor="middle" fill="#0A2540">
+    Broker
+  </text>
+  <text x="900" y="390" font-size="12" text-anchor="middle" fill="#425466">
+    Creates App Record
+  </text>
+  <text x="900" y="412" font-size="12" text-anchor="middle" fill="#425466">
+    Returns: <tspan font-family="monospace" font-weight="500">client_id</tspan> + <tspan font-family="monospace" font-weight="500">client_secret</tspan>
+  </text>
+  <text x="900" y="434" font-size="11" text-anchor="middle" fill="#16A34A" font-weight="500">
+    Master key stays with operator
+  </text>
+
+  <!-- Arrow down from Broker -->
+  <path d="M 900 450 L 900 510" stroke="#00D4AA" stroke-width="2" fill="none" marker-end="url(#arrowTeal)"/>
+
+  <!-- Three paths container -->
+  <g>
+    <!-- Path A: SDK (Direct) -->
+    <rect x="650" y="510" width="160" height="120" fill="#FFFFFF" stroke="#E3E8EF" stroke-width="1" rx="6" filter="url(#shadowFilter)"/>
+    <rect x="660" y="520" width="45" height="20" fill="#F0FDF4" stroke="#00D4AA" stroke-width="1" rx="2"/>
+    <text x="682" x="682" y="533" font-size="10" font-weight="600" text-anchor="middle" fill="#16A34A">
+      PATH A
+    </text>
+    <text x="730" y="555" font-size="12" font-weight="600" text-anchor="middle" fill="#0A2540">
+      SDK
+    </text>
+    <text x="730" y="575" font-size="10" text-anchor="middle" fill="#425466">
+      Direct to Broker
+    </text>
+    <text x="730" y="595" font-size="9" text-anchor="middle" fill="#16A34A" font-weight="500">
+      Recommended
+    </text>
+    <text x="730" y="612" font-size="9" text-anchor="middle" fill="#666666">
+      (Fastest)
+    </text>
+    <path d="M 730 510 L 730 460" stroke="#00D4AA" stroke-width="2" fill="none" marker-end="url(#arrowTeal)"/>
+
+    <!-- Path B: Proxy (Optional) -->
+    <rect x="825" y="510" width="160" height="120" fill="#FFFFFF" stroke="#E3E8EF" stroke-width="1" rx="6" filter="url(#shadowFilter)"/>
+    <rect x="835" y="520" width="45" height="20" fill="#F0FDF4" stroke="#00D4AA" stroke-width="1" rx="2"/>
+    <text x="857" y="533" font-size="10" font-weight="600" text-anchor="middle" fill="#16A34A">
+      PATH B
+    </text>
+    <text x="905" y="555" font-size="12" font-weight="600" text-anchor="middle" fill="#0A2540">
+      Proxy
+    </text>
+    <text x="905" y="575" font-size="10" text-anchor="middle" fill="#425466">
+      Optional (Legacy)
+    </text>
+    <text x="905" y="595" font-size="9" text-anchor="middle" fill="#666666">
+      Gets activation
+    </text>
+    <text x="905" y="612" font-size="9" text-anchor="middle" fill="#666666">
+      token (not master)
+    </text>
+    <path d="M 905 510 L 905 460" stroke="#00D4AA" stroke-width="2" fill="none" marker-end="url(#arrowTeal)"/>
+
+    <!-- Path C: Raw HTTP -->
+    <rect x="1000" y="510" width="160" height="120" fill="#FFFFFF" stroke="#E3E8EF" stroke-width="1" rx="6" filter="url(#shadowFilter)"/>
+    <rect x="1010" y="520" width="45" height="20" fill="#F0FDF4" stroke="#00D4AA" stroke-width="1" rx="2"/>
+    <text x="1032" y="533" font-size="10" font-weight="600" text-anchor="middle" fill="#16A34A">
+      PATH C
+    </text>
+    <text x="1080" y="555" font-size="12" font-weight="600" text-anchor="middle" fill="#0A2540">
+      HTTP
+    </text>
+    <text x="1080" y="575" font-size="10" text-anchor="middle" fill="#425466">
+      Raw direct calls
+    </text>
+    <text x="1080" y="595" font-size="9" text-anchor="middle" fill="#666666">
+      Custom clients
+    </text>
+    <text x="1080" y="612" font-size="9" text-anchor="middle" fill="#666666">
+      (Flexible)
+    </text>
+    <path d="M 1080 510 L 1080 460" stroke="#00D4AA" stroke-width="2" fill="none" marker-end="url(#arrowTeal)"/>
+  </g>
+
+  <!-- Developer/App box (right) - all three paths lead here -->
+  <rect x="650" y="660" width="510" height="80" fill="#FFFFFF" stroke="#E3E8EF" stroke-width="2" rx="6" filter="url(#shadowFilter)"/>
+  <text x="905" y="685" font-size="14" font-weight="600" text-anchor="middle" fill="#0A2540">
+    Developer / App
+  </text>
+  <text x="905" y="710" font-size="12" text-anchor="middle" fill="#425466">
+    Three flexible authentication paths
+  </text>
+  <text x="905" y="728" font-size="11" text-anchor="middle" fill="#666666" font-style="italic">
+    Audit tracks by app name and method
+  </text>
+
+  <!-- Paths converge to app -->
+  <path d="M 730 630 L 730 660" stroke="#00D4AA" stroke-width="2" fill="none" marker-end="url(#arrowTeal)"/>
+  <path d="M 905 630 L 905 660" stroke="#00D4AA" stroke-width="2" fill="none" marker-end="url(#arrowTeal)"/>
+  <path d="M 1080 630 L 1080 660" stroke="#00D4AA" stroke-width="2" fill="none" marker-end="url(#arrowTeal)"/>
+
+  <!-- Benefits list (right) -->
+  <rect x="630" y="780" width="540" height="110" fill="#F0FDF4" stroke="#00D4AA" stroke-width="1" rx="6" filter="url(#shadowFilter)"/>
+  <text x="650" y="805" font-size="12" font-weight="600" fill="#0A2540">
+    Improvements:
+  </text>
+  <text x="665" y="830" font-size="11" fill="#425466">
+    ✓ App is a real entity with identity
+  </text>
+  <text x="665" y="852" font-size="11" fill="#425466">
+    ✓ Master key stays with operator only
+  </text>
+  <text x="665" y="874" font-size="11" fill="#425466">
+    ✓ Audit tracks by app name + method
+  </text>
+</svg>
