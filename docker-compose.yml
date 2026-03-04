@@ -26,26 +26,6 @@ services:
     networks:
       - agentauth-net
 
-  sidecar:
-    build:
-      context: .
-      target: sidecar
-    ports:
-      - "${AA_SIDECAR_HOST_PORT:-8081}:8081"
-    environment:
-      - AA_BROKER_URL=http://broker:8080
-      - AA_ADMIN_SECRET=${AA_ADMIN_SECRET:-change-me-in-production}
-      - AA_SIDECAR_SCOPE_CEILING=${AA_SIDECAR_SCOPE_CEILING:-read:data:*,write:data:*}
-      - AA_SIDECAR_PORT=8081
-      - AA_SIDECAR_CA_CERT=${AA_SIDECAR_CA_CERT:-}
-      - AA_SIDECAR_TLS_CERT=${AA_SIDECAR_TLS_CERT:-}
-      - AA_SIDECAR_TLS_KEY=${AA_SIDECAR_TLS_KEY:-}
-      - AA_SOCKET_PATH=${AA_SOCKET_PATH:-}
-    depends_on:
-      broker:
-        condition: service_healthy
-    networks:
-      - agentauth-net
 
 volumes:
   broker-data:

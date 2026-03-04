@@ -149,6 +149,32 @@ func (c *client) doPostWithToken(path, bearerToken string) (int, []byte, error) 
 	return resp.StatusCode, b, nil
 }
 
+// doDelete performs an authenticated DELETE request to the given path and
+// returns the response body. Returns an error for HTTP 4xx/5xx responses.
+func (c *client) doDelete(path string) ([]byte, error) {
+	if err := c.authenticate(); err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest("DELETE", c.baseURL+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(b))
+	}
+	return b, nil
+}
+
 // doPut performs an authenticated PUT request to the given path with the
 // JSON-encoded payload and returns the response body. Returns an error for
 // HTTP 4xx/5xx responses.

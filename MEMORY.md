@@ -4,6 +4,16 @@
 
 **[Ephemeral Agent Credentialing v1.2](https://github.com/devonartis/AI-Security-Blueprints/blob/main/patterns/ephemeral-agent-credentialing/versions/v1.2.md)** — the security pattern AgentAuth implements. Every feature, fix, and design decision traces to this document. Read it before making architectural choices.
 
+## Tech Debt
+
+Active tech debt. Append here when new debt is taken. Full details in `.plans/PRD.md` Tech Debt table.
+
+| ID | What | Severity | When to fix |
+|----|------|----------|-------------|
+| TD-001 | `app_rate_limited` audit event not emitted (rate limiter fires before handler) | Low | Before Phase 1C |
+| TD-002 | No operator onboarding (`aactl init`, admin secret generation) | Low | Future |
+| TD-003 | Sidecar has no defined use case — removed from infra, code still exists | Medium | When PRD defines a use case |
+
 ## Standing Rules
 
 **Live tests require Docker — the app must be running in containers.** (established 2026-02-24)
@@ -22,11 +32,23 @@
 - Check standing rules first, act second
 - Don't delete branches or push until testing is confirmed
 
-**Every endpoint must have aactl operator tooling — no raw curl in tests.** (established 2026-02-25, Session 12)
+**Every endpoint must have aactl operator tooling — no raw curl in tests.** (established 2026-02-25, Session 12; updated Session 23)
 - If an endpoint is operator-facing, add an `aactl` command for it as part of the fix
 - Docker live tests should use `aactl` commands, not hand-crafted curl chains
-- Raw curl is only acceptable for truly public/unauthenticated endpoints (health, challenge)
+- Raw curl is acceptable for developer-facing endpoints (`/v1/app/auth`) — the developer has no CLI
 - An endpoint without tooling is not shippable (same lesson as Session 3 with list-sidecars)
+
+**No cutting corners in live tests.** (established 2026-03-03, Session 23)
+- Build `aactl` to `./bin/aactl` — not `/tmp/`, not `go run`
+- Source `tests/<phase>/env.sh` once — don't inline env vars on every command
+- Operator stories use `aactl`. Developer stories use `curl`/REST API. Don't mix personas.
+- If you wouldn't do it on a VPS, don't do it in the test.
+- Full lessons: `tests/phase-1a/lessons-learned.md`
+
+**Test artifacts organized per-phase.** (established 2026-03-03, Session 23)
+- Each phase gets `tests/phase-Xn/` with: `user-stories.md`, `env.sh`, `evidence/`, `lessons-learned.md`
+- Phase N+1 carries forward regression stories from Phase N
+- Evidence folder has one file per story plus README with verdict table
 
 **Docker live test process — every fix/feature.** (established 2026-02-25, Session 10)
 1. `./scripts/stack_up.sh` — bring up the stack
@@ -83,6 +105,111 @@
 - Peer review incorporated: 7 implementation gaps identified by 3rd-party developer, all given decisions.
 - Full architecture doc: `.plans/CoWork-Architecture-Direct-Broker.md` (also `.html` and `.pdf` versions)
 - Lifecycle diagram: `.plans/CoWork-Diagram-FullLifecycle.svg`
+
+## 2026-03-03 (Session 23 — Phase 1A Live Test & Lessons Learned)
+
+### What happened
+
+Ran Phase 1A Docker live test (Task 6). Found infrastructure and process problems. Fixed them. Ran all 12 stories (0-11). 10 PASS, 2 PARTIAL.
+
+### Key decisions
+
+- **Sidecar removed from docker-compose.yml** — no defined use case. PRD says "optional" but never says for what. Removed until a real reason exists.
+- **Two personas in acceptance testing** — operator uses `aactl`, developer uses `curl`/REST API. Testing with the wrong tool is cutting corners.
+- **Acceptance tests = operator experience** — not scripts. Run the same commands an operator would on a VPS.
+- **`sk_live_` prefix removed from criteria** — plain 64-char hex for now. Revisit in Phase 3 (SDK).
+- **Test artifacts organized per-phase** — `tests/phase-1a/` contains user-stories.md, env.sh, lessons-learned.md, evidence/
+
+### Open issues
+
+- **`app_rate_limited` audit event missing** — P0. Rate limiter middleware fires before handler audit call. Needs fix branch.
+- **No operator onboarding** — no `aactl init`, admin secret origin undocumented. P2 for later.
+
+### Artifacts
+
+- `tests/phase-1a/evidence/` — per-story evidence files with README
+- `tests/phase-1a/lessons-learned.md` — corner-cutting incident, infrastructure gaps
+- `.plans/phase-1a/ADR-Phase-1a-Tech-Debt.md` — all tech debt documented
+
+### What's next
+
+1. Fix branch `fix/phase-1a-rate-limit-audit` for the missing audit event
+2. Re-run Story 9 + Story 10 to verify
+3. Merge Phase 1A to develop
+4. Begin Phase 1B (app-scoped launch tokens)
+
+---
+
+## 2026-03-03 (Session 22b — Phase 1a Tasks 4-5 Complete)
+
+### What happened
+
+Picked up Phase 1a where Session 22 left off. Tasks 4 and 5 done. `go test ./...` clean across all 15 packages.
+
+### Work completed
+
+**Pre-task fix: AppHdl wasn't wired into main.go**
+- Added `app` import, `appSvc`/`appHdl` initialization, `appHdl.RegisterRoutes(mux)` to `cmd/broker/main.go`
+- Fixed missing `Scopes []string` field in `appAuthResp` (spec required it, it was absent)
+
+**Task 4 — Per-client_id rate limiting**
+- `WrapWithKeyExtractor` added to `internal/authz/rate_mw.go`
+- `clientIDFromBody` helper in `app_hdl.go` — reads body, resets with `io.NopCloser(bytes.NewReader(data))`
+- Rate: 10 req/min, burst 3 (changed from IP-based 5/s, burst 10)
+- 4 new tests: key used, keys independent, IP fallback, body readable after extract
+
+**Task 5 — aactl app commands**
+- `cmd/aactl/apps.go` — `register`, `list`, `get`, `update`, `remove`
+- `doDelete` added to `cmd/aactl/client.go`
+- `register` warns "Save the client_secret — it cannot be retrieved again"
+
+### Next steps (gate before merge)
+- **Task 6**: Docker live test — `./scripts/stack_up.sh` + validate all 11 user stories from `tests/phase-1a-user-stories.md`
+- After Task 6 passes: merge `feature/phase-1a-app-registration` → `develop`, then begin Phase 1b
+
+---
+
+## 2026-03-03 (Session 22 — Claude Code)
+
+### What happened
+
+Phase 1a implementation started. Branch created, user stories written, Tasks 1–3 complete via TDD.
+
+### Git operations
+- Created branch: `feature/phase-1a-app-registration` (from `develop`)
+- No commits yet — all work is uncommitted on the branch
+
+### Work completed
+
+**Gate satisfied first:**
+- Created `tests/phase-1a-user-stories.md` — 11 stories (operator, developer, security reviewer, regression)
+
+**Task 1 — AppRecord store (RED → GREEN)**
+- `internal/store/sql_store_app_test.go` — 12 tests
+- `internal/store/sql_store.go` — `ErrAppNotFound`, `AppRecord`, `createAppsTable` DDL, 6 CRUD methods, `InitDB()` hook
+
+**Task 2 — AppSvc service (RED → GREEN)**
+- `internal/app/app_svc_test.go` — 15 tests
+- `internal/app/app_svc.go` — new package; bcrypt cost 12, name regex validation, scope validation, audit events
+- `internal/audit/audit_log.go` — 6 app event constants
+- Added `golang.org/x/crypto/bcrypt`
+
+**Task 3 — AppHdl handler (RED → GREEN)**
+- `internal/app/app_hdl_test.go` — 17 tests
+- `internal/app/app_hdl.go` — 6 endpoints, RFC 7807 errors, `client_secret_hash` never returned, rate limiter on POST /v1/app/auth
+
+All 14 packages green, zero regressions after each task.
+
+### Important user correction
+Unit tests ≠ acceptance tests. Acceptance tests = user stories in `tests/phase-1a-user-stories.md`, verified against Docker stack. Unit tests prove code logic. Both required, different purposes, different timing.
+
+### Next steps
+- ~~Task 4: Per-client-id rate limiting (`internal/authz/rate_mw.go`)~~ ✓ Done
+- ~~Task 5: aactl app commands (`cmd/aactl/apps.go`)~~ ✓ Done
+- ~~Task 6: Wire AppHdl into `cmd/broker/main.go`~~ ✓ Done
+- Task 6: Docker live test against all 11 user stories
+
+---
 
 ## 2026-03-02 (Session 20 — Claude CoWork, continued)
 
@@ -947,3 +1074,4 @@ Two-agent devil's advocate review of all PRD + phase specs, followed by targeted
 - **Dual-secret for rotation is Phase 1c (not P2):** The grace period design requires it. "Permanent dual-active" is still P2.
 
 **Spec update (same session):** All phase specs (1b through 5) now have a `## Testing Workflow` section at the bottom explicitly telling the implementing agent: extract user stories from the spec into `tests/phase-Xn-user-stories.md` before writing any test code. Phase 1a already had this in Task 6. User stories remain IN the specs — the rule just makes the `tests/` step explicit so the agent doesn't skip it.
+

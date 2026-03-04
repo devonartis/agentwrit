@@ -12,22 +12,28 @@
 //
 // Route table (see also docs/api.md):
 //
-//	GET  /v1/challenge           – obtain a cryptographic nonce (public)
-//	POST /v1/register            – agent registration (launch-token auth)
-//	POST /v1/token/validate      – verify a token (public)
-//	POST /v1/token/renew         – renew a token (Bearer auth)
-//	POST /v1/token/exchange      – sidecar token exchange (Bearer auth + sidecar scope)
-//	POST /v1/token/release       – agent self-revocation (Bearer auth)
-//	POST /v1/delegate            – scope-attenuated delegation (Bearer auth)
-//	POST /v1/revoke              – revoke tokens (admin scope)
-//	GET  /v1/audit/events        – query audit trail (admin scope)
-//	GET  /v1/admin/sidecars       – list registered sidecars (admin scope)
-//	POST /v1/admin/auth          – admin authentication (public)
-//	POST /v1/admin/launch-tokens – create launch token (admin scope)
-//	POST /v1/admin/sidecar-activations – create sidecar activation token (admin scope)
-//	POST /v1/sidecar/activate    – exchange sidecar activation token (public, single-use)
-//	GET  /v1/health              – health check (public)
-//	GET  /v1/metrics             – Prometheus metrics (public)
+//	GET    /v1/challenge               – obtain a cryptographic nonce (public)
+//	POST   /v1/register                – agent registration (launch-token auth)
+//	POST   /v1/token/validate          – verify a token (public)
+//	POST   /v1/token/renew             – renew a token (Bearer auth)
+//	POST   /v1/token/exchange          – sidecar token exchange (Bearer auth + sidecar scope)
+//	POST   /v1/token/release           – agent self-revocation (Bearer auth)
+//	POST   /v1/delegate                – scope-attenuated delegation (Bearer auth)
+//	POST   /v1/revoke                  – revoke tokens (admin scope)
+//	GET    /v1/audit/events            – query audit trail (admin scope)
+//	GET    /v1/admin/sidecars          – list registered sidecars (admin scope)
+//	POST   /v1/admin/auth              – admin authentication (public)
+//	POST   /v1/admin/launch-tokens     – create launch token (admin scope)
+//	POST   /v1/admin/sidecar-activations – create sidecar activation token (admin scope)
+//	POST   /v1/sidecar/activate        – exchange sidecar activation token (public, single-use)
+//	POST   /v1/admin/apps              – register app (admin scope)
+//	GET    /v1/admin/apps              – list apps (admin scope)
+//	GET    /v1/admin/apps/{id}         – get app details (admin scope)
+//	PUT    /v1/admin/apps/{id}         – update app scopes (admin scope)
+//	DELETE /v1/admin/apps/{id}         – deregister app (admin scope)
+//	POST   /v1/app/auth                – app authentication (public, rate-limited)
+//	GET    /v1/health                  – health check (public)
+//	GET    /v1/metrics                 – Prometheus metrics (public)
 package main
 
 import (
@@ -38,6 +44,7 @@ import (
 	"os"
 
 	"github.com/divineartis/agentauth/internal/admin"
+	"github.com/divineartis/agentauth/internal/app"
 	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/authz"
 	"github.com/divineartis/agentauth/internal/cfg"
@@ -133,6 +140,7 @@ func main() {
 	idSvc := identity.NewIdSvc(sqlStore, tknSvc, c.TrustDomain, auditLog, c.Audience)
 	delegSvc := deleg.NewDelegSvc(tknSvc, sqlStore, auditLog, privKey)
 	adminSvc := admin.NewAdminSvc(c.AdminSecret, tknSvc, sqlStore, auditLog, c.Audience)
+	appSvc := app.NewAppSvc(sqlStore, tknSvc, auditLog, c.Audience)
 
 	// Seed tokens for development (AA_SEED_TOKENS=true)
 	if c.SeedTokens {
@@ -156,6 +164,7 @@ func main() {
 	healthHdl := handler.NewHealthHdl(version, auditLog, sqlStore)
 	metricsHdl := handler.NewMetricsHdl()
 	adminHdl := admin.NewAdminHdl(adminSvc, valMw, auditLog, revSvc)
+	appHdl := app.NewAppHdl(appSvc, valMw)
 
 	// Route table per Tech Spec Section 2
 	mux := http.NewServeMux()
@@ -186,6 +195,9 @@ func main() {
 
 	// Admin auth and launch token routes (registered by AdminHdl)
 	adminHdl.RegisterRoutes(mux)
+
+	// App registration and auth routes (registered by AppHdl)
+	appHdl.RegisterRoutes(mux)
 
 	// Global Middleware
 	var rootHandler http.Handler = mux
