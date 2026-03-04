@@ -36,6 +36,8 @@ type AdminHdl struct {
 // A rate limiter is applied to the admin auth endpoint to prevent brute
 // force attacks. The auditLog parameter may be nil to disable audit
 // recording. The revSvc parameter may be nil if revocation is not needed.
+// The st parameter provides app record access for scope ceiling
+// enforcement when app-authenticated callers create launch tokens.
 func NewAdminHdl(adminSvc *AdminSvc, valMw *authz.ValMw, auditLog *audit.AuditLog, revSvc *revoke.RevSvc, st *store.SqlStore) *AdminHdl {
 	return &AdminHdl{
 		adminSvc:    adminSvc,

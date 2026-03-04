@@ -46,30 +46,54 @@ var (
 // admin. It binds an agent name to an allowed scope ceiling and optional
 // TTL cap. A single-use token is consumed on first registration.
 type LaunchTokenRecord struct {
-	Token        string
-	AgentName    string
+	// Token is the opaque 64-character hex credential presented by agents
+	// during registration.
+	Token string
+	// AgentName is the human-readable label for the agent this token authorizes.
+	AgentName string
+	// AllowedScope is the scope ceiling: agents registering with this token
+	// cannot request scopes beyond this set.
 	AllowedScope []string
-	MaxTTL       int
-	SingleUse    bool
-	CreatedAt    time.Time
-	ExpiresAt    time.Time
-	ConsumedAt   *time.Time
-	CreatedBy    string
-	AppID        string // empty for admin-created tokens
+	// MaxTTL caps the JWT lifetime (in seconds) issued at registration.
+	MaxTTL int
+	// SingleUse, when true, causes the token to be consumed after one
+	// successful registration. Multi-use tokens are never consumed.
+	SingleUse bool
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	// ConsumedAt is nil until a single-use token is consumed during
+	// agent registration.
+	ConsumedAt *time.Time
+	// CreatedBy is the JWT subject of the caller who created this token
+	// (e.g., "admin" or "app:app-weather-bot-abc123").
+	CreatedBy string
+	// AppID is the originating app's identifier. Empty when the token was
+	// created directly by an admin rather than through app credentials.
+	AppID string
 }
 
 // AgentRecord stores the persistent state of a registered agent,
 // including its SPIFFE-format AgentID, Ed25519 public key, and the
 // scope granted at registration time.
 type AgentRecord struct {
-	AgentID      string
-	PublicKey    []byte
-	OrchID       string
-	TaskID       string
-	Scope        []string
+	// AgentID is the SPIFFE URI assigned at registration
+	// (format: spiffe://{trustDomain}/agent/{orchID}/{taskID}/{instanceID}).
+	AgentID string
+	// PublicKey is the raw 32-byte Ed25519 public key provided during
+	// challenge-response registration.
+	PublicKey []byte
+	// OrchID identifies the orchestrator that launched this agent.
+	OrchID string
+	// TaskID identifies the specific task this agent was created for.
+	TaskID string
+	// Scope is the set of permissions granted at registration, always a
+	// subset of the launch token's AllowedScope.
+	Scope []string
 	RegisteredAt time.Time
 	LastSeen     time.Time
-	AppID        string // empty for agents not created via an app
+	// AppID is inherited from the launch token used during registration.
+	// Empty for agents registered via admin-created launch tokens.
+	AppID string
 }
 
 // SidecarRecord stores the persistent state of an activated sidecar.

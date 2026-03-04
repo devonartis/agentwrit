@@ -45,15 +45,21 @@ type RegisterReq struct {
 	Nonce          string   `json:"nonce"`
 	PublicKey      string   `json:"public_key"`       // base64-encoded Ed25519 public key
 	Signature      string   `json:"signature"`        // base64-encoded Ed25519 signature of nonce
-	OrchID         string   `json:"orch_id"`
-	TaskID         string   `json:"task_id"`
+	// OrchID identifies the orchestrator that launched this agent.
+	OrchID string `json:"orch_id"`
+	// TaskID identifies the specific task this agent was created for.
+	TaskID string `json:"task_id"`
+	// RequestedScope is the permissions the agent requests, which must be
+	// a subset of the launch token's AllowedScope.
 	RequestedScope []string `json:"requested_scope"`
 }
 
 // RegisterResp is returned on successful registration. It contains the
 // agent's SPIFFE ID, the issued Bearer token, and its TTL in seconds.
 type RegisterResp struct {
-	AgentID     string `json:"agent_id"`
+	// AgentID is the SPIFFE URI assigned to the registered agent
+	// (format: spiffe://{trustDomain}/agent/{orchID}/{taskID}/{instanceID}).
+	AgentID string `json:"agent_id"`
 	AccessToken string `json:"access_token"`
 	ExpiresIn   int    `json:"expires_in"`
 }
