@@ -209,8 +209,7 @@ func TestAdminAuth_Success(t *testing.T) {
 	b := newTestBroker(t)
 
 	body := jsonBody(t, map[string]string{
-		"client_id":     "admin",
-		"client_secret": testAdminSecret,
+		"secret": testAdminSecret,
 	})
 	req := httptest.NewRequest("POST", "/v1/admin/auth", body)
 	rr := b.do(req)
@@ -230,8 +229,7 @@ func TestAdminAuth_WrongSecret(t *testing.T) {
 	b := newTestBroker(t)
 
 	body := jsonBody(t, map[string]string{
-		"client_id":     "admin",
-		"client_secret": "wrong",
+		"secret": "wrong",
 	})
 	req := httptest.NewRequest("POST", "/v1/admin/auth", body)
 	rr := b.do(req)
@@ -241,13 +239,27 @@ func TestAdminAuth_WrongSecret(t *testing.T) {
 	}
 }
 
+func TestAdminAuth_LegacyShapeRejected(t *testing.T) {
+	b := newTestBroker(t)
+
+	body := jsonBody(t, map[string]string{
+		"client_id":     "admin",
+		"client_secret": testAdminSecret,
+	})
+	req := httptest.NewRequest("POST", "/v1/admin/auth", body)
+	rr := b.do(req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for legacy shape, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
 // --- Full registration flow ---
 
 func getAdminToken(t *testing.T, b *testBroker) string {
 	t.Helper()
 	body := jsonBody(t, map[string]string{
-		"client_id":     "admin",
-		"client_secret": testAdminSecret,
+		"secret": testAdminSecret,
 	})
 	req := httptest.NewRequest("POST", "/v1/admin/auth", body)
 	rr := b.do(req)
@@ -1236,175 +1248,9 @@ func TestTokenExchange_MalformedJSON_Returns400(t *testing.T) {
 	}
 }
 
-// TestTokenExchange_FullIntegration_AdminToExchange exercises the complete
-// sidecar lifecycle: admin auth -> create sidecar activation -> activate ->
-// exchange -> verify issued token claims.
-func TestTokenExchange_FullIntegration_AdminToExchange(t *testing.T) {
-	b := newTestBroker(t)
-
-	// Step 1: Admin auth
-	adminToken := getAdminToken(t, b)
-
-	// Step 2: Register an agent
-	_, agentID := registerAgentHTTP(t, b, adminToken, []string{"read:data:*"})
-
-	// Step 3: Create sidecar activation token
-	actBody := jsonBody(t, map[string]any{
-		"allowed_scopes": []string{"read:data:*"},
-		"ttl":            120,
-	})
-	actReq := httptest.NewRequest("POST", "/v1/admin/sidecar-activations", actBody)
-	actReq.Header.Set("Authorization", "Bearer "+adminToken)
-	actReq.Header.Set("Content-Type", "application/json")
-	actRR := b.do(actReq)
-	if actRR.Code != http.StatusCreated {
-		t.Fatalf("create sidecar activation failed: %d %s", actRR.Code, actRR.Body.String())
-	}
-	var actResp map[string]any
-	if err := json.NewDecoder(actRR.Body).Decode(&actResp); err != nil {
-		t.Fatalf("decode activation resp: %v", err)
-	}
-	activationToken, _ := actResp["activation_token"].(string)
-	if activationToken == "" {
-		t.Fatal("expected non-empty activation_token")
-	}
-
-	// Step 4: Activate sidecar (exchange activation token for bearer)
-	sidecarBody := jsonBody(t, map[string]any{
-		"sidecar_activation_token": activationToken,
-	})
-	sidecarReq := httptest.NewRequest("POST", "/v1/sidecar/activate", sidecarBody)
-	sidecarReq.Header.Set("Content-Type", "application/json")
-	sidecarRR := b.do(sidecarReq)
-	if sidecarRR.Code != http.StatusOK {
-		t.Fatalf("sidecar activation failed: %d %s", sidecarRR.Code, sidecarRR.Body.String())
-	}
-	var sidecarResp map[string]any
-	if err := json.NewDecoder(sidecarRR.Body).Decode(&sidecarResp); err != nil {
-		t.Fatalf("decode sidecar resp: %v", err)
-	}
-	sidecarToken, _ := sidecarResp["access_token"].(string)
-	sidecarID, _ := sidecarResp["sidecar_id"].(string)
-	if sidecarToken == "" || sidecarID == "" {
-		t.Fatalf("expected non-empty sidecar token and sidecar_id, got token=%q id=%q", sidecarToken, sidecarID)
-	}
-
-	// Step 5: Exchange sidecar token for agent token
-	exBody := jsonBody(t, map[string]any{
-		"agent_id":   agentID,
-		"scope":      []string{"read:data:*"},
-		"ttl":        60,
-		"sidecar_id": "spoofed-ignored",
-	})
-	exReq := httptest.NewRequest("POST", "/v1/token/exchange", exBody)
-	exReq.Header.Set("Authorization", "Bearer "+sidecarToken)
-	exReq.Header.Set("Content-Type", "application/json")
-	exRR := b.do(exReq)
-	if exRR.Code != http.StatusOK {
-		t.Fatalf("token exchange failed: %d %s", exRR.Code, exRR.Body.String())
-	}
-	var exResp map[string]any
-	if err := json.NewDecoder(exRR.Body).Decode(&exResp); err != nil {
-		t.Fatalf("decode exchange resp: %v", err)
-	}
-
-	// Step 6: Verify exchanged token claims
-	issuedToken, _ := exResp["access_token"].(string)
-	claims, err := b.tknSvc.Verify(issuedToken)
-	if err != nil {
-		t.Fatalf("verify exchanged token: %v", err)
-	}
-	if claims.Sub != agentID {
-		t.Errorf("expected sub=%s, got %s", agentID, claims.Sub)
-	}
-	if claims.Sid == "" {
-		t.Error("expected non-empty sid (broker-derived sidecar_id)")
-	}
-	if claims.SidecarID == "" {
-		t.Error("expected non-empty sidecar_id claim")
-	}
-	if claims.Sid != claims.SidecarID {
-		t.Errorf("expected sid == sidecar_id, got sid=%s sidecar_id=%s", claims.Sid, claims.SidecarID)
-	}
-	// Anti-spoof: sidecar_id should be broker-derived, not "spoofed-ignored"
-	if exResp["sidecar_id"] == "spoofed-ignored" {
-		t.Fatal("anti-spoof failed: client sidecar_id was used")
-	}
-	if exResp["token_type"] != "Bearer" {
-		t.Errorf("expected token_type=Bearer, got %v", exResp["token_type"])
-	}
-	expiresIn, _ := exResp["expires_in"].(float64)
-	if expiresIn <= 0 || expiresIn > 900 {
-		t.Errorf("expected expires_in in (0,900], got %.0f", expiresIn)
-	}
-
-	// Step 7: Use exchanged token against a protected endpoint (token renew)
-	renewReq := httptest.NewRequest("POST", "/v1/token/renew", nil)
-	renewReq.Header.Set("Authorization", "Bearer "+issuedToken)
-	renewRR := b.do(renewReq)
-	if renewRR.Code != http.StatusOK {
-		t.Fatalf("exchanged token rejected by protected endpoint: %d %s", renewRR.Code, renewRR.Body.String())
-	}
-	var renewResp map[string]any
-	if err := json.NewDecoder(renewRR.Body).Decode(&renewResp); err != nil {
-		t.Fatalf("decode renew resp: %v", err)
-	}
-	if renewResp["access_token"] == nil || renewResp["access_token"] == "" {
-		t.Error("expected renewed token from protected endpoint")
-	}
-}
-
-// TestSidecarActivation_ReplayDenied verifies that a sidecar activation
-// token cannot be used twice (single-use enforcement).
-func TestSidecarActivation_ReplayDenied(t *testing.T) {
-	b := newTestBroker(t)
-
-	adminToken := getAdminToken(t, b)
-
-	// Create sidecar activation token
-	actBody := jsonBody(t, map[string]any{
-		"allowed_scopes": []string{"read:data:*"},
-		"ttl":            120,
-	})
-	actReq := httptest.NewRequest("POST", "/v1/admin/sidecar-activations", actBody)
-	actReq.Header.Set("Authorization", "Bearer "+adminToken)
-	actReq.Header.Set("Content-Type", "application/json")
-	actRR := b.do(actReq)
-	if actRR.Code != http.StatusCreated {
-		t.Fatalf("create activation: %d %s", actRR.Code, actRR.Body.String())
-	}
-	var actResp map[string]any
-	if err := json.NewDecoder(actRR.Body).Decode(&actResp); err != nil {
-		t.Fatalf("decode activation resp: %v", err)
-	}
-	activationToken := actResp["activation_token"].(string)
-
-	// First activation should succeed
-	body1 := jsonBody(t, map[string]any{"sidecar_activation_token": activationToken})
-	req1 := httptest.NewRequest("POST", "/v1/sidecar/activate", body1)
-	req1.Header.Set("Content-Type", "application/json")
-	rr1 := b.do(req1)
-	if rr1.Code != http.StatusOK {
-		t.Fatalf("first activation failed: %d %s", rr1.Code, rr1.Body.String())
-	}
-
-	// Second activation with same token should be rejected (replay)
-	body2 := jsonBody(t, map[string]any{"sidecar_activation_token": activationToken})
-	req2 := httptest.NewRequest("POST", "/v1/sidecar/activate", body2)
-	req2.Header.Set("Content-Type", "application/json")
-	rr2 := b.do(req2)
-	if rr2.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 for activation replay, got %d: %s", rr2.Code, rr2.Body.String())
-	}
-
-	var problem map[string]any
-	if err := json.NewDecoder(rr2.Body).Decode(&problem); err != nil {
-		t.Fatalf("decode problem: %v", err)
-	}
-	if problem["error_code"] != "activation_token_replayed" {
-		t.Fatalf("expected activation_token_replayed, got %v", problem["error_code"])
-	}
-}
+// Sidecar integration tests (FullIntegration_AdminToExchange,
+// SidecarActivation_ReplayDenied) removed in Phase 0 — sidecar activation
+// routes unwired from broker. Tests return in Phase 2.
 
 // --- Metrics endpoint ---
 
@@ -2056,12 +1902,9 @@ func TestMethodRestriction(t *testing.T) {
 		method string
 		path   string
 	}{
-		{"GET", "/v1/token/exchange"},
-		{"PUT", "/v1/token/exchange"},
 		{"DELETE", "/v1/register"},
 		{"PATCH", "/v1/token/renew"},
 		{"GET", "/v1/revoke"},
-		{"GET", "/v1/sidecar/activate"},
 	}
 
 	for _, tc := range tests {

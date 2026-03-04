@@ -75,8 +75,7 @@ func brokerAdminAuth(t *testing.T, brokerURL, secret string) string {
 	t.Helper()
 
 	body, _ := json.Marshal(map[string]string{
-		"client_id":     "sidecar",
-		"client_secret": secret,
+		"secret": secret,
 	})
 
 	resp, err := http.Post(brokerURL+"/v1/admin/auth", "application/json", bytes.NewReader(body))
@@ -254,6 +253,7 @@ func brokerValidateToken(t *testing.T, brokerURL, tokenStr string) map[string]an
 //  5. Validate the token at the broker.
 //  6. Verify scope escalation is denied.
 func TestIntegration_DeveloperFlow(t *testing.T) {
+	t.Skip("sidecar activation routes removed in Phase 0 — returns in Phase 2")
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
@@ -402,6 +402,7 @@ func TestIntegration_DeveloperFlow(t *testing.T) {
 // POST /v1/token automatically registers an agent at the broker on the
 // first request (lazy registration), caches it, and denies scope escalation.
 func TestIntegration_Phase2_LazyRegistration(t *testing.T) {
+	t.Skip("sidecar activation routes removed in Phase 0 — returns in Phase 2")
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
@@ -523,6 +524,7 @@ func TestIntegration_Phase2_LazyRegistration(t *testing.T) {
 // with their own key, registers via the sidecar's BYOK endpoint, then
 // requests a token.
 func TestIntegration_Phase2_BYOKRegistration(t *testing.T) {
+	t.Skip("sidecar activation routes removed in Phase 0 — returns in Phase 2")
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}

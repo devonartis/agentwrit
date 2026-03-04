@@ -48,8 +48,7 @@ func (c *client) authenticate() error {
 		return nil
 	}
 	body, _ := json.Marshal(map[string]string{
-		"client_id":     "admin",
-		"client_secret": c.secret,
+		"secret": c.secret,
 	})
 	resp, err := c.http.Post(c.baseURL+"/v1/admin/auth", "application/json", bytes.NewReader(body))
 	if err != nil {

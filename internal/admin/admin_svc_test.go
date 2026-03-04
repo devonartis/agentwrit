@@ -44,7 +44,7 @@ func newTestAdminSvcWithAudit(t *testing.T) (*AdminSvc, *audit.AuditLog) {
 func TestAuthenticate_Success(t *testing.T) {
 	svc := newTestAdminSvc(t)
 
-	resp, err := svc.Authenticate("admin-client", testSecret)
+	resp, err := svc.Authenticate(testSecret)
 	if err != nil {
 		t.Fatalf("expected success, got err: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestAuthenticate_Success(t *testing.T) {
 func TestAuthenticate_WrongSecret(t *testing.T) {
 	svc := newTestAdminSvc(t)
 
-	_, err := svc.Authenticate("admin-client", "wrong-secret")
+	_, err := svc.Authenticate("wrong-secret")
 	if err == nil {
 		t.Fatal("expected error for wrong secret")
 	}
@@ -86,7 +86,7 @@ func TestAuthenticate_WrongSecret(t *testing.T) {
 func TestAuthenticate_EmptySecret(t *testing.T) {
 	svc := newTestAdminSvc(t)
 
-	_, err := svc.Authenticate("admin-client", "")
+	_, err := svc.Authenticate("")
 	if err == nil {
 		t.Fatal("expected error for empty secret")
 	}
@@ -99,12 +99,12 @@ func TestAuthenticate_DifferentLengthSecret(t *testing.T) {
 	svc := newTestAdminSvc(t)
 
 	// Different-length secret should also fail (constant-time compare handles this).
-	_, err := svc.Authenticate("admin-client", "short")
+	_, err := svc.Authenticate("short")
 	if err != ErrInvalidSecret {
 		t.Errorf("expected ErrInvalidSecret for different-length secret, got: %v", err)
 	}
 
-	_, err = svc.Authenticate("admin-client", testSecret+"extra-long-suffix-that-should-fail")
+	_, err = svc.Authenticate(testSecret+"extra-long-suffix-that-should-fail")
 	if err != ErrInvalidSecret {
 		t.Errorf("expected ErrInvalidSecret for longer secret, got: %v", err)
 	}

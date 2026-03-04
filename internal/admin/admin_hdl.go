@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -58,24 +59,19 @@ func (h *AdminHdl) RegisterRoutes(mux *http.ServeMux) {
 		h.valMw.Wrap(h.valMw.RequireAnyScope(
 			[]string{"admin:launch-tokens:*", "app:launch-tokens:*"},
 			http.HandlerFunc(h.handleCreateLaunchToken))))
-	mux.Handle("POST /v1/admin/sidecar-activations",
-		h.valMw.Wrap(h.valMw.RequireScope("admin:launch-tokens:*",
-			http.HandlerFunc(h.handleCreateSidecarActivation))))
-	mux.Handle("POST /v1/sidecar/activate",
-		h.rateLimiter.Wrap(http.HandlerFunc(h.handleActivateSidecar)))
-	mux.Handle("GET /v1/admin/sidecars/{id}/ceiling",
-		h.valMw.Wrap(h.valMw.RequireScope("admin:launch-tokens:*",
-			http.HandlerFunc(h.handleGetCeiling))))
-	mux.Handle("PUT /v1/admin/sidecars/{id}/ceiling",
-		h.valMw.Wrap(h.valMw.RequireScope("admin:launch-tokens:*",
-			http.HandlerFunc(h.handleUpdateCeiling))))
-	mux.Handle("GET /v1/admin/sidecars",
-		h.valMw.Wrap(h.valMw.RequireScope("admin:launch-tokens:*",
-			http.HandlerFunc(h.handleListSidecars))))
+	// Sidecar routes removed in Phase 0 (2026-03-04). Handler methods
+	// retained in source for Phase 2 reintroduction with app-scoped
+	// activation tokens.
 }
 
 // authReq is the JSON body for POST /v1/admin/auth.
 type authReq struct {
+	Secret string `json:"secret"`
+}
+
+// legacyAuthReq detects the old {"client_id","client_secret"} shape so we
+// can return a helpful migration error.
+type legacyAuthReq struct {
 	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
 }
@@ -92,20 +88,36 @@ const maxBodyBytes int64 = 1 << 20
 
 func (h *AdminHdl) handleAuth(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
-	var req authReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+
+	// Read body once so we can try both shapes.
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
 		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
 		return
 	}
 
-	if req.ClientID == "" || req.ClientSecret == "" {
-		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "client_id and client_secret are required", r.URL.Path)
+	// Detect legacy {"client_id","client_secret"} shape.
+	var legacy legacyAuthReq
+	if json.Unmarshal(raw, &legacy) == nil && (legacy.ClientID != "" || legacy.ClientSecret != "") {
+		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request",
+			`Admin auth format changed. Use {"secret": "..."} instead of client_id/client_secret`, r.URL.Path)
 		return
 	}
 
-	issueResp, err := h.adminSvc.Authenticate(req.ClientID, req.ClientSecret)
+	var req authReq
+	if err := json.Unmarshal(raw, &req); err != nil {
+		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
+		return
+	}
+
+	if req.Secret == "" {
+		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "secret is required", r.URL.Path)
+		return
+	}
+
+	issueResp, err := h.adminSvc.Authenticate(req.Secret)
 	if err != nil {
-		obs.Warn(mod, hdlCmp, "auth failed", "client_id="+req.ClientID)
+		obs.Warn(mod, hdlCmp, "auth failed")
 		problemdetails.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "invalid credentials", r.URL.Path)
 		return
 	}

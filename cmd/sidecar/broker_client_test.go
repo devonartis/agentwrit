@@ -62,11 +62,8 @@ func TestBrokerClient_AdminAuth(t *testing.T) {
 	}
 
 	// Verify request body fields
-	if gotBody["client_id"] != "sidecar" {
-		t.Errorf("client_id = %v, want sidecar", gotBody["client_id"])
-	}
-	if gotBody["client_secret"] != "test-secret" {
-		t.Errorf("client_secret = %v, want test-secret", gotBody["client_secret"])
+	if gotBody["secret"] != "test-secret" {
+		t.Errorf("secret = %v, want test-secret", gotBody["secret"])
 	}
 
 	// Verify response parsing

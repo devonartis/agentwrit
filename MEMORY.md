@@ -13,6 +13,8 @@ Active tech debt. Append here when new debt is taken. Full details in `.plans/PR
 | TD-001 | `app_rate_limited` audit event not emitted (rate limiter fires before handler) | Low | Before Phase 1C |
 | TD-002 | No operator onboarding (`aactl init`, admin secret generation) | Low | Future |
 | TD-003 | Sidecar has no defined use case — removed from infra, code still exists | Medium | When PRD defines a use case |
+| ~~TD-004~~ | ~~Admin auth uses legacy client_id/client_secret shape~~ | ~~High~~ | ~~RESOLVED Session 26~~ |
+| ~~TD-005~~ | ~~6 sidecar routes still wired in broker~~ | ~~High~~ | ~~RESOLVED Session 26~~ |
 
 ## Standing Rules
 
@@ -73,6 +75,7 @@ Active tech debt. Append here when new debt is taken. Full details in `.plans/PR
 - Anyone should be able to open the evidence folder and understand what was tested and whether it passed without running anything
 - This is not optional — a live test without saved evidence is incomplete
 
+
 **"Why does this exist?" questions must be answered from the pattern and user needs, NOT from the code.** (established 2026-02-28, Session 18)
 - When anyone asks "should X be required?" or "why does X exist?" — that's an Architecture Challenge
 - The answer source is: (1) the user's actual question, (2) the pattern (v1.2), (3) production deployment needs
@@ -105,6 +108,84 @@ Active tech debt. Append here when new debt is taken. Full details in `.plans/PR
 - Peer review incorporated: 7 implementation gaps identified by 3rd-party developer, all given decisions.
 - Full architecture doc: `.plans/CoWork-Architecture-Direct-Broker.md` (also `.html` and `.pdf` versions)
 - Lifecycle diagram: `.plans/CoWork-Diagram-FullLifecycle.svg`
+
+## 2026-03-04 (Session 26 — Phase 0 Legacy Cleanup Implementation)
+
+### What happened
+
+Started Phase 0 implementation on branch `fix/phase-0-legacy-cleanup` off `develop`. Completed Tasks 0.1 and 0.2 (code changes). Created live test template and Phase 0 test plan. Docker stack is up, ready to execute tests.
+
+### Branch
+
+- Created `fix/phase-0-legacy-cleanup` off `develop` (stashed Phase 1B WIP)
+
+### Code changes (Tasks 0.1 + 0.2)
+
+**Task 0.1 — Remove sidecar routes from broker:**
+- Removed 5 sidecar route registrations from `AdminHdl.RegisterRoutes` in `internal/admin/admin_hdl.go`
+- Removed `/v1/token/exchange` route + `tokenExchangeHdl` init from `cmd/broker/main.go`
+- Removed sidecar ceiling loading from broker startup in `cmd/broker/main.go`
+- Updated doc comment route table in `main.go`
+- Removed sidecar route tests from `internal/admin/admin_hdl_test.go` and `internal/handler/handler_test.go`
+- Skipped 3 sidecar integration tests in `cmd/sidecar/integration_test.go` (Phase 2)
+- Handler methods kept in source for Phase 2
+
+**Task 0.2 — Fix admin auth endpoint:**
+- Changed `authReq` struct from `{client_id, client_secret}` to `{secret}` in `internal/admin/admin_hdl.go`
+- Added `legacyAuthReq` detection — old format returns 400 with migration message
+- Changed `AdminSvc.Authenticate()` from `(clientID, secret)` to `(secret)` in `internal/admin/admin_svc.go`
+- Updated `aactl` client (`cmd/aactl/client.go`) to send `{"secret": "..."}`
+- Updated sidecar broker client (`cmd/sidecar/broker_client.go`) to send new format
+- Updated tests: `admin_hdl_test.go`, `admin_svc_test.go`, `handler_test.go`, `app_hdl_test.go`, `broker_client_test.go`, `integration_test.go`
+- All 15 packages pass (`go test ./...`)
+
+### Live test process formalized
+
+Divine's feedback: "we need to come up with a documented process on how to test... it should be a clear story where it says so the QA team can read what was the test and what is expected and the output evidence." Key points:
+- Each evidence file = ONE test, not multiple checks bundled together
+- Banner must be plain language — "The operator tries to log in with..." not "the new auth shape"
+- Who is doing the work, why, where, and what they are doing
+- An executive should be able to read it and understand
+- Operator stories use `aactl`, developer stories use `curl`
+
+Created:
+- `tests/LIVE-TEST-TEMPLATE.md` — reusable template for all future phases
+- `tests/phase-0/user-stories.md` — 12 stories (6 sidecar removal, 2 admin auth, 4 regression)
+- `tests/phase-0/env.sh` — test environment
+- `tests/phase-0/evidence/` — 12 evidence plan files (Pass 1 complete, actuals pending)
+
+### Tech debt updates
+
+- TD-004 (admin auth legacy shape) — RESOLVED by Task 0.2
+- TD-005 (sidecar routes on broker) — RESOLVED by Task 0.1
+
+### Phase 0 live tests executed — 12/12 PASS
+
+All 12 stories run against Docker stack, evidence piped directly into files:
+- S1-S6: All six removed sidecar routes return 404 — confirmed gone
+- S7: Operator login with new admin format works (aactl app list returned empty list, no errors)
+- S8: Old admin login format returns 400 with clear migration message
+- R1: App registration works (cleanup-test app created, credentials returned)
+- R2: Developer app login works (JWT returned with app-level scopes)
+- R3: App JWT correctly rejected at admin endpoint (403 Forbidden)
+- R4: Audit trail complete — app_registered, app_authenticated, scope_violation all recorded, no secrets leaked
+
+Evidence files: `tests/phase-0/evidence/` — README verdict table updated, all 12 stories PASS.
+
+### Live test template rewritten as full guide
+
+Divine's feedback: the template was a skeleton — nobody could follow it. Rewrote `tests/LIVE-TEST-TEMPLATE.md` as a complete step-by-step guide with:
+- Real bash examples showing how the coding agent must make calls (banner + output piped into evidence file in one shot)
+- Real completed evidence file from Phase 0 (R4 audit trail) as reference
+- Banner format broken down (who/what/why/how/expected) with good vs bad language examples
+- 11 rules including "one story at a time," "output goes in the file," "verdict is earned"
+
+### What's next
+
+1. Merge `fix/phase-0-legacy-cleanup` → `develop`
+2. Resume Phase 1B (app-scoped launch tokens)
+
+---
 
 ## 2026-03-03 (Session 23 — Phase 1A Live Test & Lessons Learned)
 
