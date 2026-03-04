@@ -154,3 +154,12 @@ While full dual-key rotation is out of scope, the architecture should be future-
 | Key file corrupted → broker can't start | Medium | Broker detects invalid key and offers to regenerate (with warning about invalidating tokens) |
 | Encryption passphrase lost → can't load key | Medium | Document passphrase management in operations guide |
 | Key rotation without warning → all tokens invalidated | Low | Rotation requires explicit flag, logs clear warning, generates audit event |
+
+---
+
+## Testing Workflow
+
+> **Before writing any test code**, extract the user stories from the `## User Stories` section above into a standalone file:
+> `tests/phase-5-user-stories.md`
+>
+> This is required by the project workflow (CLAUDE.md). The coding agent writes user stories first, saves them to `tests/`, then writes test code against them. Do not skip this step.

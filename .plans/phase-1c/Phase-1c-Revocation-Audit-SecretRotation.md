@@ -39,7 +39,7 @@ After Phase 1b, apps can register and create agents — but there's no way to re
 
 ## Non-Goals
 
-1. **Dual-secret support** — supporting two active secrets simultaneously (future enhancement)
+1. **Permanent dual-active secrets** — Phase 1c supports one new + one old (grace period only). Always-two-active secrets is a future enhancement.
 2. **Automatic secret rotation** — operator-triggered only, no scheduled rotation
 3. **App-scoped audit endpoint** — apps querying their own audit events (future consideration)
 4. **Agent-level management by apps** — apps revoking individual agents they own (future)
@@ -93,7 +93,13 @@ This extends the existing revocation pyramid from 4 levels to 5:
 Token → Agent → Task → Chain → App (NEW)
 ```
 
-The revocation service needs to index tokens by `app_id` to make cascading revocation performant.
+The revocation service needs to index tokens by `app_id` to make cascading revocation performant. Specifically, `RevSvc` must maintain an in-memory index:
+
+```go
+appAgents map[string][]string  // app_id → []agentID
+```
+
+This index is populated at startup (from the store) and updated on every agent registration and revocation. Without this index, revoking an app requires scanning all registered agents to find those belonging to the app — O(n) — which becomes a bottleneck at scale. With the index, app revocation is O(1) lookup + O(k) cascade where k = number of agents in that app.
 
 ### 2. `app_id` and `app_name` in Agent JWT Claims
 
@@ -106,11 +112,22 @@ This is backward compatible: tokens for legacy agents (no app) have these fields
 
 ### 3. Client Secret Rotation
 
-A new endpoint and CLI command for rotating an app's client secret:
+A new endpoint and CLI command for rotating an app's client secret. The grace period requires **dual-secret storage**: both old and new hashes must be active simultaneously during the grace period. This means the `apps` table needs two additional columns:
 
+```sql
+client_secret_hash_prev TEXT,          -- old hash (valid during grace period)
+secret_rotated_at       TEXT,          -- when rotation was initiated
+secret_grace_until      TEXT           -- when old secret expires (rotated_at + grace period)
+```
+
+**During the grace period:** `AuthenticateApp` checks the new secret first; if it fails, checks the old secret and accepts it if `NOW < grace_until`.
+**After the grace period:** Only the new secret works. A cleanup job (or on-next-auth check) can null out `client_secret_hash_prev`.
+
+Flow:
 - Generates a new client secret
-- Hashes and stores the new secret
-- The old secret remains valid for a configurable grace period (default 24 hours)
+- Moves current hash to `client_secret_hash_prev`, sets `secret_rotated_at` and `secret_grace_until`
+- Hashes and stores the new secret in `client_secret_hash`
+- The old secret remains valid until `grace_until` (default 24 hours from rotation)
 - After the grace period, only the new secret works
 - The rotation event is recorded in the audit trail
 - The new plaintext secret is returned exactly once (same as initial registration)
@@ -139,3 +156,12 @@ The existing audit query endpoint (`GET /v1/audit/events`) needs a new filter pa
 - `GET /v1/audit/events?app_id=...` returns all events for that app
 - Existing 4-level revocation (token, agent, task, chain) unchanged
 - Legacy agents/tokens without `app_id` continue to work
+
+---
+
+## Testing Workflow
+
+> **Before writing any test code**, extract the user stories from the `## User Stories` section above into a standalone file:
+> `tests/phase-1c-user-stories.md`
+>
+> This is required by the project workflow (CLAUDE.md). The coding agent writes user stories first, saves them to `tests/`, then writes test code against them. Do not skip this step.

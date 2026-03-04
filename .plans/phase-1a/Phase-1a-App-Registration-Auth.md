@@ -561,7 +561,7 @@ These are the implementation tasks in dependency order:
 ### Task 1: AppRecord data model + store methods
 **Files:** `internal/store/sql_store.go`
 - Add `AppRecord` struct
-- Add `apps` table in `initTables()`
+- Add `apps` table in `InitDB()` (note: method is `InitDB`, not `initTables`)
 - Implement all 6 store methods (R2)
 - Write unit tests
 
@@ -574,7 +574,7 @@ These are the implementation tasks in dependency order:
 - Write unit tests
 
 ### Task 3: App handler endpoints
-**Files:** `internal/handler/app_hdl.go` (new), `internal/handler/app_hdl_test.go` (new)
+**Files:** `internal/app/app_hdl.go` (new), `internal/app/app_hdl_test.go` (new)
 - Implement `AppHdl` with `RegisterRoutes()`
 - Implement all 6 handler methods (R4)
 - Wire into `cmd/broker/main.go` routes
@@ -624,6 +624,19 @@ Before marking Phase 1a complete:
 
 - **None** — Phase 1a has no external dependencies. It adds new tables, new endpoints, and new CLI commands without modifying any existing code paths.
 - **Backward compatible** — existing admin auth, sidecar auth, agent registration, and all other flows are untouched.
+
+## SQLite Migration Strategy
+
+Phase 1a only adds the new `apps` table — this is safe as a `CREATE TABLE IF NOT EXISTS` with no impact on existing tables.
+
+Later phases (1b, 1c) will add `app_id` columns to existing tables (`agents`, `launch_tokens`). **SQLite `ALTER TABLE ... ADD COLUMN` requires that new columns have a default value or be nullable** — you cannot add a `NOT NULL` column without a default to an existing table with rows. The strategy:
+
+- All new `app_id` columns on existing tables must be added as `TEXT DEFAULT NULL`
+- Existing rows will have `app_id = NULL` (they predate apps, and this is the correct semantic — they are "legacy" / no-app rows)
+- Code must handle `app_id = NULL` without error (it means the agent/token was not created via an app)
+- Migration is handled by adding `ALTER TABLE` statements to `InitDB()` wrapped in `IF NOT EXISTS` guards (SQLite doesn't natively support `IF NOT EXISTS` on `ALTER TABLE`, so wrap in a check: attempt, catch "duplicate column name" error, continue)
+
+This is documented here so the implementing agent does NOT design a migration system — simple `ALTER TABLE` in `InitDB()` with error-tolerant logic is sufficient.
 
 ---
 

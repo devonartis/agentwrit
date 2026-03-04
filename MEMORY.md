@@ -912,3 +912,38 @@ Added PostToolUse hook (`.claude/hooks/go-quality-check.sh`) — runs gofmt, go 
 ## Notes
 
 - CLAUDE.md is checked into the repo while it's private. Remove it before going public.
+
+## 2026-03-04 (Session 21 — Claude CoWork)
+
+### What happened
+
+Two-agent devil's advocate review of all PRD + phase specs, followed by targeted fixes based on confirmed findings.
+
+### Agent findings summary
+
+**Validator agent** checked 10 of the original 41 devil's advocate gaps against the actual codebase:
+- 7 were FALSE POSITIVES (already handled): mTLS in `serve.go`, bcrypt 72-byte limit safe (64 < 72), `ScopeIsSubset()` exists, `ConsumeNonce()` has mutex, activation endpoint exists, timing-safe auth, launch tokens are opaque hex (correct pattern)
+- 2 confirmed real: RevSvc O(n) for app revocation (needs index), SQLite migration for app_id columns
+
+**Second devil's advocate** found 16 fresh gaps. Critical ones addressed:
+- SQLite migration: `ALTER TABLE` must use `TEXT DEFAULT NULL` for new `app_id` columns on existing tables
+- RevSvc index: `appAgents map[string][]string` in-memory index required in Phase 1c
+- Phase 4 + 5 production trap: shipping JWKS without key persistence invalidates cached keys on every restart
+- Phase 3 priority: P1 is correct (sidecar covers DX gap post-Phase 2); note added for teams without sidecar
+- Dual-secret Non-Goal contradiction: Phase 1c needed dual-secret storage for rotation grace period — fixed
+
+### Changes made this session
+
+1. **`.plans/phase-1a/Phase-1a-App-Registration-Auth.md`** — fixed `initTables()` → `InitDB()`, fixed handler path `internal/handler/` → `internal/app/`, added SQLite migration strategy section
+2. **`.plans/phase-1c/Phase-1c-Revocation-Audit-SecretRotation.md`** — fixed Non-Goals contradiction, added `appAgents` index spec, added dual-secret storage schema for rotation grace period
+3. **`.plans/phase-4/Phase-4-JWKS-Endpoint.md`** — added production warning at top: Phase 4 without Phase 5 is a stability trap
+4. **`.plans/PRD.md`** — added Phase 3 priority rationale, Phase 4+5 bundling recommendation, 3 new rows in risks table
+
+### Decisions made
+
+- **Phase 3 stays P1:** Post-Phase 2, the sidecar covers the DX gap. Teams without sidecar can treat it as personal P0. This is documented.
+- **Phase 4+5 ship together in production:** Documented as a risk and recommendation in PRD and Phase 4 spec.
+- **SQLite migration = ALTER TABLE + NULL default:** No migration framework needed. `InitDB()` handles it with error-tolerant logic.
+- **Dual-secret for rotation is Phase 1c (not P2):** The grace period design requires it. "Permanent dual-active" is still P2.
+
+**Spec update (same session):** All phase specs (1b through 5) now have a `## Testing Workflow` section at the bottom explicitly telling the implementing agent: extract user stories from the spec into `tests/phase-Xn-user-stories.md` before writing any test code. Phase 1a already had this in Task 6. User stories remain IN the specs — the rule just makes the `tests/` step explicit so the agent doesn't skip it.

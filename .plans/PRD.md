@@ -115,7 +115,28 @@ The transformation is broken into 7 phases across two priority tiers. Each phase
 
 **P1 total: 5-8 days.** These phases improve developer experience, resilience, and operational maturity.
 
+**Notes on P1 priority decisions:**
+- **Phase 3 (SDK) is P1, not P0:** Without the SDK, developers using the broker directly face 8 manual steps (app auth → launch token → Ed25519 keypair → challenge → sign → register → cache → renew). This is impractical for most. However, the Token Proxy (sidecar) already handles this complexity for sidecar-based deployments — and Phase 2 fixes the sidecar's security problem. P0 delivers a working, secure system; Phase 3 delivers a better developer experience. Teams that want to avoid the sidecar can treat Phase 3 as a personal P0. Reconsider if sidecar adoption is blocked by the org's infrastructure policies.
+- **Phases 4 and 5 should ship together:** Phase 4 (JWKS) without Phase 5 (key persistence) is a production stability trap — every broker restart invalidates all cached JWKS keys. Build Phase 4 first for development/testing, but do not enable JWKS caching in production until Phase 5 ships.
+
 **Full initiative: 9-14 days total.**
+
+---
+
+## When Does the Sidecar Become Optional?
+
+The sidecar (Token Proxy) is NOT removed — it transitions from **mandatory** to **optional** across the phases. Here's exactly when and how:
+
+| Milestone | Phase | What Happens to the Sidecar |
+|-----------|-------|-----------------------------|
+| **Sidecar is mandatory** | Today | Only path to the broker. Holds master key. Must deploy one per app. |
+| **Alternative path exists** | After 1a+1b | Apps CAN talk directly to the broker via HTTP (authenticate → create launch tokens → register agents). But the developer experience is raw HTTP with Ed25519 crypto — not practical for most developers. Sidecar is still the easier path. |
+| **Sidecar fixed** | After Phase 2 | Sidecar bootstraps with activation token instead of master key. Still works, no longer a security liability. A developer who WANTS a sidecar can use one safely. |
+| **Sidecar truly optional** | After Phase 3 (SDK) | `client.get_token()` gives the same one-call DX that the sidecar provides, but as a library instead of infrastructure. Developers choose: SDK (no infra), sidecar (infra-level caching), or raw HTTP (full control). |
+
+**The sidecar remains in the codebase** as an optional deployment for teams that want infrastructure-level token caching and circuit breaking. It is not deprecated, not removed, and not broken by any phase. After Phase 2, it's actually BETTER (scoped credentials instead of master key).
+
+**What we ARE removing:** The mandatory dependency on the sidecar. After Phase 3, no developer is FORCED to deploy a sidecar to use AgentAuth. They have three paths and can choose the one that fits their environment.
 
 ---
 
@@ -157,6 +178,9 @@ Phases 4 and 5 are independent of everything else (can be built any time).
 | Client secret compromise | Medium | 1a | Per-app secrets (not master key). Rotate one app, revoke instantly. Blast radius limited to one app. |
 | Scope ceiling bypass | High | 1b | `ScopeIsSubset()` enforced at launch token creation. Same attenuation logic used for delegation (battle-tested). |
 | Legacy agent orphans | Low | 1b-1c | Agents without `app_id` continue to work. Operators migrate over time. Null `app_id` is documented and expected. |
+| SQLite schema migration | Medium | 1b-1c | New `app_id` columns on existing tables must be `TEXT DEFAULT NULL` (SQLite `ALTER TABLE` restriction). Added via `InitDB()` with error-tolerant logic. Full spec in Phase 1a. |
+| RevSvc O(n) at app revocation | Medium | 1c | `RevSvc` maintains an `appAgents map[string][]string` in-memory index for O(1) lookup. Spec'd in Phase 1c. |
+| JWKS without key persistence | High | 4 | Do not enable JWKS caching in production without Phase 5. Broker restart changes the key, invalidating all cached JWKS. Ship Phase 4 and Phase 5 together in production. |
 | SDK bugs in Ed25519 | Medium | 3 | Reference implementation using well-known Python crypto libraries. Same math as the existing Go sidecar. |
 | Key file theft | High | 5 | File permissions (0600), optional encryption, audit events on key access. |
 | Backward compatibility break | High | All | Every phase is additive. No existing endpoints, flows, or data models are modified — only extended. |

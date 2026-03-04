@@ -138,3 +138,12 @@ Use AA_ACTIVATION_TOKEN instead. See docs/operations.md for migration steps.
 - Proxy started with `AA_ADMIN_SECRET` logs deprecation warning but still works
 - Audit trail shows which bootstrap method was used for each proxy
 - `aactl app activate` generates and displays the activation token
+
+---
+
+## Testing Workflow
+
+> **Before writing any test code**, extract the user stories from the `## User Stories` section above into a standalone file:
+> `tests/phase-2-user-stories.md`
+>
+> This is required by the project workflow (CLAUDE.md). The coding agent writes user stories first, saves them to `tests/`, then writes test code against them. Do not skip this step.

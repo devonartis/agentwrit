@@ -170,3 +170,12 @@ Custom exception hierarchy:
 - Rate limiting is respected with proper backoff
 - Package installable via pip
 - Works with Python 3.9+
+
+---
+
+## Testing Workflow
+
+> **Before writing any test code**, extract the user stories from the `## User Stories` section above into a standalone file:
+> `tests/phase-3-user-stories.md`
+>
+> This is required by the project workflow (CLAUDE.md). The coding agent writes user stories first, saves them to `tests/`, then writes test code against them. Do not skip this step.

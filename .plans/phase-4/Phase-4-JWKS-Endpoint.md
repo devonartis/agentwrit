@@ -6,6 +6,8 @@
 **Depends on:** Phase 5 (key persistence) for full value, but can be built first
 **Architecture doc:** `../.plans/CoWork-Architecture-Direct-Broker.md`
 
+> ⚠️ **Production Warning:** Phase 4 without Phase 5 is a production stability trap. Without key persistence, the broker generates a new Ed25519 signing key on every restart. Every restart invalidates all cached JWKS keys — and all outstanding JWTs become unverifiable by services using local validation. **Recommendation: ship Phase 4 and Phase 5 together.** Building Phase 4 alone is fine for development and testing, but do not enable JWKS caching in production until Phase 5 is in place.
+
 ---
 
 ## Overview: What We're Building and Why
@@ -137,3 +139,12 @@ Clear documentation explaining:
 JWKS works today — the broker's in-memory Ed25519 key is exposed as a public key. However, without Phase 5 (key persistence), the key changes every time the broker restarts, which means all cached JWKS keys become invalid on restart. Phase 5 makes JWKS reliable for long-term caching.
 
 Recommendation: Build Phase 4 first (it's quick), then Phase 5 makes it robust.
+
+---
+
+## Testing Workflow
+
+> **Before writing any test code**, extract the user stories from the `## User Stories` section above into a standalone file:
+> `tests/phase-4-user-stories.md`
+>
+> This is required by the project workflow (CLAUDE.md). The coding agent writes user stories first, saves them to `tests/`, then writes test code against them. Do not skip this step.

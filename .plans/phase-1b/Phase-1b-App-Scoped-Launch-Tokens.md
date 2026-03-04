@@ -109,3 +109,12 @@ Audit events for launch token creation and agent registration should include the
 - Admin can still create launch tokens without any app — no regressions
 - Existing agents and tokens without `app_id` continue to function normally
 - All operations appear in the audit trail with app attribution where applicable
+
+---
+
+## Testing Workflow
+
+> **Before writing any test code**, extract the user stories from the `## User Stories` section above into a standalone file:
+> `tests/phase-1b-user-stories.md`
+>
+> This is required by the project workflow (CLAUDE.md). The coding agent writes user stories first, saves them to `tests/`, then writes test code against them. Do not skip this step.
