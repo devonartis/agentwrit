@@ -81,6 +81,26 @@ func (rl *RateLimiter) Wrap(next http.Handler) http.Handler {
 	})
 }
 
+// WrapWithKeyExtractor wraps a handler with rate limiting using a custom key.
+// keyExtractor reads the request and returns the rate-limit key.
+// If the extractor returns an empty string, it falls back to client IP.
+// The extractor may modify r.Body (e.g. buffer then reset) so downstream
+// handlers still receive the full body.
+func (rl *RateLimiter) WrapWithKeyExtractor(next http.Handler, keyExtractor func(r *http.Request) string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := keyExtractor(r)
+		if key == "" {
+			key = clientIP(r)
+		}
+		if !rl.Allow(key) {
+			w.Header().Set("Retry-After", "60")
+			problemdetails.WriteProblem(r.Context(), w, http.StatusTooManyRequests, "rate_limited", "rate limit exceeded, try again later", r.URL.Path)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // clientIP extracts the client IP from the request, preferring
 // X-Forwarded-For when present and falling back to RemoteAddr.
 //

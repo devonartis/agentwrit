@@ -187,9 +187,21 @@ Phases 4 and 5 are independent of everything else (can be built any time).
 
 ---
 
+## Tech Debt
+
+Tracked here so it stays visible. Append new entries as tech debt is identified. Each entry links to the ADR or evidence where the decision was made.
+
+| ID | Description | Phase | Severity | Decision | Reference |
+|----|-------------|-------|----------|----------|-----------|
+| TD-001 | `app_rate_limited` audit event not emitted — rate limiter middleware fires before handler audit call. Rate limiting works correctly (429), but no audit trail entry. | 1a | Low | Deferred — observability gap, not a security gap. Fix before Phase 1C (audit completeness phase). | `.plans/phase-1a/ADR-Phase-1a-Tech-Debt.md` |
+| TD-002 | No operator onboarding flow — no `aactl init` or `aactl configure`. Operator must know env var names manually. | 1a | Low | Deferred — future feature: broker generates admin secret on first boot. | `tests/phase-1a/lessons-learned.md` |
+| TD-003 | Sidecar has no defined use case — PRD says "optional" but never defines for what. Code exists in `cmd/sidecar/`, removed from infrastructure. | 1a | Medium | Deferred — re-add when a concrete use case is documented. | `tests/phase-1a/lessons-learned.md` |
+
+---
+
 ## Open Questions
 
-1. **App credential format** — should `client_secret` use a prefix (`sk_live_...`) for easy identification in logs/config, or plain hex? Decision needed in Phase 1a.
+1. **App credential format** — ~~should `client_secret` use a prefix (`sk_live_...`)?~~ **Decided (Session 23):** Plain 64-char hex. No prefix. Revisit in Phase 3 when SDK defines the developer experience.
 2. **Grace period default for secret rotation** — 24 hours proposed. Is this too long or too short for the expected deployment patterns? Decision needed in Phase 1c.
 3. **SDK language priority** — Python first is the plan. Is there demand for JavaScript/TypeScript as a Phase 3b? Decision can wait until Phase 3 is underway.
 4. **JWKS cache TTL** — 1 hour proposed. Should this be configurable? Decision needed in Phase 4.

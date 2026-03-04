@@ -37,8 +37,9 @@ var (
 	ErrTokenNotFound = errors.New("launch token not found")
 	ErrTokenExpired  = errors.New("launch token expired")
 	ErrTokenConsumed = errors.New("launch token already consumed")
-	ErrAgentNotFound    = errors.New("agent not found")
-	ErrCeilingNotFound  = errors.New("sidecar ceiling not found")
+	ErrAgentNotFound   = errors.New("agent not found")
+	ErrCeilingNotFound = errors.New("sidecar ceiling not found")
+	ErrAppNotFound     = errors.New("app not found")
 )
 
 // LaunchTokenRecord represents a pre-authorized launch token created by an
@@ -351,6 +352,12 @@ func (s *SqlStore) InitDB(path string) error {
 		obs.Fail("store", "sqlite", "failed to create revocations table", "error="+err.Error())
 		obs.DBErrorsTotal.WithLabelValues("create_table").Inc()
 		return fmt.Errorf("create revocations table: %w", err)
+	}
+	if _, err = db.Exec(createAppsTable); err != nil {
+		db.Close()
+		obs.Fail("store", "sqlite", "failed to create apps table", "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("create_table").Inc()
+		return fmt.Errorf("create apps table: %w", err)
 	}
 	s.db = db
 	obs.Ok("store", "sqlite", "database initialized", "path="+path)
@@ -758,6 +765,262 @@ func (s *SqlStore) LoadAllSidecars() (map[string][]string, error) {
 // ---------------------------------------------------------------------------
 // SQLite revocation persistence
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// App persistence
+// ---------------------------------------------------------------------------
+
+// AppRecord stores the persistent state of a registered application.
+// Each app has its own scoped credentials (client_id + bcrypt-hashed secret)
+// and a scope ceiling that caps what agents the app may create.
+type AppRecord struct {
+	AppID            string    // "app-{name}-{random6hex}"
+	Name             string    // Human-readable, unique
+	ClientID         string    // "{abbrev}-{random12hex}"
+	ClientSecretHash string    // bcrypt hash of the client secret (never returned)
+	ScopeCeiling     []string  // Scope ceiling; JSON-marshaled in DB
+	Status           string    // "active" | "inactive"
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	CreatedBy        string
+}
+
+const createAppsTable = `
+CREATE TABLE IF NOT EXISTS apps (
+	app_id            TEXT PRIMARY KEY,
+	name              TEXT NOT NULL UNIQUE,
+	client_id         TEXT NOT NULL UNIQUE,
+	client_secret_hash TEXT NOT NULL,
+	scope_ceiling     TEXT NOT NULL,
+	status            TEXT NOT NULL DEFAULT 'active',
+	created_at        TEXT NOT NULL,
+	updated_at        TEXT NOT NULL,
+	created_by        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_apps_client_id ON apps(client_id);
+CREATE INDEX IF NOT EXISTS idx_apps_status ON apps(status);
+`
+
+// SaveApp inserts a new app record. Returns an error if a record with the
+// same name or client_id already exists (UNIQUE constraint violation).
+func (s *SqlStore) SaveApp(rec AppRecord) error {
+	if s.db == nil {
+		return errors.New("database not initialized: call InitDB first")
+	}
+
+	scopeJSON, err := json.Marshal(rec.ScopeCeiling)
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to marshal scope ceiling", "app_id="+rec.AppID, "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("marshal_scope_ceiling").Inc()
+		return fmt.Errorf("marshal scope ceiling for app %s: %w", rec.AppID, err)
+	}
+
+	const q = `INSERT INTO apps
+		(app_id, name, client_id, client_secret_hash, scope_ceiling, status, created_at, updated_at, created_by)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+	_, err = s.db.Exec(q,
+		rec.AppID,
+		rec.Name,
+		rec.ClientID,
+		rec.ClientSecretHash,
+		string(scopeJSON),
+		rec.Status,
+		rec.CreatedAt.UTC().Format(time.RFC3339Nano),
+		rec.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		rec.CreatedBy,
+	)
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to save app", "app_id="+rec.AppID, "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("save_app").Inc()
+		return fmt.Errorf("save app %s: %w", rec.AppID, err)
+	}
+	obs.Ok("store", "sqlite", "app saved", "app_id="+rec.AppID)
+	return nil
+}
+
+// GetAppByClientID looks up an app by client_id. Returns [ErrAppNotFound]
+// if no app with that client_id exists.
+func (s *SqlStore) GetAppByClientID(clientID string) (*AppRecord, error) {
+	if s.db == nil {
+		return nil, errors.New("database not initialized: call InitDB first")
+	}
+
+	const q = `SELECT app_id, name, client_id, client_secret_hash, scope_ceiling, status, created_at, updated_at, created_by
+		FROM apps WHERE client_id = ?`
+
+	return s.scanAppRow(s.db.QueryRow(q, clientID))
+}
+
+// GetAppByID looks up an app by app_id. Returns [ErrAppNotFound] if no app
+// with that ID exists.
+func (s *SqlStore) GetAppByID(appID string) (*AppRecord, error) {
+	if s.db == nil {
+		return nil, errors.New("database not initialized: call InitDB first")
+	}
+
+	const q = `SELECT app_id, name, client_id, client_secret_hash, scope_ceiling, status, created_at, updated_at, created_by
+		FROM apps WHERE app_id = ?`
+
+	return s.scanAppRow(s.db.QueryRow(q, appID))
+}
+
+// scanAppRow scans a single *sql.Row into an AppRecord.
+// Returns [ErrAppNotFound] on sql.ErrNoRows.
+func (s *SqlStore) scanAppRow(row *sql.Row) (*AppRecord, error) {
+	var rec AppRecord
+	var scopeStr, createdStr, updatedStr string
+	err := row.Scan(
+		&rec.AppID, &rec.Name, &rec.ClientID, &rec.ClientSecretHash,
+		&scopeStr, &rec.Status, &createdStr, &updatedStr, &rec.CreatedBy,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrAppNotFound
+	}
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to scan app row", "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("scan_app").Inc()
+		return nil, fmt.Errorf("scan app: %w", err)
+	}
+	if err := json.Unmarshal([]byte(scopeStr), &rec.ScopeCeiling); err != nil {
+		obs.Fail("store", "sqlite", "failed to unmarshal scope ceiling", "app_id="+rec.AppID, "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("unmarshal_scope_ceiling").Inc()
+		return nil, fmt.Errorf("unmarshal scope ceiling for app %s: %w", rec.AppID, err)
+	}
+	ca, err := time.Parse(time.RFC3339Nano, createdStr)
+	if err != nil {
+		return nil, fmt.Errorf("parse created_at %q: %w", createdStr, err)
+	}
+	ua, err := time.Parse(time.RFC3339Nano, updatedStr)
+	if err != nil {
+		return nil, fmt.Errorf("parse updated_at %q: %w", updatedStr, err)
+	}
+	rec.CreatedAt = ca
+	rec.UpdatedAt = ua
+	return &rec, nil
+}
+
+// ListApps returns all app records ordered by created_at DESC.
+func (s *SqlStore) ListApps() ([]AppRecord, error) {
+	if s.db == nil {
+		return nil, errors.New("database not initialized: call InitDB first")
+	}
+
+	const q = `SELECT app_id, name, client_id, client_secret_hash, scope_ceiling, status, created_at, updated_at, created_by
+		FROM apps ORDER BY created_at DESC`
+
+	rows, err := s.db.Query(q)
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to list apps", "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("list_apps").Inc()
+		return nil, fmt.Errorf("list apps: %w", err)
+	}
+	defer rows.Close()
+
+	var apps []AppRecord
+	for rows.Next() {
+		var rec AppRecord
+		var scopeStr, createdStr, updatedStr string
+		if err := rows.Scan(
+			&rec.AppID, &rec.Name, &rec.ClientID, &rec.ClientSecretHash,
+			&scopeStr, &rec.Status, &createdStr, &updatedStr, &rec.CreatedBy,
+		); err != nil {
+			obs.Fail("store", "sqlite", "failed to scan app row", "error="+err.Error())
+			obs.DBErrorsTotal.WithLabelValues("scan_app").Inc()
+			return nil, fmt.Errorf("scan app: %w", err)
+		}
+		if err := json.Unmarshal([]byte(scopeStr), &rec.ScopeCeiling); err != nil {
+			obs.Fail("store", "sqlite", "failed to unmarshal scope ceiling", "app_id="+rec.AppID, "error="+err.Error())
+			obs.DBErrorsTotal.WithLabelValues("unmarshal_scope_ceiling").Inc()
+			return nil, fmt.Errorf("unmarshal scope ceiling for app %s: %w", rec.AppID, err)
+		}
+		ca, err := time.Parse(time.RFC3339Nano, createdStr)
+		if err != nil {
+			return nil, fmt.Errorf("parse created_at %q: %w", createdStr, err)
+		}
+		ua, err := time.Parse(time.RFC3339Nano, updatedStr)
+		if err != nil {
+			return nil, fmt.Errorf("parse updated_at %q: %w", updatedStr, err)
+		}
+		rec.CreatedAt = ca
+		rec.UpdatedAt = ua
+		apps = append(apps, rec)
+	}
+	if err := rows.Err(); err != nil {
+		obs.Fail("store", "sqlite", "row iteration error on apps", "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("iterate_apps").Inc()
+		return nil, fmt.Errorf("iterate apps: %w", err)
+	}
+	if apps == nil {
+		apps = []AppRecord{}
+	}
+	obs.Ok("store", "sqlite", "apps listed", fmt.Sprintf("count=%d", len(apps)))
+	return apps, nil
+}
+
+// UpdateAppCeiling replaces the scope ceiling for an existing app.
+// Returns [ErrAppNotFound] if no app with the given app_id exists.
+func (s *SqlStore) UpdateAppCeiling(appID string, newCeiling []string) error {
+	if s.db == nil {
+		return errors.New("database not initialized: call InitDB first")
+	}
+
+	scopeJSON, err := json.Marshal(newCeiling)
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to marshal scope ceiling", "app_id="+appID, "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("marshal_scope_ceiling").Inc()
+		return fmt.Errorf("marshal scope ceiling for app %s: %w", appID, err)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	const q = `UPDATE apps SET scope_ceiling = ?, updated_at = ? WHERE app_id = ?`
+	res, err := s.db.Exec(q, string(scopeJSON), now, appID)
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to update app ceiling", "app_id="+appID, "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("update_app_ceiling").Inc()
+		return fmt.Errorf("update app ceiling %s: %w", appID, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to get rows affected", "app_id="+appID, "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("update_app_ceiling").Inc()
+		return fmt.Errorf("rows affected for app %s: %w", appID, err)
+	}
+	if n == 0 {
+		return ErrAppNotFound
+	}
+	obs.Ok("store", "sqlite", "app ceiling updated", "app_id="+appID)
+	return nil
+}
+
+// UpdateAppStatus sets the status field for an existing app (e.g., "active"
+// or "inactive"). Returns [ErrAppNotFound] if no app with the given app_id
+// exists.
+func (s *SqlStore) UpdateAppStatus(appID string, status string) error {
+	if s.db == nil {
+		return errors.New("database not initialized: call InitDB first")
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	const q = `UPDATE apps SET status = ?, updated_at = ? WHERE app_id = ?`
+	res, err := s.db.Exec(q, status, now, appID)
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to update app status", "app_id="+appID, "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("update_app_status").Inc()
+		return fmt.Errorf("update app status %s: %w", appID, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to get rows affected", "app_id="+appID, "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("update_app_status").Inc()
+		return fmt.Errorf("rows affected for app %s: %w", appID, err)
+	}
+	if n == 0 {
+		return ErrAppNotFound
+	}
+	obs.Ok("store", "sqlite", "app status updated", "app_id="+appID, "status="+status)
+	return nil
+}
 
 // RevocationEntry represents a single persisted revocation.
 type RevocationEntry struct {
