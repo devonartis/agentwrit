@@ -55,6 +55,7 @@ type LaunchTokenRecord struct {
 	ExpiresAt    time.Time
 	ConsumedAt   *time.Time
 	CreatedBy    string
+	AppID        string // empty for admin-created tokens
 }
 
 // AgentRecord stores the persistent state of a registered agent,
@@ -68,6 +69,7 @@ type AgentRecord struct {
 	Scope        []string
 	RegisteredAt time.Time
 	LastSeen     time.Time
+	AppID        string // empty for agents not created via an app
 }
 
 // SidecarRecord stores the persistent state of an activated sidecar.
