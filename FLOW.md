@@ -25,11 +25,37 @@ Format:
 
 ---
 
-## Next session: Start Phase 1B
+## Next session: Execute Phase 0 live tests
 
-**Branch:** `feature/phase-1a-app-registration` is ready to merge to `develop` (10/12 stories PASS, 2 PARTIAL — tech debt only).
-**Tech debt deferred:** `app_rate_limited` audit event not emitted. Documented in `.plans/phase-1a/ADR-Phase-1a-Tech-Debt.md`. Not blocking — rate limiter works, it's an observability gap.
-**Action:** Merge Phase 1A → develop. Create `feature/phase-1b-launch-tokens`. Extract user stories from `.plans/phase-1b/` spec into `tests/phase-1b/user-stories.md` before writing code. Include Phase 1A regression stories (see `tests/phase-1b/README.md`).
+**Branch:** `fix/phase-0-legacy-cleanup` — Tasks 0.1 + 0.2 complete, all unit tests pass. Docker stack is up.
+**Action:** Execute 12 Phase 0 live test stories per `tests/phase-0/user-stories.md`. Fill evidence actuals. Then Tasks 0.3 + 0.4 (docs). Commit. Merge to develop. Resume Phase 1B.
+
+---
+
+## 2026-03-04 (Session 26 — Phase 0 Legacy Cleanup)
+
+### Decision: Skip brainstorming when design already exists
+
+Brainstorming skill was invoked but stopped — Phase 0 spec (`.plans/phase-0/Phase-0-Legacy-Cleanup.md`) was already a complete, approved design from Session 25. Went straight to executing-plans. Lesson: don't brainstorm what's already designed.
+
+### Decision: Admin auth — detect old format, return migration guidance
+
+For admin auth (Task 0.2), instead of silently failing or returning a generic 400, the broker now detects the old `{"client_id", "client_secret"}` format and returns a specific error: "Use `{"secret": "..."}` instead of client_id/client_secret". This costs a few extra lines but prevents hours of debugging for anyone with old scripts. The detection reads the body once and tries both unmarshals.
+
+### Decision: Keep sidecar handler methods, remove only routes
+
+Task 0.1 removed route registrations from `RegisterRoutes()` and `main.go` but kept the handler methods in `internal/admin/admin_hdl.go`. The methods are tested independently of routes and will be re-wired in Phase 2 with app-scoped activation tokens. Deleted the route-based tests since they'd get 404s. Skipped (not deleted) sidecar integration tests in `cmd/sidecar/`.
+
+### Decision: Live test evidence must be one test per file, plain language
+
+Divine's feedback during live testing: evidence files were being written with multiple checks bundled together ("check all 6 routes in one file") and using technical jargon ("new auth shape"). Rules established:
+- **One test per evidence file.** Each file has one action, one banner, one result.
+- **Plain language.** "The operator tries to log in with..." not "the new auth shape". An executive should understand it.
+- **Who, what, why in the banner.** The Context section tells you who is doing the work, what they're doing, where (Docker broker at 127.0.0.1:8080), and why it matters.
+- **Operator uses aactl, developer uses curl.** No mixing personas.
+→ Template: `tests/LIVE-TEST-TEMPLATE.md`
+→ Phase 0 stories: `tests/phase-0/user-stories.md` (12 stories)
+→ Evidence plans: `tests/phase-0/evidence/` (12 files, Pass 1 complete)
 
 ---
 

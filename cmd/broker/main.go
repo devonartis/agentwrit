@@ -16,16 +16,12 @@
 //	POST   /v1/register                – agent registration (launch-token auth)
 //	POST   /v1/token/validate          – verify a token (public)
 //	POST   /v1/token/renew             – renew a token (Bearer auth)
-//	POST   /v1/token/exchange          – sidecar token exchange (Bearer auth + sidecar scope)
 //	POST   /v1/token/release           – agent self-revocation (Bearer auth)
 //	POST   /v1/delegate                – scope-attenuated delegation (Bearer auth)
 //	POST   /v1/revoke                  – revoke tokens (admin scope)
 //	GET    /v1/audit/events            – query audit trail (admin scope)
-//	GET    /v1/admin/sidecars          – list registered sidecars (admin scope)
 //	POST   /v1/admin/auth              – admin authentication (public)
 //	POST   /v1/admin/launch-tokens     – create launch token (admin scope)
-//	POST   /v1/admin/sidecar-activations – create sidecar activation token (admin scope)
-//	POST   /v1/sidecar/activate        – exchange sidecar activation token (public, single-use)
 //	POST   /v1/admin/apps              – register app (admin scope)
 //	GET    /v1/admin/apps              – list apps (admin scope)
 //	GET    /v1/admin/apps/{id}         – get app details (admin scope)
@@ -97,20 +93,7 @@ func main() {
 	obs.Ok("BROKER", "main", "audit events loaded", fmt.Sprintf("count=%d", len(existingEvents)))
 	obs.AuditEventsLoaded.Set(float64(len(existingEvents)))
 
-	// Load existing sidecars from SQLite to populate ceiling map
-	sidecarCeilings, err := sqlStore.LoadAllSidecars()
-	if err != nil {
-		obs.Fail("BROKER", "main", "sidecar load failed", "error="+err.Error())
-		fmt.Fprintf(os.Stderr, "FATAL: load sidecars: %v\n", err)
-		os.Exit(1)
-	}
-	for id, ceiling := range sidecarCeilings {
-		if err := sqlStore.SaveCeiling(id, ceiling); err != nil {
-			obs.Fail("BROKER", "main", "failed to restore sidecar ceiling", "id="+id)
-		}
-	}
-	obs.Ok("BROKER", "main", "sidecars loaded", fmt.Sprintf("count=%d", len(sidecarCeilings)))
-	obs.SidecarsTotal.WithLabelValues("active").Set(float64(len(sidecarCeilings)))
+	// Sidecar ceiling loading removed in Phase 0 — no sidecar routes on broker.
 
 	// Load existing revocations from SQLite
 	revEntries, err := sqlStore.LoadAllRevocations()
@@ -159,7 +142,7 @@ func main() {
 	revokeHdl := handler.NewRevokeHdl(revSvc, auditLog)
 	releaseHdl := handler.NewReleaseHdl(revSvc, auditLog)
 	delegHdl := handler.NewDelegHdl(delegSvc)
-	tokenExchangeHdl := handler.NewTokenExchangeHdl(tknSvc, sqlStore, auditLog)
+	// tokenExchangeHdl removed in Phase 0 — sidecar token exchange returns Phase 2
 	auditHdl := handler.NewAuditHdl(auditLog)
 	healthHdl := handler.NewHealthHdl(version, auditLog, sqlStore)
 	metricsHdl := handler.NewMetricsHdl()
@@ -182,8 +165,7 @@ func main() {
 
 	// Authenticated endpoints (Bearer token)
 	mux.Handle("POST /v1/token/renew", problemdetails.MaxBytesBody(valMw.Wrap(renewHdl)))
-	mux.Handle("POST /v1/token/exchange",
-		problemdetails.MaxBytesBody(valMw.Wrap(valMw.RequireScope("sidecar:manage:*", tokenExchangeHdl))))
+	// POST /v1/token/exchange removed in Phase 0 (sidecar route, returns Phase 2)
 	mux.Handle("POST /v1/delegate", problemdetails.MaxBytesBody(valMw.Wrap(delegHdl)))
 	mux.Handle("POST /v1/token/release", problemdetails.MaxBytesBody(valMw.Wrap(releaseHdl)))
 

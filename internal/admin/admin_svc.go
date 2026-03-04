@@ -159,19 +159,19 @@ func (s *AdminSvc) audienceSlice() []string {
 	return []string{s.audience}
 }
 
-// Authenticate validates the client secret using constant-time comparison
+// Authenticate validates the admin secret using constant-time comparison
 // (preventing timing attacks) and issues a short-lived admin JWT with
 // the full admin scope set. It returns [ErrInvalidSecret] on mismatch.
-func (s *AdminSvc) Authenticate(clientID, clientSecret string) (*token.IssueResp, error) {
-	secretBytes := []byte(clientSecret)
+func (s *AdminSvc) Authenticate(secret string) (*token.IssueResp, error) {
+	secretBytes := []byte(secret)
 
 	// Constant-time comparison to prevent timing attacks (Security Invariant #8).
 	if subtle.ConstantTimeCompare(secretBytes, s.adminSecret) != 1 {
 		obs.AdminAuthTotal.WithLabelValues("failure").Inc()
-		obs.Warn(mod, cmp, "authentication failed", "client_id="+clientID)
+		obs.Warn(mod, cmp, "authentication failed")
 		if s.auditLog != nil {
 			s.auditLog.Record(audit.EventAdminAuthFailed, "", "", "",
-				fmt.Sprintf("failed authentication attempt for client_id=%s", clientID),
+				"failed admin authentication attempt",
 				audit.WithOutcome("denied"))
 		}
 		return nil, ErrInvalidSecret
@@ -189,7 +189,7 @@ func (s *AdminSvc) Authenticate(clientID, clientSecret string) (*token.IssueResp
 	}
 
 	obs.AdminAuthTotal.WithLabelValues("success").Inc()
-	obs.Ok(mod, cmp, "admin authenticated", "client_id="+clientID)
+	obs.Ok(mod, cmp, "admin authenticated")
 	if s.auditLog != nil {
 		s.auditLog.Record(audit.EventAdminAuth, "", "", "",
 			fmt.Sprintf("admin authenticated as %s", adminSub),

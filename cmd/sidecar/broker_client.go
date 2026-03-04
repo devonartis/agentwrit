@@ -96,8 +96,7 @@ func (c *brokerClient) healthCheck() error {
 // and returns the admin JWT. Calls POST /v1/admin/auth.
 func (c *brokerClient) adminAuth(secret string) (string, error) {
 	body, err := json.Marshal(map[string]string{
-		"client_id":     "sidecar",
-		"client_secret": secret,
+		"secret": secret,
 	})
 	if err != nil {
 		return "", fmt.Errorf("marshal admin auth request: %w", err)
