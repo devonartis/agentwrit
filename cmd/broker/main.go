@@ -163,7 +163,7 @@ func main() {
 	auditHdl := handler.NewAuditHdl(auditLog)
 	healthHdl := handler.NewHealthHdl(version, auditLog, sqlStore)
 	metricsHdl := handler.NewMetricsHdl()
-	adminHdl := admin.NewAdminHdl(adminSvc, valMw, auditLog, revSvc)
+	adminHdl := admin.NewAdminHdl(adminSvc, valMw, auditLog, revSvc, sqlStore)
 	appHdl := app.NewAppHdl(appSvc, valMw)
 
 	// Route table per Tech Spec Section 2
@@ -222,7 +222,7 @@ func seedLaunch(adminSvc *admin.AdminSvc) {
 		AllowedScope: []string{"*:*:*"},
 		MaxTTL:       3600,
 		TTL:          3600,
-	}, "seed")
+	}, "seed", "")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "WARN: seed launch token: %v\n", err)
 		return

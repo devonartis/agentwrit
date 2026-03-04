@@ -203,7 +203,7 @@ func (s *AdminSvc) Authenticate(clientID, clientSecret string) (*token.IssueResp
 // token and binds it to the given policy (scope ceiling, max TTL,
 // single-use flag). The createdBy parameter is the subject of the admin
 // who issued the request (for audit purposes).
-func (s *AdminSvc) CreateLaunchToken(req CreateLaunchTokenReq, createdBy string) (*CreateLaunchTokenResp, error) {
+func (s *AdminSvc) CreateLaunchToken(req CreateLaunchTokenReq, createdBy, appID string) (*CreateLaunchTokenResp, error) {
 	if req.AgentName == "" {
 		return nil, ErrAgentNameEmpty
 	}
@@ -243,6 +243,7 @@ func (s *AdminSvc) CreateLaunchToken(req CreateLaunchTokenReq, createdBy string)
 		CreatedAt:    now,
 		ExpiresAt:    expiresAt,
 		CreatedBy:    createdBy,
+		AppID:        appID,
 	}
 
 	if err := s.store.SaveLaunchToken(*rec); err != nil {

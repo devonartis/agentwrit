@@ -124,7 +124,7 @@ func TestCreateLaunchToken_Success(t *testing.T) {
 		TTL:          30,
 	}
 
-	resp, err := svc.CreateLaunchToken(req, adminSub)
+	resp, err := svc.CreateLaunchToken(req, adminSub, "")
 	if err != nil {
 		t.Fatalf("expected success, got err: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestCreateLaunchToken_Defaults(t *testing.T) {
 		AllowedScope: []string{"read:Orders:*"},
 	}
 
-	resp, err := svc.CreateLaunchToken(req, adminSub)
+	resp, err := svc.CreateLaunchToken(req, adminSub, "")
 	if err != nil {
 		t.Fatalf("expected success, got err: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestCreateLaunchToken_MissingAgentName(t *testing.T) {
 		AllowedScope: []string{"read:Customers:*"},
 	}
 
-	_, err := svc.CreateLaunchToken(req, adminSub)
+	_, err := svc.CreateLaunchToken(req, adminSub, "")
 	if err != ErrAgentNameEmpty {
 		t.Errorf("expected ErrAgentNameEmpty, got: %v", err)
 	}
@@ -194,7 +194,7 @@ func TestCreateLaunchToken_EmptyScope(t *testing.T) {
 		AllowedScope: []string{},
 	}
 
-	_, err := svc.CreateLaunchToken(req, adminSub)
+	_, err := svc.CreateLaunchToken(req, adminSub, "")
 	if err != ErrScopeEmpty {
 		t.Errorf("expected ErrScopeEmpty, got: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestValidateLaunchToken_Success(t *testing.T) {
 		AgentName:    "agent-a",
 		AllowedScope: []string{"read:Customers:*"},
 		TTL:          60,
-	}, adminSub)
+	}, adminSub, "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestValidateLaunchToken_Expired(t *testing.T) {
 		AgentName:    "agent-exp",
 		AllowedScope: []string{"read:Customers:*"},
 		TTL:          1,
-	}, adminSub)
+	}, adminSub, "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestConsumeLaunchToken_SingleUse(t *testing.T) {
 		AllowedScope: []string{"read:Customers:*"},
 		SingleUse:    &singleUse,
 		TTL:          60,
-	}, adminSub)
+	}, adminSub, "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -308,7 +308,7 @@ func TestConsumeLaunchToken_MultiUse(t *testing.T) {
 		AllowedScope: []string{"read:Customers:*"},
 		SingleUse:    &multiUse,
 		TTL:          60,
-	}, adminSub)
+	}, adminSub, "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -344,7 +344,7 @@ func TestCreateLaunchToken_UniqueTokens(t *testing.T) {
 		resp, err := svc.CreateLaunchToken(CreateLaunchTokenReq{
 			AgentName:    "agent",
 			AllowedScope: []string{"read:Customers:*"},
-		}, adminSub)
+		}, adminSub, "")
 		if err != nil {
 			t.Fatalf("iteration %d: %v", i, err)
 		}
@@ -363,7 +363,7 @@ func TestCreateLaunchToken_HexFormat(t *testing.T) {
 	resp, err := svc.CreateLaunchToken(CreateLaunchTokenReq{
 		AgentName:    "agent",
 		AllowedScope: []string{"read:Customers:*"},
-	}, adminSub)
+	}, adminSub, "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
