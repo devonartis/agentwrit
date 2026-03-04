@@ -57,8 +57,7 @@ func newTestAppMux(t *testing.T) (*http.ServeMux, *AppSvc) {
 func getAdminToken(t *testing.T, mux *http.ServeMux) string {
 	t.Helper()
 	body, _ := json.Marshal(map[string]string{
-		"client_id":     "admin-client",
-		"client_secret": testAdminSecret,
+		"secret": testAdminSecret,
 	})
 	req := httptest.NewRequest(http.MethodPost, "/v1/admin/auth", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
