@@ -2,6 +2,7 @@ package authz
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -145,6 +146,38 @@ func (m *ValMw) RequireScope(scope string, next http.Handler) http.Handler {
 		}
 
 		next.ServeHTTP(w, r)
+	})
+}
+
+// RequireAnyScope returns a handler that checks that the authenticated
+// token's scopes cover at least one of the given scopes. This enables
+// endpoints to accept multiple caller types (e.g., both admin and app
+// JWTs). It must be used after [ValMw.Wrap] so that claims are present
+// in the context. If none of the scopes match it responds with a 403
+// RFC 7807 problem response and records a scope_violation audit event.
+func (m *ValMw) RequireAnyScope(scopes []string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims := ClaimsFromContext(r.Context())
+		if claims == nil {
+			problemdetails.WriteProblem(r.Context(), w, 401, "unauthorized", "no claims in context", r.URL.Path)
+			return
+		}
+
+		for _, scope := range scopes {
+			if ScopeIsSubset([]string{scope}, claims.Scope) {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+
+		if m.auditLog != nil {
+			m.auditLog.Record(audit.EventScopeViolation, claims.Sub, claims.TaskId, claims.OrchId,
+				fmt.Sprintf("scope_violation | required_any=%v | actual=%s | path=%s",
+					scopes, strings.Join(claims.Scope, ","), r.URL.Path),
+				audit.WithOutcome("denied"), audit.WithResource(r.URL.Path))
+		}
+		problemdetails.WriteProblem(r.Context(), w, 403, "insufficient_scope",
+			fmt.Sprintf("token lacks required scope: requires one of %v", scopes), r.URL.Path)
 	})
 }
 
