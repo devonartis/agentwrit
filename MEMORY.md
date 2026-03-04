@@ -180,10 +180,26 @@ Divine's feedback: the template was a skeleton — nobody could follow it. Rewro
 - Banner format broken down (who/what/why/how/expected) with good vs bad language examples
 - 11 rules including "one story at a time," "output goes in the file," "verdict is earned"
 
+### Phase 0 merged to develop, develop merged into Phase 1B
+
+- `a83466d` — committed Phase 0 on `fix/phase-0-legacy-cleanup`
+- `882b39c` — merged `fix/phase-0-legacy-cleanup` → `develop` (no conflicts)
+- `52c6b7d` — merged `develop` → `feature/phase-1b-launch-tokens` (two conflicts resolved)
+
+**Conflict resolution on merge into 1B:**
+- `FLOW.md` — kept both session entries (1B's Session 24 + Phase 0's Sessions 26-27), ordered chronologically
+- `internal/admin/admin_hdl_test.go` — two conflicts:
+  1. Imports: kept `path/filepath` and `strings` (needed by 1B's app ceiling tests), added `audit` import (needed by `newAppTestMux`), dropped `revoke` (only used by deleted sidecar tests)
+  2. Test body: removed old sidecar route tests (lines 278-733, deleted by Phase 0), kept Phase 1B's app ceiling enforcement tests (`TestCreateLaunchToken_*`), kept Phase 0's removal comment
+- All 15 packages pass after resolution
+
+**Current state:** on `feature/phase-1b-launch-tokens`, up to date with develop. Ready for Phase 1B Docker live tests.
+
 ### What's next
 
-1. Merge `fix/phase-0-legacy-cleanup` → `develop`
-2. Resume Phase 1B (app-scoped launch tokens)
+1. Run Phase 1B Docker live tests (11 stories from `tests/phase-1b/user-stories.md`)
+2. Save evidence to `tests/phase-1b/evidence/` following `tests/LIVE-TEST-TEMPLATE.md`
+3. Merge Phase 1B → develop
 
 ---
 
