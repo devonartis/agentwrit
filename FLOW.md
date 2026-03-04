@@ -25,11 +25,47 @@ Format:
 
 ---
 
-## Next session: Start Phase 1B
+## Next session: Docker live test for Phase 1B
 
-**Branch:** `feature/phase-1a-app-registration` is ready to merge to `develop` (10/12 stories PASS, 2 PARTIAL — tech debt only).
-**Tech debt deferred:** `app_rate_limited` audit event not emitted. Documented in `.plans/phase-1a/ADR-Phase-1a-Tech-Debt.md`. Not blocking — rate limiter works, it's an observability gap.
-**Action:** Merge Phase 1A → develop. Create `feature/phase-1b-launch-tokens`. Extract user stories from `.plans/phase-1b/` spec into `tests/phase-1b/user-stories.md` before writing code. Include Phase 1A regression stories (see `tests/phase-1b/README.md`).
+**Branch:** `feature/phase-1b-launch-tokens` — 7 commits, all unit tests green (15 packages). Code complete, needs Docker live test before merge.
+**Action:** Run `./scripts/stack_up.sh`, execute all 11 stories from `tests/phase-1b/user-stories.md`, save evidence to `tests/phase-1b/evidence/`, merge to develop.
+
+---
+
+## 2026-03-04 (Session 24 — Phase 1B Implementation)
+
+### writing-plans: Phase 1B App-Scoped Launch Tokens
+
+Created detailed implementation plan from the Phase 1b spec. 9 tasks across 5 batches. Key architectural decisions: one endpoint two callers (RequireAnyScope instead of separate route), ceiling enforcement at handler level (not service), app JWT scopes stay hard-coded (ceiling enforced at use-time not token-issuance).
+→ Artifact: `.plans/phase-1b/Phase-1b-Implementation-Plan.md`
+
+### subagent-driven-development: Phase 1B Execution
+
+Executed all 9 tasks using fresh subagent per task with parallel dispatch for independent work. Batch 1 (3 tasks) ran in parallel — minor git collision on sql_store.go resolved cleanly. Batch 2 was the core task (8 files changed). Batch 3 ran 2 tasks in parallel. Total: 7 commits, 302+ lines of new code, 22 doc comments added.
+
+### Decision: One endpoint, two callers — not separate routes
+
+The spec says "apps use the existing launch token endpoint, just with different auth." Instead of creating `POST /v1/app/launch-tokens`, we added `RequireAnyScope` middleware that accepts either `admin:launch-tokens:*` or `app:launch-tokens:*`. This avoids handler duplication and keeps the API surface minimal. The handler detects caller type from JWT `sub` prefix (`app:` vs `admin`).
+
+### Decision: Ceiling enforcement at handler level
+
+The handler extracts `app_id` from JWT `sub`, looks up `AppRecord.ScopeCeiling`, and runs `ScopeIsSubset` before calling the service. This keeps the service layer pure — `CreateLaunchToken` doesn't need to know about auth context. The handler is the right place because it already has claims in context.
+
+### Decision: App JWT scopes stay hard-coded
+
+Phase 1a issues all app JWTs with `["app:launch-tokens:*", "app:agents:*", "app:audit:read"]` regardless of app ceiling. This is correct — those are API-level permissions ("you can call this endpoint"), not delegation permissions. The ceiling is enforced when the app *uses* those permissions (creating launch tokens). Changing `AuthenticateApp` was explicitly out of scope.
+
+### Decision: AppID as optional empty string, not pointer
+
+`AppID string` (not `*string`) on both `LaunchTokenRecord` and `AgentRecord`. Empty string means admin-created. Simpler than nil-pointer handling, consistent with how `CreatedBy` works. No migration needed for in-memory records.
+
+### Process lesson: User stories before code
+
+The plan had user stories as Task 8, but CLAUDE.md standing rule says "Write user stories FIRST, save to tests/, before writing test code." We wrote code first, then created user stories. Future sessions: extract user stories as Task 1 regardless of what the plan says. The standing rule overrides the plan.
+
+### Audit: Doc comment quality gate
+
+22 Go doc comments added across 5 files (Priority 1-3 from audit). All exported Phase 1a and 1b types, methods, and struct fields now have professional doc comments. Key improvements: `CreateLaunchToken` appID param documented, `LaunchTokenRecord` and `AgentRecord` fields fully documented, `RegisterAppResp.ClientSecret` plaintext-once rule documented.
 
 ---
 

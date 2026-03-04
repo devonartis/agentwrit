@@ -133,14 +133,79 @@ Ran Phase 1A Docker live test (Task 6). Found infrastructure and process problem
 
 ### What's next
 
-1. Fix branch `fix/phase-1a-rate-limit-audit` for the missing audit event
-2. Re-run Story 9 + Story 10 to verify
-3. Merge Phase 1A to develop
-4. Begin Phase 1B (app-scoped launch tokens)
+1. Docker live test for Phase 1B — `./scripts/stack_up.sh` + run 11 stories from `tests/phase-1b/user-stories.md`
+2. Save evidence to `tests/phase-1b/evidence/` with per-story files + README verdict table
+3. Merge `feature/phase-1b-launch-tokens` → `develop`
+4. Begin Phase 1C (app revocation + audit + secret rotation)
+5. TD-001 (`app_rate_limited` audit event) — fix before Phase 1C
 
 ---
 
-## 2026-03-03 (Session 22b — Phase 1a Tasks 4-5 Complete)
+## 2026-03-04 (Session 24 — Phase 1B Implementation)
+
+### What happened
+
+Phase 1B (app-scoped launch tokens) implemented via subagent-driven development. Apps can now create launch tokens within their scope ceiling. The traceability chain App → Launch Token → Agent is established.
+
+### Git operations
+
+- Created branch: `feature/phase-1b-launch-tokens` (from `develop`)
+- 7 commits on branch, all unit tests green (15 packages)
+
+### Work completed
+
+**Task 1 — RequireAnyScope middleware** (`internal/authz/val_mw.go`)
+- New `RequireAnyScope(scopes []string, next http.Handler)` — accepts if token carries ANY of the listed scopes
+- 3 tests: app passes, admin passes, neither rejected
+
+**Tasks 2-3 — AppID fields** (`internal/store/sql_store.go`)
+- `LaunchTokenRecord.AppID` — empty for admin-created tokens
+- `AgentRecord.AppID` — inherited from launch token at registration
+
+**Task 4 — Core ceiling enforcement** (`internal/admin/admin_hdl.go`, `admin_svc.go`, `cmd/broker/main.go`)
+- Route changed to `RequireAnyScope(["admin:launch-tokens:*", "app:launch-tokens:*"])`
+- Handler detects app caller via `strings.HasPrefix(claims.Sub, "app:")`, looks up AppRecord, enforces `ScopeIsSubset(requested, ceiling)`
+- `CreateLaunchToken` signature: added `appID string` param
+- `AdminHdl` receives `*store.SqlStore` for app lookups
+- 6 new tests: within ceiling, exceeds ceiling, carries AppID, admin no ceiling, admin regression, audit on ceiling exceeded
+- All 8 call sites updated across codebase
+
+**Task 5 — AppID flows to agent** (`internal/identity/id_svc.go`)
+- `SaveAgent` now sets `AppID: ltRec.AppID`
+- 2 new tests: inherits from app token, empty from admin token
+
+**Task 6 — Audit attribution** (`internal/admin/admin_svc.go`, `internal/identity/id_svc.go`)
+- `launch_token_issued` detail includes `app_id=` when app-created
+- `agent_registered` and `token_issued` detail includes `app_id=` when app-traced
+- 4 new tests
+
+**Task 7 — User stories** (`tests/phase-1b/`)
+- 8 stories (developer, operator, security) + 3 Phase 1A regression stories
+- `tests/phase-1b/env.sh` created
+
+**Task 8 — Go doc comments** (5 files)
+- 22 professional doc comments added across Phase 1a and 1b types
+- All exported types, methods, and struct fields documented
+
+### Commits
+
+```
+f8c74cb docs: add professional Go doc comments to Phase 1a and 1b types
+fb78aa6 test: add Phase 1b user stories and test env
+6bb603d feat(audit): include app_id in launch token and agent registration events
+cb0057f feat(identity): agent inherits AppID from launch token on registration
+aa3a1cd feat(admin): apps can create launch tokens within scope ceiling
+f37404d feat(store): add AppID field to LaunchTokenRecord
+33f4461 feat(authz): add RequireAnyScope middleware for multi-caller endpoints
+```
+
+### Process lesson
+
+User stories should be Task 1, not Task 8. CLAUDE.md standing rule: "Write user stories FIRST." We wrote code first this session. Fixed mid-session. Future sessions: always extract user stories before touching code, regardless of plan ordering.
+
+---
+
+## 2026-03-03 (Session 23 — Phase 1A Live Test & Merge)
 
 ### What happened
 
