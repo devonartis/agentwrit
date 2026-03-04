@@ -257,9 +257,13 @@ func (s *AdminSvc) CreateLaunchToken(req CreateLaunchTokenReq, createdBy, appID 
 		"scope="+fmt.Sprintf("%v", req.AllowedScope),
 	)
 	if s.auditLog != nil {
+		detail := fmt.Sprintf("launch token issued for agent=%s scope=%v max_ttl=%d created_by=%s",
+			req.AgentName, req.AllowedScope, maxTTL, createdBy)
+		if appID != "" {
+			detail += fmt.Sprintf(" app_id=%s", appID)
+		}
 		s.auditLog.Record(audit.EventLaunchTokenIssued, "", "", "",
-			fmt.Sprintf("launch token issued for agent=%s scope=%v max_ttl=%d created_by=%s",
-				req.AgentName, req.AllowedScope, maxTTL, createdBy),
+			detail,
 			audit.WithOutcome("success"))
 	}
 

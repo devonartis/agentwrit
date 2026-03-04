@@ -628,3 +628,56 @@ func TestUpdateSidecarCeiling_NoPreviousCeiling(t *testing.T) {
 		t.Fatal("expected narrowed=false when no previous ceiling")
 	}
 }
+
+// --- Audit: app_id in launch token events ---
+
+func TestCreateLaunchToken_AuditIncludesAppID(t *testing.T) {
+	svc, al := newTestAdminSvcWithAudit(t)
+
+	req := CreateLaunchTokenReq{
+		AgentName:    "data-reader",
+		AllowedScope: []string{"read:Customers:*"},
+	}
+
+	_, err := svc.CreateLaunchToken(req, adminSub, "app-xyz-123")
+	if err != nil {
+		t.Fatalf("CreateLaunchToken: %v", err)
+	}
+
+	events := al.Events()
+	found := false
+	for _, e := range events {
+		if e.EventType == audit.EventLaunchTokenIssued {
+			found = true
+			if !strings.Contains(e.Detail, "app_id=app-xyz-123") {
+				t.Errorf("expected detail to contain app_id=app-xyz-123, got: %s", e.Detail)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected launch_token_issued audit event")
+	}
+}
+
+func TestCreateLaunchToken_AuditNoAppIDForAdmin(t *testing.T) {
+	svc, al := newTestAdminSvcWithAudit(t)
+
+	req := CreateLaunchTokenReq{
+		AgentName:    "data-reader",
+		AllowedScope: []string{"read:Customers:*"},
+	}
+
+	_, err := svc.CreateLaunchToken(req, adminSub, "")
+	if err != nil {
+		t.Fatalf("CreateLaunchToken: %v", err)
+	}
+
+	events := al.Events()
+	for _, e := range events {
+		if e.EventType == audit.EventLaunchTokenIssued {
+			if strings.Contains(e.Detail, "app_id=") {
+				t.Errorf("admin-created token should NOT have app_id in detail, got: %s", e.Detail)
+			}
+		}
+	}
+}
