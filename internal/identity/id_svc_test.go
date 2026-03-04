@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"strings"
 	"testing"
 	"time"
 
@@ -230,6 +231,91 @@ func TestRegisterMissingFields(t *testing.T) {
 	_, err := idSvc.Register(RegisterReq{})
 	if err == nil {
 		t.Error("expected error for empty request")
+	}
+}
+
+func TestRegister_AgentInheritsAppIDFromLaunchToken(t *testing.T) {
+	idSvc, sqlStore, _ := setupIdSvc(t)
+
+	// Create a launch token WITH an AppID (app-created)
+	tokenVal := make([]byte, 16)
+	if _, err := rand.Read(tokenVal); err != nil {
+		t.Fatal(err)
+	}
+	tok := hex.EncodeToString(tokenVal)
+
+	err := sqlStore.SaveLaunchToken(store.LaunchTokenRecord{
+		Token:        tok,
+		AgentName:    "weather-agent",
+		AllowedScope: []string{"read:Weather:*"},
+		MaxTTL:       300,
+		SingleUse:    true,
+		CreatedAt:    time.Now(),
+		ExpiresAt:    time.Now().Add(30 * time.Second),
+		CreatedBy:    "app:app-weather-bot-abc123",
+		AppID:        "app-weather-bot-abc123",
+	})
+	if err != nil {
+		t.Fatalf("save launch token: %v", err)
+	}
+
+	nonce := sqlStore.CreateNonce()
+	_, agentPriv, _ := ed25519.GenerateKey(rand.Reader)
+	pubB64, sigB64 := signNonce(t, nonce, agentPriv)
+
+	resp, err := idSvc.Register(RegisterReq{
+		LaunchToken:    tok,
+		Nonce:          nonce,
+		PublicKey:      pubB64,
+		Signature:      sigB64,
+		OrchID:         "orch-weather",
+		TaskID:         "task-forecast",
+		RequestedScope: []string{"read:Weather:12345"},
+	})
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	// Verify the agent record inherited the AppID
+	agent, err := sqlStore.GetAgent(resp.AgentID)
+	if err != nil {
+		t.Fatalf("GetAgent: %v", err)
+	}
+	if agent.AppID != "app-weather-bot-abc123" {
+		t.Errorf("agent.AppID = %q, want %q", agent.AppID, "app-weather-bot-abc123")
+	}
+}
+
+func TestRegister_AdminLaunchTokenAgentHasNoAppID(t *testing.T) {
+	idSvc, sqlStore, _ := setupIdSvc(t)
+
+	// Create a launch token WITHOUT an AppID (admin-created)
+	lt := createLaunchToken(t, sqlStore, []string{"read:Customers:*"})
+
+	nonce := sqlStore.CreateNonce()
+	_, agentPriv, _ := ed25519.GenerateKey(rand.Reader)
+	pubB64, sigB64 := signNonce(t, nonce, agentPriv)
+
+	resp, err := idSvc.Register(RegisterReq{
+		LaunchToken:    lt,
+		Nonce:          nonce,
+		PublicKey:      pubB64,
+		Signature:      sigB64,
+		OrchID:         "orch-admin",
+		TaskID:         "task-admin",
+		RequestedScope: []string{"read:Customers:12345"},
+	})
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	// Verify the agent record has empty AppID
+	agent, err := sqlStore.GetAgent(resp.AgentID)
+	if err != nil {
+		t.Fatalf("GetAgent: %v", err)
+	}
+	if agent.AppID != "" {
+		t.Errorf("agent.AppID = %q, want empty string", agent.AppID)
 	}
 }
 

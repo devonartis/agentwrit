@@ -227,6 +227,7 @@ func (s *IdSvc) Register(req RegisterReq) (*RegisterResp, error) {
 		Scope:        req.RequestedScope,
 		RegisteredAt: now,
 		LastSeen:     now,
+		AppID:        ltRec.AppID, // inherit from launch token
 	}); err != nil {
 		obs.RegistrationsTotal.WithLabelValues("failure").Inc()
 		return nil, fmt.Errorf("save agent: %w", err)
@@ -234,11 +235,17 @@ func (s *IdSvc) Register(req RegisterReq) (*RegisterResp, error) {
 
 	// Audit events
 	if s.auditLog != nil {
+		regDetail := fmt.Sprintf("Agent registered with scope %v", req.RequestedScope)
+		tknDetail := fmt.Sprintf("Token issued, jti=%s, ttl=%d", issResp.Claims.Jti, ttl)
+		if ltRec.AppID != "" {
+			regDetail += fmt.Sprintf(" app_id=%s", ltRec.AppID)
+			tknDetail += fmt.Sprintf(" app_id=%s", ltRec.AppID)
+		}
 		s.auditLog.Record("agent_registered", agentID, req.TaskID, req.OrchID,
-			fmt.Sprintf("Agent registered with scope %v", req.RequestedScope),
+			regDetail,
 			audit.WithOutcome("success"))
 		s.auditLog.Record("token_issued", agentID, req.TaskID, req.OrchID,
-			fmt.Sprintf("Token issued, jti=%s, ttl=%d", issResp.Claims.Jti, ttl),
+			tknDetail,
 			audit.WithOutcome("success"))
 	}
 
