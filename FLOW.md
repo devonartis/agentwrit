@@ -25,15 +25,14 @@ Format:
 
 ---
 
-## Next session: Merge Phase 1B → develop, then fix TD-006, then start Phase 1C
+## Next session: Fix TD-006, then start Phase 1C
 
-**Branch:** `feature/phase-1b-launch-tokens` — all 11 Docker live tests PASS, committed at `1556a93`.
+**Branch:** `develop` — Phase 1B already merged at `b2c4f73`.
 
 **Action:**
-1. Merge `feature/phase-1b-launch-tokens` → `develop`
-2. Update CHANGELOG.md with Phase 1B release notes
-3. Fix TD-006 (app JWT TTL — hardcoded 5 min → 30 min default, per-app configurable) — Phase 1C depends on it
-4. Start Phase 1C implementation — spec is updated and ready at `.plans/phase-1c/Phase-1c-Revocation-Audit-SecretRotation.md`
+1. Update CHANGELOG.md with Phase 1B release notes (not done yet)
+2. Fix TD-006 (app JWT TTL — hardcoded 5 min → 30 min default, per-app configurable) — Phase 1C depends on it
+3. Start Phase 1C implementation — spec is updated and ready at `.plans/phase-1c/Phase-1c-Revocation-Audit-SecretRotation.md`
 
 **Phase 1C is now expanded** (19 stories, ~2 days):
 - Stories 1-10: original app lifecycle (app revocation, `app_id` claims, secret rotation)
