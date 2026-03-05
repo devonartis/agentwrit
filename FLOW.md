@@ -59,16 +59,36 @@ Added Phase 1B section to CHANGELOG.md under `[Unreleased]` — covers app-scope
 
 ---
 
-## Next session: Execute TD-006 implementation plan, then start Phase 1C
+## 2026-03-05 (Session 31 — TD-006 Implementation)
 
-**Branch:** `develop` — clean, no uncommitted changes.
+### executing-plans: TD-006 Per-App JWT TTL
 
-**Action:**
-1. Execute TD-006 implementation plan at `.plans/td-006/TD-006-Implementation-Plan.md` (10 tasks, ~0.5 day)
-   - Use `superpowers:executing-plans` skill
-   - Plan has complete code, exact file paths, TDD steps, and commit messages
-   - After implementation: Docker live test against `tests/td-006/user-stories.md` (7 stories)
-2. Start Phase 1C implementation — spec ready at `.plans/phase-1c/Phase-1c-Revocation-Audit-SecretRotation.md`
+Executed all 10 plan tasks via TDD (red-green-commit). 8 commits on `feature/td-006-app-jwt-ttl`. All unit tests pass (56 tests across cfg, store, app packages). Gate lint fixed (2 unchecked `json.Unmarshal`). Pre-existing lint issues in admin_hdl.go were not touched (not in scope).
+
+Key implementation notes:
+- `migrateAddColumn` helper works as designed — idempotent, uses `PRAGMA table_info`
+- Existing tests needed `TokenTTL: 0` (Go zero value) — no breakage since DB DEFAULT handles it
+- `handleUpdateApp` response now uses `storeAppToResp()` for consistency (was inline before)
+
+→ Artifact: 8 commits on `feature/td-006-app-jwt-ttl`
+
+---
+
+## Next session: Docker live tests for TD-006, then CHANGELOG/merge
+
+**Branch:** `feature/td-006-app-jwt-ttl` — clean, 8 commits ahead of `develop`.
+
+**Action (in order):**
+1. **Add `AA_APP_TOKEN_TTL` to `docker-compose.yml`** — required before stack_up
+2. **Docker live test** — `./scripts/stack_up.sh`, run all 7 user stories from `tests/td-006/user-stories.md`
+   - Build `aactl` to `./bin/aactl`, source env from `tests/td-006/env.sh`
+   - Operator stories (S1-S4) use `aactl`. Developer story (S5) uses `curl`. Security stories (S6-S7) use both.
+   - Save evidence to `tests/td-006/evidence/`
+3. **Regression** — run Phase 1A and 1B key stories to verify nothing broke
+4. **CHANGELOG** — add TD-006 entry
+5. **Mark TD-006 resolved** in MEMORY.md tech debt table
+6. **Merge** `feature/td-006-app-jwt-ttl` → `develop`
+7. **Start Phase 1C**
 
 **Phase 1C** (19 stories, ~2 days):
 - Stories 1-10: original app lifecycle (app revocation, `app_id` claims, secret rotation)

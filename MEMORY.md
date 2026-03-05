@@ -1309,3 +1309,30 @@ Two-agent devil's advocate review of all PRD + phase specs, followed by targeted
 
 **Spec update (same session):** All phase specs (1b through 5) now have a `## Testing Workflow` section at the bottom explicitly telling the implementing agent: extract user stories from the spec into `tests/phase-Xn-user-stories.md` before writing any test code. Phase 1a already had this in Task 6. User stories remain IN the specs — the rule just makes the `tests/` step explicit so the agent doesn't skip it.
 
+---
+
+## Session 31 — TD-006 Implementation (2026-03-05)
+
+### Branch: `feature/td-006-app-jwt-ttl` (off `develop`)
+
+8 commits — all code complete, unit tests pass, gate lint fixed. **Docker live tests NOT yet run.**
+
+### Commits
+
+1. `a90190d` — user stories (`tests/td-006/user-stories.md`)
+2. `8c69c98` — `AA_APP_TOKEN_TTL` config field (default 1800)
+3. `0608863` — `token_ttl` column, `AppRecord.TokenTTL`, schema migration, all queries updated
+4. `3e85c92` — `UpdateAppTTL` store method
+5. `fcd0437` — `AppSvc`: removed `const appTokenTTL=300`, `RegisterApp` accepts TTL, `AuthenticateApp` uses `rec.TokenTTL`, `UpdateAppTTL` service method with audit
+6. `a77d04b` — HTTP handlers: TTL in register/update/response, `handleUpdateApp` supports TTL-only updates
+7. `7eddcd2` — `aactl --token-ttl` on register and update, TTL in list/get output
+8. `1607880` — lint fix (unchecked `json.Unmarshal`)
+
+### What's next (this session or next)
+
+1. **Docker live test** — `./scripts/stack_up.sh`, then run all 7 user stories from `tests/td-006/user-stories.md` against the stack. Evidence goes to `tests/td-006/evidence/`.
+2. **Regression** — run Phase 1A and 1B stories against the stack to verify nothing broke.
+3. **CHANGELOG + docker-compose** — add `AA_APP_TOKEN_TTL` to `docker-compose.yml`, add TD-006 entry to CHANGELOG.
+4. **Mark TD-006 resolved** in MEMORY.md tech debt table.
+5. **Merge** to develop after Docker evidence is saved.
+
