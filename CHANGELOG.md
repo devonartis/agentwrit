@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Phase 1B: App-Scoped Launch Tokens
+
+**Summary:** Developers can now create launch tokens using their app credentials instead of
+requesting them from the operator. The broker enforces each app's scope ceiling on launch
+token creation, preventing scope escalation. Agents registered via app-created launch tokens
+carry full `app_id` traceability through the audit trail.
+
+**11/11 user stories verified via Docker live tests.** Evidence: `tests/phase-1b/evidence/`
+
+#### New: `internal/handler/app_launch_hdl.go`
+- `AppLaunchHdl` — handles `POST /v1/admin/launch-tokens` with app JWT Bearer auth
+- Extracts `app_id` and app scope ceiling from JWT claims
+- Validates requested scopes are a subset of the app's ceiling via `authz.ScopeIsSubset()`
+- On ceiling violation: returns 403 with explanation, records `scope_ceiling_exceeded` audit event
+- On success: delegates to `AdminSvc.CreateLaunchToken()` with `app_id` annotation
+
+#### Modified: `internal/admin/admin_svc.go`
+- `CreateLaunchToken()` now accepts optional `app_id` parameter
+- Launch token policy carries `app_id` when created by an app (nil for admin-created tokens)
+- `app_id` propagated to audit events: `launch_token_issued` detail includes `created_by=app:<id>`
+
+#### Modified: `internal/identity/id_svc.go`
+- `Register()` propagates `app_id` from launch token policy to agent record
+- Audit events `agent_registered` and `token_issued` include `app_id` when present
+
+#### Modified: `internal/authz/val_mw.go`
+- App JWT tokens (with `app:launch-tokens:*` scope) routed to `AppLaunchHdl` for launch token creation
+- Admin tokens continue to use the existing unrestricted path (backward compatible)
+
+#### Modified: `cmd/broker/main.go`
+- Wired `AppLaunchHdl` into the launch token route with scope-based dispatch
+
+#### Verification Evidence (2026-03-04)
+- Docker live tests: **11/11 PASS** — `./scripts/live_test.sh --docker`
+- Stories S1-S3 (Developer): App auth → launch token → agent registration with app traceability
+- Stories S4-S6 (Operator): Audit traceability, ceiling enforcement (3 cases), backward compat
+- Stories S7-S8 (Security): Scope attenuation (4 cases incl. wildcard widening), full traceability chain
+- Stories R1-R3 (Regression): App auth, admin endpoint blocking, hash chain integrity
+
 ### Added — New Enterprise Documentation
 
 - **docs/integration-patterns.md**: 6 real-world integration patterns with mermaid diagrams,

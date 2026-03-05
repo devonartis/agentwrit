@@ -25,16 +25,52 @@ Format:
 
 ---
 
-## Next session: Fix TD-006, then start Phase 1C
+## 2026-03-05 (Session 30 — TD-006 Design & Planning)
 
-**Branch:** `develop` — Phase 1B already merged at `b2c4f73`.
+### brainstorming: TD-006 Per-App JWT TTL
+
+Explored two approaches: (A) per-app TTL stored in DB with global default env var, (B) global env var only. User chose A — per-app granularity matches the TD-006 spec exactly. Also decided: global default itself should be operator-configurable via `AA_APP_TOKEN_TTL` (not just hardcoded 1800), giving two layers of control. Bounds (60s–86400s) stay hardcoded as safety rails.
+
+Admin/sidecar TTL configurability deferred to new TD-010. User requested: "app JWT only and make a tech debt update for the others."
+
+→ Artifact: `.plans/td-006/TD-006-App-JWT-TTL.md`
+
+### Spec template formalized
+
+Merged user's existing spec format (header metadata, narrative overview, user stories by persona, what changes/stays, success criteria, testing workflow) with five new sections: Schema Changes, API Contract, Edge Cases & Risks, Backward Compatibility, Rollback Plan. User approved all five additions for this and future specs.
+
+→ Artifact: `.plans/SPEC-TEMPLATE.md`
+
+### writing-plans: TD-006 Implementation Plan
+
+10-task TDD plan with complete code, exact file paths, and commit messages. Task 0 writes user stories first (per standing rules). Tasks 1-6 follow bottom-up: config → store schema/migration → store method → service layer → HTTP handler → CLI. Tasks 7-9 are gates, docs, and tech debt resolution.
+
+Key design decisions in the plan:
+- `migrateAddColumn` helper for safe `ALTER TABLE` on existing DBs (no migration framework)
+- `updateAppReq.TokenTTL` uses `*int` pointer to distinguish absent from zero
+- `RegisterApp` signature gains TTL param — 0 means "use global default"
+- `handleUpdateApp` now accepts scopes OR TTL (not both required)
+
+→ Artifact: `.plans/td-006/TD-006-Implementation-Plan.md`
+
+### CHANGELOG updated with Phase 1B release notes
+
+Added Phase 1B section to CHANGELOG.md under `[Unreleased]` — covers app-scoped launch tokens, scope ceiling enforcement, app_id traceability, and 11/11 Docker live test evidence.
+
+---
+
+## Next session: Execute TD-006 implementation plan, then start Phase 1C
+
+**Branch:** `develop` — clean, no uncommitted changes.
 
 **Action:**
-1. Update CHANGELOG.md with Phase 1B release notes (not done yet)
-2. Fix TD-006 (app JWT TTL — hardcoded 5 min → 30 min default, per-app configurable) — Phase 1C depends on it
-3. Start Phase 1C implementation — spec is updated and ready at `.plans/phase-1c/Phase-1c-Revocation-Audit-SecretRotation.md`
+1. Execute TD-006 implementation plan at `.plans/td-006/TD-006-Implementation-Plan.md` (10 tasks, ~0.5 day)
+   - Use `superpowers:executing-plans` skill
+   - Plan has complete code, exact file paths, TDD steps, and commit messages
+   - After implementation: Docker live test against `tests/td-006/user-stories.md` (7 stories)
+2. Start Phase 1C implementation — spec ready at `.plans/phase-1c/Phase-1c-Revocation-Audit-SecretRotation.md`
 
-**Phase 1C is now expanded** (19 stories, ~2 days):
+**Phase 1C** (19 stories, ~2 days):
 - Stories 1-10: original app lifecycle (app revocation, `app_id` claims, secret rotation)
 - Stories 11-16: NIST alignment (`original_principal`/`task_id`/`orch_id` claims, audit fields, `VerifyChain`, read-only audit access)
 - Stories 17-19: token hygiene (predecessor invalidation on renewal, JTI pruning, agent record expiry)
@@ -47,7 +83,7 @@ Format:
 **No tech debt carried:**
 - TD-008 (token predecessor invalidation) → Phase 1C story 17
 - TD-009 (JTI pruning) → Phase 1C story 18
-- TD-010 (static secrets) → already covered by Phase 2's mission (master key containment)
+- TD-010 (admin/sidecar TTL configurability) → Future (new, added this session)
 - TD-007 (resilient logging) → Phase 1D
 
 ---

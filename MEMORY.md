@@ -19,7 +19,7 @@ Active tech debt. Append here when new debt is taken. Full details in `.plans/PR
 | TD-007 | Resilient logging — audit writes inline, no fallback on store failure | Medium | Phase 1D spec created |
 | TD-008 | Token predecessor not invalidated on renewal — two valid tokens exist | Medium | Phase 1C story 17 |
 | TD-009 | JTI blocklist never pruned — memory grows indefinitely | Medium | Phase 1C story 18 |
-| TD-010 | `AA_ADMIN_SECRET` as env var — static secret, no vault/KMS | Medium | Phase 2 (master key containment) |
+| TD-010 | Admin/Sidecar TTL hardcoded — should be operator-configurable via env vars | Low | Future |
 
 ## Standing Rules
 
@@ -113,6 +113,36 @@ Active tech debt. Append here when new debt is taken. Full details in `.plans/PR
 - Peer review incorporated: 7 implementation gaps identified by 3rd-party developer, all given decisions.
 - Full architecture doc: `.plans/CoWork-Architecture-Direct-Broker.md` (also `.html` and `.pdf` versions)
 - Lifecycle diagram: `.plans/CoWork-Diagram-FullLifecycle.svg`
+
+## 2026-03-05 (Session 30 — TD-006 Design & Planning)
+
+### What happened
+
+Designed and planned TD-006 (per-app configurable JWT TTL). Created spec, spec template, and implementation plan. Updated CHANGELOG with Phase 1B release notes. Added TD-010 for admin/sidecar TTL configurability.
+
+### Artifacts produced
+
+- `.plans/td-006/TD-006-App-JWT-TTL.md` — full spec (per-app TTL, global default, bounds, schema, API, rollback)
+- `.plans/td-006/TD-006-Implementation-Plan.md` — 10-task TDD plan with complete code
+- `.plans/SPEC-TEMPLATE.md` — reusable spec template (user's format + 5 new sections)
+- `TECH-DEBT.md` — TD-010 added (admin/sidecar TTL hardcoded)
+- `CHANGELOG.md` — Phase 1B release notes added
+
+### Key decisions
+
+- **Per-app TTL in DB** (Approach A), not global-only env var (Approach B). TD-006 spec explicitly asks for `aactl app register --token-ttl`.
+- **Two-layer TTL:** Global default `AA_APP_TOKEN_TTL=1800` (operator-configurable), per-app override in `apps.token_ttl` column. Per-app value used at auth time.
+- **Bounds hardcoded** (60s–86400s) as safety rails, not operator-tunable.
+- **Admin/sidecar TTL deferred** to TD-010 — user chose "app JWT only" to minimize scope.
+- **Spec template formalized** with 5 new sections: Schema Changes, API Contract, Edge Cases & Risks, Backward Compatibility, Rollback Plan.
+
+### What's next
+
+1. Execute TD-006 implementation plan — use `superpowers:executing-plans` skill
+2. Docker live test TD-006 — 7 user stories in `tests/td-006/user-stories.md`
+3. Start Phase 1C
+
+---
 
 ## 2026-03-04 (Session 28 — Phase 1B Docker Live Tests)
 
