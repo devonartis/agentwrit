@@ -1053,6 +1053,34 @@ func (s *SqlStore) UpdateAppCeiling(appID string, newCeiling []string) error {
 	return nil
 }
 
+// UpdateAppTTL sets the token_ttl for an existing app.
+// Returns [ErrAppNotFound] if no app with the given app_id exists.
+func (s *SqlStore) UpdateAppTTL(appID string, ttl int) error {
+	if s.db == nil {
+		return errors.New("database not initialized: call InitDB first")
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	const q = `UPDATE apps SET token_ttl = ?, updated_at = ? WHERE app_id = ?`
+	res, err := s.db.Exec(q, ttl, now, appID)
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to update app TTL", "app_id="+appID, "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("update_app_ttl").Inc()
+		return fmt.Errorf("update app TTL %s: %w", appID, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to get rows affected", "app_id="+appID, "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("update_app_ttl").Inc()
+		return fmt.Errorf("rows affected for app %s: %w", appID, err)
+	}
+	if n == 0 {
+		return ErrAppNotFound
+	}
+	obs.Ok("store", "sqlite", "app TTL updated", "app_id="+appID, fmt.Sprintf("ttl=%d", ttl))
+	return nil
+}
+
 // UpdateAppStatus sets the status field for an existing app (e.g., "active"
 // or "inactive"). Returns [ErrAppNotFound] if no app with the given app_id
 // exists.

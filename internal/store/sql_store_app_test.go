@@ -377,6 +377,40 @@ func TestSaveApp_TokenTTL(t *testing.T) {
 	}
 }
 
+// TestUpdateAppTTL verifies the TTL can be updated for an existing app.
+func TestUpdateAppTTL(t *testing.T) {
+	s := setupAppDB(t)
+
+	rec := AppRecord{
+		AppID: "app-ttl-update-aaa111", Name: "ttl-update",
+		ClientID: "tu-aaa111bbb222", ClientSecretHash: "$2a$12$fakehash",
+		ScopeCeiling: []string{"read:data:*"}, TokenTTL: 1800,
+		Status: "active", CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(), CreatedBy: "admin",
+	}
+	if err := s.SaveApp(rec); err != nil {
+		t.Fatalf("SaveApp: %v", err)
+	}
+
+	if err := s.UpdateAppTTL("app-ttl-update-aaa111", 7200); err != nil {
+		t.Fatalf("UpdateAppTTL: %v", err)
+	}
+
+	got, _ := s.GetAppByID("app-ttl-update-aaa111")
+	if got.TokenTTL != 7200 {
+		t.Fatalf("expected 7200, got %d", got.TokenTTL)
+	}
+}
+
+// TestUpdateAppTTL_NotFound verifies the sentinel error for unknown app_id.
+func TestUpdateAppTTL_NotFound(t *testing.T) {
+	s := setupAppDB(t)
+	err := s.UpdateAppTTL("app-nonexistent-000000", 3600)
+	if !errors.Is(err, ErrAppNotFound) {
+		t.Fatalf("expected ErrAppNotFound, got %v", err)
+	}
+}
+
 // TestScopesCeiling_RoundTrip verifies JSON marshaling of scope arrays survives a DB round-trip.
 func TestScopesCeiling_RoundTrip(t *testing.T) {
 	s := setupAppDB(t)
