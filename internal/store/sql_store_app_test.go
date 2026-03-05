@@ -348,6 +348,35 @@ func TestUpdateAppStatus_NotFound(t *testing.T) {
 	}
 }
 
+// TestSaveApp_TokenTTL verifies that TokenTTL round-trips through save and get.
+func TestSaveApp_TokenTTL(t *testing.T) {
+	s := setupAppDB(t)
+
+	rec := AppRecord{
+		AppID:            "app-test-ttl-aaa111",
+		Name:             "test-ttl",
+		ClientID:         "tt-aaa111bbb222",
+		ClientSecretHash: "$2a$12$fakehash",
+		ScopeCeiling:     []string{"read:data:*"},
+		TokenTTL:         3600,
+		Status:           "active",
+		CreatedAt:        time.Now().UTC(),
+		UpdatedAt:        time.Now().UTC(),
+		CreatedBy:        "admin",
+	}
+	if err := s.SaveApp(rec); err != nil {
+		t.Fatalf("SaveApp: %v", err)
+	}
+
+	got, err := s.GetAppByID("app-test-ttl-aaa111")
+	if err != nil {
+		t.Fatalf("GetAppByID: %v", err)
+	}
+	if got.TokenTTL != 3600 {
+		t.Fatalf("expected TokenTTL 3600, got %d", got.TokenTTL)
+	}
+}
+
 // TestScopesCeiling_RoundTrip verifies JSON marshaling of scope arrays survives a DB round-trip.
 func TestScopesCeiling_RoundTrip(t *testing.T) {
 	s := setupAppDB(t)
