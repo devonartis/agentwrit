@@ -480,7 +480,9 @@ func TestHandleRegisterApp_WithTTL(t *testing.T) {
 	var resp struct {
 		TokenTTL int `json:"token_ttl"`
 	}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
 	if resp.TokenTTL != 3600 {
 		t.Fatalf("expected token_ttl 3600, got %d", resp.TokenTTL)
 	}
@@ -525,7 +527,9 @@ func TestHandleUpdateApp_TTLOnly(t *testing.T) {
 	var resp struct {
 		TokenTTL int `json:"token_ttl"`
 	}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
 	if resp.TokenTTL != 7200 {
 		t.Fatalf("expected token_ttl 7200, got %d", resp.TokenTTL)
 	}
