@@ -195,11 +195,17 @@ Divine's feedback: the template was a skeleton — nobody could follow it. Rewro
 
 **Current state:** on `feature/phase-1b-launch-tokens`, up to date with develop. Ready for Phase 1B Docker live tests.
 
+### Concept paper alignment checklist added
+
+Created `.plans/CONCEPT-PAPER-ALIGNMENT.md` — maps NCCoE concept paper recommendations to AgentAuth features. Categorized as DONE, QUICK-ADD (before release), and FUTURE. Key QUICK-ADDs: full SPIFFE ID in audit (L-2), task context in audit (L-3), resource accessed in all events (L-5), single-agent workflow reconstruction test (V-1). Biggest gap: delegation chain support (D-1 through D-8) — everything we recommend but don't have yet.
+
 ### What's next
 
-1. Run Phase 1B Docker live tests (11 stories from `tests/phase-1b/user-stories.md`)
-2. Save evidence to `tests/phase-1b/evidence/` following `tests/LIVE-TEST-TEMPLATE.md`
-3. Merge Phase 1B → develop
+1. **Run Phase 1B Docker live tests** — 11 stories from `tests/phase-1b/user-stories.md`
+2. **Read `tests/LIVE-TEST-TEMPLATE.md` first** — the complete guide with real examples. Banner in the call, one story at a time, output piped to evidence file, verdict after seeing result.
+3. Save evidence to `tests/phase-1b/evidence/`
+4. Merge Phase 1B → develop
+5. Then: QUICK-ADD audit enhancements from concept paper checklist before release
 
 ---
 

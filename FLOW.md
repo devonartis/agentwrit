@@ -27,8 +27,15 @@ Format:
 
 ## Next session: Docker live test for Phase 1B
 
-**Branch:** `feature/phase-1b-launch-tokens` — 7 commits, all unit tests green (15 packages). Code complete, needs Docker live test before merge.
-**Action:** Run `./scripts/stack_up.sh`, execute all 11 stories from `tests/phase-1b/user-stories.md`, save evidence to `tests/phase-1b/evidence/`, merge to develop.
+**Branch:** `feature/phase-1b-launch-tokens` — up to date with develop (Phase 0 merged in). All unit tests green (15 packages). Code complete, needs Docker live test before merge.
+**Action:**
+1. `./scripts/stack_up.sh` — bring up Docker stack
+2. Execute all 11 stories from `tests/phase-1b/user-stories.md`
+3. Follow `tests/LIVE-TEST-TEMPLATE.md` — banner in the call, one story at a time, output piped to evidence file, verdict after seeing result
+4. Save evidence to `tests/phase-1b/evidence/`
+5. Merge Phase 1B → develop
+
+**Important:** Read `tests/LIVE-TEST-TEMPLATE.md` before running any test. The template is the complete guide with real examples of how to execute stories and record evidence.
 
 ---
 
