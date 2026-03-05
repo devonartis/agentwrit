@@ -16,6 +16,10 @@ Active tech debt. Append here when new debt is taken. Full details in `.plans/PR
 | ~~TD-004~~ | ~~Admin auth uses legacy client_id/client_secret shape~~ | ~~High~~ | ~~RESOLVED Session 26~~ |
 | ~~TD-005~~ | ~~6 sidecar routes still wired in broker~~ | ~~High~~ | ~~RESOLVED Session 26~~ |
 | TD-006 | App JWT TTL hardcoded to 5 min — should be 30 min default, per-app configurable by operator | Medium | Before Phase 1C |
+| TD-007 | Resilient logging — audit writes inline, no fallback on store failure | Medium | Phase 1D spec created |
+| TD-008 | Token predecessor not invalidated on renewal — two valid tokens exist | Medium | Phase 1C story 17 |
+| TD-009 | JTI blocklist never pruned — memory grows indefinitely | Medium | Phase 1C story 18 |
+| TD-010 | `AA_ADMIN_SECRET` as env var — static secret, no vault/KMS | Medium | Phase 2 (master key containment) |
 
 ## Standing Rules
 

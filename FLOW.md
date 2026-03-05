@@ -25,13 +25,59 @@ Format:
 
 ---
 
-## Next session: Merge Phase 1B → develop
+## Next session: Merge Phase 1B → develop, then fix TD-006, then start Phase 1C
 
 **Branch:** `feature/phase-1b-launch-tokens` — all 11 Docker live tests PASS, committed at `1556a93`.
+
 **Action:**
 1. Merge `feature/phase-1b-launch-tokens` → `develop`
-2. Decide next phase: Phase 1C (app revocation + audit + secret rotation) or TD-006 (app JWT TTL fix)
-3. Update CHANGELOG.md with Phase 1B release notes
+2. Update CHANGELOG.md with Phase 1B release notes
+3. Fix TD-006 (app JWT TTL — hardcoded 5 min → 30 min default, per-app configurable) — Phase 1C depends on it
+4. Start Phase 1C implementation — spec is updated and ready at `.plans/phase-1c/Phase-1c-Revocation-Audit-SecretRotation.md`
+
+**Phase 1C is now expanded** (19 stories, ~2 days):
+- Stories 1-10: original app lifecycle (app revocation, `app_id` claims, secret rotation)
+- Stories 11-16: NIST alignment (`original_principal`/`task_id`/`orch_id` claims, audit fields, `VerifyChain`, read-only audit access)
+- Stories 17-19: token hygiene (predecessor invalidation on renewal, JTI pruning, agent record expiry)
+
+**Phase 1D spec created** (`.plans/phase-1d/Phase-1d-Resilient-Audit-Pipeline.md`):
+- Resilient audit write pipeline — event queue, overflow file, replay on recovery
+- Pattern v1.2 requires this: "operations never fail solely due to logging unavailability"
+- Depends on Phase 1C (uses the new audit fields and VerifyChain)
+
+**No tech debt carried:**
+- TD-008 (token predecessor invalidation) → Phase 1C story 17
+- TD-009 (JTI pruning) → Phase 1C story 18
+- TD-010 (static secrets) → already covered by Phase 2's mission (master key containment)
+- TD-007 (resilient logging) → Phase 1D
+
+---
+
+## 2026-03-05 (Session 29 — NIST Submission Analysis)
+
+### NIST recommendation extraction and gap analysis
+
+Reviewed every recommendation made in the NIST NCCoE public comment submission (`.plans/nist-submission/NIST-NCCoE-Public-Comment-AgentAuth.md`) against the actual codebase. Found 50 recommendations total: 24 implemented, 12 partial, 14 missing. User's key insight: audit items are pattern requirements, not aspirational — they must be fixed, not tracked as tech debt.
+
+**Decision:** Items that touch code Phase 1C is already modifying (JWT claims, revocation, audit) go into Phase 1C. Resilient logging (different architectural concern) gets its own Phase 1D spec. Static secrets are already Phase 2's mission. No tech debt carried.
+
+→ Artifact: `.plans/nist-submission/NIST-Recommendations-vs-Implementation.md`
+
+### Phase 1C spec expanded with NIST alignment stories
+
+Added 9 new user stories (11-19) and 5 new technical sections (6-10) to the Phase 1C spec. Effort estimate bumped from 1 day to 2 days. New areas: `original_principal` JWT claim, `task_id`/`orch_id` as standalone claims, `intermediate_agents` audit field, `VerifyChain()` endpoint, read-only `audit-reader` role, token predecessor invalidation, JTI pruning, agent record expiry.
+
+→ Artifact: `.plans/phase-1c/Phase-1c-Revocation-Audit-SecretRotation.md`
+
+### Phase 1D spec created — Resilient Audit Pipeline
+
+New spec for decoupling audit event creation from persistence. Bounded in-memory queue, overflow file fallback, automatic replay on recovery. 7 user stories. Pattern v1.2 explicitly requires this ("operations never fail solely due to logging unavailability").
+
+→ Artifact: `.plans/phase-1d/Phase-1d-Resilient-Audit-Pipeline.md`
+
+### NIST submission converted to markdown
+
+User requested the NIST submission content be saved as markdown instead of only existing as .docx files. Created `.plans/nist-submission/NIST-NCCoE-Public-Comment-AgentAuth.md` with proper formatting.
 
 ---
 

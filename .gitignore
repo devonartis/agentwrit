@@ -30,3 +30,6 @@ __pycache__/
 # Utility scripts
 /generate_pdf.py
 bin/
+
+# Dolt database files (added by bd init)
+.dolt/
