@@ -54,7 +54,7 @@ var appRegisterCmd = &cobra.Command{
 			"name":   appRegisterName,
 			"scopes": scopes,
 		}
-		if appRegisterTokenTTL > 0 {
+		if cmd.Flags().Changed("token-ttl") {
 			payload["token_ttl"] = appRegisterTokenTTL
 		}
 		data, err := c.doPost("/v1/admin/apps", payload)
@@ -211,7 +211,7 @@ var appUpdateCmd = &cobra.Command{
 		if appUpdateID == "" {
 			return fmt.Errorf("--id is required")
 		}
-		if appUpdateScopes == "" && appUpdateTokenTTL == 0 {
+		if appUpdateScopes == "" && !cmd.Flags().Changed("token-ttl") {
 			return fmt.Errorf("at least one of --scopes or --token-ttl is required")
 		}
 		c, err := newClient()
@@ -222,7 +222,7 @@ var appUpdateCmd = &cobra.Command{
 		if appUpdateScopes != "" {
 			payload["scopes"] = strings.Split(appUpdateScopes, ",")
 		}
-		if appUpdateTokenTTL > 0 {
+		if cmd.Flags().Changed("token-ttl") {
 			payload["token_ttl"] = appUpdateTokenTTL
 		}
 		data, err := c.doPut("/v1/admin/apps/"+appUpdateID, payload)

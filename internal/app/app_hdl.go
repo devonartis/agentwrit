@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -62,7 +63,7 @@ func (h *AppHdl) RegisterRoutes(mux *http.ServeMux) {
 type registerAppReq struct {
 	Name     string   `json:"name"`
 	Scopes   []string `json:"scopes"`
-	TokenTTL int      `json:"token_ttl,omitempty"` // 0 = use default
+	TokenTTL *int     `json:"token_ttl,omitempty"` // nil = use default; explicit 0 is rejected
 }
 
 type appResp struct {
@@ -127,7 +128,19 @@ func (h *AppHdl) handleRegisterApp(w http.ResponseWriter, r *http.Request) {
 		createdBy = claims.Sub
 	}
 
-	resp, err := h.appSvc.RegisterApp(req.Name, req.Scopes, createdBy, req.TokenTTL)
+	// Dereference TTL pointer: nil means "use default" (0), non-nil passes
+	// the explicit value so the service can validate it (including 0 and negatives).
+	ttl := 0
+	if req.TokenTTL != nil {
+		ttl = *req.TokenTTL
+		if ttl <= 0 {
+			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_ttl",
+				fmt.Sprintf("invalid token TTL: must be between %d and %d seconds, got %d",
+					minAppTokenTTL, maxAppTokenTTL, ttl), r.URL.Path)
+			return
+		}
+	}
+	resp, err := h.appSvc.RegisterApp(req.Name, req.Scopes, createdBy, ttl)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrInvalidAppName):

@@ -74,23 +74,34 @@ Key implementation notes:
 
 ---
 
-## Next session: Docker live tests for TD-006, then CHANGELOG/merge
+---
 
-**Branch:** `feature/td-006-app-jwt-ttl` — clean, 8 commits ahead of `develop`.
+## 2026-03-05 (Session 32 — TD-006 Docker Live Tests & Bug Fix)
 
-**Action (in order):**
-1. **Add `AA_APP_TOKEN_TTL` to `docker-compose.yml`** — add `- AA_APP_TOKEN_TTL=${AA_APP_TOKEN_TTL:-1800}` to broker environment
-2. **Create `tests/td-006/env.sh`** — set `AA_BROKER_URL`, `AA_ADMIN_SECRET`, `AACTL` path (same pattern as `tests/phase-1b/env.sh`)
-3. **Build aactl** — `go build -o ./bin/aactl ./cmd/aactl`
-4. **Docker live test** — `./scripts/stack_up.sh`, then run all 7 user stories from `tests/td-006/user-stories.md`
-   - Source env: `source tests/td-006/env.sh`
-   - Operator stories (S1-S4) use `aactl`. Developer story (S5) uses `curl`. Security stories (S6-S7) use both.
-   - Save evidence to `tests/td-006/evidence/`
-5. **Regression** — run Phase 1A and 1B key stories against the same stack
-6. **CHANGELOG** — add TD-006 entry
-7. **Mark TD-006 resolved** in MEMORY.md tech debt table
-8. **Merge** `feature/td-006-app-jwt-ttl` → `develop`
-9. **Start Phase 1C**
+### Docker live tests: 7/7 PASS (S6 after fix)
+
+Ran all 7 user stories against Docker stack. S1–S5, S7 passed on first run. S6 found a bug: `--token-ttl 0` and `--token-ttl -1` silently accepted with default TTL. Fixed in-session (handler `int` → `*int`, CLI `> 0` → `Flags().Changed()`), re-ran S6 — all 5 boundary cases now correct.
+
+→ Artifact: `tests/td-006/evidence/` (7 story files + README)
+
+### systematic-debugging: TTL 0/-1 bounds bypass
+
+Root cause traced through 3 layers: CLI filtered 0/negative before sending to API, handler couldn't distinguish absent from 0 (used `int` not `*int`), service treated 0 as "use default." Fix at handler (pointer type + explicit validation) and CLI (`Flags().Changed()`). Two unit tests added. Verified with Docker re-run.
+
+→ Artifact: `internal/app/app_hdl.go`, `cmd/aactl/apps.go`, `internal/app/app_hdl_test.go`
+
+### Bug logged: duplicate app name returns 500
+
+Found during testing — registering an app with an existing name returns HTTP 500 instead of 409. SQLite UNIQUE constraint error not caught. Deferred to future work.
+
+→ Artifact: `tests/td-006/evidence/README.md` (Open Issues section)
+
+### What's next
+
+1. **Regression** — Phase 1A/1B key stories against Docker stack
+2. **CHANGELOG** entry for TD-006
+3. **Merge** `feature/td-006-app-jwt-ttl` → `develop`
+4. **Phase 1C** — app lifecycle, NIST alignment, token hygiene (19 stories)
 
 **Phase 1C** (19 stories, ~2 days):
 - Stories 1-10: original app lifecycle (app revocation, `app_id` claims, secret rotation)

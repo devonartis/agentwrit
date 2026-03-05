@@ -504,6 +504,38 @@ func TestHandleRegisterApp_TTLOutOfBounds(t *testing.T) {
 	}
 }
 
+func TestHandleRegisterApp_TTLZeroRejected(t *testing.T) {
+	mux, _ := newTestAppMux(t)
+	adminToken := getAdminToken(t, mux)
+
+	body := `{"name":"ttl-zero","scopes":["read:data:*"],"token_ttl":0}`
+	req := httptest.NewRequest("POST", "/v1/admin/apps", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for token_ttl:0, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandleRegisterApp_TTLNegativeRejected(t *testing.T) {
+	mux, _ := newTestAppMux(t)
+	adminToken := getAdminToken(t, mux)
+
+	body := `{"name":"ttl-neg","scopes":["read:data:*"],"token_ttl":-1}`
+	req := httptest.NewRequest("POST", "/v1/admin/apps", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for token_ttl:-1, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestHandleUpdateApp_TTLOnly(t *testing.T) {
 	mux, appSvc := newTestAppMux(t)
 	adminToken := getAdminToken(t, mux)
