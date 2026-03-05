@@ -1341,13 +1341,26 @@ Fixing TTL 0/-1 bug. Root cause at two layers:
 - Handler (`internal/app/app_hdl.go:65`): `registerAppReq.TokenTTL` is `int`, not `*int` — can't distinguish absent from 0
 - Service (`internal/app/app_svc.go:100`): `if ttl == 0` means "use default" — correct for internal API but needs handler to gate explicit 0
 
+### Regression — Phase 1A/1B PASS
+
+Ran key stories from both phases against Docker stack after fix:
+- Phase 1A: register, dev auth (expires_in now 1800, expected), bad creds 401, admin auth OK
+- Phase 1B: app launch token creation, scope ceiling enforcement 403, admin launch tokens OK
+
+Evidence: `tests/td-006/evidence/regression/`
+
+### Commits
+
+1. `63c3f57` — fix: reject explicit token_ttl 0 and negative values, Docker evidence (7 stories), env.sh, docker-compose.yml update
+2. `76c46fe` — test: Phase 1A/1B regression pass
+
 ### What's next
 
 1. ~~Fix TTL 0/-1 bug~~ — DONE
-2. ~~Re-run S6~~ — DONE, all 7 stories PASS
-3. **Regression** — run Phase 1A/1B key stories against Docker stack
-4. CHANGELOG entry, merge to develop
-5. **Phase 1C** — next feature work (19 stories, ~2 days)
+2. ~~Re-run S6~~ — DONE, 7/7 PASS
+3. ~~Regression~~ — DONE, Phase 1A/1B PASS
+4. ~~Merge to develop~~ — DONE
+5. **Phase 1C** — next feature work (19 stories, ~2 days): app lifecycle, NIST alignment, token hygiene
 6. Duplicate app name 500→409 fix — deferred, logged in `KNOWN-ISSUES.md` and evidence README
 
 ## Session 31 — TD-006 Implementation (2026-03-05)

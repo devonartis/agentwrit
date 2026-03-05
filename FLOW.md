@@ -96,12 +96,19 @@ Found during testing — registering an app with an existing name returns HTTP 5
 
 → Artifact: `tests/td-006/evidence/README.md` (Open Issues section)
 
+### Regression: Phase 1A/1B PASS
+
+Ran key regression stories against Docker stack after fix. Phase 1A: app register, dev auth (expires_in now 1800 — expected), bad creds 401, admin auth OK. Phase 1B: app launch tokens, scope ceiling enforcement, admin launch tokens. All pass. No regressions.
+
+→ Artifact: `tests/td-006/evidence/regression/`
+
+### TD-006 merged to develop
+
+Branch `feature/td-006-app-jwt-ttl` merged to `develop`. TD-006 resolved in tech debt table.
+
 ### What's next
 
-1. **Regression** — Phase 1A/1B key stories against Docker stack
-2. **CHANGELOG** entry for TD-006
-3. **Merge** `feature/td-006-app-jwt-ttl` → `develop`
-4. **Phase 1C** — app lifecycle, NIST alignment, token hygiene (19 stories)
+1. **Phase 1C** — app lifecycle, NIST alignment, token hygiene (19 stories)
 
 **Phase 1C** (19 stories, ~2 days):
 - Stories 1-10: original app lifecycle (app revocation, `app_id` claims, secret rotation)
