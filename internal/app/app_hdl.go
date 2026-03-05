@@ -60,8 +60,9 @@ func (h *AppHdl) RegisterRoutes(mux *http.ServeMux) {
 // ---------------------------------------------------------------------------
 
 type registerAppReq struct {
-	Name   string   `json:"name"`
-	Scopes []string `json:"scopes"`
+	Name     string   `json:"name"`
+	Scopes   []string `json:"scopes"`
+	TokenTTL int      `json:"token_ttl,omitempty"` // 0 = use default
 }
 
 type appResp struct {
@@ -124,13 +125,15 @@ func (h *AppHdl) handleRegisterApp(w http.ResponseWriter, r *http.Request) {
 		createdBy = claims.Sub
 	}
 
-	resp, err := h.appSvc.RegisterApp(req.Name, req.Scopes, createdBy)
+	resp, err := h.appSvc.RegisterApp(req.Name, req.Scopes, createdBy, req.TokenTTL)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrInvalidAppName):
 			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "invalid app name: must be lowercase letters, digits, and hyphens", r.URL.Path)
 		case errors.Is(err, ErrInvalidScopeFormat):
 			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "invalid scope format: use action:resource:identifier", r.URL.Path)
+		case errors.Is(err, ErrInvalidTTL):
+			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_ttl", err.Error(), r.URL.Path)
 		default:
 			obs.Fail(hdlMod, hdlCmp, "register app failed", "err="+err.Error())
 			problemdetails.WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "failed to register app", r.URL.Path)

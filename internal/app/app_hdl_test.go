@@ -42,7 +42,7 @@ func newTestAppMux(t *testing.T) (*http.ServeMux, *AppSvc) {
 	adminSvc := admin.NewAdminSvc(testAdminSecret, tknSvc, st, al, "")
 	valMw := authz.NewValMw(tknSvc, nil, nil, "")
 
-	appSvc := NewAppSvc(st, tknSvc, al, "")
+	appSvc := NewAppSvc(st, tknSvc, al, "", 1800)
 	appHdl := NewAppHdl(appSvc, valMw)
 	adminHdl := admin.NewAdminHdl(adminSvc, valMw, al, nil, st)
 
@@ -201,7 +201,7 @@ func TestHandleListApps_AfterRegister(t *testing.T) {
 	mux, appSvc := newTestAppMux(t)
 	tok := getAdminToken(t, mux)
 
-	if _, err := appSvc.RegisterApp("app-one", []string{"read:data:*"}, "admin"); err != nil {
+	if _, err := appSvc.RegisterApp("app-one", []string{"read:data:*"}, "admin", 0); err != nil {
 		t.Fatalf("seed app: %v", err)
 	}
 
@@ -226,7 +226,7 @@ func TestHandleListApps_NoSecretHashInResponse(t *testing.T) {
 	mux, appSvc := newTestAppMux(t)
 	tok := getAdminToken(t, mux)
 
-	if _, err := appSvc.RegisterApp("secret-app", []string{"read:data:*"}, "admin"); err != nil {
+	if _, err := appSvc.RegisterApp("secret-app", []string{"read:data:*"}, "admin", 0); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
@@ -245,7 +245,7 @@ func TestHandleGetApp_Success(t *testing.T) {
 	mux, appSvc := newTestAppMux(t)
 	tok := getAdminToken(t, mux)
 
-	reg, err := appSvc.RegisterApp("my-app", []string{"read:data:*"}, "admin")
+	reg, err := appSvc.RegisterApp("my-app", []string{"read:data:*"}, "admin", 0)
 	if err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -289,7 +289,7 @@ func TestHandleUpdateApp_Success(t *testing.T) {
 	mux, appSvc := newTestAppMux(t)
 	tok := getAdminToken(t, mux)
 
-	reg, err := appSvc.RegisterApp("my-app", []string{"read:data:*"}, "admin")
+	reg, err := appSvc.RegisterApp("my-app", []string{"read:data:*"}, "admin", 0)
 	if err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -338,7 +338,7 @@ func TestHandleDeregisterApp_Success(t *testing.T) {
 	mux, appSvc := newTestAppMux(t)
 	tok := getAdminToken(t, mux)
 
-	reg, err := appSvc.RegisterApp("my-app", []string{"read:data:*"}, "admin")
+	reg, err := appSvc.RegisterApp("my-app", []string{"read:data:*"}, "admin", 0)
 	if err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -382,7 +382,7 @@ func TestHandleDeregisterApp_NotFound(t *testing.T) {
 func TestHandleAppAuth_Success(t *testing.T) {
 	mux, appSvc := newTestAppMux(t)
 
-	reg, err := appSvc.RegisterApp("my-app", []string{"read:data:*"}, "admin")
+	reg, err := appSvc.RegisterApp("my-app", []string{"read:data:*"}, "admin", 0)
 	if err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -405,8 +405,8 @@ func TestHandleAppAuth_Success(t *testing.T) {
 	if resp.AccessToken == "" {
 		t.Error("expected non-empty access_token")
 	}
-	if resp.ExpiresIn != appTokenTTL {
-		t.Errorf("expires_in: want %d, got %d", appTokenTTL, resp.ExpiresIn)
+	if resp.ExpiresIn != 1800 {
+		t.Errorf("expires_in: want 1800, got %d", resp.ExpiresIn)
 	}
 	if resp.TokenType != "Bearer" {
 		t.Errorf("token_type: want %q, got %q", "Bearer", resp.TokenType)
@@ -416,7 +416,7 @@ func TestHandleAppAuth_Success(t *testing.T) {
 func TestHandleAppAuth_WrongSecret(t *testing.T) {
 	mux, appSvc := newTestAppMux(t)
 
-	reg, err := appSvc.RegisterApp("my-app", []string{"read:data:*"}, "admin")
+	reg, err := appSvc.RegisterApp("my-app", []string{"read:data:*"}, "admin", 0)
 	if err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -445,7 +445,7 @@ func TestHandleAppAuth_UnknownClientID(t *testing.T) {
 func TestHandleAppAuth_DeregisteredApp(t *testing.T) {
 	mux, appSvc := newTestAppMux(t)
 
-	reg, err := appSvc.RegisterApp("my-app", []string{"read:data:*"}, "admin")
+	reg, err := appSvc.RegisterApp("my-app", []string{"read:data:*"}, "admin", 0)
 	if err != nil {
 		t.Fatalf("seed: %v", err)
 	}

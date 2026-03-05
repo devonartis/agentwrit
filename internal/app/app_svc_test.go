@@ -27,14 +27,14 @@ func newTestAppSvc(t *testing.T) *AppSvc {
 		t.Fatalf("generate key: %v", err)
 	}
 	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
-	return NewAppSvc(st, tknSvc, nil, "test-audience")
+	return NewAppSvc(st, tknSvc, nil, "test-audience", 1800)
 }
 
 // TestRegisterApp_Success verifies an app can be registered and credentials returned.
 func TestRegisterApp_Success(t *testing.T) {
 	svc := newTestAppSvc(t)
 
-	resp, err := svc.RegisterApp("weather-bot", []string{"read:weather:*", "write:logs:*"}, "admin")
+	resp, err := svc.RegisterApp("weather-bot", []string{"read:weather:*", "write:logs:*"}, "admin", 0)
 	if err != nil {
 		t.Fatalf("RegisterApp failed: %v", err)
 	}
@@ -60,10 +60,10 @@ func TestRegisterApp_Success(t *testing.T) {
 func TestRegisterApp_DuplicateName(t *testing.T) {
 	svc := newTestAppSvc(t)
 
-	if _, err := svc.RegisterApp("my-app", []string{"read:data:*"}, "admin"); err != nil {
+	if _, err := svc.RegisterApp("my-app", []string{"read:data:*"}, "admin", 0); err != nil {
 		t.Fatalf("first RegisterApp failed: %v", err)
 	}
-	if _, err := svc.RegisterApp("my-app", []string{"read:data:*"}, "admin"); err == nil {
+	if _, err := svc.RegisterApp("my-app", []string{"read:data:*"}, "admin", 0); err == nil {
 		t.Error("expected error on duplicate name, got nil")
 	}
 }
@@ -81,7 +81,7 @@ func TestRegisterApp_InvalidName(t *testing.T) {
 		"1myapp",      // starts with digit
 	}
 	for _, name := range cases {
-		if _, err := svc.RegisterApp(name, []string{"read:data:*"}, "admin"); err == nil {
+		if _, err := svc.RegisterApp(name, []string{"read:data:*"}, "admin", 0); err == nil {
 			t.Errorf("expected error for invalid name %q, got nil", name)
 		}
 	}
@@ -98,7 +98,7 @@ func TestRegisterApp_InvalidScope(t *testing.T) {
 		{"read::*"},
 	}
 	for _, scopes := range cases {
-		if _, err := svc.RegisterApp("valid-app", scopes, "admin"); err == nil {
+		if _, err := svc.RegisterApp("valid-app", scopes, "admin", 0); err == nil {
 			t.Errorf("expected error for invalid scopes %v, got nil", scopes)
 		}
 	}
@@ -108,7 +108,7 @@ func TestRegisterApp_InvalidScope(t *testing.T) {
 func TestAuthenticateApp_Success(t *testing.T) {
 	svc := newTestAppSvc(t)
 
-	reg, err := svc.RegisterApp("my-app", []string{"read:data:*"}, "admin")
+	reg, err := svc.RegisterApp("my-app", []string{"read:data:*"}, "admin", 0)
 	if err != nil {
 		t.Fatalf("RegisterApp: %v", err)
 	}
@@ -121,8 +121,8 @@ func TestAuthenticateApp_Success(t *testing.T) {
 	if resp.AccessToken == "" {
 		t.Fatal("expected non-empty access_token")
 	}
-	if resp.ExpiresIn != appTokenTTL {
-		t.Errorf("ExpiresIn: want %d, got %d", appTokenTTL, resp.ExpiresIn)
+	if resp.ExpiresIn != 1800 {
+		t.Errorf("ExpiresIn: want 1800, got %d", resp.ExpiresIn)
 	}
 	if resp.TokenType != "Bearer" {
 		t.Errorf("TokenType: want %q, got %q", "Bearer", resp.TokenType)
@@ -133,7 +133,7 @@ func TestAuthenticateApp_Success(t *testing.T) {
 func TestAuthenticateApp_JWTClaims(t *testing.T) {
 	svc := newTestAppSvc(t)
 
-	reg, err := svc.RegisterApp("my-app", []string{"read:data:*"}, "admin")
+	reg, err := svc.RegisterApp("my-app", []string{"read:data:*"}, "admin", 0)
 	if err != nil {
 		t.Fatalf("RegisterApp: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestAuthenticateApp_JWTClaims(t *testing.T) {
 func TestAuthenticateApp_WrongSecret(t *testing.T) {
 	svc := newTestAppSvc(t)
 
-	reg, err := svc.RegisterApp("my-app", []string{"read:data:*"}, "admin")
+	reg, err := svc.RegisterApp("my-app", []string{"read:data:*"}, "admin", 0)
 	if err != nil {
 		t.Fatalf("RegisterApp: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestAuthenticateApp_UnknownClientID(t *testing.T) {
 func TestAuthenticateApp_InactiveApp(t *testing.T) {
 	svc := newTestAppSvc(t)
 
-	reg, err := svc.RegisterApp("my-app", []string{"read:data:*"}, "admin")
+	reg, err := svc.RegisterApp("my-app", []string{"read:data:*"}, "admin", 0)
 	if err != nil {
 		t.Fatalf("RegisterApp: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestAuthenticateApp_InactiveApp(t *testing.T) {
 func TestDeregisterApp_SoftDelete(t *testing.T) {
 	svc := newTestAppSvc(t)
 
-	reg, err := svc.RegisterApp("my-app", []string{"read:data:*"}, "admin")
+	reg, err := svc.RegisterApp("my-app", []string{"read:data:*"}, "admin", 0)
 	if err != nil {
 		t.Fatalf("RegisterApp: %v", err)
 	}
@@ -244,10 +244,10 @@ func TestDeregisterApp_NotFound(t *testing.T) {
 func TestListApps(t *testing.T) {
 	svc := newTestAppSvc(t)
 
-	if _, err := svc.RegisterApp("app-one", []string{"read:data:*"}, "admin"); err != nil {
+	if _, err := svc.RegisterApp("app-one", []string{"read:data:*"}, "admin", 0); err != nil {
 		t.Fatalf("RegisterApp app-one: %v", err)
 	}
-	if _, err := svc.RegisterApp("app-two", []string{"write:data:*"}, "admin"); err != nil {
+	if _, err := svc.RegisterApp("app-two", []string{"write:data:*"}, "admin", 0); err != nil {
 		t.Fatalf("RegisterApp app-two: %v", err)
 	}
 
@@ -274,7 +274,7 @@ func TestGetApp_NotFound(t *testing.T) {
 func TestUpdateApp_Success(t *testing.T) {
 	svc := newTestAppSvc(t)
 
-	reg, err := svc.RegisterApp("my-app", []string{"read:data:*"}, "admin")
+	reg, err := svc.RegisterApp("my-app", []string{"read:data:*"}, "admin", 0)
 	if err != nil {
 		t.Fatalf("RegisterApp: %v", err)
 	}
@@ -293,11 +293,96 @@ func TestUpdateApp_Success(t *testing.T) {
 	}
 }
 
+// TestRegisterApp_DefaultTTL verifies 0 means use default (1800).
+func TestRegisterApp_DefaultTTL(t *testing.T) {
+	svc := newTestAppSvc(t)
+	resp, err := svc.RegisterApp("default-ttl", []string{"read:data:*"}, "admin", 0)
+	if err != nil {
+		t.Fatalf("RegisterApp: %v", err)
+	}
+	rec, _ := svc.GetApp(resp.AppID)
+	if rec.TokenTTL != 1800 {
+		t.Fatalf("expected default TTL 1800, got %d", rec.TokenTTL)
+	}
+	if resp.TokenTTL != 1800 {
+		t.Fatalf("expected resp TTL 1800, got %d", resp.TokenTTL)
+	}
+}
+
+// TestRegisterApp_CustomTTL verifies explicit TTL is stored.
+func TestRegisterApp_CustomTTL(t *testing.T) {
+	svc := newTestAppSvc(t)
+	resp, err := svc.RegisterApp("custom-ttl", []string{"read:data:*"}, "admin", 3600)
+	if err != nil {
+		t.Fatalf("RegisterApp: %v", err)
+	}
+	rec, _ := svc.GetApp(resp.AppID)
+	if rec.TokenTTL != 3600 {
+		t.Fatalf("expected TTL 3600, got %d", rec.TokenTTL)
+	}
+}
+
+// TestRegisterApp_TTLTooLow verifies TTL below minimum is rejected.
+func TestRegisterApp_TTLTooLow(t *testing.T) {
+	svc := newTestAppSvc(t)
+	_, err := svc.RegisterApp("ttl-low", []string{"read:data:*"}, "admin", 30)
+	if !errors.Is(err, ErrInvalidTTL) {
+		t.Fatalf("expected ErrInvalidTTL, got %v", err)
+	}
+}
+
+// TestRegisterApp_TTLTooHigh verifies TTL above maximum is rejected.
+func TestRegisterApp_TTLTooHigh(t *testing.T) {
+	svc := newTestAppSvc(t)
+	_, err := svc.RegisterApp("ttl-high", []string{"read:data:*"}, "admin", 100000)
+	if !errors.Is(err, ErrInvalidTTL) {
+		t.Fatalf("expected ErrInvalidTTL, got %v", err)
+	}
+}
+
+// TestAuthenticateApp_UsesPerAppTTL verifies auth uses the stored per-app TTL.
+func TestAuthenticateApp_UsesPerAppTTL(t *testing.T) {
+	svc := newTestAppSvc(t)
+	resp, _ := svc.RegisterApp("auth-ttl", []string{"read:data:*"}, "admin", 7200)
+	authResp, err := svc.AuthenticateApp(resp.ClientID, resp.ClientSecret)
+	if err != nil {
+		t.Fatalf("AuthenticateApp: %v", err)
+	}
+	if authResp.ExpiresIn != 7200 {
+		t.Fatalf("expected ExpiresIn 7200, got %d", authResp.ExpiresIn)
+	}
+}
+
+// TestUpdateAppTTL_Service verifies TTL can be updated via the service.
+func TestUpdateAppTTL_Service(t *testing.T) {
+	svc := newTestAppSvc(t)
+	resp, _ := svc.RegisterApp("update-ttl", []string{"read:data:*"}, "admin", 1800)
+	if err := svc.UpdateAppTTL(resp.AppID, 3600, "admin"); err != nil {
+		t.Fatalf("UpdateAppTTL: %v", err)
+	}
+	rec, _ := svc.GetApp(resp.AppID)
+	if rec.TokenTTL != 3600 {
+		t.Fatalf("expected 3600, got %d", rec.TokenTTL)
+	}
+}
+
+// TestUpdateAppTTL_OutOfBounds verifies bounds are enforced on update.
+func TestUpdateAppTTL_OutOfBounds(t *testing.T) {
+	svc := newTestAppSvc(t)
+	resp, _ := svc.RegisterApp("bounds-ttl", []string{"read:data:*"}, "admin", 1800)
+	if err := svc.UpdateAppTTL(resp.AppID, 30, "admin"); !errors.Is(err, ErrInvalidTTL) {
+		t.Fatalf("expected ErrInvalidTTL for too low, got %v", err)
+	}
+	if err := svc.UpdateAppTTL(resp.AppID, 100000, "admin"); !errors.Is(err, ErrInvalidTTL) {
+		t.Fatalf("expected ErrInvalidTTL for too high, got %v", err)
+	}
+}
+
 // TestUpdateApp_InvalidScope verifies bad scopes are rejected on update.
 func TestUpdateApp_InvalidScope(t *testing.T) {
 	svc := newTestAppSvc(t)
 
-	reg, err := svc.RegisterApp("my-app", []string{"read:data:*"}, "admin")
+	reg, err := svc.RegisterApp("my-app", []string{"read:data:*"}, "admin", 0)
 	if err != nil {
 		t.Fatalf("RegisterApp: %v", err)
 	}
