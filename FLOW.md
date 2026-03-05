@@ -79,16 +79,18 @@ Key implementation notes:
 **Branch:** `feature/td-006-app-jwt-ttl` — clean, 8 commits ahead of `develop`.
 
 **Action (in order):**
-1. **Add `AA_APP_TOKEN_TTL` to `docker-compose.yml`** — required before stack_up
-2. **Docker live test** — `./scripts/stack_up.sh`, run all 7 user stories from `tests/td-006/user-stories.md`
-   - Build `aactl` to `./bin/aactl`, source env from `tests/td-006/env.sh`
+1. **Add `AA_APP_TOKEN_TTL` to `docker-compose.yml`** — add `- AA_APP_TOKEN_TTL=${AA_APP_TOKEN_TTL:-1800}` to broker environment
+2. **Create `tests/td-006/env.sh`** — set `AA_BROKER_URL`, `AA_ADMIN_SECRET`, `AACTL` path (same pattern as `tests/phase-1b/env.sh`)
+3. **Build aactl** — `go build -o ./bin/aactl ./cmd/aactl`
+4. **Docker live test** — `./scripts/stack_up.sh`, then run all 7 user stories from `tests/td-006/user-stories.md`
+   - Source env: `source tests/td-006/env.sh`
    - Operator stories (S1-S4) use `aactl`. Developer story (S5) uses `curl`. Security stories (S6-S7) use both.
    - Save evidence to `tests/td-006/evidence/`
-3. **Regression** — run Phase 1A and 1B key stories to verify nothing broke
-4. **CHANGELOG** — add TD-006 entry
-5. **Mark TD-006 resolved** in MEMORY.md tech debt table
-6. **Merge** `feature/td-006-app-jwt-ttl` → `develop`
-7. **Start Phase 1C**
+5. **Regression** — run Phase 1A and 1B key stories against the same stack
+6. **CHANGELOG** — add TD-006 entry
+7. **Mark TD-006 resolved** in MEMORY.md tech debt table
+8. **Merge** `feature/td-006-app-jwt-ttl` → `develop`
+9. **Start Phase 1C**
 
 **Phase 1C** (19 stories, ~2 days):
 - Stories 1-10: original app lifecycle (app revocation, `app_id` claims, secret rotation)
