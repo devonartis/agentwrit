@@ -2,10 +2,10 @@
 //
 // Commands:
 //
-//	aactl app register --name NAME --scopes SCOPE_CSV
+//	aactl app register --name NAME --scopes SCOPE_CSV [--token-ttl N]
 //	aactl app list [--json]
 //	aactl app get APP_ID
-//	aactl app update --id APP_ID --scopes SCOPE_CSV
+//	aactl app update --id APP_ID [--scopes SCOPE_CSV] [--token-ttl N]
 //	aactl app remove --id APP_ID
 package main
 
@@ -25,10 +25,12 @@ var appCmd = &cobra.Command{
 	Short: "Manage registered apps",
 }
 
-// appRegisterName and appRegisterScopes hold flag values for "aactl app register".
+// appRegisterName, appRegisterScopes, and appRegisterTokenTTL hold flag values
+// for "aactl app register".
 var (
-	appRegisterName   string
-	appRegisterScopes string
+	appRegisterName     string
+	appRegisterScopes   string
+	appRegisterTokenTTL int
 )
 
 // appRegisterCmd implements "aactl app register", creating a new app registration
@@ -52,6 +54,9 @@ var appRegisterCmd = &cobra.Command{
 			"name":   appRegisterName,
 			"scopes": scopes,
 		}
+		if appRegisterTokenTTL > 0 {
+			payload["token_ttl"] = appRegisterTokenTTL
+		}
 		data, err := c.doPost("/v1/admin/apps", payload)
 		if err != nil {
 			return err
@@ -66,6 +71,7 @@ var appRegisterCmd = &cobra.Command{
 			ClientID     string   `json:"client_id"`
 			ClientSecret string   `json:"client_secret"`
 			Scopes       []string `json:"scopes"`
+			TokenTTL     int      `json:"token_ttl"`
 		}
 		if err := json.Unmarshal(data, &resp); err != nil {
 			return fmt.Errorf("decode response: %w", err)
@@ -78,6 +84,7 @@ var appRegisterCmd = &cobra.Command{
 				{"CLIENT_ID", resp.ClientID},
 				{"CLIENT_SECRET", resp.ClientSecret},
 				{"SCOPES", strings.Join(resp.Scopes, ", ")},
+				{"TOKEN_TTL", fmt.Sprintf("%ds", resp.TokenTTL)},
 			},
 		)
 		fmt.Fprintln(os.Stderr, "\nWARNING: Save the client_secret — it cannot be retrieved again.")
@@ -109,6 +116,7 @@ var appListCmd = &cobra.Command{
 				Name      string   `json:"name"`
 				ClientID  string   `json:"client_id"`
 				Scopes    []string `json:"scopes"`
+				TokenTTL  int      `json:"token_ttl"`
 				Status    string   `json:"status"`
 				CreatedAt string   `json:"created_at"`
 			} `json:"apps"`
@@ -126,10 +134,11 @@ var appListCmd = &cobra.Command{
 				a.ClientID,
 				a.Status,
 				strings.Join(a.Scopes, ","),
+				fmt.Sprintf("%ds", a.TokenTTL),
 				a.CreatedAt,
 			}
 		}
-		printTable([]string{"NAME", "APP_ID", "CLIENT_ID", "STATUS", "SCOPES", "CREATED"}, rows)
+		printTable([]string{"NAME", "APP_ID", "CLIENT_ID", "STATUS", "SCOPES", "TOKEN_TTL", "CREATED"}, rows)
 		fmt.Fprintf(os.Stderr, "Total: %d\n", resp.Total)
 		return nil
 	},
@@ -159,6 +168,7 @@ var appGetCmd = &cobra.Command{
 			Name      string   `json:"name"`
 			ClientID  string   `json:"client_id"`
 			Scopes    []string `json:"scopes"`
+			TokenTTL  int      `json:"token_ttl"`
 			Status    string   `json:"status"`
 			CreatedAt string   `json:"created_at"`
 			UpdatedAt string   `json:"updated_at"`
@@ -175,6 +185,7 @@ var appGetCmd = &cobra.Command{
 				{"CLIENT_ID", resp.ClientID},
 				{"STATUS", resp.Status},
 				{"SCOPES", strings.Join(resp.Scopes, ", ")},
+				{"TOKEN_TTL", fmt.Sprintf("%ds", resp.TokenTTL)},
 				{"CREATED", resp.CreatedAt},
 				{"UPDATED", resp.UpdatedAt},
 			},
@@ -183,30 +194,37 @@ var appGetCmd = &cobra.Command{
 	},
 }
 
-// appUpdateID and appUpdateScopes hold flag values for "aactl app update".
+// appUpdateID, appUpdateScopes, and appUpdateTokenTTL hold flag values
+// for "aactl app update".
 var (
-	appUpdateID     string
-	appUpdateScopes string
+	appUpdateID       string
+	appUpdateScopes   string
+	appUpdateTokenTTL int
 )
 
-// appUpdateCmd implements "aactl app update --id APP_ID --scopes SCOPE_CSV",
-// replacing the scope ceiling for an existing app.
+// appUpdateCmd implements "aactl app update --id APP_ID [--scopes SCOPE_CSV] [--token-ttl N]",
+// updating scope ceiling and/or token TTL for an existing app.
 var appUpdateCmd = &cobra.Command{
 	Use:   "update",
-	Short: "Update an app's scope ceiling",
+	Short: "Update an app's settings (scopes and/or token TTL)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if appUpdateID == "" {
 			return fmt.Errorf("--id is required")
 		}
-		if appUpdateScopes == "" {
-			return fmt.Errorf("--scopes is required")
+		if appUpdateScopes == "" && appUpdateTokenTTL == 0 {
+			return fmt.Errorf("at least one of --scopes or --token-ttl is required")
 		}
 		c, err := newClient()
 		if err != nil {
 			return err
 		}
-		scopes := strings.Split(appUpdateScopes, ",")
-		payload := map[string][]string{"scopes": scopes}
+		payload := map[string]any{}
+		if appUpdateScopes != "" {
+			payload["scopes"] = strings.Split(appUpdateScopes, ",")
+		}
+		if appUpdateTokenTTL > 0 {
+			payload["token_ttl"] = appUpdateTokenTTL
+		}
 		data, err := c.doPut("/v1/admin/apps/"+appUpdateID, payload)
 		if err != nil {
 			return err
@@ -219,6 +237,7 @@ var appUpdateCmd = &cobra.Command{
 		var resp struct {
 			AppID     string   `json:"app_id"`
 			Scopes    []string `json:"scopes"`
+			TokenTTL  int      `json:"token_ttl"`
 			UpdatedAt string   `json:"updated_at"`
 		}
 		if err := json.Unmarshal(data, &resp); err != nil {
@@ -226,8 +245,8 @@ var appUpdateCmd = &cobra.Command{
 		}
 
 		printTable(
-			[]string{"APP_ID", "SCOPES", "UPDATED_AT"},
-			[][]string{{resp.AppID, strings.Join(resp.Scopes, ", "), resp.UpdatedAt}},
+			[]string{"APP_ID", "SCOPES", "TOKEN_TTL", "UPDATED_AT"},
+			[][]string{{resp.AppID, strings.Join(resp.Scopes, ", "), fmt.Sprintf("%ds", resp.TokenTTL), resp.UpdatedAt}},
 		)
 		return nil
 	},
@@ -279,9 +298,11 @@ var appRemoveCmd = &cobra.Command{
 func init() {
 	appRegisterCmd.Flags().StringVar(&appRegisterName, "name", "", "app name (required)")
 	appRegisterCmd.Flags().StringVar(&appRegisterScopes, "scopes", "", "comma-separated scope ceiling (required)")
+	appRegisterCmd.Flags().IntVar(&appRegisterTokenTTL, "token-ttl", 0, "app JWT TTL in seconds (default: global AA_APP_TOKEN_TTL)")
 
 	appUpdateCmd.Flags().StringVar(&appUpdateID, "id", "", "app ID to update (required)")
-	appUpdateCmd.Flags().StringVar(&appUpdateScopes, "scopes", "", "comma-separated new scope ceiling (required)")
+	appUpdateCmd.Flags().StringVar(&appUpdateScopes, "scopes", "", "comma-separated new scope ceiling")
+	appUpdateCmd.Flags().IntVar(&appUpdateTokenTTL, "token-ttl", 0, "new app JWT TTL in seconds")
 
 	appRemoveCmd.Flags().StringVar(&appRemoveID, "id", "", "app ID to deregister (required)")
 
