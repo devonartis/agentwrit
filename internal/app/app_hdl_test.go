@@ -461,3 +461,93 @@ func TestHandleAppAuth_DeregisteredApp(t *testing.T) {
 		t.Fatalf("expected 401 after deregister, got %d", rec.Code)
 	}
 }
+
+func TestHandleRegisterApp_WithTTL(t *testing.T) {
+	mux, _ := newTestAppMux(t)
+	adminToken := getAdminToken(t, mux)
+
+	body := `{"name":"ttl-app","scopes":["read:data:*"],"token_ttl":3600}`
+	req := httptest.NewRequest("POST", "/v1/admin/apps", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		TokenTTL int `json:"token_ttl"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.TokenTTL != 3600 {
+		t.Fatalf("expected token_ttl 3600, got %d", resp.TokenTTL)
+	}
+}
+
+func TestHandleRegisterApp_TTLOutOfBounds(t *testing.T) {
+	mux, _ := newTestAppMux(t)
+	adminToken := getAdminToken(t, mux)
+
+	body := `{"name":"ttl-bad","scopes":["read:data:*"],"token_ttl":30}`
+	req := httptest.NewRequest("POST", "/v1/admin/apps", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandleUpdateApp_TTLOnly(t *testing.T) {
+	mux, appSvc := newTestAppMux(t)
+	adminToken := getAdminToken(t, mux)
+
+	reg, err := appSvc.RegisterApp("my-app", []string{"read:data:*"}, "admin", 0)
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	body := `{"token_ttl":7200}`
+	req := httptest.NewRequest("PUT", "/v1/admin/apps/"+reg.AppID, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		TokenTTL int `json:"token_ttl"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.TokenTTL != 7200 {
+		t.Fatalf("expected token_ttl 7200, got %d", resp.TokenTTL)
+	}
+}
+
+func TestHandleUpdateApp_TTLOutOfBounds(t *testing.T) {
+	mux, appSvc := newTestAppMux(t)
+	adminToken := getAdminToken(t, mux)
+
+	reg, err := appSvc.RegisterApp("my-app", []string{"read:data:*"}, "admin", 0)
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	body := `{"token_ttl":5}`
+	req := httptest.NewRequest("PUT", "/v1/admin/apps/"+reg.AppID, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
