@@ -25,17 +25,36 @@ Format:
 
 ---
 
-## Next session: Docker live test for Phase 1B
+## Next session: Merge Phase 1B → develop
 
-**Branch:** `feature/phase-1b-launch-tokens` — up to date with develop (Phase 0 merged in). All unit tests green (15 packages). Code complete, needs Docker live test before merge.
+**Branch:** `feature/phase-1b-launch-tokens` — all 11 Docker live tests PASS, committed at `1556a93`.
 **Action:**
-1. `./scripts/stack_up.sh` — bring up Docker stack
-2. Execute all 11 stories from `tests/phase-1b/user-stories.md`
-3. Follow `tests/LIVE-TEST-TEMPLATE.md` — banner in the call, one story at a time, output piped to evidence file, verdict after seeing result
-4. Save evidence to `tests/phase-1b/evidence/`
-5. Merge Phase 1B → develop
+1. Merge `feature/phase-1b-launch-tokens` → `develop`
+2. Decide next phase: Phase 1C (app revocation + audit + secret rotation) or TD-006 (app JWT TTL fix)
+3. Update CHANGELOG.md with Phase 1B release notes
 
-**Important:** Read `tests/LIVE-TEST-TEMPLATE.md` before running any test. The template is the complete guide with real examples of how to execute stories and record evidence.
+---
+
+## 2026-03-04 (Session 28 — Phase 1B Docker Live Tests)
+
+### Phase 1B live tests: 11/11 PASS
+
+All 11 stories from `tests/phase-1b/user-stories.md` executed against Docker stack. Evidence saved to `tests/phase-1b/evidence/`.
+
+Key findings:
+- macOS LibreSSL lacks Ed25519 — used Python `cryptography` for agent registration crypto
+- Launch token TTL defaults to 30s — must create and consume in one shot
+- Nonce must be hex-decoded before Ed25519 signing (not signed as string)
+- App JWT TTL at 5 min is too short for machine-to-machine — logged as TD-006
+
+### Decision: No Co-Authored-By in commits
+
+Divine requested no AI co-author tags in commit messages going forward. Saved to auto-memory.
+
+### Decision: App JWT TTL needs fixing (TD-006)
+
+App JWT shares the global `AA_DEFAULT_TTL=300` (5 min) with all token types. Industry standard for machine-to-machine is 30-60 min. Operator should be able to set per-app TTL at registration or update time. Logged as TD-006, targeted before Phase 1C.
+→ Reference: `TECH-DEBT.md`
 
 ---
 

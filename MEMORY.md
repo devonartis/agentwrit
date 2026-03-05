@@ -110,6 +110,37 @@ Active tech debt. Append here when new debt is taken. Full details in `.plans/PR
 - Full architecture doc: `.plans/CoWork-Architecture-Direct-Broker.md` (also `.html` and `.pdf` versions)
 - Lifecycle diagram: `.plans/CoWork-Diagram-FullLifecycle.svg`
 
+## 2026-03-04 (Session 28 — Phase 1B Docker Live Tests)
+
+### What happened
+
+Executed all 11 Phase 1B user stories against the Docker stack. All 11 PASS. Committed evidence to `tests/phase-1b/evidence/`.
+
+### Live test results
+
+- **S1-S3 (Developer):** App auth → launch token creation → agent registration with app traceability. All working. Ed25519 signing done via Python `cryptography` (macOS LibreSSL lacks Ed25519 support).
+- **S4-S6 (Operator):** Launch token audit traceability (app vs admin origin), ceiling enforcement (3 cases), admin backward compatibility. All working.
+- **S7-S8 (Security):** Scope attenuation (4 cases including wildcard widening with a second narrow-ceiling app), full traceability chain from app auth → launch token → agent registration. All working.
+- **R1-R3 (Regression):** App auth, admin endpoint blocking, admin auth + audit hash chain integrity. All working.
+
+### Tech debt added
+
+- **TD-006:** App JWT TTL hardcoded to 5 min via global `AA_DEFAULT_TTL`. Should default to 30 min minimum and be configurable per-app by operator at registration or update time (`aactl app register --token-ttl`). Added to `TECH-DEBT.md`.
+
+### Findings during testing
+
+- macOS LibreSSL doesn't support Ed25519 — had to use Python `cryptography` library for agent registration steps
+- Launch token default TTL is 30 seconds (`defaultTokenTTL = 30` in `internal/admin/admin_svc.go`) — agent registration must happen immediately after token creation
+- The nonce must be hex-decoded before signing (`internal/identity/id_svc.go:180`) — signing the hex string fails signature verification
+
+### Commit preferences
+
+- No Co-Authored-By lines in commits going forward
+
+### Branch
+
+- `feature/phase-1b-launch-tokens` — commit `1556a93` — live tests complete, ready to merge → develop
+
 ## 2026-03-04 (Session 26 — Phase 0 Legacy Cleanup Implementation)
 
 ### What happened
