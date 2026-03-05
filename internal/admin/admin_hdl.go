@@ -29,6 +29,7 @@ type AdminHdl struct {
 	revSvc      *revoke.RevSvc
 	auditLog    *audit.AuditLog
 	rateLimiter *authz.RateLimiter
+	store       *store.SqlStore // for app ceiling lookups
 }
 
 // NewAdminHdl creates a new admin handler. The valMw is used to protect
@@ -36,13 +37,16 @@ type AdminHdl struct {
 // A rate limiter is applied to the admin auth endpoint to prevent brute
 // force attacks. The auditLog parameter may be nil to disable audit
 // recording. The revSvc parameter may be nil if revocation is not needed.
-func NewAdminHdl(adminSvc *AdminSvc, valMw *authz.ValMw, auditLog *audit.AuditLog, revSvc *revoke.RevSvc) *AdminHdl {
+// The st parameter provides app record access for scope ceiling
+// enforcement when app-authenticated callers create launch tokens.
+func NewAdminHdl(adminSvc *AdminSvc, valMw *authz.ValMw, auditLog *audit.AuditLog, revSvc *revoke.RevSvc, st *store.SqlStore) *AdminHdl {
 	return &AdminHdl{
 		adminSvc:    adminSvc,
 		valMw:       valMw,
 		revSvc:      revSvc,
 		auditLog:    auditLog,
 		rateLimiter: authz.NewRateLimiter(5, 10), // 5 req/s, burst 10
+		store:       st,
 	}
 }
 
@@ -52,7 +56,8 @@ func (h *AdminHdl) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /v1/admin/auth",
 		h.rateLimiter.Wrap(http.HandlerFunc(h.handleAuth)))
 	mux.Handle("POST /v1/admin/launch-tokens",
-		h.valMw.Wrap(h.valMw.RequireScope("admin:launch-tokens:*",
+		h.valMw.Wrap(h.valMw.RequireAnyScope(
+			[]string{"admin:launch-tokens:*", "app:launch-tokens:*"},
 			http.HandlerFunc(h.handleCreateLaunchToken))))
 	// Sidecar routes removed in Phase 0 (2026-03-04). Handler methods
 	// retained in source for Phase 2 reintroduction with app-scoped
@@ -142,7 +147,30 @@ func (h *AdminHdl) handleCreateLaunchToken(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	resp, err := h.adminSvc.CreateLaunchToken(req, claims.Sub)
+	var appID string
+
+	// If caller is an app, enforce scope ceiling.
+	if strings.HasPrefix(claims.Sub, "app:") {
+		appID = strings.TrimPrefix(claims.Sub, "app:")
+		appRec, err := h.store.GetAppByID(appID)
+		if err != nil {
+			problemdetails.WriteProblem(r.Context(), w, http.StatusForbidden, "forbidden", "app not found", r.URL.Path)
+			return
+		}
+		if !authz.ScopeIsSubset(req.AllowedScope, appRec.ScopeCeiling) {
+			if h.auditLog != nil {
+				h.auditLog.Record(audit.EventScopeCeilingExceeded, claims.Sub, "", "",
+					fmt.Sprintf("app=%s requested=%v ceiling=%v", appID, req.AllowedScope, appRec.ScopeCeiling),
+					audit.WithOutcome("denied"))
+			}
+			problemdetails.WriteProblem(r.Context(), w, http.StatusForbidden, "forbidden",
+				fmt.Sprintf("requested scopes exceed app ceiling; allowed: %v", appRec.ScopeCeiling),
+				r.URL.Path)
+			return
+		}
+	}
+
+	resp, err := h.adminSvc.CreateLaunchToken(req, claims.Sub, appID)
 	if err != nil {
 		if h.auditLog != nil {
 			h.auditLog.Record(audit.EventLaunchTokenDenied, claims.Sub, "", "",

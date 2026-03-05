@@ -72,7 +72,7 @@ func newTestBroker(t *testing.T) *testBroker {
 	auditHdl := handler.NewAuditHdl(auditLog)
 	healthHdl := handler.NewHealthHdl("test", auditLog, sqlStore)
 	metricsHdl := handler.NewMetricsHdl()
-	adminHdl := admin.NewAdminHdl(adminSvc, valMw, auditLog, revSvc)
+	adminHdl := admin.NewAdminHdl(adminSvc, valMw, auditLog, revSvc, sqlStore)
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /v1/challenge", challengeHdl)

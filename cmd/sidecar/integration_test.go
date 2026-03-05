@@ -62,7 +62,7 @@ func startTestBroker(t *testing.T, secret string) *httptest.Server {
 	mux.Handle("POST /v1/token/exchange",
 		problemdetails.MaxBytesBody(valMw.Wrap(valMw.RequireScope("sidecar:manage:*", handler.NewTokenExchangeHdl(tknSvc, sqlStore, auditLog)))))
 	mux.Handle("GET /v1/health", handler.NewHealthHdl("test", auditLog, sqlStore))
-	admin.NewAdminHdl(adminSvc, valMw, auditLog, revSvc).RegisterRoutes(mux)
+	admin.NewAdminHdl(adminSvc, valMw, auditLog, revSvc, sqlStore).RegisterRoutes(mux)
 
 	var rootHandler http.Handler = mux
 	rootHandler = problemdetails.RequestIDMiddleware(rootHandler)

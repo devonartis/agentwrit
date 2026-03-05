@@ -25,14 +25,59 @@ Format:
 
 ---
 
-## Next session: Execute Phase 0 live tests
+## Next session: Merge Phase 1B → develop
 
-**Branch:** `fix/phase-0-legacy-cleanup` — Tasks 0.1 + 0.2 complete, all unit tests pass. Docker stack is up.
-**Action:** Execute 12 Phase 0 live test stories per `tests/phase-0/user-stories.md`. Fill evidence actuals. Then Tasks 0.3 + 0.4 (docs). Commit. Merge to develop. Resume Phase 1B.
+**Branch:** `feature/phase-1b-launch-tokens` — all 11 Docker live tests PASS, committed at `1556a93`.
+**Action:**
+1. Merge `feature/phase-1b-launch-tokens` → `develop`
+2. Decide next phase: Phase 1C (app revocation + audit + secret rotation) or TD-006 (app JWT TTL fix)
+3. Update CHANGELOG.md with Phase 1B release notes
 
 ---
 
-## 2026-03-04 (Session 26 — Phase 0 Legacy Cleanup)
+## 2026-03-04 (Session 28 — Phase 1B Docker Live Tests)
+
+### Phase 1B live tests: 11/11 PASS
+
+All 11 stories from `tests/phase-1b/user-stories.md` executed against Docker stack. Evidence saved to `tests/phase-1b/evidence/`.
+
+Key findings:
+- macOS LibreSSL lacks Ed25519 — used Python `cryptography` for agent registration crypto
+- Launch token TTL defaults to 30s — must create and consume in one shot
+- Nonce must be hex-decoded before Ed25519 signing (not signed as string)
+- App JWT TTL at 5 min is too short for machine-to-machine — logged as TD-006
+
+### Decision: No Co-Authored-By in commits
+
+Divine requested no AI co-author tags in commit messages going forward. Saved to auto-memory.
+
+### Decision: App JWT TTL needs fixing (TD-006)
+
+App JWT shares the global `AA_DEFAULT_TTL=300` (5 min) with all token types. Industry standard for machine-to-machine is 30-60 min. Operator should be able to set per-app TTL at registration or update time. Logged as TD-006, targeted before Phase 1C.
+→ Reference: `TECH-DEBT.md`
+
+---
+
+## 2026-03-04 (Session 27 — Phase 0 Live Tests + Template Rewrite)
+
+### Phase 0 live tests: 12/12 PASS
+
+Executed all 12 stories against Docker stack. Evidence piped directly into files with banners. All sidecar routes return 404, admin auth works with new format, old format rejected with guidance, app registration/login/scope isolation/audit trail all passing.
+
+### Decision: Live test evidence must be one test per file, plain language
+
+Divine's feedback during live testing: evidence files were being written with multiple checks bundled together ("check all 6 routes in one file") and using technical jargon ("new auth shape"). Rules established:
+- **One test per evidence file.** Each file has one action, one banner, one result.
+- **Plain language.** "The operator tries to log in with..." not "the new auth shape". An executive should understand it.
+- **Who, what, why in the banner.** The Context section tells you who is doing the work, what they're doing, where (Docker broker at 127.0.0.1:8080), and why it matters.
+- **Operator uses aactl, developer uses curl.** No mixing personas.
+- **Banner goes IN the bash call.** Echo the banner, pipe output to file, display the result — all in one call.
+→ Template: `tests/LIVE-TEST-TEMPLATE.md` (complete guide with real examples)
+→ Phase 0 evidence: `tests/phase-0/evidence/` (12 files, all PASS)
+
+---
+
+## 2026-03-04 (Session 26 — Phase 0 Legacy Cleanup Implementation)
 
 ### Decision: Skip brainstorming when design already exists
 
@@ -46,16 +91,42 @@ For admin auth (Task 0.2), instead of silently failing or returning a generic 40
 
 Task 0.1 removed route registrations from `RegisterRoutes()` and `main.go` but kept the handler methods in `internal/admin/admin_hdl.go`. The methods are tested independently of routes and will be re-wired in Phase 2 with app-scoped activation tokens. Deleted the route-based tests since they'd get 404s. Skipped (not deleted) sidecar integration tests in `cmd/sidecar/`.
 
-### Decision: Live test evidence must be one test per file, plain language
+---
 
-Divine's feedback during live testing: evidence files were being written with multiple checks bundled together ("check all 6 routes in one file") and using technical jargon ("new auth shape"). Rules established:
-- **One test per evidence file.** Each file has one action, one banner, one result.
-- **Plain language.** "The operator tries to log in with..." not "the new auth shape". An executive should understand it.
-- **Who, what, why in the banner.** The Context section tells you who is doing the work, what they're doing, where (Docker broker at 127.0.0.1:8080), and why it matters.
-- **Operator uses aactl, developer uses curl.** No mixing personas.
-→ Template: `tests/LIVE-TEST-TEMPLATE.md`
-→ Phase 0 stories: `tests/phase-0/user-stories.md` (12 stories)
-→ Evidence plans: `tests/phase-0/evidence/` (12 files, Pass 1 complete)
+## 2026-03-04 (Session 24 — Phase 1B Implementation)
+
+### writing-plans: Phase 1B App-Scoped Launch Tokens
+
+Created detailed implementation plan from the Phase 1b spec. 9 tasks across 5 batches. Key architectural decisions: one endpoint two callers (RequireAnyScope instead of separate route), ceiling enforcement at handler level (not service), app JWT scopes stay hard-coded (ceiling enforced at use-time not token-issuance).
+→ Artifact: `.plans/phase-1b/Phase-1b-Implementation-Plan.md`
+
+### subagent-driven-development: Phase 1B Execution
+
+Executed all 9 tasks using fresh subagent per task with parallel dispatch for independent work. Batch 1 (3 tasks) ran in parallel — minor git collision on sql_store.go resolved cleanly. Batch 2 was the core task (8 files changed). Batch 3 ran 2 tasks in parallel. Total: 7 commits, 302+ lines of new code, 22 doc comments added.
+
+### Decision: One endpoint, two callers — not separate routes
+
+The spec says "apps use the existing launch token endpoint, just with different auth." Instead of creating `POST /v1/app/launch-tokens`, we added `RequireAnyScope` middleware that accepts either `admin:launch-tokens:*` or `app:launch-tokens:*`. This avoids handler duplication and keeps the API surface minimal. The handler detects caller type from JWT `sub` prefix (`app:` vs `admin`).
+
+### Decision: Ceiling enforcement at handler level
+
+The handler extracts `app_id` from JWT `sub`, looks up `AppRecord.ScopeCeiling`, and runs `ScopeIsSubset` before calling the service. This keeps the service layer pure — `CreateLaunchToken` doesn't need to know about auth context. The handler is the right place because it already has claims in context.
+
+### Decision: App JWT scopes stay hard-coded
+
+Phase 1a issues all app JWTs with `["app:launch-tokens:*", "app:agents:*", "app:audit:read"]` regardless of app ceiling. This is correct — those are API-level permissions ("you can call this endpoint"), not delegation permissions. The ceiling is enforced when the app *uses* those permissions (creating launch tokens). Changing `AuthenticateApp` was explicitly out of scope.
+
+### Decision: AppID as optional empty string, not pointer
+
+`AppID string` (not `*string`) on both `LaunchTokenRecord` and `AgentRecord`. Empty string means admin-created. Simpler than nil-pointer handling, consistent with how `CreatedBy` works. No migration needed for in-memory records.
+
+### Process lesson: User stories before code
+
+The plan had user stories as Task 8, but CLAUDE.md standing rule says "Write user stories FIRST, save to tests/, before writing test code." We wrote code first, then created user stories. Future sessions: extract user stories as Task 1 regardless of what the plan says. The standing rule overrides the plan.
+
+### Audit: Doc comment quality gate
+
+22 Go doc comments added across 5 files (Priority 1-3 from audit). All exported Phase 1a and 1b types, methods, and struct fields now have professional doc comments. Key improvements: `CreateLaunchToken` appID param documented, `LaunchTokenRecord` and `AgentRecord` fields fully documented, `RegisterAppResp.ClientSecret` plaintext-once rule documented.
 
 ---
 

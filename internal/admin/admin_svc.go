@@ -117,11 +117,14 @@ type LaunchTokenPolicy struct {
 
 // CeilingUpdateResult describes the outcome of a scope ceiling update.
 type CeilingUpdateResult struct {
-	OldCeiling   []string `json:"old_ceiling"`
-	NewCeiling   []string `json:"new_ceiling"`
-	Narrowed     bool     `json:"narrowed"`
-	Revoked      bool     `json:"revoked"`
-	RevokedCount int      `json:"revoked_count,omitempty"`
+	OldCeiling []string `json:"old_ceiling"`
+	NewCeiling []string `json:"new_ceiling"`
+	// Narrowed reports whether the new ceiling is a strict subset of the old.
+	Narrowed bool `json:"narrowed"`
+	// Revoked reports whether agent tokens were revoked due to ceiling narrowing.
+	Revoked bool `json:"revoked"`
+	// RevokedCount is the number of agent tokens revoked; zero if Narrowed is false.
+	RevokedCount int `json:"revoked_count,omitempty"`
 }
 
 // AdminSvc handles administrator authentication (shared secret) and
@@ -202,8 +205,10 @@ func (s *AdminSvc) Authenticate(secret string) (*token.IssueResp, error) {
 // CreateLaunchToken generates a cryptographically random opaque launch
 // token and binds it to the given policy (scope ceiling, max TTL,
 // single-use flag). The createdBy parameter is the subject of the admin
-// who issued the request (for audit purposes).
-func (s *AdminSvc) CreateLaunchToken(req CreateLaunchTokenReq, createdBy string) (*CreateLaunchTokenResp, error) {
+// who issued the request (for audit purposes). The appID parameter,
+// when non-empty, associates the token with the creating app for
+// traceability (App -> Launch Token -> Agent).
+func (s *AdminSvc) CreateLaunchToken(req CreateLaunchTokenReq, createdBy, appID string) (*CreateLaunchTokenResp, error) {
 	if req.AgentName == "" {
 		return nil, ErrAgentNameEmpty
 	}
@@ -243,6 +248,7 @@ func (s *AdminSvc) CreateLaunchToken(req CreateLaunchTokenReq, createdBy string)
 		CreatedAt:    now,
 		ExpiresAt:    expiresAt,
 		CreatedBy:    createdBy,
+		AppID:        appID,
 	}
 
 	if err := s.store.SaveLaunchToken(*rec); err != nil {
@@ -256,9 +262,13 @@ func (s *AdminSvc) CreateLaunchToken(req CreateLaunchTokenReq, createdBy string)
 		"scope="+fmt.Sprintf("%v", req.AllowedScope),
 	)
 	if s.auditLog != nil {
+		detail := fmt.Sprintf("launch token issued for agent=%s scope=%v max_ttl=%d created_by=%s",
+			req.AgentName, req.AllowedScope, maxTTL, createdBy)
+		if appID != "" {
+			detail += fmt.Sprintf(" app_id=%s", appID)
+		}
 		s.auditLog.Record(audit.EventLaunchTokenIssued, "", "", "",
-			fmt.Sprintf("launch token issued for agent=%s scope=%v max_ttl=%d created_by=%s",
-				req.AgentName, req.AllowedScope, maxTTL, createdBy),
+			detail,
 			audit.WithOutcome("success"))
 	}
 

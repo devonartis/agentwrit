@@ -180,6 +180,61 @@ func TestConsumeLaunchToken_NotFound(t *testing.T) {
 	}
 }
 
+func TestSaveLaunchToken_PreservesAppID(t *testing.T) {
+	st := NewSqlStore()
+
+	rec := LaunchTokenRecord{
+		Token:        "app-token-123",
+		AgentName:    "weather-agent",
+		AllowedScope: []string{"read:weather:*"},
+		MaxTTL:       600,
+		SingleUse:    true,
+		CreatedAt:    time.Now().UTC(),
+		ExpiresAt:    time.Now().UTC().Add(60 * time.Second),
+		CreatedBy:    "app-weather-bot-abc123",
+		AppID:        "app-weather-bot-abc123",
+	}
+
+	if err := st.SaveLaunchToken(rec); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	got, err := st.GetLaunchToken("app-token-123")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.AppID != "app-weather-bot-abc123" {
+		t.Errorf("expected AppID=app-weather-bot-abc123, got %q", got.AppID)
+	}
+}
+
+func TestSaveLaunchToken_AdminHasEmptyAppID(t *testing.T) {
+	st := NewSqlStore()
+
+	rec := LaunchTokenRecord{
+		Token:        "admin-token-456",
+		AgentName:    "data-reader",
+		AllowedScope: []string{"read:data:*"},
+		MaxTTL:       300,
+		SingleUse:    true,
+		CreatedAt:    time.Now().UTC(),
+		ExpiresAt:    time.Now().UTC().Add(60 * time.Second),
+		CreatedBy:    "admin",
+	}
+
+	if err := st.SaveLaunchToken(rec); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	got, err := st.GetLaunchToken("admin-token-456")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.AppID != "" {
+		t.Errorf("expected empty AppID for admin-created token, got %q", got.AppID)
+	}
+}
+
 // --- Agent CRUD ---
 
 func TestSaveAgent_AndGet(t *testing.T) {
@@ -267,6 +322,61 @@ func TestSaveAgent_Overwrite(t *testing.T) {
 	got, _ := st.GetAgent("spiffe://test/agent/o/t/ow")
 	if len(got.Scope) != 1 || got.Scope[0] != "write:data:*" {
 		t.Errorf("expected overwritten scope [write:data:*], got %v", got.Scope)
+	}
+}
+
+// --- Agent AppID ---
+
+func TestSaveAgent_PreservesAppID(t *testing.T) {
+	st := NewSqlStore()
+
+	rec := AgentRecord{
+		AgentID:      "spiffe://test/agent/o/t/app1",
+		PublicKey:    []byte("fake-key"),
+		OrchID:       "orch-1",
+		TaskID:       "task-1",
+		Scope:        []string{"read:data:*"},
+		RegisteredAt: time.Now(),
+		LastSeen:     time.Now(),
+		AppID:        "app-weather-bot-abc123",
+	}
+
+	if err := st.SaveAgent(rec); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	got, err := st.GetAgent("spiffe://test/agent/o/t/app1")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.AppID != "app-weather-bot-abc123" {
+		t.Errorf("expected AppID=app-weather-bot-abc123, got %q", got.AppID)
+	}
+}
+
+func TestSaveAgent_NoAppIDByDefault(t *testing.T) {
+	st := NewSqlStore()
+
+	rec := AgentRecord{
+		AgentID:      "spiffe://test/agent/o/t/noapp",
+		PublicKey:    []byte("fake-key"),
+		OrchID:       "orch-1",
+		TaskID:       "task-1",
+		Scope:        []string{"read:data:*"},
+		RegisteredAt: time.Now(),
+		LastSeen:     time.Now(),
+	}
+
+	if err := st.SaveAgent(rec); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	got, err := st.GetAgent("spiffe://test/agent/o/t/noapp")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.AppID != "" {
+		t.Errorf("expected AppID to be empty, got %q", got.AppID)
 	}
 }
 

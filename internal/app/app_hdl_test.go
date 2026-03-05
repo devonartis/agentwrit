@@ -44,7 +44,7 @@ func newTestAppMux(t *testing.T) (*http.ServeMux, *AppSvc) {
 
 	appSvc := NewAppSvc(st, tknSvc, al, "")
 	appHdl := NewAppHdl(appSvc, valMw)
-	adminHdl := admin.NewAdminHdl(adminSvc, valMw, al, nil)
+	adminHdl := admin.NewAdminHdl(adminSvc, valMw, al, nil, st)
 
 	mux := http.NewServeMux()
 	adminHdl.RegisterRoutes(mux)

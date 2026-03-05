@@ -267,6 +267,75 @@ func TestWrap_AudienceAcceptsCorrectAud(t *testing.T) {
 	}
 }
 
+func TestRequireAnyScope_PassesWhenTokenHasOneOfListedScopes(t *testing.T) {
+	al := audit.NewAuditLog(nil)
+	claims := &token.TknClaims{Sub: "app-1", Scope: []string{"app:launch-tokens:*"}}
+	mw := NewValMw(&mockVerifier{claims: claims}, nil, al, "")
+	handler := mw.Wrap(mw.RequireAnyScope([]string{"admin:launch-tokens:*", "app:launch-tokens:*"}, okHandler))
+
+	req := httptest.NewRequest("POST", "/v1/admin/launch-tokens", nil)
+	req.Header.Set("Authorization", "Bearer good-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if len(al.Events()) != 0 {
+		t.Errorf("expected 0 audit events, got %d", len(al.Events()))
+	}
+}
+
+func TestRequireAnyScope_RejectsWhenTokenHasNone(t *testing.T) {
+	al := audit.NewAuditLog(nil)
+	claims := &token.TknClaims{
+		Sub:    "app-1",
+		TaskId: "task-1",
+		OrchId: "orch-1",
+		Scope:  []string{"app:agents:*"},
+	}
+	mw := NewValMw(&mockVerifier{claims: claims}, nil, al, "")
+	handler := mw.Wrap(mw.RequireAnyScope([]string{"admin:launch-tokens:*", "app:launch-tokens:*"}, okHandler))
+
+	req := httptest.NewRequest("POST", "/v1/admin/launch-tokens", nil)
+	req.Header.Set("Authorization", "Bearer good-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != 403 {
+		t.Fatalf("expected 403, got %d", rec.Code)
+	}
+	events := al.Events()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 audit event, got %d", len(events))
+	}
+	if events[0].EventType != audit.EventScopeViolation {
+		t.Errorf("expected event_type=%s, got %s", audit.EventScopeViolation, events[0].EventType)
+	}
+	if !strings.Contains(events[0].Detail, "admin:launch-tokens:*") {
+		t.Errorf("expected detail to contain required scopes, got %s", events[0].Detail)
+	}
+}
+
+func TestRequireAnyScope_AdminTokenAlsoPasses(t *testing.T) {
+	al := audit.NewAuditLog(nil)
+	claims := &token.TknClaims{Sub: "admin-1", Scope: []string{"admin:launch-tokens:*"}}
+	mw := NewValMw(&mockVerifier{claims: claims}, nil, al, "")
+	handler := mw.Wrap(mw.RequireAnyScope([]string{"admin:launch-tokens:*", "app:launch-tokens:*"}, okHandler))
+
+	req := httptest.NewRequest("POST", "/v1/admin/launch-tokens", nil)
+	req.Header.Set("Authorization", "Bearer good-token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != 200 {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if len(al.Events()) != 0 {
+		t.Errorf("expected 0 audit events, got %d", len(al.Events()))
+	}
+}
+
 func TestWrap_AudienceSkippedWhenEmpty(t *testing.T) {
 	claims := &token.TknClaims{
 		Iss: "agentauth", Sub: "agent-1", Jti: "jti-1",

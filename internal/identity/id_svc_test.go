@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"strings"
 	"testing"
 	"time"
 
@@ -233,6 +234,91 @@ func TestRegisterMissingFields(t *testing.T) {
 	}
 }
 
+func TestRegister_AgentInheritsAppIDFromLaunchToken(t *testing.T) {
+	idSvc, sqlStore, _ := setupIdSvc(t)
+
+	// Create a launch token WITH an AppID (app-created)
+	tokenVal := make([]byte, 16)
+	if _, err := rand.Read(tokenVal); err != nil {
+		t.Fatal(err)
+	}
+	tok := hex.EncodeToString(tokenVal)
+
+	err := sqlStore.SaveLaunchToken(store.LaunchTokenRecord{
+		Token:        tok,
+		AgentName:    "weather-agent",
+		AllowedScope: []string{"read:Weather:*"},
+		MaxTTL:       300,
+		SingleUse:    true,
+		CreatedAt:    time.Now(),
+		ExpiresAt:    time.Now().Add(30 * time.Second),
+		CreatedBy:    "app:app-weather-bot-abc123",
+		AppID:        "app-weather-bot-abc123",
+	})
+	if err != nil {
+		t.Fatalf("save launch token: %v", err)
+	}
+
+	nonce := sqlStore.CreateNonce()
+	_, agentPriv, _ := ed25519.GenerateKey(rand.Reader)
+	pubB64, sigB64 := signNonce(t, nonce, agentPriv)
+
+	resp, err := idSvc.Register(RegisterReq{
+		LaunchToken:    tok,
+		Nonce:          nonce,
+		PublicKey:      pubB64,
+		Signature:      sigB64,
+		OrchID:         "orch-weather",
+		TaskID:         "task-forecast",
+		RequestedScope: []string{"read:Weather:12345"},
+	})
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	// Verify the agent record inherited the AppID
+	agent, err := sqlStore.GetAgent(resp.AgentID)
+	if err != nil {
+		t.Fatalf("GetAgent: %v", err)
+	}
+	if agent.AppID != "app-weather-bot-abc123" {
+		t.Errorf("agent.AppID = %q, want %q", agent.AppID, "app-weather-bot-abc123")
+	}
+}
+
+func TestRegister_AdminLaunchTokenAgentHasNoAppID(t *testing.T) {
+	idSvc, sqlStore, _ := setupIdSvc(t)
+
+	// Create a launch token WITHOUT an AppID (admin-created)
+	lt := createLaunchToken(t, sqlStore, []string{"read:Customers:*"})
+
+	nonce := sqlStore.CreateNonce()
+	_, agentPriv, _ := ed25519.GenerateKey(rand.Reader)
+	pubB64, sigB64 := signNonce(t, nonce, agentPriv)
+
+	resp, err := idSvc.Register(RegisterReq{
+		LaunchToken:    lt,
+		Nonce:          nonce,
+		PublicKey:      pubB64,
+		Signature:      sigB64,
+		OrchID:         "orch-admin",
+		TaskID:         "task-admin",
+		RequestedScope: []string{"read:Customers:12345"},
+	})
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	// Verify the agent record has empty AppID
+	agent, err := sqlStore.GetAgent(resp.AgentID)
+	if err != nil {
+		t.Fatalf("GetAgent: %v", err)
+	}
+	if agent.AppID != "" {
+		t.Errorf("agent.AppID = %q, want empty string", agent.AppID)
+	}
+}
+
 func TestRegisterLaunchTokenConsumed(t *testing.T) {
 	idSvc, sqlStore, _ := setupIdSvc(t)
 
@@ -271,5 +357,107 @@ func TestRegisterLaunchTokenConsumed(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected error for consumed launch token")
+	}
+}
+
+// --- Audit: app_id in registration events ---
+
+func TestRegister_AuditIncludesAppID(t *testing.T) {
+	idSvc, sqlStore, auditLog := setupIdSvc(t)
+
+	// Create a launch token WITH an AppID (app-created)
+	tokenVal := make([]byte, 16)
+	if _, err := rand.Read(tokenVal); err != nil {
+		t.Fatal(err)
+	}
+	tok := hex.EncodeToString(tokenVal)
+
+	err := sqlStore.SaveLaunchToken(store.LaunchTokenRecord{
+		Token:        tok,
+		AgentName:    "audit-agent",
+		AllowedScope: []string{"read:Customers:*"},
+		MaxTTL:       300,
+		SingleUse:    true,
+		CreatedAt:    time.Now(),
+		ExpiresAt:    time.Now().Add(30 * time.Second),
+		CreatedBy:    "app:app-audit-test",
+		AppID:        "app-audit-test",
+	})
+	if err != nil {
+		t.Fatalf("save launch token: %v", err)
+	}
+
+	nonce := sqlStore.CreateNonce()
+	_, agentPriv, _ := ed25519.GenerateKey(rand.Reader)
+	pubB64, sigB64 := signNonce(t, nonce, agentPriv)
+
+	_, err = idSvc.Register(RegisterReq{
+		LaunchToken:    tok,
+		Nonce:          nonce,
+		PublicKey:      pubB64,
+		Signature:      sigB64,
+		OrchID:         "orch-audit",
+		TaskID:         "task-audit",
+		RequestedScope: []string{"read:Customers:12345"},
+	})
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	events := auditLog.Events()
+	foundRegistered := false
+	foundTokenIssued := false
+	for _, e := range events {
+		if e.EventType == "agent_registered" {
+			foundRegistered = true
+			if !strings.Contains(e.Detail, "app_id=app-audit-test") {
+				t.Errorf("agent_registered detail should contain app_id=app-audit-test, got: %s", e.Detail)
+			}
+		}
+		if e.EventType == "token_issued" {
+			foundTokenIssued = true
+			if !strings.Contains(e.Detail, "app_id=app-audit-test") {
+				t.Errorf("token_issued detail should contain app_id=app-audit-test, got: %s", e.Detail)
+			}
+		}
+	}
+	if !foundRegistered {
+		t.Fatal("missing agent_registered audit event")
+	}
+	if !foundTokenIssued {
+		t.Fatal("missing token_issued audit event")
+	}
+}
+
+func TestRegister_AuditNoAppIDForAdminToken(t *testing.T) {
+	idSvc, sqlStore, auditLog := setupIdSvc(t)
+
+	// Create a launch token WITHOUT an AppID (admin-created)
+	lt := createLaunchToken(t, sqlStore, []string{"read:Customers:*"})
+
+	nonce := sqlStore.CreateNonce()
+	_, agentPriv, _ := ed25519.GenerateKey(rand.Reader)
+	pubB64, sigB64 := signNonce(t, nonce, agentPriv)
+
+	_, err := idSvc.Register(RegisterReq{
+		LaunchToken:    lt,
+		Nonce:          nonce,
+		PublicKey:      pubB64,
+		Signature:      sigB64,
+		OrchID:         "orch-noid",
+		TaskID:         "task-noid",
+		RequestedScope: []string{"read:Customers:12345"},
+	})
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	events := auditLog.Events()
+	for _, e := range events {
+		if e.EventType == "agent_registered" || e.EventType == "token_issued" {
+			if strings.Contains(e.Detail, "app_id=") {
+				t.Errorf("admin-created token audit event should NOT contain app_id=, got: %s", e.Detail)
+			}
+		}
 	}
 }

@@ -15,6 +15,7 @@ Active tech debt. Append here when new debt is taken. Full details in `.plans/PR
 | TD-003 | Sidecar has no defined use case — removed from infra, code still exists | Medium | When PRD defines a use case |
 | ~~TD-004~~ | ~~Admin auth uses legacy client_id/client_secret shape~~ | ~~High~~ | ~~RESOLVED Session 26~~ |
 | ~~TD-005~~ | ~~6 sidecar routes still wired in broker~~ | ~~High~~ | ~~RESOLVED Session 26~~ |
+| TD-006 | App JWT TTL hardcoded to 5 min — should be 30 min default, per-app configurable by operator | Medium | Before Phase 1C |
 
 ## Standing Rules
 
@@ -109,6 +110,37 @@ Active tech debt. Append here when new debt is taken. Full details in `.plans/PR
 - Full architecture doc: `.plans/CoWork-Architecture-Direct-Broker.md` (also `.html` and `.pdf` versions)
 - Lifecycle diagram: `.plans/CoWork-Diagram-FullLifecycle.svg`
 
+## 2026-03-04 (Session 28 — Phase 1B Docker Live Tests)
+
+### What happened
+
+Executed all 11 Phase 1B user stories against the Docker stack. All 11 PASS. Committed evidence to `tests/phase-1b/evidence/`.
+
+### Live test results
+
+- **S1-S3 (Developer):** App auth → launch token creation → agent registration with app traceability. All working. Ed25519 signing done via Python `cryptography` (macOS LibreSSL lacks Ed25519 support).
+- **S4-S6 (Operator):** Launch token audit traceability (app vs admin origin), ceiling enforcement (3 cases), admin backward compatibility. All working.
+- **S7-S8 (Security):** Scope attenuation (4 cases including wildcard widening with a second narrow-ceiling app), full traceability chain from app auth → launch token → agent registration. All working.
+- **R1-R3 (Regression):** App auth, admin endpoint blocking, admin auth + audit hash chain integrity. All working.
+
+### Tech debt added
+
+- **TD-006:** App JWT TTL hardcoded to 5 min via global `AA_DEFAULT_TTL`. Should default to 30 min minimum and be configurable per-app by operator at registration or update time (`aactl app register --token-ttl`). Added to `TECH-DEBT.md`.
+
+### Findings during testing
+
+- macOS LibreSSL doesn't support Ed25519 — had to use Python `cryptography` library for agent registration steps
+- Launch token default TTL is 30 seconds (`defaultTokenTTL = 30` in `internal/admin/admin_svc.go`) — agent registration must happen immediately after token creation
+- The nonce must be hex-decoded before signing (`internal/identity/id_svc.go:180`) — signing the hex string fails signature verification
+
+### Commit preferences
+
+- No Co-Authored-By lines in commits going forward
+
+### Branch
+
+- `feature/phase-1b-launch-tokens` — commit `1556a93` — live tests complete, ready to merge → develop
+
 ## 2026-03-04 (Session 26 — Phase 0 Legacy Cleanup Implementation)
 
 ### What happened
@@ -180,10 +212,32 @@ Divine's feedback: the template was a skeleton — nobody could follow it. Rewro
 - Banner format broken down (who/what/why/how/expected) with good vs bad language examples
 - 11 rules including "one story at a time," "output goes in the file," "verdict is earned"
 
+### Phase 0 merged to develop, develop merged into Phase 1B
+
+- `a83466d` — committed Phase 0 on `fix/phase-0-legacy-cleanup`
+- `882b39c` — merged `fix/phase-0-legacy-cleanup` → `develop` (no conflicts)
+- `52c6b7d` — merged `develop` → `feature/phase-1b-launch-tokens` (two conflicts resolved)
+
+**Conflict resolution on merge into 1B:**
+- `FLOW.md` — kept both session entries (1B's Session 24 + Phase 0's Sessions 26-27), ordered chronologically
+- `internal/admin/admin_hdl_test.go` — two conflicts:
+  1. Imports: kept `path/filepath` and `strings` (needed by 1B's app ceiling tests), added `audit` import (needed by `newAppTestMux`), dropped `revoke` (only used by deleted sidecar tests)
+  2. Test body: removed old sidecar route tests (lines 278-733, deleted by Phase 0), kept Phase 1B's app ceiling enforcement tests (`TestCreateLaunchToken_*`), kept Phase 0's removal comment
+- All 15 packages pass after resolution
+
+**Current state:** on `feature/phase-1b-launch-tokens`, up to date with develop. Ready for Phase 1B Docker live tests.
+
+### Concept paper alignment checklist added
+
+Created `.plans/CONCEPT-PAPER-ALIGNMENT.md` — maps NCCoE concept paper recommendations to AgentAuth features. Categorized as DONE, QUICK-ADD (before release), and FUTURE. Key QUICK-ADDs: full SPIFFE ID in audit (L-2), task context in audit (L-3), resource accessed in all events (L-5), single-agent workflow reconstruction test (V-1). Biggest gap: delegation chain support (D-1 through D-8) — everything we recommend but don't have yet.
+
 ### What's next
 
-1. Merge `fix/phase-0-legacy-cleanup` → `develop`
-2. Resume Phase 1B (app-scoped launch tokens)
+1. **Run Phase 1B Docker live tests** — 11 stories from `tests/phase-1b/user-stories.md`
+2. **Read `tests/LIVE-TEST-TEMPLATE.md` first** — the complete guide with real examples. Banner in the call, one story at a time, output piped to evidence file, verdict after seeing result.
+3. Save evidence to `tests/phase-1b/evidence/`
+4. Merge Phase 1B → develop
+5. Then: QUICK-ADD audit enhancements from concept paper checklist before release
 
 ---
 
@@ -214,14 +268,79 @@ Ran Phase 1A Docker live test (Task 6). Found infrastructure and process problem
 
 ### What's next
 
-1. Fix branch `fix/phase-1a-rate-limit-audit` for the missing audit event
-2. Re-run Story 9 + Story 10 to verify
-3. Merge Phase 1A to develop
-4. Begin Phase 1B (app-scoped launch tokens)
+1. Docker live test for Phase 1B — `./scripts/stack_up.sh` + run 11 stories from `tests/phase-1b/user-stories.md`
+2. Save evidence to `tests/phase-1b/evidence/` with per-story files + README verdict table
+3. Merge `feature/phase-1b-launch-tokens` → `develop`
+4. Begin Phase 1C (app revocation + audit + secret rotation)
+5. TD-001 (`app_rate_limited` audit event) — fix before Phase 1C
 
 ---
 
-## 2026-03-03 (Session 22b — Phase 1a Tasks 4-5 Complete)
+## 2026-03-04 (Session 24 — Phase 1B Implementation)
+
+### What happened
+
+Phase 1B (app-scoped launch tokens) implemented via subagent-driven development. Apps can now create launch tokens within their scope ceiling. The traceability chain App → Launch Token → Agent is established.
+
+### Git operations
+
+- Created branch: `feature/phase-1b-launch-tokens` (from `develop`)
+- 7 commits on branch, all unit tests green (15 packages)
+
+### Work completed
+
+**Task 1 — RequireAnyScope middleware** (`internal/authz/val_mw.go`)
+- New `RequireAnyScope(scopes []string, next http.Handler)` — accepts if token carries ANY of the listed scopes
+- 3 tests: app passes, admin passes, neither rejected
+
+**Tasks 2-3 — AppID fields** (`internal/store/sql_store.go`)
+- `LaunchTokenRecord.AppID` — empty for admin-created tokens
+- `AgentRecord.AppID` — inherited from launch token at registration
+
+**Task 4 — Core ceiling enforcement** (`internal/admin/admin_hdl.go`, `admin_svc.go`, `cmd/broker/main.go`)
+- Route changed to `RequireAnyScope(["admin:launch-tokens:*", "app:launch-tokens:*"])`
+- Handler detects app caller via `strings.HasPrefix(claims.Sub, "app:")`, looks up AppRecord, enforces `ScopeIsSubset(requested, ceiling)`
+- `CreateLaunchToken` signature: added `appID string` param
+- `AdminHdl` receives `*store.SqlStore` for app lookups
+- 6 new tests: within ceiling, exceeds ceiling, carries AppID, admin no ceiling, admin regression, audit on ceiling exceeded
+- All 8 call sites updated across codebase
+
+**Task 5 — AppID flows to agent** (`internal/identity/id_svc.go`)
+- `SaveAgent` now sets `AppID: ltRec.AppID`
+- 2 new tests: inherits from app token, empty from admin token
+
+**Task 6 — Audit attribution** (`internal/admin/admin_svc.go`, `internal/identity/id_svc.go`)
+- `launch_token_issued` detail includes `app_id=` when app-created
+- `agent_registered` and `token_issued` detail includes `app_id=` when app-traced
+- 4 new tests
+
+**Task 7 — User stories** (`tests/phase-1b/`)
+- 8 stories (developer, operator, security) + 3 Phase 1A regression stories
+- `tests/phase-1b/env.sh` created
+
+**Task 8 — Go doc comments** (5 files)
+- 22 professional doc comments added across Phase 1a and 1b types
+- All exported types, methods, and struct fields documented
+
+### Commits
+
+```
+f8c74cb docs: add professional Go doc comments to Phase 1a and 1b types
+fb78aa6 test: add Phase 1b user stories and test env
+6bb603d feat(audit): include app_id in launch token and agent registration events
+cb0057f feat(identity): agent inherits AppID from launch token on registration
+aa3a1cd feat(admin): apps can create launch tokens within scope ceiling
+f37404d feat(store): add AppID field to LaunchTokenRecord
+33f4461 feat(authz): add RequireAnyScope middleware for multi-caller endpoints
+```
+
+### Process lesson
+
+User stories should be Task 1, not Task 8. CLAUDE.md standing rule: "Write user stories FIRST." We wrote code first this session. Fixed mid-session. Future sessions: always extract user stories before touching code, regardless of plan ordering.
+
+---
+
+## 2026-03-03 (Session 23 — Phase 1A Live Test & Merge)
 
 ### What happened
 

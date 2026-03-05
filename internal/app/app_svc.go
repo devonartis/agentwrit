@@ -52,9 +52,13 @@ type AppSvc struct {
 // RegisterAppResp is returned by RegisterApp. The ClientSecret is the
 // plaintext secret — it is only returned here and never stored unencrypted.
 type RegisterAppResp struct {
-	AppID        string   `json:"app_id"`
-	ClientID     string   `json:"client_id"`
-	ClientSecret string   `json:"client_secret"`
+	AppID    string `json:"app_id"`
+	ClientID string `json:"client_id"`
+	// ClientSecret is the plaintext secret returned exactly once at registration.
+	// It is never stored; only the bcrypt hash is persisted.
+	ClientSecret string `json:"client_secret"`
+	// ScopeCeiling is the maximum set of permissions this app can delegate
+	// to agents. JSON-serialized as "scopes" for API compatibility.
 	ScopeCeiling []string `json:"scopes"`
 }
 
