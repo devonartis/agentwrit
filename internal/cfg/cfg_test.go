@@ -65,6 +65,23 @@ func TestLoad_AudienceEmpty(t *testing.T) {
 	}
 }
 
+func TestLoad_AppTokenTTLDefault(t *testing.T) {
+	os.Unsetenv("AA_APP_TOKEN_TTL")
+	c := Load()
+	if c.AppTokenTTL != 1800 {
+		t.Fatalf("expected default AppTokenTTL 1800, got %d", c.AppTokenTTL)
+	}
+}
+
+func TestLoad_AppTokenTTLCustom(t *testing.T) {
+	os.Setenv("AA_APP_TOKEN_TTL", "3600")
+	defer os.Unsetenv("AA_APP_TOKEN_TTL")
+	c := Load()
+	if c.AppTokenTTL != 3600 {
+		t.Fatalf("expected AppTokenTTL 3600, got %d", c.AppTokenTTL)
+	}
+}
+
 func TestLoad_TLSFields(t *testing.T) {
 	os.Setenv("AA_TLS_CERT", "/etc/certs/cert.pem")
 	os.Setenv("AA_TLS_KEY", "/etc/certs/key.pem")

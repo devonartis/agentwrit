@@ -15,7 +15,7 @@ Active tech debt. Append here when new debt is taken. Full details in `.plans/PR
 | TD-003 | Sidecar has no defined use case — removed from infra, code still exists | Medium | When PRD defines a use case |
 | ~~TD-004~~ | ~~Admin auth uses legacy client_id/client_secret shape~~ | ~~High~~ | ~~RESOLVED Session 26~~ |
 | ~~TD-005~~ | ~~6 sidecar routes still wired in broker~~ | ~~High~~ | ~~RESOLVED Session 26~~ |
-| TD-006 | App JWT TTL hardcoded to 5 min — should be 30 min default, per-app configurable by operator | Medium | Before Phase 1C |
+| ~~TD-006~~ | ~~App JWT TTL hardcoded to 5 min — should be 30 min default, per-app configurable by operator~~ | ~~Medium~~ | ~~RESOLVED Session 32~~ |
 | TD-007 | Resilient logging — audit writes inline, no fallback on store failure | Medium | Phase 1D spec created |
 | TD-008 | Token predecessor not invalidated on renewal — two valid tokens exist | Medium | Phase 1C story 17 |
 | TD-009 | JTI blocklist never pruned — memory grows indefinitely | Medium | Phase 1C story 18 |
@@ -1308,4 +1308,79 @@ Two-agent devil's advocate review of all PRD + phase specs, followed by targeted
 - **Dual-secret for rotation is Phase 1c (not P2):** The grace period design requires it. "Permanent dual-active" is still P2.
 
 **Spec update (same session):** All phase specs (1b through 5) now have a `## Testing Workflow` section at the bottom explicitly telling the implementing agent: extract user stories from the spec into `tests/phase-Xn-user-stories.md` before writing any test code. Phase 1a already had this in Task 6. User stories remain IN the specs — the rule just makes the `tests/` step explicit so the agent doesn't skip it.
+
+---
+
+## Session 32 — TD-006 Docker Live Tests & Bug Fix (2026-03-05)
+
+### Branch: `feature/td-006-app-jwt-ttl` (off `develop`)
+
+### Docker live test — 7 stories run against Docker stack
+
+Results: 6 PASS, 1 PARTIAL PASS (S6).
+
+- S1 PASS — default TTL 1800 applied when no `--token-ttl` flag
+- S2 PASS — custom TTL 3600 at registration, `expires_in: 3600` in dev auth
+- S3 PASS — update TTL 3600→7200, dev auth uses new TTL, audit records old→new
+- S4 PASS — out-of-bounds values (30, 100000, 5) rejected with HTTP 400
+- S5 PASS — JWT `exp - iat = 7200` matches configured TTL
+- S6 PARTIAL PASS — 86401 rejected, 60 and 86400 accepted, BUT `--token-ttl 0` and `--token-ttl -1` silently accepted with default 1800
+- S7 PASS — audit trail shows `token_ttl=3600->7200`
+
+Evidence: `tests/td-006/evidence/`
+
+### Bugs found during live test
+
+1. **TTL 0 and -1 silently accepted** — CLI treats 0/negative as "not provided" (`if appRegisterTokenTTL > 0`), handler `registerAppReq.TokenTTL` is `int` (0 = missing), service treats 0 as "use default." Root cause: can't distinguish "not provided" from "explicitly 0" at CLI or handler layer.
+2. **Duplicate app name returns 500 instead of 409** — SQLite UNIQUE constraint error not caught. Lower priority.
+
+### Bug fix in progress
+
+Fixing TTL 0/-1 bug. Root cause at two layers:
+- CLI (`cmd/aactl/apps.go:57`): `if appRegisterTokenTTL > 0` skips 0 and negative
+- Handler (`internal/app/app_hdl.go:65`): `registerAppReq.TokenTTL` is `int`, not `*int` — can't distinguish absent from 0
+- Service (`internal/app/app_svc.go:100`): `if ttl == 0` means "use default" — correct for internal API but needs handler to gate explicit 0
+
+### Regression — Phase 1A/1B PASS
+
+Ran key stories from both phases against Docker stack after fix:
+- Phase 1A: register, dev auth (expires_in now 1800, expected), bad creds 401, admin auth OK
+- Phase 1B: app launch token creation, scope ceiling enforcement 403, admin launch tokens OK
+
+Evidence: `tests/td-006/evidence/regression/`
+
+### Commits
+
+1. `63c3f57` — fix: reject explicit token_ttl 0 and negative values, Docker evidence (7 stories), env.sh, docker-compose.yml update
+2. `76c46fe` — test: Phase 1A/1B regression pass
+
+### What's next
+
+1. ~~Fix TTL 0/-1 bug~~ — DONE
+2. ~~Re-run S6~~ — DONE, 7/7 PASS
+3. ~~Regression~~ — DONE, Phase 1A/1B PASS
+4. ~~Merge to develop~~ — DONE
+5. **Phase 1C** — next feature work (19 stories, ~2 days): app lifecycle, NIST alignment, token hygiene
+6. Duplicate app name 500→409 fix — deferred, logged in `KNOWN-ISSUES.md` and evidence README
+
+## Session 31 — TD-006 Implementation (2026-03-05)
+
+### Branch: `feature/td-006-app-jwt-ttl` (off `develop`)
+
+8 commits — all code complete, unit tests pass, gate lint fixed. **Docker live tests NOT yet run.**
+
+### Commits
+
+1. `a90190d` — user stories (`tests/td-006/user-stories.md`)
+2. `8c69c98` — `AA_APP_TOKEN_TTL` config field (default 1800)
+3. `0608863` — `token_ttl` column, `AppRecord.TokenTTL`, schema migration, all queries updated
+4. `3e85c92` — `UpdateAppTTL` store method
+5. `fcd0437` — `AppSvc`: removed `const appTokenTTL=300`, `RegisterApp` accepts TTL, `AuthenticateApp` uses `rec.TokenTTL`, `UpdateAppTTL` service method with audit
+6. `a77d04b` — HTTP handlers: TTL in register/update/response, `handleUpdateApp` supports TTL-only updates
+7. `7eddcd2` — `aactl --token-ttl` on register and update, TTL in list/get output
+8. `1607880` — lint fix (unchecked `json.Unmarshal`)
+
+### What's next (this session or next)
+
+Completed in Session 32.
 

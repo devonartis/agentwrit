@@ -385,9 +385,40 @@ func (s *SqlStore) InitDB(path string) error {
 		obs.DBErrorsTotal.WithLabelValues("create_table").Inc()
 		return fmt.Errorf("create apps table: %w", err)
 	}
+	// Migrate: add token_ttl column to existing apps tables that lack it.
+	s.migrateAddColumn(db, "apps", "token_ttl", "INTEGER NOT NULL DEFAULT 1800")
 	s.db = db
 	obs.Ok("store", "sqlite", "database initialized", "path="+path)
 	return nil
+}
+
+// migrateAddColumn adds a column to a table if it doesn't already exist.
+// Used for schema evolution on existing databases.
+func (s *SqlStore) migrateAddColumn(db *sql.DB, table, column, colDef string) {
+	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull int
+		var dfltValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
+			continue
+		}
+		if name == column {
+			return // column already exists
+		}
+	}
+	q := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, colDef)
+	if _, err := db.Exec(q); err != nil {
+		obs.Warn("store", "sqlite", "migration failed", "table="+table, "column="+column, "error="+err.Error())
+	} else {
+		obs.Ok("store", "sqlite", "migration applied", "table="+table, "column="+column)
+	}
 }
 
 // SaveAuditEvent persists an [audit.AuditEvent] to the SQLite audit_events
@@ -805,6 +836,7 @@ type AppRecord struct {
 	ClientID         string    // "{abbrev}-{random12hex}"
 	ClientSecretHash string    // bcrypt hash of the client secret (never returned)
 	ScopeCeiling     []string  // Scope ceiling; JSON-marshaled in DB
+	TokenTTL         int       // JWT TTL in seconds (default 1800)
 	Status           string    // "active" | "inactive"
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
@@ -818,6 +850,7 @@ CREATE TABLE IF NOT EXISTS apps (
 	client_id         TEXT NOT NULL UNIQUE,
 	client_secret_hash TEXT NOT NULL,
 	scope_ceiling     TEXT NOT NULL,
+	token_ttl         INTEGER NOT NULL DEFAULT 1800,
 	status            TEXT NOT NULL DEFAULT 'active',
 	created_at        TEXT NOT NULL,
 	updated_at        TEXT NOT NULL,
@@ -842,8 +875,8 @@ func (s *SqlStore) SaveApp(rec AppRecord) error {
 	}
 
 	const q = `INSERT INTO apps
-		(app_id, name, client_id, client_secret_hash, scope_ceiling, status, created_at, updated_at, created_by)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		(app_id, name, client_id, client_secret_hash, scope_ceiling, token_ttl, status, created_at, updated_at, created_by)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err = s.db.Exec(q,
 		rec.AppID,
@@ -851,6 +884,7 @@ func (s *SqlStore) SaveApp(rec AppRecord) error {
 		rec.ClientID,
 		rec.ClientSecretHash,
 		string(scopeJSON),
+		rec.TokenTTL,
 		rec.Status,
 		rec.CreatedAt.UTC().Format(time.RFC3339Nano),
 		rec.UpdatedAt.UTC().Format(time.RFC3339Nano),
@@ -872,7 +906,7 @@ func (s *SqlStore) GetAppByClientID(clientID string) (*AppRecord, error) {
 		return nil, errors.New("database not initialized: call InitDB first")
 	}
 
-	const q = `SELECT app_id, name, client_id, client_secret_hash, scope_ceiling, status, created_at, updated_at, created_by
+	const q = `SELECT app_id, name, client_id, client_secret_hash, scope_ceiling, token_ttl, status, created_at, updated_at, created_by
 		FROM apps WHERE client_id = ?`
 
 	return s.scanAppRow(s.db.QueryRow(q, clientID))
@@ -885,7 +919,7 @@ func (s *SqlStore) GetAppByID(appID string) (*AppRecord, error) {
 		return nil, errors.New("database not initialized: call InitDB first")
 	}
 
-	const q = `SELECT app_id, name, client_id, client_secret_hash, scope_ceiling, status, created_at, updated_at, created_by
+	const q = `SELECT app_id, name, client_id, client_secret_hash, scope_ceiling, token_ttl, status, created_at, updated_at, created_by
 		FROM apps WHERE app_id = ?`
 
 	return s.scanAppRow(s.db.QueryRow(q, appID))
@@ -898,7 +932,7 @@ func (s *SqlStore) scanAppRow(row *sql.Row) (*AppRecord, error) {
 	var scopeStr, createdStr, updatedStr string
 	err := row.Scan(
 		&rec.AppID, &rec.Name, &rec.ClientID, &rec.ClientSecretHash,
-		&scopeStr, &rec.Status, &createdStr, &updatedStr, &rec.CreatedBy,
+		&scopeStr, &rec.TokenTTL, &rec.Status, &createdStr, &updatedStr, &rec.CreatedBy,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrAppNotFound
@@ -932,7 +966,7 @@ func (s *SqlStore) ListApps() ([]AppRecord, error) {
 		return nil, errors.New("database not initialized: call InitDB first")
 	}
 
-	const q = `SELECT app_id, name, client_id, client_secret_hash, scope_ceiling, status, created_at, updated_at, created_by
+	const q = `SELECT app_id, name, client_id, client_secret_hash, scope_ceiling, token_ttl, status, created_at, updated_at, created_by
 		FROM apps ORDER BY created_at DESC`
 
 	rows, err := s.db.Query(q)
@@ -949,7 +983,7 @@ func (s *SqlStore) ListApps() ([]AppRecord, error) {
 		var scopeStr, createdStr, updatedStr string
 		if err := rows.Scan(
 			&rec.AppID, &rec.Name, &rec.ClientID, &rec.ClientSecretHash,
-			&scopeStr, &rec.Status, &createdStr, &updatedStr, &rec.CreatedBy,
+			&scopeStr, &rec.TokenTTL, &rec.Status, &createdStr, &updatedStr, &rec.CreatedBy,
 		); err != nil {
 			obs.Fail("store", "sqlite", "failed to scan app row", "error="+err.Error())
 			obs.DBErrorsTotal.WithLabelValues("scan_app").Inc()
@@ -1016,6 +1050,34 @@ func (s *SqlStore) UpdateAppCeiling(appID string, newCeiling []string) error {
 		return ErrAppNotFound
 	}
 	obs.Ok("store", "sqlite", "app ceiling updated", "app_id="+appID)
+	return nil
+}
+
+// UpdateAppTTL sets the token_ttl for an existing app.
+// Returns [ErrAppNotFound] if no app with the given app_id exists.
+func (s *SqlStore) UpdateAppTTL(appID string, ttl int) error {
+	if s.db == nil {
+		return errors.New("database not initialized: call InitDB first")
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	const q = `UPDATE apps SET token_ttl = ?, updated_at = ? WHERE app_id = ?`
+	res, err := s.db.Exec(q, ttl, now, appID)
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to update app TTL", "app_id="+appID, "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("update_app_ttl").Inc()
+		return fmt.Errorf("update app TTL %s: %w", appID, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		obs.Fail("store", "sqlite", "failed to get rows affected", "app_id="+appID, "error="+err.Error())
+		obs.DBErrorsTotal.WithLabelValues("update_app_ttl").Inc()
+		return fmt.Errorf("rows affected for app %s: %w", appID, err)
+	}
+	if n == 0 {
+		return ErrAppNotFound
+	}
+	obs.Ok("store", "sqlite", "app TTL updated", "app_id="+appID, fmt.Sprintf("ttl=%d", ttl))
 	return nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -60,8 +61,9 @@ func (h *AppHdl) RegisterRoutes(mux *http.ServeMux) {
 // ---------------------------------------------------------------------------
 
 type registerAppReq struct {
-	Name   string   `json:"name"`
-	Scopes []string `json:"scopes"`
+	Name     string   `json:"name"`
+	Scopes   []string `json:"scopes"`
+	TokenTTL *int     `json:"token_ttl,omitempty"` // nil = use default; explicit 0 is rejected
 }
 
 type appResp struct {
@@ -70,6 +72,7 @@ type appResp struct {
 	ClientID       string   `json:"client_id"`
 	ClientSecret   string   `json:"client_secret,omitempty"` // only on register
 	Scopes         []string `json:"scopes"`
+	TokenTTL       int      `json:"token_ttl"`
 	Status         string   `json:"status"`
 	CreatedAt      string   `json:"created_at,omitempty"`
 	UpdatedAt      string   `json:"updated_at,omitempty"`
@@ -82,7 +85,8 @@ type listAppsResp struct {
 }
 
 type updateAppReq struct {
-	Scopes []string `json:"scopes"`
+	Scopes   []string `json:"scopes,omitempty"`
+	TokenTTL *int     `json:"token_ttl,omitempty"` // pointer to distinguish absent from zero
 }
 
 type appAuthReq struct {
@@ -124,13 +128,27 @@ func (h *AppHdl) handleRegisterApp(w http.ResponseWriter, r *http.Request) {
 		createdBy = claims.Sub
 	}
 
-	resp, err := h.appSvc.RegisterApp(req.Name, req.Scopes, createdBy)
+	// Dereference TTL pointer: nil means "use default" (0), non-nil passes
+	// the explicit value so the service can validate it (including 0 and negatives).
+	ttl := 0
+	if req.TokenTTL != nil {
+		ttl = *req.TokenTTL
+		if ttl <= 0 {
+			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_ttl",
+				fmt.Sprintf("invalid token TTL: must be between %d and %d seconds, got %d",
+					minAppTokenTTL, maxAppTokenTTL, ttl), r.URL.Path)
+			return
+		}
+	}
+	resp, err := h.appSvc.RegisterApp(req.Name, req.Scopes, createdBy, ttl)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrInvalidAppName):
 			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "invalid app name: must be lowercase letters, digits, and hyphens", r.URL.Path)
 		case errors.Is(err, ErrInvalidScopeFormat):
 			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "invalid scope format: use action:resource:identifier", r.URL.Path)
+		case errors.Is(err, ErrInvalidTTL):
+			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_ttl", err.Error(), r.URL.Path)
 		default:
 			obs.Fail(hdlMod, hdlCmp, "register app failed", "err="+err.Error())
 			problemdetails.WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "failed to register app", r.URL.Path)
@@ -145,6 +163,7 @@ func (h *AppHdl) handleRegisterApp(w http.ResponseWriter, r *http.Request) {
 		ClientID:     resp.ClientID,
 		ClientSecret: resp.ClientSecret,
 		Scopes:       resp.ScopeCeiling,
+		TokenTTL:     resp.TokenTTL,
 	}); err != nil {
 		obs.Warn(hdlMod, hdlCmp, "failed to encode register response", "err="+err.Error())
 	}
@@ -211,8 +230,8 @@ func (h *AppHdl) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "malformed JSON body", r.URL.Path)
 		return
 	}
-	if len(req.Scopes) == 0 {
-		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "scopes must not be empty", r.URL.Path)
+	if len(req.Scopes) == 0 && req.TokenTTL == nil {
+		problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "at least one of scopes or token_ttl must be provided", r.URL.Path)
 		return
 	}
 
@@ -222,17 +241,36 @@ func (h *AppHdl) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 		updatedBy = claims.Sub
 	}
 
-	if err := h.appSvc.UpdateApp(appID, req.Scopes, updatedBy); err != nil {
-		switch {
-		case errors.Is(err, store.ErrAppNotFound):
-			problemdetails.WriteProblem(r.Context(), w, http.StatusNotFound, "not_found", "app not found", r.URL.Path)
-		case errors.Is(err, ErrInvalidScopeFormat):
-			problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "invalid scope format: use action:resource:identifier", r.URL.Path)
-		default:
-			obs.Fail(hdlMod, hdlCmp, "update app failed", "app_id="+appID, "err="+err.Error())
-			problemdetails.WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "failed to update app", r.URL.Path)
+	// Update scopes if provided.
+	if len(req.Scopes) > 0 {
+		if err := h.appSvc.UpdateApp(appID, req.Scopes, updatedBy); err != nil {
+			switch {
+			case errors.Is(err, store.ErrAppNotFound):
+				problemdetails.WriteProblem(r.Context(), w, http.StatusNotFound, "not_found", "app not found", r.URL.Path)
+			case errors.Is(err, ErrInvalidScopeFormat):
+				problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_request", "invalid scope format: use action:resource:identifier", r.URL.Path)
+			default:
+				obs.Fail(hdlMod, hdlCmp, "update app failed", "app_id="+appID, "err="+err.Error())
+				problemdetails.WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "failed to update app", r.URL.Path)
+			}
+			return
 		}
-		return
+	}
+
+	// Update TTL if provided.
+	if req.TokenTTL != nil {
+		if err := h.appSvc.UpdateAppTTL(appID, *req.TokenTTL, updatedBy); err != nil {
+			switch {
+			case errors.Is(err, store.ErrAppNotFound):
+				problemdetails.WriteProblem(r.Context(), w, http.StatusNotFound, "not_found", "app not found", r.URL.Path)
+			case errors.Is(err, ErrInvalidTTL):
+				problemdetails.WriteProblem(r.Context(), w, http.StatusBadRequest, "invalid_ttl", err.Error(), r.URL.Path)
+			default:
+				obs.Fail(hdlMod, hdlCmp, "update app TTL failed", "app_id="+appID, "err="+err.Error())
+				problemdetails.WriteProblem(r.Context(), w, http.StatusInternalServerError, "internal_error", "failed to update app TTL", r.URL.Path)
+			}
+			return
+		}
 	}
 
 	rec, err := h.appSvc.GetApp(appID)
@@ -244,11 +282,7 @@ func (h *AppHdl) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(appResp{
-		AppID:     rec.AppID,
-		Scopes:    rec.ScopeCeiling,
-		UpdatedAt: rec.UpdatedAt.UTC().Format(time.RFC3339),
-	}); err != nil {
+	if err := json.NewEncoder(w).Encode(storeAppToResp(*rec)); err != nil {
 		obs.Warn(hdlMod, hdlCmp, "failed to encode update response", "err="+err.Error())
 	}
 }
@@ -363,6 +397,7 @@ func storeAppToResp(a store.AppRecord) appResp {
 		Name:      a.Name,
 		ClientID:  a.ClientID,
 		Scopes:    a.ScopeCeiling,
+		TokenTTL:  a.TokenTTL,
 		Status:    a.Status,
 		CreatedAt: a.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt: a.UpdatedAt.UTC().Format(time.RFC3339),

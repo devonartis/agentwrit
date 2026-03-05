@@ -21,7 +21,10 @@ import (
 	"github.com/divineartis/agentauth/internal/token"
 )
 
-const appTokenTTL = 300 // 5 minutes, matches admin token TTL
+const (
+	minAppTokenTTL = 60    // 1 minute
+	maxAppTokenTTL = 86400 // 24 hours
+)
 
 // Sentinel errors returned by AppSvc. Callers use errors.Is to match.
 var (
@@ -35,6 +38,9 @@ var (
 
 	// ErrInvalidScopeFormat is returned when a scope string is malformed.
 	ErrInvalidScopeFormat = errors.New("invalid scope format")
+
+	// ErrInvalidTTL is returned when a TTL value is outside safe bounds.
+	ErrInvalidTTL = errors.New("invalid token TTL")
 )
 
 // appNameRe matches valid app names: lowercase letters/digits/hyphens,
@@ -43,10 +49,11 @@ var appNameRe = regexp.MustCompile(`^[a-z][a-z0-9](?:-?[a-z0-9]+)*$`)
 
 // AppSvc handles app registration and authentication business logic.
 type AppSvc struct {
-	store    *store.SqlStore
-	tknSvc   *token.TknSvc
-	auditLog *audit.AuditLog
-	audience string
+	store      *store.SqlStore
+	tknSvc     *token.TknSvc
+	auditLog   *audit.AuditLog
+	audience   string
+	defaultTTL int // default app token TTL from cfg.AppTokenTTL
 }
 
 // RegisterAppResp is returned by RegisterApp. The ClientSecret is the
@@ -60,27 +67,41 @@ type RegisterAppResp struct {
 	// ScopeCeiling is the maximum set of permissions this app can delegate
 	// to agents. JSON-serialized as "scopes" for API compatibility.
 	ScopeCeiling []string `json:"scopes"`
+	TokenTTL     int      `json:"token_ttl"`
 }
 
 // NewAppSvc returns an AppSvc wired with the given dependencies.
 // auditLog may be nil to disable audit recording.
-func NewAppSvc(st *store.SqlStore, tknSvc *token.TknSvc, al *audit.AuditLog, audience string) *AppSvc {
+// appTokenTTL is the global default TTL for app JWTs (from cfg.AppTokenTTL).
+func NewAppSvc(st *store.SqlStore, tknSvc *token.TknSvc, al *audit.AuditLog, audience string, appTokenTTL int) *AppSvc {
 	return &AppSvc{
-		store:    st,
-		tknSvc:   tknSvc,
-		auditLog: al,
-		audience: audience,
+		store:      st,
+		tknSvc:     tknSvc,
+		auditLog:   al,
+		audience:   audience,
+		defaultTTL: appTokenTTL,
 	}
 }
 
 // RegisterApp creates a new app with generated credentials. The plaintext
 // client_secret is returned exactly once in RegisterAppResp and never stored.
-func (s *AppSvc) RegisterApp(name string, scopes []string, createdBy string) (*RegisterAppResp, error) {
+// tokenTTL of 0 means use the global default; otherwise it must be within
+// [minAppTokenTTL, maxAppTokenTTL].
+func (s *AppSvc) RegisterApp(name string, scopes []string, createdBy string, tokenTTL int) (*RegisterAppResp, error) {
 	if err := validateAppName(name); err != nil {
 		return nil, err
 	}
 	if err := validateScopes(scopes); err != nil {
 		return nil, err
+	}
+
+	// Resolve TTL: 0 means use default, otherwise validate bounds.
+	ttl := tokenTTL
+	if ttl == 0 {
+		ttl = s.defaultTTL
+	} else if ttl < minAppTokenTTL || ttl > maxAppTokenTTL {
+		return nil, fmt.Errorf("%w: must be between %d and %d seconds, got %d",
+			ErrInvalidTTL, minAppTokenTTL, maxAppTokenTTL, ttl)
 	}
 
 	appID := "app-" + name + "-" + randomHex(3)
@@ -100,6 +121,7 @@ func (s *AppSvc) RegisterApp(name string, scopes []string, createdBy string) (*R
 		ClientID:         clientID,
 		ClientSecretHash: string(hash),
 		ScopeCeiling:     scopes,
+		TokenTTL:         ttl,
 		Status:           "active",
 		CreatedAt:        now,
 		UpdatedAt:        now,
@@ -111,7 +133,7 @@ func (s *AppSvc) RegisterApp(name string, scopes []string, createdBy string) (*R
 	}
 
 	s.record(audit.EventAppRegistered, "",
-		fmt.Sprintf("app=%s client_id=%s scopes=%v", name, clientID, scopes),
+		fmt.Sprintf("app=%s client_id=%s scopes=%v token_ttl=%d", name, clientID, scopes, ttl),
 		audit.WithOutcome("success"))
 
 	return &RegisterAppResp{
@@ -119,6 +141,7 @@ func (s *AppSvc) RegisterApp(name string, scopes []string, createdBy string) (*R
 		ClientID:     clientID,
 		ClientSecret: secret,
 		ScopeCeiling: scopes,
+		TokenTTL:     ttl,
 	}, nil
 }
 
@@ -160,7 +183,7 @@ func (s *AppSvc) AuthenticateApp(clientID, clientSecret string) (*token.IssueRes
 		Sub:   "app:" + rec.AppID,
 		Aud:   aud,
 		Scope: []string{"app:launch-tokens:*", "app:agents:*", "app:audit:read"},
-		TTL:   appTokenTTL,
+		TTL:   rec.TokenTTL,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("issue token: %w", err)
@@ -193,6 +216,31 @@ func (s *AppSvc) UpdateApp(appID string, newScopes []string, updatedBy string) e
 	}
 	s.record(audit.EventAppUpdated, "",
 		fmt.Sprintf("app_id=%s scopes=%v updated_by=%s", appID, newScopes, updatedBy),
+		audit.WithOutcome("success"))
+	return nil
+}
+
+// UpdateAppTTL changes the per-app JWT TTL. Validates bounds and records
+// an audit event with old and new TTL values.
+func (s *AppSvc) UpdateAppTTL(appID string, newTTL int, updatedBy string) error {
+	if newTTL < minAppTokenTTL || newTTL > maxAppTokenTTL {
+		return fmt.Errorf("%w: must be between %d and %d seconds, got %d",
+			ErrInvalidTTL, minAppTokenTTL, maxAppTokenTTL, newTTL)
+	}
+
+	// Get old TTL for audit trail.
+	rec, err := s.store.GetAppByID(appID)
+	if err != nil {
+		return err
+	}
+	oldTTL := rec.TokenTTL
+
+	if err := s.store.UpdateAppTTL(appID, newTTL); err != nil {
+		return err
+	}
+
+	s.record(audit.EventAppUpdated, "",
+		fmt.Sprintf("app_id=%s token_ttl=%d->%d updated_by=%s", appID, oldTTL, newTTL, updatedBy),
 		audit.WithOutcome("success"))
 	return nil
 }

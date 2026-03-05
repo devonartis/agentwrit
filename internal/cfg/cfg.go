@@ -19,6 +19,7 @@
 //	AA_TLS_KEY       – path to TLS private key PEM file
 //	AA_TLS_CLIENT_CA – path to client CA certificate PEM file (mtls only)
 //	AA_AUDIENCE      – expected token audience claim        (default "agentauth", empty = skip)
+//	AA_APP_TOKEN_TTL – app JWT TTL in seconds              (default 1800 / 30 min)
 package cfg
 
 import (
@@ -33,6 +34,7 @@ type Cfg struct {
 	LogLevel    string // AA_LOG_LEVEL (default "verbose")
 	TrustDomain string // AA_TRUST_DOMAIN (default "agentauth.local")
 	DefaultTTL  int    // AA_DEFAULT_TTL (default 300 seconds)
+	AppTokenTTL int    // AA_APP_TOKEN_TTL (default 1800 seconds / 30 min)
 	AdminSecret string // AA_ADMIN_SECRET (required for admin auth)
 	SeedTokens  bool   // AA_SEED_TOKENS (dev only, default false)
 	DBPath      string // AA_DB_PATH (default "./agentauth.db")
@@ -52,6 +54,7 @@ func Load() Cfg {
 		LogLevel:    envOr("AA_LOG_LEVEL", "verbose"),
 		TrustDomain: envOr("AA_TRUST_DOMAIN", "agentauth.local"),
 		DefaultTTL:  envIntOr("AA_DEFAULT_TTL", 300),
+		AppTokenTTL: envIntOr("AA_APP_TOKEN_TTL", 1800),
 		AdminSecret: os.Getenv("AA_ADMIN_SECRET"),
 		SeedTokens:  envOr("AA_SEED_TOKENS", "false") == "true",
 		DBPath:      envOr("AA_DB_PATH", "./agentauth.db"),

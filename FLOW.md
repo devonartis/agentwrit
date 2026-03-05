@@ -59,16 +59,56 @@ Added Phase 1B section to CHANGELOG.md under `[Unreleased]` — covers app-scope
 
 ---
 
-## Next session: Execute TD-006 implementation plan, then start Phase 1C
+## 2026-03-05 (Session 31 — TD-006 Implementation)
 
-**Branch:** `develop` — clean, no uncommitted changes.
+### executing-plans: TD-006 Per-App JWT TTL
 
-**Action:**
-1. Execute TD-006 implementation plan at `.plans/td-006/TD-006-Implementation-Plan.md` (10 tasks, ~0.5 day)
-   - Use `superpowers:executing-plans` skill
-   - Plan has complete code, exact file paths, TDD steps, and commit messages
-   - After implementation: Docker live test against `tests/td-006/user-stories.md` (7 stories)
-2. Start Phase 1C implementation — spec ready at `.plans/phase-1c/Phase-1c-Revocation-Audit-SecretRotation.md`
+Executed all 10 plan tasks via TDD (red-green-commit). 8 commits on `feature/td-006-app-jwt-ttl`. All unit tests pass (56 tests across cfg, store, app packages). Gate lint fixed (2 unchecked `json.Unmarshal`). Pre-existing lint issues in admin_hdl.go were not touched (not in scope).
+
+Key implementation notes:
+- `migrateAddColumn` helper works as designed — idempotent, uses `PRAGMA table_info`
+- Existing tests needed `TokenTTL: 0` (Go zero value) — no breakage since DB DEFAULT handles it
+- `handleUpdateApp` response now uses `storeAppToResp()` for consistency (was inline before)
+
+→ Artifact: 8 commits on `feature/td-006-app-jwt-ttl`
+
+---
+
+---
+
+## 2026-03-05 (Session 32 — TD-006 Docker Live Tests & Bug Fix)
+
+### Docker live tests: 7/7 PASS (S6 after fix)
+
+Ran all 7 user stories against Docker stack. S1–S5, S7 passed on first run. S6 found a bug: `--token-ttl 0` and `--token-ttl -1` silently accepted with default TTL. Fixed in-session (handler `int` → `*int`, CLI `> 0` → `Flags().Changed()`), re-ran S6 — all 5 boundary cases now correct.
+
+→ Artifact: `tests/td-006/evidence/` (7 story files + README)
+
+### systematic-debugging: TTL 0/-1 bounds bypass
+
+Root cause traced through 3 layers: CLI filtered 0/negative before sending to API, handler couldn't distinguish absent from 0 (used `int` not `*int`), service treated 0 as "use default." Fix at handler (pointer type + explicit validation) and CLI (`Flags().Changed()`). Two unit tests added. Verified with Docker re-run.
+
+→ Artifact: `internal/app/app_hdl.go`, `cmd/aactl/apps.go`, `internal/app/app_hdl_test.go`
+
+### Bug logged: duplicate app name returns 500
+
+Found during testing — registering an app with an existing name returns HTTP 500 instead of 409. SQLite UNIQUE constraint error not caught. Deferred to future work.
+
+→ Artifact: `tests/td-006/evidence/README.md` (Open Issues section)
+
+### Regression: Phase 1A/1B PASS
+
+Ran key regression stories against Docker stack after fix. Phase 1A: app register, dev auth (expires_in now 1800 — expected), bad creds 401, admin auth OK. Phase 1B: app launch tokens, scope ceiling enforcement, admin launch tokens. All pass. No regressions.
+
+→ Artifact: `tests/td-006/evidence/regression/`
+
+### TD-006 merged to develop
+
+Branch `feature/td-006-app-jwt-ttl` merged to `develop`. TD-006 resolved in tech debt table.
+
+### What's next
+
+1. **Phase 1C** — app lifecycle, NIST alignment, token hygiene (19 stories)
 
 **Phase 1C** (19 stories, ~2 days):
 - Stories 1-10: original app lifecycle (app revocation, `app_id` claims, secret rotation)
