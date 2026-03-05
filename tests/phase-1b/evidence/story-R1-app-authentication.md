@@ -1,78 +1,30 @@
-# Story R1 — Developer authenticates with app credentials (Phase 1a regression)
+# P1B-R1 — Developer Authenticates with App Credentials (Regression)
 
-## Purpose
+Who: The developer.
 
-Verify that Phase 1a app authentication still works after Phase 1b changes. A developer
-with valid `client_id` and `client_secret` should be able to authenticate and receive a
-JWT with the correct app-level scopes.
+What: The developer logs in to the broker using the app credentials the operator gave
+them. This is a regression test from Phase 1A — app authentication must still work
+after Phase 1B changes. The developer sends their client_id and client_secret to
+the broker and gets back a JWT. The JWT should carry the app-level scopes
+(app:launch-tokens:*, app:agents:*, app:audit:read) and the subject should be
+"app:<app_id>".
 
-## Preconditions
+Why: If app authentication broke during Phase 1B, developers can't do anything —
+no login means no launch tokens, no agent registration, nothing.
 
-- Broker running in Docker (`./scripts/stack_up.sh`)
-- App `weather-bot` registered by operator with scope ceiling `["read:weather:*"]`
-- Developer has been given `client_id` and `client_secret` by the operator
+How to run: Source the environment file. Send a POST to /v1/app/auth with the
+weather-bot's client_id and client_secret. Check that the response is 200 with a
+JWT, and that the JWT carries the correct scopes and subject.
 
-## Steps
+Expected: HTTP 200 with access_token. Scopes include app:launch-tokens:*,
+app:agents:*, app:audit:read. Subject is app:<app_id>.
 
-### Step 1: Authenticate as app developer
+## Test Output
 
-**What this does:** Sends the app's credentials to the broker's app auth endpoint.
-The broker validates the credentials and returns a short-lived JWT.
+{"access_token":"eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJhZ2VudGF1dGgiLCJzdWIiOiJhcHA6YXBwLXdlYXRoZXItYm90LWZmZmFkMCIsImV4cCI6MTc3MjY3ODk2MSwibmJmIjoxNzcyNjc4NjYxLCJpYXQiOjE3NzI2Nzg2NjEsImp0aSI6Ijk5ZjIwZGJmNWVlZjJmMjI5MWZhMjM5MzdlNDAxMzdiIiwic2NvcGUiOlsiYXBwOmxhdW5jaC10b2tlbnM6KiIsImFwcDphZ2VudHM6KiIsImFwcDphdWRpdDpyZWFkIl19.fTj40XQgGAl7J4bVmqEGhPWYcLpTjkJLsFLY-Rau9yjfJlhoznfvYH5SrESH4I3jSwcngxfavfGeY0_ZgrrvAQ","expires_in":300,"token_type":"Bearer","scopes":["app:launch-tokens:*","app:agents:*","app:audit:read"]}
 
-```bash
-curl -s -X POST http://127.0.0.1:8080/v1/app/auth \
-  -H "Content-Type: application/json" \
-  -d '{"client_id": "wb-009efbc75c6a", "client_secret": "<secret>"}'
-```
-
-**HTTP Status:** 200
-
-**Response:**
-```json
-{
-    "access_token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...",
-    "expires_in": 300,
-    "token_type": "Bearer",
-    "scopes": [
-        "app:launch-tokens:*",
-        "app:agents:*",
-        "app:audit:read"
-    ]
-}
-```
-
-### Step 2: Decode the JWT to verify claims
-
-**What this does:** Decodes the JWT payload (base64) to inspect the claims the broker
-embedded. We're checking that the `sub` field identifies this as an app token and that
-the scopes match what Phase 1a defined.
-
-**JWT Payload:**
-```json
-{
-  "iss": "agentauth",
-  "sub": "app:app-weather-bot-cbd117",
-  "exp": 1772619732,
-  "nbf": 1772619432,
-  "iat": 1772619432,
-  "jti": "bf53e013f9eae22b639ea9d138e4ab56",
-  "scope": [
-    "app:launch-tokens:*",
-    "app:agents:*",
-    "app:audit:read"
-  ]
-}
-```
-
-## Acceptance Criteria
-
-| # | Criterion | Expected | Actual | Result |
-|---|-----------|----------|--------|--------|
-| 1 | POST /v1/app/auth returns 200 | HTTP 200 | HTTP 200 | PASS |
-| 2 | JWT carries correct scopes | `["app:launch-tokens:*", "app:agents:*", "app:audit:read"]` | Matches exactly | PASS |
-| 3 | JWT `sub` is `app:<app_id>` | `app:app-weather-bot-cbd117` | `app:app-weather-bot-cbd117` | PASS |
+HTTP 200
 
 ## Verdict
 
-**PASS** — App authentication works identically to Phase 1a. JWT contains correct
-subject, scopes, and expiry (5 minutes).
+PASS — App authentication returned HTTP 200. JWT carries scopes [app:launch-tokens:*, app:agents:*, app:audit:read]. The sub claim in the JWT is "app:app-weather-bot-fffad0". No regression — app auth works after Phase 1B.

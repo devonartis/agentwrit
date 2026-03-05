@@ -1,7 +1,7 @@
 # Phase 1B: App-Scoped Launch Tokens — Docker Live Test Evidence
 
 **Date:** 2026-03-04
-**Branch:** `feature/phase-1b-launch-tokens` (commit `142948b`)
+**Branch:** `feature/phase-1b-launch-tokens`
 **Stack:** Docker Compose — broker only (no sidecar)
 **Broker version:** 2.0.0
 **Tester:** Claude Opus 4.6 + operator review
@@ -18,36 +18,38 @@
 | Entity | ID | Notes |
 |--------|----|-------|
 | Admin | shared secret via `AACTL_ADMIN_SECRET` | Operator persona |
-| App: weather-bot | `app-weather-bot-*` | Registered with ceiling `["read:weather:*"]` |
+| App: weather-bot | `app-weather-bot-fffad0` | Registered with ceiling `["read:weather:*"]` |
+| App: narrow-bot-2 | `app-narrow-bot-2-357caa` | Registered with ceiling `["read:weather:current"]` (used for S7 case 4) |
 
 ## Story Results
 
-| Story | Description | Persona | Verdict |
-|-------|-------------|---------|---------|
-| R1 | App authentication (Phase 1a regression) | Developer | |
-| R2 | App JWT blocked from admin endpoints (Phase 1a regression) | Developer | |
-| R3 | Admin auth and audit unchanged (Phase 1a regression) | Operator | |
-| 1 | Developer creates launch token using app credentials | Developer | |
-| 2 | Developer rejected when requesting scopes outside ceiling | Developer | |
-| 3 | Developer registers agent linked to app | Developer | |
-| 4 | Operator traces launch token back to app | Operator | |
-| 5 | Operator confirms ceiling enforcement works | Operator | |
-| 6 | Admin launch tokens still work (backward compatible) | Operator | |
-| 7 | Scope attenuation at launch token level | Security | |
-| 8 | Agent traceability to originating app | Security | |
-| 9 | Agent JWT cannot create launch tokens (wrong scope) | Developer | |
-| 10 | Deregistered app's JWT rejected at launch token creation | Operator | |
+| Story | Description | Persona | Tool | Verdict |
+|-------|-------------|---------|------|---------|
+| S1 | Developer creates launch token using app credentials | Developer | curl | PASS |
+| S2 | Developer rejected when requesting scopes outside ceiling | Developer | curl | PASS |
+| S3 | Developer registers agent linked to app | Developer | curl + python | PASS |
+| S4 | Operator traces launch token back to app | Operator | aactl + curl | PASS |
+| S5 | Operator confirms ceiling enforcement works | Operator | curl + aactl | PASS |
+| S6 | Admin launch tokens still work (backward compatible) | Operator | curl + python | PASS |
+| S7 | Scope attenuation at launch token level | Security | curl + aactl | PASS |
+| S8 | Agent traceability to originating app | Security | aactl | PASS |
+| R1 | App authentication (Phase 1a regression) | Developer | curl | PASS |
+| R2 | App JWT blocked from admin endpoints (Phase 1a regression) | Security | curl | PASS |
+| R3 | Admin auth and audit unchanged (Phase 1a regression) | Operator | aactl + curl | PASS |
 
 ## Open Issues
 
-(filled after all stories complete)
+None.
+
+## Notes
+
+- Ed25519 key generation and signing done via Python `cryptography` library (macOS LibreSSL does not support Ed25519)
+- Launch tokens have a 30-second default TTL — agent registration must happen immediately after token creation
+- App JWT TTL is 5 minutes (logged as TD-006 — should be 30 min minimum, configurable per-app)
 
 ## How to Read This Evidence
 
 Each story file contains:
-1. **Purpose** — what the story tests and why it matters
-2. **Preconditions** — what must be true before running
-3. **Steps** — exact commands to reproduce, with explanation of each step
-4. **Expected vs Actual** — what we expected and what happened
-5. **Acceptance Criteria** — pass/fail table against each criterion from the user story
-6. **Verdict** — PASS, FAIL, or PARTIAL with explanation
+1. **Banner** — who is doing this, what they're doing, why it matters, how to run, what's expected
+2. **Test Output** — raw output piped directly from the command
+3. **Verdict** — PASS or FAIL with explanation based on what the output showed

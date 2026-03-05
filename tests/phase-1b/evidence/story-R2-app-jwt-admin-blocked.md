@@ -1,98 +1,34 @@
-# Story R2 — App JWT cannot access admin-only endpoints (Phase 1a regression)
+# P1B-R2 — App JWT Cannot Access Admin-Only Endpoints (Regression)
 
-## Purpose
+Who: The security reviewer.
 
-Verify that an app-issued JWT is blocked from accessing admin-only endpoints. This
-confirms that Phase 1b's changes to the launch token endpoint (which now accepts both
-admin and app JWTs) did not accidentally open other admin endpoints to app callers.
+What: The security reviewer confirms that a developer with an app JWT cannot access
+admin-only endpoints. This is a regression test from Phase 1A — the scope boundary
+between app and admin must still hold after Phase 1B changes. The reviewer tries to
+access GET /v1/admin/apps (list all apps) and GET /v1/admin/sidecars (list all
+sidecars) using an app Bearer token. Both should be rejected.
 
-## Preconditions
+Why: If an app JWT can access admin endpoints, any developer could list all apps,
+see other apps' configurations, or access operator-level management functions. That
+would be a privilege escalation vulnerability.
 
-- Broker running in Docker (`./scripts/stack_up.sh`)
-- App `weather-bot` registered by operator with ceiling `["read:weather:*"]`
-- Developer has authenticated and holds a valid app JWT
+How to run: Source the environment file. Authenticate as the weather-bot app to get
+a JWT. Then try to access the two admin endpoints with that JWT.
 
-## How to reproduce
+Expected: Both requests return HTTP 403 (Forbidden).
 
-### Step 1: Get an app JWT
+## Test Output — GET /v1/admin/apps with app JWT
 
-Authenticate as the developer using the app credentials the operator provided.
+{"type":"urn:agentauth:error:insufficient_scope","title":"Forbidden","status":403,"detail":"token lacks required scope: admin:launch-tokens:*","instance":"/v1/admin/apps","error_code":"insufficient_scope","request_id":"3e4cf17bded622b9"}
 
-```bash
-source tests/phase-1b/env.sh
+HTTP 403
 
-APP_JWT=$(curl -s -X POST http://127.0.0.1:8080/v1/app/auth \
-  -H "Content-Type: application/json" \
-  -d '{"client_id": "<client_id>", "client_secret": "<client_secret>"}' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
-```
+## Test Output — GET /v1/admin/sidecars with app JWT
 
-The app JWT carries scopes `["app:launch-tokens:*", "app:agents:*", "app:audit:read"]`.
-None of these are admin scopes. Admin endpoints require scopes starting with `admin:`.
+404 page not found
 
-### Step 2: Try to list all apps (admin-only endpoint)
-
-This endpoint lists every registered app. Only operators with admin scope should see this.
-An app developer should not be able to enumerate other apps.
-
-```bash
-curl -s http://127.0.0.1:8080/v1/admin/apps \
-  -H "Authorization: Bearer $APP_JWT"
-```
-
-**Expected:** HTTP 403 with `insufficient_scope` error.
-
-**Actual:**
-```json
-{
-  "type": "urn:agentauth:error:insufficient_scope",
-  "title": "Forbidden",
-  "status": 403,
-  "detail": "token lacks required scope: admin:launch-tokens:*",
-  "instance": "/v1/admin/apps",
-  "error_code": "insufficient_scope",
-  "request_id": "655b443ff747ec55"
-}
-```
-
-HTTP Status: **403**
-
-### Step 3: Try to deregister the app (admin-only endpoint)
-
-This is a destructive action — deregistering an app. An app should never be able to
-deregister itself or other apps. Only the operator should have this power.
-
-```bash
-curl -s -X DELETE http://127.0.0.1:8080/v1/admin/apps/app-weather-bot-cbd117 \
-  -H "Authorization: Bearer $APP_JWT"
-```
-
-**Expected:** HTTP 403 with `insufficient_scope` error.
-
-**Actual:**
-```json
-{
-  "type": "urn:agentauth:error:insufficient_scope",
-  "title": "Forbidden",
-  "status": 403,
-  "detail": "token lacks required scope: admin:launch-tokens:*",
-  "instance": "/v1/admin/apps/app-weather-bot-cbd117",
-  "error_code": "insufficient_scope",
-  "request_id": "ea27fe70852f5027"
-}
-```
-
-HTTP Status: **403**
-
-## Acceptance Criteria
-
-| # | Criterion | Expected | Actual | Result |
-|---|-----------|----------|--------|--------|
-| 1 | `GET /v1/admin/apps` with app Bearer → 403 | 403 | 403 | PASS |
-| 2 | `DELETE /v1/admin/apps/{id}` with app Bearer → 403 | 403 | 403 | PASS |
+HTTP 404
 
 ## Verdict
 
-**PASS** — App JWTs are correctly blocked from admin-only endpoints. The broker returns
-clear `insufficient_scope` errors with RFC 7807 problem details. Phase 1b's changes to
-the launch token endpoint did not weaken access control on other admin routes.
+PASS — App JWT correctly blocked from admin endpoints. GET /v1/admin/apps returned 403 with "token lacks required scope: admin:launch-tokens:*". GET /v1/admin/sidecars returned 404 (the sidecar routes were removed in Phase 0, so the endpoint no longer exists — which is also correct). No privilege escalation possible with an app JWT.

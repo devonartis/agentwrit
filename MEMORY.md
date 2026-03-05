@@ -15,6 +15,7 @@ Active tech debt. Append here when new debt is taken. Full details in `.plans/PR
 | TD-003 | Sidecar has no defined use case — removed from infra, code still exists | Medium | When PRD defines a use case |
 | ~~TD-004~~ | ~~Admin auth uses legacy client_id/client_secret shape~~ | ~~High~~ | ~~RESOLVED Session 26~~ |
 | ~~TD-005~~ | ~~6 sidecar routes still wired in broker~~ | ~~High~~ | ~~RESOLVED Session 26~~ |
+| TD-006 | App JWT TTL hardcoded to 5 min — should be 30 min default, per-app configurable by operator | Medium | Before Phase 1C |
 
 ## Standing Rules
 
