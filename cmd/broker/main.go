@@ -82,6 +82,11 @@ func main() {
 		os.Exit(1)
 	}
 	obs.Ok("BROKER", "main", "database initialized", "path="+c.DBPath)
+	defer func() {
+		if sqlStore.HasDB() {
+			sqlStore.Close()
+		}
+	}()
 
 	// Load existing audit events from SQLite to rebuild hash chain
 	existingEvents, err := sqlStore.LoadAllAuditEvents()
@@ -186,7 +191,12 @@ func main() {
 	obs.Ok("BROKER", "main", "starting broker", "addr="+addr, "version="+version)
 	fmt.Printf("AgentAuth broker v%s listening on %s\n", version, addr)
 
-	if err := serve(c, addr, rootHandler); err != nil {
+	if err := serve(c, addr, rootHandler, func() {
+		if err := sqlStore.Close(); err != nil {
+			obs.Warn("BROKER", "shutdown", "database close error", "error="+err.Error())
+		}
+		obs.Ok("BROKER", "shutdown", "database closed")
+	}); err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
 		os.Exit(1)
 	}
