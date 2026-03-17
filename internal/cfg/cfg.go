@@ -14,6 +14,7 @@
 //	AA_ADMIN_SECRET  – shared secret for admin auth (required in production)
 //	AA_SEED_TOKENS   – print seed tokens on startup (default "false", dev only)
 //	AA_DB_PATH       – SQLite database file path    (default "./agentauth.db")
+//	AA_SIGNING_KEY_PATH   – Ed25519 signing key file path     (default "./signing.key")
 //	AA_TLS_MODE      – none|tls|mtls               (default "none")
 //	AA_TLS_CERT      – path to TLS certificate PEM file
 //	AA_TLS_KEY       – path to TLS private key PEM file
@@ -37,7 +38,8 @@ type Cfg struct {
 	AppTokenTTL int    // AA_APP_TOKEN_TTL (default 1800 seconds / 30 min)
 	AdminSecret string // AA_ADMIN_SECRET (required for admin auth)
 	SeedTokens  bool   // AA_SEED_TOKENS (dev only, default false)
-	DBPath      string // AA_DB_PATH (default "./agentauth.db")
+	DBPath         string // AA_DB_PATH (default "./agentauth.db")
+	SigningKeyPath string // AA_SIGNING_KEY_PATH (default "./signing.key")
 	TLSMode     string // AA_TLS_MODE: none|tls|mtls (default "none")
 	TLSCert     string // AA_TLS_CERT: path to TLS certificate PEM file
 	TLSKey      string // AA_TLS_KEY: path to TLS private key PEM file
@@ -57,7 +59,8 @@ func Load() Cfg {
 		AppTokenTTL: envIntOr("AA_APP_TOKEN_TTL", 1800),
 		AdminSecret: os.Getenv("AA_ADMIN_SECRET"),
 		SeedTokens:  envOr("AA_SEED_TOKENS", "false") == "true",
-		DBPath:      envOr("AA_DB_PATH", "./agentauth.db"),
+		DBPath:         envOr("AA_DB_PATH", "./agentauth.db"),
+		SigningKeyPath: envOr("AA_SIGNING_KEY_PATH", "./signing.key"),
 		TLSMode:     envOr("AA_TLS_MODE", "none"),
 		TLSCert:     os.Getenv("AA_TLS_CERT"),
 		TLSKey:      os.Getenv("AA_TLS_KEY"),
