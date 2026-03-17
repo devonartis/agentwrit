@@ -986,6 +986,7 @@ func (s *SqlStore) Close() error {
 		obs.Fail("store", "sqlite", "failed to close database", "error="+err.Error())
 		return err
 	}
+	s.db = nil
 	obs.Ok("store", "sqlite", "database closed")
 	return nil
 }

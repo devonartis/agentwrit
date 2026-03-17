@@ -88,5 +88,8 @@ func writeKey(path string, priv ed25519.PrivateKey) error {
 	if _, err := f.Write(pemData); err != nil {
 		return fmt.Errorf("keystore: write key: %w", err)
 	}
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("keystore: sync key: %w", err)
+	}
 	return nil
 }
