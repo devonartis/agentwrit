@@ -26,6 +26,9 @@ package cfg
 import (
 	"os"
 	"strconv"
+	"strings"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Cfg holds the complete broker configuration derived from environment
@@ -44,13 +47,19 @@ type Cfg struct {
 	TLSCert     string // AA_TLS_CERT: path to TLS certificate PEM file
 	TLSKey      string // AA_TLS_KEY: path to TLS private key PEM file
 	TLSClientCA string // AA_TLS_CLIENT_CA: path to client CA PEM file (mtls only)
-	Audience    string // AA_AUDIENCE: expected token audience (default "agentauth", empty = skip)
+	Audience        string // AA_AUDIENCE: expected token audience (default "agentauth", empty = skip)
+	Mode            string // MODE: development|production (default "development")
+	AdminSecretHash string // bcrypt hash of admin secret (derived at load time)
+	ConfigPath      string // resolved config file path (empty if none found)
 }
 
 // Load reads AA_* environment variables and returns a Cfg with defaults
 // applied for any missing values. It never returns an error; invalid
 // numeric values silently fall back to their defaults.
 func Load() Cfg {
+	// Read config file defaults first.
+	cfgMode, cfgSecret, cfgPath := loadConfigFile()
+
 	c := Cfg{
 		Port:        envOr("AA_PORT", "8080"),
 		LogLevel:    envOr("AA_LOG_LEVEL", "verbose"),
@@ -65,6 +74,8 @@ func Load() Cfg {
 		TLSCert:     os.Getenv("AA_TLS_CERT"),
 		TLSKey:      os.Getenv("AA_TLS_KEY"),
 		TLSClientCA: os.Getenv("AA_TLS_CLIENT_CA"),
+		ConfigPath:  cfgPath,
+		Mode:        "development",
 	}
 	// AA_AUDIENCE: LookupEnv distinguishes unset (→ default "agentauth")
 	// from explicitly empty (→ skip validation).
@@ -73,7 +84,33 @@ func Load() Cfg {
 	} else {
 		c.Audience = "agentauth"
 	}
+
+	// Config file values are defaults; env vars override.
+	if c.AdminSecret == "" && cfgSecret != "" {
+		c.AdminSecret = cfgSecret
+	}
+	if cfgMode != "" {
+		c.Mode = cfgMode
+	}
+
+	// Derive bcrypt hash for comparison.
+	if c.AdminSecret != "" {
+		if isBcryptHash(c.AdminSecret) {
+			c.AdminSecretHash = c.AdminSecret
+		} else {
+			hash, err := bcrypt.GenerateFromPassword([]byte(c.AdminSecret), bcrypt.DefaultCost)
+			if err == nil {
+				c.AdminSecretHash = string(hash)
+			}
+		}
+	}
+
 	return c
+}
+
+// isBcryptHash returns true if the value looks like a bcrypt hash.
+func isBcryptHash(s string) bool {
+	return strings.HasPrefix(s, "$2a$") || strings.HasPrefix(s, "$2b$")
 }
 
 func envOr(key, fallback string) string {

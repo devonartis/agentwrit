@@ -27,7 +27,7 @@ func newTestHandler(t *testing.T) (*AdminHdl, *AdminSvc, *token.TknSvc) {
 	}
 	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
 	st := store.NewSqlStore()
-	adminSvc := NewAdminSvc(testSecret, tknSvc, st, nil, "")
+	adminSvc := NewAdminSvc(testSecretHash, tknSvc, st, nil, "")
 	valMw := authz.NewValMw(tknSvc, nil, nil, "")
 	hdl := NewAdminHdl(adminSvc, valMw, nil, nil, st)
 	return hdl, adminSvc, tknSvc
@@ -295,7 +295,7 @@ func newAppTestMux(t *testing.T) (*http.ServeMux, *AdminSvc, *token.TknSvc, *sto
 	}
 	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
 	al := audit.NewAuditLog(st)
-	adminSvc := NewAdminSvc(testSecret, tknSvc, st, al, "")
+	adminSvc := NewAdminSvc(testSecretHash, tknSvc, st, al, "")
 	valMw := authz.NewValMw(tknSvc, nil, al, "")
 	hdl := NewAdminHdl(adminSvc, valMw, al, nil, st)
 
@@ -525,3 +525,4 @@ func TestCreateLaunchToken_AppCallerAuditOnCeilingExceeded(t *testing.T) {
 		t.Fatal("expected audit event EventScopeCeilingExceeded")
 	}
 }
+

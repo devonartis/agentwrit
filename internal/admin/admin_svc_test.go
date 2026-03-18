@@ -11,9 +11,20 @@ import (
 	"github.com/divineartis/agentauth/internal/cfg"
 	"github.com/divineartis/agentauth/internal/store"
 	"github.com/divineartis/agentauth/internal/token"
+	"golang.org/x/crypto/bcrypt"
 )
 
 const testSecret = "test-admin-secret-32bytes-long!"
+
+var testSecretHash string
+
+func init() {
+	hash, err := bcrypt.GenerateFromPassword([]byte(testSecret), bcrypt.DefaultCost)
+	if err != nil {
+		panic("failed to hash test secret: " + err.Error())
+	}
+	testSecretHash = string(hash)
+}
 
 func newTestAdminSvc(t *testing.T) *AdminSvc {
 	t.Helper()
@@ -23,7 +34,7 @@ func newTestAdminSvc(t *testing.T) *AdminSvc {
 	}
 	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
 	st := store.NewSqlStore()
-	return NewAdminSvc(testSecret, tknSvc, st, nil, "")
+	return NewAdminSvc(testSecretHash, tknSvc, st, nil, "")
 }
 
 func newTestAdminSvcWithAudit(t *testing.T) (*AdminSvc, *audit.AuditLog) {
@@ -35,7 +46,7 @@ func newTestAdminSvcWithAudit(t *testing.T) (*AdminSvc, *audit.AuditLog) {
 	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
 	st := store.NewSqlStore()
 	al := audit.NewAuditLog(nil)
-	return NewAdminSvc(testSecret, tknSvc, st, al, ""), al
+	return NewAdminSvc(testSecretHash, tknSvc, st, al, ""), al
 }
 
 // --- Authenticate ---
