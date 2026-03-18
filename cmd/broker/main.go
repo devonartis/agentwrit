@@ -61,10 +61,15 @@ func main() {
 	c := cfg.Load()
 	obs.Configure(c.LogLevel)
 
-	// P0: Fail fast if admin secret is not configured.
-	if c.AdminSecret == "" {
-		fmt.Fprintln(os.Stderr, "FATAL: AA_ADMIN_SECRET must be set (non-empty)")
+	// P1: Fail fast if admin secret is not configured.
+	if c.AdminSecretHash == "" {
+		fmt.Fprintln(os.Stderr, "FATAL: No admin secret configured. Run 'aactl init' or set the AA_ADMIN_SECRET environment variable.")
 		os.Exit(1)
+	}
+
+	// Dev mode warning.
+	if c.Mode == "development" {
+		obs.Warn("BROKER", "main", "Running in development mode -- admin secret stored in plaintext")
 	}
 
 	// Load or generate persistent signing key
@@ -126,7 +131,7 @@ func main() {
 	}
 	idSvc := identity.NewIdSvc(sqlStore, tknSvc, c.TrustDomain, auditLog, c.Audience)
 	delegSvc := deleg.NewDelegSvc(tknSvc, sqlStore, auditLog, privKey)
-	adminSvc := admin.NewAdminSvc(c.AdminSecret, tknSvc, sqlStore, auditLog, c.Audience)
+	adminSvc := admin.NewAdminSvc(c.AdminSecretHash, tknSvc, sqlStore, auditLog, c.Audience)
 	appSvc := app.NewAppSvc(sqlStore, tknSvc, auditLog, c.Audience, c.AppTokenTTL)
 
 	// Seed tokens for development (AA_SEED_TOKENS=true)

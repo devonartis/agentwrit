@@ -57,7 +57,7 @@ cd /Users/divineartis/proj/agentauth-core
 # Set test env vars — same secret as live_test.sh / live_test_docker.sh / test_batch.sh
 # See: internal/cfg/cfg.go (Cfg.AdminSecret), cmd/broker/main.go (fatal if empty)
 # docker-compose.yml passes AA_ADMIN_SECRET from host env to container.
-export AA_ADMIN_SECRET="live-test-secret-32bytes-long!!"
+export AA_ADMIN_SECRET="live-test-secret-32bytes-long-ok"
 export AA_HOST_PORT=8080
 export AA_LOG_LEVEL=standard
 
@@ -113,7 +113,7 @@ echo "Stack torn down."
 cd /Users/divineartis/proj/agentauth-core
 
 # Set test env vars
-export AA_ADMIN_SECRET="live-test-secret-32bytes-long!!"
+export AA_ADMIN_SECRET="live-test-secret-32bytes-long-ok"
 export AA_PORT=8080
 export AA_LOG_LEVEL=standard
 export AA_DB_PATH="/tmp/agentauth-test.db"
@@ -175,7 +175,7 @@ Only run this if the operator chose "Docker + Smoke" or explicitly asked for a s
 
 ```bash
 PORT="${AA_HOST_PORT:-${AA_PORT:-8080}}"
-SECRET="${AA_ADMIN_SECRET:-live-test-secret-32bytes-long!!}"
+SECRET="${AA_ADMIN_SECRET:-live-test-secret-32bytes-long-ok}"
 BASE="http://127.0.0.1:${PORT}"
 
 echo ""

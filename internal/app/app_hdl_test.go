@@ -17,9 +17,20 @@ import (
 	"github.com/divineartis/agentauth/internal/cfg"
 	"github.com/divineartis/agentauth/internal/store"
 	"github.com/divineartis/agentauth/internal/token"
+	"golang.org/x/crypto/bcrypt"
 )
 
 const testAdminSecret = "test-admin-secret-32bytes-long!!"
+
+var testAdminSecretHash string
+
+func init() {
+	hash, err := bcrypt.GenerateFromPassword([]byte(testAdminSecret), bcrypt.DefaultCost)
+	if err != nil {
+		panic("failed to hash test secret: " + err.Error())
+	}
+	testAdminSecretHash = string(hash)
+}
 
 // newTestAppMux sets up a mux with both AdminHdl (for auth) and AppHdl.
 func newTestAppMux(t *testing.T) (*http.ServeMux, *AppSvc) {
@@ -39,7 +50,7 @@ func newTestAppMux(t *testing.T) (*http.ServeMux, *AppSvc) {
 	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
 	al := audit.NewAuditLog(nil)
 
-	adminSvc := admin.NewAdminSvc(testAdminSecret, tknSvc, st, al, "")
+	adminSvc := admin.NewAdminSvc(testAdminSecretHash, tknSvc, st, al, "")
 	valMw := authz.NewValMw(tknSvc, nil, nil, "")
 
 	appSvc := NewAppSvc(st, tknSvc, al, "", 1800)
