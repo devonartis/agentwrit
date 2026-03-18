@@ -234,6 +234,24 @@ func TestLoad_ModeDefaultsDevelopment(t *testing.T) {
 	}
 }
 
+func TestConfigLocations_RejectsSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "real-config")
+	if err := os.WriteFile(target, []byte("MODE=development\nADMIN_SECRET=test\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	symlink := filepath.Join(dir, "symlink-config")
+	if err := os.Symlink(target, symlink); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AA_CONFIG_PATH", symlink)
+
+	_, _, path := loadConfigFile()
+	if path != "" {
+		t.Errorf("expected symlink config path to be rejected, got %q", path)
+	}
+}
+
 func TestLoadConfigFileAt_RejectsInsecurePermissions(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config")

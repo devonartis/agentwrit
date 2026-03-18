@@ -43,6 +43,15 @@ func loadConfigFile() (mode, adminSecret, path string) {
 // ADMIN_SECRET values. Returns empty strings if the file doesn't exist
 // or can't be read.
 func loadConfigFileAt(path string) (mode, adminSecret, resolvedPath string) {
+	// Reject symlinks to prevent path traversal attacks.
+	if info, err := os.Lstat(path); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			obs.Warn("CFG", "configfile", "config path is a symlink, skipping",
+				"path="+path)
+			return "", "", ""
+		}
+	}
+
 	f, err := os.Open(path)
 	if err != nil {
 		return "", "", ""
