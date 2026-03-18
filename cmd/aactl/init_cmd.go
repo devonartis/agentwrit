@@ -71,11 +71,8 @@ func runInit(mode, configPath string, force bool) (string, error) {
 		return "", fmt.Errorf("invalid mode %q: must be 'dev' or 'prod'", mode)
 	}
 
-	// Check for existing config.
-	if !force {
-		if _, err := os.Stat(configPath); err == nil {
-			return "", fmt.Errorf("config file already exists at %s. Use --force to overwrite", configPath)
-		}
+	if force {
+		fmt.Fprintf(os.Stderr, "WARNING: Overwriting existing config at %s\n", configPath)
 	}
 
 	// Generate 32-byte cryptographically random secret.
@@ -99,7 +96,7 @@ func runInit(mode, configPath string, force bool) (string, error) {
 		configValue = secret
 	}
 
-	if err := cfg.WriteConfigFile(configPath, configMode, configValue); err != nil {
+	if err := cfg.WriteConfigFile(configPath, configMode, configValue, force); err != nil {
 		return "", err
 	}
 

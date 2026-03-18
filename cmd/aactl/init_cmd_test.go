@@ -108,6 +108,32 @@ func TestInitCmd_ForceOverwrite(t *testing.T) {
 	}
 }
 
+func TestInitCmd_AtomicCreate_RejectsSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target-file")
+	if err := os.WriteFile(target, []byte("original"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	symlink := filepath.Join(dir, "config-symlink")
+	if err := os.Symlink(target, symlink); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := runInit("dev", symlink, false)
+	if err == nil {
+		t.Fatal("expected error when path is a symlink")
+	}
+	if !strings.Contains(err.Error(), "symlink") {
+		t.Errorf("expected symlink error, got: %v", err)
+	}
+
+	// Verify target file was NOT overwritten.
+	content, _ := os.ReadFile(target)
+	if string(content) != "original" {
+		t.Error("symlink target was overwritten — TOCTOU vulnerability")
+	}
+}
+
 func TestInitCmd_FilePermissions(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "subdir", "config")

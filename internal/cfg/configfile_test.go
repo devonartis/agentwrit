@@ -89,7 +89,7 @@ func TestWriteConfigFile_DevMode(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "subdir", "config")
 
-	err := WriteConfigFile(cfgPath, "development", "my-plaintext-secret")
+	err := WriteConfigFile(cfgPath, "development", "my-plaintext-secret", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestWriteConfigFile_ProdMode(t *testing.T) {
 	cfgPath := filepath.Join(dir, "config")
 
 	bcryptHash := "$2a$12$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ01234"
-	err := WriteConfigFile(cfgPath, "production", bcryptHash)
+	err := WriteConfigFile(cfgPath, "production", bcryptHash, false)
 	if err != nil {
 		t.Fatal(err)
 	}
