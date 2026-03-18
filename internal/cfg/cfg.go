@@ -108,9 +108,13 @@ func Load() Cfg {
 	return c
 }
 
-// isBcryptHash returns true if the value looks like a bcrypt hash.
+// isBcryptHash returns true if the value is a well-formed bcrypt hash.
+// A valid bcrypt hash is exactly 60 characters: $2a$XX$ + 53 chars.
 func isBcryptHash(s string) bool {
-	return strings.HasPrefix(s, "$2a$") || strings.HasPrefix(s, "$2b$")
+	if len(s) != 60 {
+		return false
+	}
+	return strings.HasPrefix(s, "$2a$") || strings.HasPrefix(s, "$2b$") || strings.HasPrefix(s, "$2y$")
 }
 
 func envOr(key, fallback string) string {

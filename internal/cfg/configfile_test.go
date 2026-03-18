@@ -31,7 +31,7 @@ func TestLoadConfigFile_ValidDevConfig(t *testing.T) {
 func TestLoadConfigFile_ValidProdConfig(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config")
-	hash := "$2a$12$somebcrypthashvaluehere1234567890abcdefghij"
+	hash := "$2a$12$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ01234"
 	content := "MODE=production\nADMIN_SECRET=" + hash + "\n"
 	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
 		t.Fatal(err)
@@ -121,7 +121,7 @@ func TestWriteConfigFile_ProdMode(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config")
 
-	bcryptHash := "$2a$12$examplebcrypthashvalue"
+	bcryptHash := "$2a$12$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ01234"
 	err := WriteConfigFile(cfgPath, "production", bcryptHash)
 	if err != nil {
 		t.Fatal(err)
@@ -157,7 +157,7 @@ func TestLoad_EnvVarOverridesConfigFile(t *testing.T) {
 func TestLoad_ConfigFileUsedWhenNoEnvVar(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config")
-	content := "MODE=production\nADMIN_SECRET=$2a$12$examplebcrypthashvalue1234567890abc\n"
+	content := "MODE=production\nADMIN_SECRET=$2a$12$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ01234\n"
 	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -165,8 +165,11 @@ func TestLoad_ConfigFileUsedWhenNoEnvVar(t *testing.T) {
 	t.Setenv("AA_ADMIN_SECRET", "")
 
 	c := Load()
-	if c.AdminSecret != "$2a$12$examplebcrypthashvalue1234567890abc" {
-		t.Errorf("expected config file secret, got AdminSecret=%q", c.AdminSecret)
+	if c.AdminSecret != "" {
+		t.Errorf("expected AdminSecret wiped after hashing, got %q", c.AdminSecret)
+	}
+	if c.AdminSecretHash != "$2a$12$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ01234" {
+		t.Errorf("expected config file bcrypt hash in AdminSecretHash, got %q", c.AdminSecretHash)
 	}
 	if c.Mode != "production" {
 		t.Errorf("expected mode=production, got %q", c.Mode)
@@ -187,7 +190,7 @@ func TestLoad_AdminSecretHashFromPlaintext(t *testing.T) {
 }
 
 func TestLoad_AdminSecretHashPassthroughBcrypt(t *testing.T) {
-	hash := "$2a$12$K4GByoBlaHblah.somethingabcdefghijklmnopqrst"
+	hash := "$2a$12$K4GByoBlahblah.somethingABCDEFGHIJKLMNOPQRSTUVWXYZ012"
 	t.Setenv("AA_ADMIN_SECRET", hash)
 	t.Setenv("AA_CONFIG_PATH", "/nonexistent")
 
@@ -204,5 +207,33 @@ func TestLoad_ModeDefaultsDevelopment(t *testing.T) {
 	c := Load()
 	if c.Mode != "development" {
 		t.Errorf("expected default mode=development, got %q", c.Mode)
+	}
+}
+
+func TestIsBcryptHash_ValidHashes(t *testing.T) {
+	valid := []string{
+		"$2a$12$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ01234",
+		"$2b$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ01234",
+		"$2y$04$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ01234",
+	}
+	for _, h := range valid {
+		if !isBcryptHash(h) {
+			t.Errorf("expected isBcryptHash(%q) = true", h)
+		}
+	}
+}
+
+func TestIsBcryptHash_InvalidHashes(t *testing.T) {
+	invalid := []string{
+		"$2a$",                                  // prefix only
+		"$2a$12$short",                          // too short
+		"plaintext-secret",                      // no prefix
+		"",                                      // empty
+		"$2a$12$" + strings.Repeat("a", 100),    // too long
+	}
+	for _, h := range invalid {
+		if isBcryptHash(h) {
+			t.Errorf("expected isBcryptHash(%q) = false", h)
+		}
 	}
 }
