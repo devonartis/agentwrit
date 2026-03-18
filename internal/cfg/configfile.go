@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/divineartis/agentauth/internal/obs"
 )
 
 // configLocations returns the ordered list of config file paths to check.
@@ -46,6 +48,16 @@ func loadConfigFileAt(path string) (mode, adminSecret, resolvedPath string) {
 		return "", "", ""
 	}
 	defer f.Close()
+
+	// Reject config file with insecure permissions (SSH/GPG convention).
+	if info, err := f.Stat(); err == nil {
+		perm := info.Mode().Perm()
+		if perm&0077 != 0 {
+			obs.Warn("CFG", "configfile", "config file has insecure permissions, skipping",
+				fmt.Sprintf("path=%s perms=%04o expected=0600", path, perm))
+			return "", "", ""
+		}
+	}
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {

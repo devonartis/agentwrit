@@ -234,6 +234,23 @@ func TestLoad_ModeDefaultsDevelopment(t *testing.T) {
 	}
 }
 
+func TestLoadConfigFileAt_RejectsInsecurePermissions(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config")
+	content := "MODE=development\nADMIN_SECRET=test-secret\n"
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	mode, secret, path := loadConfigFileAt(cfgPath)
+	if path != "" {
+		t.Errorf("expected empty path for insecure file, got %q", path)
+	}
+	if mode != "" || secret != "" {
+		t.Error("expected empty mode/secret for rejected insecure file")
+	}
+}
+
 func TestIsBcryptHash_ValidHashes(t *testing.T) {
 	valid := []string{
 		"$2a$12$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ01234",
