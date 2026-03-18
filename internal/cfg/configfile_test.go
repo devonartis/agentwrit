@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestLoadConfigFile_ValidDevConfig(t *testing.T) {
@@ -148,9 +150,19 @@ func TestLoad_EnvVarOverridesConfigFile(t *testing.T) {
 	t.Setenv("AA_CONFIG_PATH", cfgPath)
 	t.Setenv("AA_ADMIN_SECRET", "from-env-var")
 
-	c := Load()
-	if c.AdminSecret != "from-env-var" {
-		t.Errorf("expected env var to win, got AdminSecret=%q", c.AdminSecret)
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.AdminSecret != "" {
+		t.Errorf("expected AdminSecret wiped after hashing, got %q", c.AdminSecret)
+	}
+	if c.AdminSecretHash == "" {
+		t.Fatal("expected non-empty AdminSecretHash from env var")
+	}
+	// Verify the hash was derived from the env var value, not the config file value.
+	if err := bcrypt.CompareHashAndPassword([]byte(c.AdminSecretHash), []byte("from-env-var")); err != nil {
+		t.Errorf("AdminSecretHash does not match env var value: %v", err)
 	}
 }
 
@@ -164,7 +176,10 @@ func TestLoad_ConfigFileUsedWhenNoEnvVar(t *testing.T) {
 	t.Setenv("AA_CONFIG_PATH", cfgPath)
 	t.Setenv("AA_ADMIN_SECRET", "")
 
-	c := Load()
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if c.AdminSecret != "" {
 		t.Errorf("expected AdminSecret wiped after hashing, got %q", c.AdminSecret)
 	}
@@ -180,7 +195,10 @@ func TestLoad_AdminSecretHashFromPlaintext(t *testing.T) {
 	t.Setenv("AA_ADMIN_SECRET", "my-plaintext-secret")
 	t.Setenv("AA_CONFIG_PATH", "/nonexistent")
 
-	c := Load()
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if c.AdminSecretHash == "" {
 		t.Fatal("expected non-empty AdminSecretHash")
 	}
@@ -194,7 +212,10 @@ func TestLoad_AdminSecretHashPassthroughBcrypt(t *testing.T) {
 	t.Setenv("AA_ADMIN_SECRET", hash)
 	t.Setenv("AA_CONFIG_PATH", "/nonexistent")
 
-	c := Load()
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if c.AdminSecretHash != hash {
 		t.Errorf("expected passthrough of bcrypt hash, got %q", c.AdminSecretHash)
 	}
@@ -204,7 +225,10 @@ func TestLoad_ModeDefaultsDevelopment(t *testing.T) {
 	t.Setenv("AA_ADMIN_SECRET", "test")
 	t.Setenv("AA_CONFIG_PATH", "/nonexistent")
 
-	c := Load()
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if c.Mode != "development" {
 		t.Errorf("expected default mode=development, got %q", c.Mode)
 	}

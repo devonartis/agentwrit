@@ -58,7 +58,11 @@ const version = "2.0.0"
 
 func main() {
 	// Load configuration
-	c := cfg.Load()
+	c, err := cfg.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
+		os.Exit(1)
+	}
 	obs.Configure(c.LogLevel)
 
 	// P1: Fail fast if admin secret is not configured.

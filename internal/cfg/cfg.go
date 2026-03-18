@@ -24,12 +24,17 @@
 package cfg
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 )
+
+// AdminBcryptCost is the bcrypt cost factor used for hashing admin secrets.
+// Cost 12 ≈ 250ms per hash on modern hardware — good balance of security and latency.
+const AdminBcryptCost = 12
 
 // Cfg holds the complete broker configuration derived from environment
 // variables. Use [Load] to create an instance with defaults applied.
@@ -54,9 +59,9 @@ type Cfg struct {
 }
 
 // Load reads AA_* environment variables and returns a Cfg with defaults
-// applied for any missing values. It never returns an error; invalid
-// numeric values silently fall back to their defaults.
-func Load() Cfg {
+// applied for any missing values. Returns an error if the admin secret
+// cannot be hashed. Invalid numeric values silently fall back to their defaults.
+func Load() (Cfg, error) {
 	// Read config file defaults first.
 	cfgMode, cfgSecret, cfgPath := loadConfigFile()
 
@@ -98,14 +103,20 @@ func Load() Cfg {
 		if isBcryptHash(c.AdminSecret) {
 			c.AdminSecretHash = c.AdminSecret
 		} else {
-			hash, err := bcrypt.GenerateFromPassword([]byte(c.AdminSecret), bcrypt.DefaultCost)
-			if err == nil {
-				c.AdminSecretHash = string(hash)
+			hash, err := bcrypt.GenerateFromPassword([]byte(c.AdminSecret), AdminBcryptCost)
+			if err != nil {
+				return Cfg{}, fmt.Errorf("cfg: hash admin secret: %w", err)
 			}
+			c.AdminSecretHash = string(hash)
 		}
+		// Wipe plaintext from struct field. Note: Go strings are immutable —
+		// the original bytes may linger in heap until GC. This is a known
+		// limitation of Go's memory model. Using []byte would reduce the
+		// window but bcrypt internally copies to string. Accepted risk.
+		c.AdminSecret = ""
 	}
 
-	return c
+	return c, nil
 }
 
 // isBcryptHash returns true if the value is a well-formed bcrypt hash.
