@@ -139,8 +139,10 @@ func TestVerifyWrongKey(t *testing.T) {
 	}
 
 	_, err = svc2.Verify(resp.AccessToken)
-	if err != ErrSignatureInvalid {
-		t.Errorf("expected ErrSignatureInvalid, got %v", err)
+	// kid mismatch is now caught before signature verification (M1 hardening),
+	// so we accept either ErrInvalidToken (kid check) or ErrSignatureInvalid.
+	if err != ErrInvalidToken && err != ErrSignatureInvalid {
+		t.Errorf("expected ErrInvalidToken or ErrSignatureInvalid, got %v", err)
 	}
 }
 
@@ -389,5 +391,114 @@ func TestRenew_PreservesSid(t *testing.T) {
 
 	if claims2.Sid != testSid {
 		t.Errorf("renewed sid = %q, want %q", claims2.Sid, testSid)
+	}
+}
+
+func TestVerify_RejectsWrongAlg(t *testing.T) {
+	pub, priv := testKeyPair(t)
+	svc := NewTknSvc(priv, pub, testCfg())
+
+	resp, err := svc.Issue(IssueReq{
+		Sub:   "spiffe://agentauth.local/agent/test/task/abc",
+		Scope: []string{"read:data:*"},
+		TTL:   300,
+	})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	// Tamper: replace header alg with "HS256"
+	parts := strings.SplitN(resp.AccessToken, ".", 3)
+	hdrJSON, _ := base64.RawURLEncoding.DecodeString(parts[0])
+	tampered := strings.Replace(string(hdrJSON), `"EdDSA"`, `"HS256"`, 1)
+	parts[0] = base64.RawURLEncoding.EncodeToString([]byte(tampered))
+	// Re-sign so signature is valid for the tampered header+payload
+	signingInput := parts[0] + "." + parts[1]
+	sig := ed25519.Sign(priv, []byte(signingInput))
+	parts[2] = base64.RawURLEncoding.EncodeToString(sig)
+	badToken := strings.Join(parts, ".")
+
+	_, err = svc.Verify(badToken)
+	if !errors.Is(err, ErrInvalidToken) {
+		t.Errorf("Verify(alg=HS256) = %v, want ErrInvalidToken", err)
+	}
+}
+
+func TestVerify_RejectsWrongKid(t *testing.T) {
+	pub, priv := testKeyPair(t)
+	svc := NewTknSvc(priv, pub, testCfg())
+
+	resp, err := svc.Issue(IssueReq{
+		Sub:   "spiffe://agentauth.local/agent/test/task/abc",
+		Scope: []string{"read:data:*"},
+		TTL:   300,
+	})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	// Tamper: replace kid with a wrong value
+	parts := strings.SplitN(resp.AccessToken, ".", 3)
+	hdr := jwtHeader{Alg: "EdDSA", Typ: "JWT", Kid: "wrong-kid-value"}
+	hdrBytes, _ := json.Marshal(hdr)
+	parts[0] = base64.RawURLEncoding.EncodeToString(hdrBytes)
+	signingInput := parts[0] + "." + parts[1]
+	sig := ed25519.Sign(priv, []byte(signingInput))
+	parts[2] = base64.RawURLEncoding.EncodeToString(sig)
+	badToken := strings.Join(parts, ".")
+
+	_, err = svc.Verify(badToken)
+	if !errors.Is(err, ErrInvalidToken) {
+		t.Errorf("Verify(wrong kid) = %v, want ErrInvalidToken", err)
+	}
+}
+
+func TestVerify_AcceptsEmptyKid(t *testing.T) {
+	pub, priv := testKeyPair(t)
+	svc := NewTknSvc(priv, pub, testCfg())
+
+	resp, err := svc.Issue(IssueReq{
+		Sub:   "spiffe://agentauth.local/agent/test/task/abc",
+		Scope: []string{"read:data:*"},
+		TTL:   300,
+	})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	// Tamper: remove kid from header (backward compat for old tokens)
+	parts := strings.SplitN(resp.AccessToken, ".", 3)
+	hdr := jwtHeader{Alg: "EdDSA", Typ: "JWT", Kid: ""}
+	hdrBytes, _ := json.Marshal(hdr)
+	parts[0] = base64.RawURLEncoding.EncodeToString(hdrBytes)
+	signingInput := parts[0] + "." + parts[1]
+	sig := ed25519.Sign(priv, []byte(signingInput))
+	parts[2] = base64.RawURLEncoding.EncodeToString(sig)
+	token := strings.Join(parts, ".")
+
+	_, err = svc.Verify(token)
+	if err != nil {
+		t.Errorf("Verify(empty kid) should succeed, got %v", err)
+	}
+}
+
+func TestVerify_RejectsZeroExpiry(t *testing.T) {
+	pub, priv := testKeyPair(t)
+	svc := NewTknSvc(priv, pub, testCfg())
+	_ = svc
+
+	now := time.Now().Unix()
+	claims := &TknClaims{
+		Iss:   testCfg().IssuerURL,
+		Sub:   "spiffe://test.local/agent/test/task/abc",
+		Jti:   "test-jti-zero-exp",
+		Iat:   now,
+		Nbf:   now,
+		Exp:   0,
+		Scope: []string{"read:data:*"},
+	}
+	err := claims.Validate(testCfg().IssuerURL)
+	if !errors.Is(err, ErrNoExpiry) {
+		t.Errorf("Validate(exp=0) = %v, want ErrNoExpiry", err)
 	}
 }

@@ -131,6 +131,22 @@ func (s *TknSvc) Verify(tokenStr string) (*TknClaims, error) {
 		return nil, ErrInvalidToken
 	}
 
+	// Validate JWT header: alg must be EdDSA, kid (if present) must match.
+	hdrJSON, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil, ErrInvalidToken
+	}
+	var hdr jwtHeader
+	if err := json.Unmarshal(hdrJSON, &hdr); err != nil {
+		return nil, ErrInvalidToken
+	}
+	if hdr.Alg != "EdDSA" {
+		return nil, ErrInvalidToken
+	}
+	if hdr.Kid != "" && hdr.Kid != s.kid {
+		return nil, ErrInvalidToken
+	}
+
 	// Decode and verify signature
 	signingInput := parts[0] + "." + parts[1]
 	sigBytes, err := base64.RawURLEncoding.DecodeString(parts[2])
