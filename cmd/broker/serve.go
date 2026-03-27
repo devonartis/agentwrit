@@ -15,12 +15,25 @@ import (
 	"github.com/divineartis/agentauth/internal/obs"
 )
 
+// buildServer creates an http.Server with hardened timeouts.
+func buildServer(c cfg.Cfg, addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadTimeout:       15 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1 MB
+	}
+}
+
 // serve starts the HTTP server and blocks until SIGINT or SIGTERM is received.
 // On signal, it gracefully shuts down: stops accepting new connections, waits
 // up to 10 seconds for in-flight requests, calls onShutdown (for cleanup like
 // closing the database), then returns.
 func serve(c cfg.Cfg, addr string, handler http.Handler, onShutdown func()) error {
-	srv := &http.Server{Addr: addr, Handler: handler}
+	srv := buildServer(c, addr, handler)
 
 	switch c.TLSMode {
 	case "tls":
