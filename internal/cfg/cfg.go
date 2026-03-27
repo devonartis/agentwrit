@@ -41,6 +41,7 @@ const AdminBcryptCost = 12
 // variables. Use [Load] to create an instance with defaults applied.
 type Cfg struct {
 	Port        string // AA_PORT (default "8080")
+	BindAddress string // AA_BIND_ADDRESS (default "127.0.0.1")
 	LogLevel    string // AA_LOG_LEVEL (default "verbose")
 	TrustDomain string // AA_TRUST_DOMAIN (default "agentauth.local")
 	DefaultTTL  int    // AA_DEFAULT_TTL (default 300 seconds)
@@ -68,6 +69,7 @@ func Load() (Cfg, error) {
 
 	c := Cfg{
 		Port:        envOr("AA_PORT", "8080"),
+		BindAddress: envOr("AA_BIND_ADDRESS", "127.0.0.1"),
 		LogLevel:    envOr("AA_LOG_LEVEL", "verbose"),
 		TrustDomain: envOr("AA_TRUST_DOMAIN", "agentauth.local"),
 		DefaultTTL:  envIntOr("AA_DEFAULT_TTL", 300),

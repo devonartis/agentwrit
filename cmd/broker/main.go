@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/divineartis/agentauth/internal/admin"
 	"github.com/divineartis/agentauth/internal/keystore"
@@ -197,7 +198,24 @@ func main() {
 	rootHandler = handler.LoggingMiddleware(rootHandler)
 	rootHandler = problemdetails.RequestIDMiddleware(rootHandler)
 
-	addr := ":" + c.Port
+	// Background goroutines for token hygiene (60s intervals).
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			if n := sqlStore.PruneExpiredJTIs(); n > 0 {
+				obs.Ok("BROKER", "jti-pruner", "pruned expired JTIs", fmt.Sprintf("count=%d", n))
+			}
+			if n := sqlStore.ExpireAgents(); n > 0 {
+				obs.Ok("BROKER", "agent-expiry", "expired agents", fmt.Sprintf("count=%d", n))
+			}
+		}
+	}()
+
+	addr := c.BindAddress + ":" + c.Port
+	if c.BindAddress == "0.0.0.0" && c.TLSMode == "none" {
+		obs.Warn("BROKER", "main", "binding to 0.0.0.0 without TLS — use AA_TLS_MODE=tls in production")
+	}
 	obs.Ok("BROKER", "main", "starting broker", "addr="+addr, "version="+version)
 	fmt.Printf("AgentAuth broker v%s listening on %s\n", version, addr)
 
