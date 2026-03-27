@@ -347,3 +347,11 @@ The gate commands are all shell one-liners or short scripts — they translate d
 | 2026-03-29 | B1 | G5:DockerStart | PASS | branch=fix/p0-persistent-key |
 | 2026-03-29 | B1 | G6:SmokeTest | PASS | branch=fix/p0-persistent-key |
 | 2026-03-29 | B1 | G7:BatchSpecific(B1) | PASS | branch=fix/p0-persistent-key |
+
+| 2026-03-29 | B2 | G1:Compile | PASS | branch=fix/p1-admin-secret |
+| 2026-03-29 | B2 | G2:UnitTests | PASS | branch=fix/p1-admin-secret |
+| 2026-03-29 | B2 | G3:Contamination | PASS | branch=fix/p1-admin-secret |
+| 2026-03-29 | B2 | G4:DockerBuild | PASS | branch=fix/p1-admin-secret |
+| 2026-03-29 | B2 | G5:DockerStart | PASS | branch=fix/p1-admin-secret |
+| 2026-03-29 | B2 | G6:SmokeTest | PASS | branch=fix/p1-admin-secret |
+| 2026-03-29 | B2 | G7:BatchSpecific(B2) | PASS | branch=fix/p1-admin-secret |

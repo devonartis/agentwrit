@@ -3191,3 +3191,11 @@ AgentAuth broker v2.0.0 listening on :8080
 [AA:HTTP:OK] 2026-03-29T15:21:36Z | handler | request completed | method=GET, path=/v1/health, status=200, latency=27.25µs, request_id=9b181b234a81ebd5
 [AA:HTTP:OK] 2026-03-29T15:21:38Z | handler | request completed | method=GET, path=/v1/health, status=200, latency=24.792µs, request_id=88b3d4002755c96e
 [AA:HTTP:OK] 2026-03-29T15:21:40Z | handler | request completed | method=GET, path=/v1/health, status=200, latency=27.084µs, request_id=c81738c14c66bce6
+ Container agentauth-core-broker-1 Creating 
+ Container agentauth-core-broker-1 Created 
+ Container agentauth-core-broker-1 Starting 
+Error response from daemon: failed to set up container networking: network agentauth-core_agentauth-net not found
+
+
+## Verdict
+

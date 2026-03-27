@@ -26,6 +26,7 @@ package cfg
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -96,6 +97,12 @@ func Load() (Cfg, error) {
 	}
 	if cfgMode != "" {
 		c.Mode = cfgMode
+	}
+
+	// Reject known-weak admin secrets at startup (H5).
+	denylist := []string{"change-me-in-production", ""}
+	if slices.Contains(denylist, c.AdminSecret) {
+		return Cfg{}, fmt.Errorf("admin secret is a known-weak default; run 'aactl init' to generate a secure config, or set a strong AA_ADMIN_SECRET")
 	}
 
 	// Derive bcrypt hash for comparison.
