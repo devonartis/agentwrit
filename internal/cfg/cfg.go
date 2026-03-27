@@ -58,6 +58,7 @@ type Cfg struct {
 	Mode            string // MODE: development|production (default "development")
 	AdminSecretHash string // bcrypt hash of admin secret (derived at load time)
 	ConfigPath      string // resolved config file path (empty if none found)
+	MaxTTL          int    // AA_MAX_TTL: max token TTL in seconds (default 86400 = 24h, 0 = no limit)
 }
 
 // Load reads AA_* environment variables and returns a Cfg with defaults
@@ -124,6 +125,9 @@ func Load() (Cfg, error) {
 		// window but bcrypt internally copies to string. Accepted risk.
 		c.AdminSecret = ""
 	}
+
+	// Security hardening (L2a)
+	c.MaxTTL = envIntOr("AA_MAX_TTL", 86400)
 
 	return c, nil
 }

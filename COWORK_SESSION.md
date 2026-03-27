@@ -2,7 +2,7 @@
 
 Shared state document so both tools know what the other changed. Update this whenever you make a change that the other tool needs to know about.
 
-**Last updated:** 2026-03-29 (Cowork — B3 instructions)
+**Last updated:** 2026-03-29 (Cowork — B4 instructions)
 
 ---
 
@@ -17,184 +17,256 @@ Shared state document so both tools know what the other changed. Update this whe
 
 ---
 
-## ACTIVE TASK: B3 Cherry-Pick — SEC-L1
+## ACTIVE TASK: B4 Cherry-Pick — SEC-L2a: Token Hardening
 
-Use `taskcreate` to create task **"B3 Cherry-Pick — SEC-L1"** then `addblock` for each block below. Execute blocks in order.
+Use `taskcreate` to create task **"B4 Cherry-Pick — SEC-L2a Token Hardening"** then `addblock` for each block below. Execute blocks in order.
+
+**IMPORTANT: B4 has NO existing acceptance tests. You must write them. Follow `tests/LIVE-TEST-TEMPLATE.md` exactly. Put them in `tests/sec-l2a/` with user-stories.md, env.sh, and evidence/ — same structure as `tests/p1-admin-secret/` and `tests/sec-l1/`.**
 
 ### Block 1: Read context files
-Read `MEMORY.md`, `FLOW.md`, and `.plans/tracker.jsonl`. B0, B1, B2 are merged to develop. B3 is next.
+Read `MEMORY.md`, `FLOW.md`, `.plans/tracker.jsonl`, and `tests/LIVE-TEST-TEMPLATE.md`. B0-B3 are merged to develop. B4 is next. B4 has HIGH conflict risk — cherry-pick one commit at a time.
 
-### Block 2: Invoke cherry-pick skill
-Run the `cherrypick-devflow` skill. Batch is B3 — 5 commits from the agentauth repo:
-- `632b224` — .gitignore adds .env
-- `6fa0198` — weak secret denylist in cfg.go (rejects "change-me-in-production" and empty)
-- `574d3b9` — bind address defaults to 127.0.0.1, warns on 0.0.0.0 without TLS
-- `cd09a34` — HTTP timeouts in serve.go (slowloris prevention)
-- `5489679` — TLS 1.2 minimum + AEAD-only ciphers in serve.go
+### Block 2: Seed tracker.jsonl with B4 work items (all pending)
+Add ALL B4 entries to `.plans/tracker.jsonl` NOW with status `pending`. This is how the agent always knows what's been done and what hasn't. Mark each one `done` as you complete it throughout the remaining blocks.
+```jsonl
+{"type":"phase","id":"b4","batch":"B4","name":"SEC-L2a: Token Hardening","status":"pending","branch":"fix/sec-l2a","commits":8}
+{"type":"task","phase":"b4","id":"b4-g1","name":"G1 Compile","status":"pending"}
+{"type":"task","phase":"b4","id":"b4-g2","name":"G2 Unit Tests","status":"pending"}
+{"type":"task","phase":"b4","id":"b4-g3","name":"G3 Contamination","status":"pending"}
+{"type":"task","phase":"b4","id":"b4-g4","name":"G4 Docker Build","status":"pending"}
+{"type":"task","phase":"b4","id":"b4-g5","name":"G5 Docker Start","status":"pending"}
+{"type":"task","phase":"b4","id":"b4-g6","name":"G6 Smoke Test","status":"pending"}
+{"type":"task","phase":"b4","id":"b4-g7","name":"G7 Batch-Specific","status":"pending"}
+{"type":"story","phase":"b4","id":"b4-s1","name":"L2a-S1: Valid EdDSA token accepted (baseline)","status":"pending"}
+{"type":"story","phase":"b4","id":"b4-s2","name":"L2a-S2: MaxTTL clamps token lifetime","status":"pending"}
+{"type":"story","phase":"b4","id":"b4-s3","name":"L2a-S3: MaxTTL=0 disables ceiling","status":"pending"}
+{"type":"story","phase":"b4","id":"b4-s4","name":"L2a-S4: Revoked token rejected after revocation","status":"pending"}
+{"type":"story","phase":"b4","id":"b4-s5","name":"L2a-S5: Token renewal works, old token revoked","status":"pending"}
+{"type":"story","phase":"b4","id":"b4-s6","name":"L2a-S6: Broker warns DefaultTTL > MaxTTL","status":"pending"}
+{"type":"story","phase":"b4","id":"b4-s7","name":"L2a-S7: Empty kid accepted (backward compat)","status":"pending"}
+{"type":"story","phase":"b4","id":"b4-n1","name":"L2a-N1: Token with alg=HS256 rejected","status":"pending"}
+{"type":"story","phase":"b4","id":"b4-n2","name":"L2a-N2: Token with mismatched kid rejected","status":"pending"}
+{"type":"story","phase":"b4","id":"b4-n3","name":"L2a-N3: Token with exp=0 rejected","status":"pending"}
+{"type":"story","phase":"b4","id":"b4-n4","name":"L2a-N4: Wrong admin secret rejected (regression)","status":"pending"}
+{"type":"story","phase":"b4","id":"b4-n5","name":"L2a-N5: Renewal failure on revocation error (unit test)","status":"pending"}
+{"type":"story","phase":"b4","id":"b4-sec1","name":"L2a-SEC1: Code review — Verify() check order","status":"pending"}
+```
+**Rule: As you complete each gate or story in later blocks, update its status to `done` in tracker.jsonl immediately.** Don't wait until the end.
 
-### Block 3: Create branch from develop
+### Block 3: Invoke cherry-pick skill
+Run the `cherrypick-devflow` skill. Batch is B4 — 8 commits from the agentauth repo.
+
+### Block 4: Create branch from develop
 ```bash
 cd /Users/divineartis/proj/agentauth-core
 git checkout develop
 git pull
-git checkout -b fix/sec-l1
+git checkout -b fix/sec-l2a
 ```
 
-### Block 4: Cherry-pick the 5 commits
+### Block 5: Cherry-pick commits ONE AT A TIME
+Cherry-pick each commit individually. Do NOT batch them — 5 of 8 modify tkn_svc.go.
+
 ```bash
-git cherry-pick 632b224 6fa0198 574d3b9 cd09a34 5489679
+git cherry-pick 8e63989
 ```
-**If cfg.go conflicts:** Keep ONLY SEC-L1 additions (BindAddress field, weak secret denylist logic). Drop any OIDC/IssuerURL/FederationKeyPath/cloud fields. Use current cfg.go on develop as the base.
+**Commit 1: MaxTTL config field.** Adds `AA_MAX_TTL` env var (default 86400 = 24h) to `cfg.go`. Adds `MaxTTL int` to Cfg struct and `envIntOr("AA_MAX_TTL", 86400)` in Load(). If cfg.go conflicts, keep MaxTTL field and env parsing, drop any OIDC/IssuerURL/FederationKeyPath fields.
 
-**If serve.go conflicts:** These are new functions (buildServer, TLS config). Keep all SEC-L1 additions.
+```bash
+git cherry-pick 0526c46
+```
+**Commit 2: Validate JWT alg and kid headers.** Adds alg=EdDSA validation and kid matching to `Verify()` in `tkn_svc.go`. Rejects tokens with wrong algorithm or mismatched kid. Empty kid is allowed (backward compat). If tkn_svc.go conflicts, keep the entire alg/kid validation block.
 
-### Block 5: Gate G1 — Compile
+```bash
+git cherry-pick c24e442
+```
+**Commit 3: Clamp token TTL to MaxTTL.** In `Issue()`, if `MaxTTL > 0 && ttl > MaxTTL`, clamp ttl to MaxTTL. Small focused change.
+
+```bash
+git cherry-pick 67aeda7
+```
+**Commit 4: Move revocation check into Verify.** Adds `IsRevoked(*TknClaims) bool` to `Revoker` interface in `revoker.go`. Adds revocation check in `Verify()` after claims validation. Adds `ErrTokenRevoked`. The Revoker interface change means all implementations must add `IsRevoked()`.
+
+```bash
+git cherry-pick b78edb8
+```
+**Commit 5: Fail renewal when predecessor revocation fails.** Changes `Renew()` from `_ = s.revoker.RevokeByJTI(...)` (ignoring error) to returning error if revocation fails. Small change.
+
+```bash
+git cherry-pick ecb4c86
+```
+**Commit 6: Require non-nil RevocationStore in NewRevSvc.** `NewRevSvc(nil)` now panics. Updates handler_test.go, release_hdl_test.go, heartbeat_test.go to pass `nopRevStore{}` instead of nil. HIGH CONFLICT RISK in test files — B0-B3 modified these files. Add `nopRevStore` struct implementing `SaveRevocation(_, _ string) error { return nil }` in each test file that needs it.
+
+```bash
+git cherry-pick 078a674
+```
+**Commit 7: Reject tokens with no expiry.** Changes `tkn_claims.go` `Validate()` from `if c.Exp != 0 && now > c.Exp` to `if c.Exp <= 0 { return ErrNoExpiry }` then `if now > c.Exp { return ErrTokenExpired }`. Small, safe change.
+
+```bash
+git cherry-pick 8366fa9
+```
+**Commit 8: Warning logs.** Adds `obs.Warn` in `cfg.go` if `DefaultTTL > MaxTTL`. Adds `obs.Warn` in `tkn_svc.go` on kid mismatch before returning error.
+
+### Block 6: Gate G1 — Compile (mark b4-g1 done when pass)
 ```bash
 go build ./...
 ```
-Must pass with zero errors.
+Must pass with zero errors. If `IsRevoked` is missing from the RevSvc implementation, add it to `internal/revoke/rev_svc.go`:
+```go
+func (s *RevSvc) IsRevoked(claims *token.TknClaims) bool {
+    // Check if this token's JTI has been revoked
+    return s.store.IsRevoked(claims.Jti)
+}
+```
+Also check if the `RevocationStore` interface needs `IsRevoked(jti string) bool` added.
 
-### Block 6: Gate G2 — Unit tests
+### Block 7: Gate G2 — Unit tests (mark b4-g2 done when pass)
 ```bash
 go test ./...
 ```
-Must pass. If new tests fail, check if they reference fields/functions from P2 that don't exist in core — fix.
+Must pass. Common issues:
+- Test files calling `NewRevSvc(nil)` — change to `NewRevSvc(nopRevStore{})`
+- Missing `nopRevStore` struct — add it with `SaveRevocation` and `IsRevoked` methods
+- Missing mock methods on `mockRevoker` — add `IsRevoked` method
 
-### Block 7: Gate G3 — Contamination check
+### Block 8: Gate G3 — Contamination check (mark b4-g3 done when pass)
 ```bash
-grep -ri "hitl\|approval\|human.in.the.loop" internal/ cmd/ --include="*.go"
+grep -ri "hitl\|approval\|human.in.the.loop\|oidc\|federation\|issuer.url" internal/ cmd/ --include="*.go"
 ```
 MUST return nothing. Zero tolerance.
 
-### Block 8: Gate G4-G5 — Docker build and start
+### Block 9: Gate G4-G5 — Docker build and start (mark b4-g4 and b4-g5 done when pass)
 ```bash
 ./scripts/stack_up.sh
 ```
-Broker must start and show `127.0.0.1` in the bind address log line.
+Broker must start successfully.
 
-### Block 9: Gate G6 — Smoke test
+### Block 10: Gate G6 — Smoke test (mark b4-g6 done when pass)
 ```bash
-./scripts/test_batch.sh B3
+./scripts/test_batch.sh B4
 ```
-If test_batch.sh doesn't have B3-specific logic, add a B3 case that checks:
-1. Broker startup log shows bind address `127.0.0.1:8080`
-2. Broker rejects startup with `AA_ADMIN_SECRET=change-me-in-production` (exit code 1)
-3. Admin auth still works with a valid secret
+If test_batch.sh doesn't have B4-specific logic, add a B4 case that checks:
+1. Admin auth still works (POST /v1/admin/auth)
+2. Broker starts with AA_MAX_TTL=3600 without error
+3. Warning log appears if AA_DEFAULT_TTL > AA_MAX_TTL
 
-### Block 10: Copy acceptance tests from legacy repo
-```bash
-cp -r /Users/divineartis/proj/agentauth/tests/fix-sec-l1/ /Users/divineartis/proj/agentauth-core/tests/sec-l1/
-```
-Review copied files. Remove any references to OIDC endpoints, HITL, or features not in core. There are 13 stories — adapt any that reference features not in agentauth-core.
+### Block 11: Gate G7 — Batch-specific checks (mark b4-g7 done when pass)
+Verify these in the code:
+1. `tkn_svc.go` `Verify()` has alg validation (checks `hdr.Alg == "EdDSA"`)
+2. `tkn_svc.go` `Verify()` has kid validation (checks `hdr.Kid == "" || hdr.Kid == s.kid`)
+3. `tkn_svc.go` `Verify()` has revocation check (`s.revoker.IsRevoked`)
+4. `tkn_svc.go` `Issue()` has MaxTTL clamp
+5. `tkn_svc.go` `Renew()` returns error on revocation failure
+6. `tkn_claims.go` `Validate()` rejects `exp <= 0`
+7. `rev_svc.go` `NewRevSvc(nil)` panics
+8. `cfg.go` has MaxTTL field with 86400 default
 
-### Block 11: Run acceptance tests
-Run all 13 stories against Docker. Follow `tests/LIVE-TEST-TEMPLATE.md`. Record evidence in `tests/sec-l1/evidence/`. All 13 must PASS.
+### Block 12: Write acceptance tests
+Create `tests/sec-l2a/` (user-stories.md, env.sh, evidence/) following `tests/LIVE-TEST-TEMPLATE.md` and the same structure as `tests/sec-l1/` and `tests/p1-admin-secret/`. Write BOTH positive and negative stories for each of the 7 hardenings in B4. Include a security review story for the Verify() check order. Use JWT tampering (base64url decode/modify/re-encode) for alg, kid, and exp negative tests.
 
-### Block 12: Update tracker.jsonl
-Add B3 entries to `.plans/tracker.jsonl`:
-```jsonl
-{"type":"phase","id":"b3","batch":"B3","name":"SEC-L1: Bind Address + TLS + Timeouts + Weak Secret Denylist","status":"done","branch":"fix/sec-l1","commits":5,"files_changed":4}
-{"type":"task","phase":"b3","id":"b3-g1","name":"G1 Compile","status":"done"}
-{"type":"task","phase":"b3","id":"b3-g2","name":"G2 Unit Tests","status":"done"}
-{"type":"task","phase":"b3","id":"b3-g3","name":"G3 Contamination","status":"done"}
-{"type":"task","phase":"b3","id":"b3-g4","name":"G4 Docker Build","status":"done"}
-{"type":"task","phase":"b3","id":"b3-g5","name":"G5 Docker Start","status":"done"}
-{"type":"task","phase":"b3","id":"b3-g6","name":"G6 Smoke Test","status":"done"}
-{"type":"task","phase":"b3","id":"b3-g7","name":"G7 Batch-Specific","status":"done"}
-```
-Then add one story entry per acceptance test story (13 total), all status `done`. Use IDs `b3-s1` through `b3-s13` with names matching the story titles from the copied test files.
+### Block 13: Run acceptance tests (mark each story done in tracker as it passes)
+Run all 13 stories (7 positive + 5 negative + 1 security review) one at a time against VPS first, then Container. Follow `tests/LIVE-TEST-TEMPLATE.md` exactly — banner first, command pipes output to evidence file, then verdict. Record evidence in `tests/sec-l2a/evidence/`.
 
-### Block 13: Commit all changes
+All 13 must PASS. If a story cannot be tested at the live level (like L2a-N5 revocation failure), verify the unit test passes and document it in the evidence.
+
+For stories requiring JWT tampering (S1, S2, S4), use this approach:
+1. Get a valid token from admin auth
+2. Split the JWT on dots: `header.payload.signature`
+3. Base64url decode the header, modify alg/kid/exp, base64url re-encode
+4. Reconstruct the JWT with the tampered header
+5. Present to an authenticated endpoint
+
+### Block 14: Create evidence README
+Create `tests/sec-l2a/evidence/README.md` with the summary table of all 13 stories (7 positive, 5 negative, 1 security review), verdicts, and open issues.
+
+### Block 15: Verify tracker — all B4 items should be done
+Check `.plans/tracker.jsonl`. Every b4-* entry should be `done`. If any are still `pending`, something was missed — go back and complete it.
+
+### Block 16: Commit all changes
 ```bash
 git add -A
-git commit -m "feat(B3): SEC-L1 cherry-pick — bind address, TLS, timeouts, weak secret denylist
+git commit -m "feat(B4): SEC-L2a cherry-pick — token hardening
+
+8 commits: alg/kid validation, MaxTTL ceiling, revocation in Verify,
+renewal failure on revocation error, non-nil RevSvc, no-expiry rejection,
+warning logs.
 
 Gates G1-G7: PASS
 Acceptance tests: 13/13 PASS
 Contamination: CLEAN"
 ```
 
-### Block 14: Update MEMORY.md
+### Block 17: Update MEMORY.md
 Add under the session log:
 ```markdown
-## B3 Complete (2026-03-29)
-- SEC-L1 cherry-pick: 5 commits, 4 files changed
-- Bind address now defaults to 127.0.0.1 (was 0.0.0.0)
-- Weak secret denylist rejects "change-me-in-production" at startup
-- HTTP timeouts: Read 15s, ReadHeader 5s, Write 30s, Idle 120s
-- TLS 1.2 minimum with AEAD-only cipher suites
-- Gates G1-G7: ALL PASS
-- Acceptance tests: 13/13 PASS
+## B4 Complete (2026-03-29)
+- SEC-L2a token hardening: 8 commits cherry-picked
+- Verify() now validates: alg=EdDSA, kid match, revocation status, exp > 0
+- Issue() clamps TTL to MaxTTL ceiling (AA_MAX_TTL, default 86400)
+- Renew() fails if predecessor revocation fails (was silent skip)
+- NewRevSvc(nil) now panics — all callers must pass valid store
+- ErrTokenRevoked and ErrNoExpiry added
+- Acceptance tests: 7/7 PASS (wrote from scratch — no tests existed in agentauth)
 - Contamination: CLEAN
-- Conflicts resolved: [list any cfg.go or serve.go conflicts and how resolved]
+- Conflicts resolved: [list any conflicts and how resolved]
 - Next: STOP — notify Cowork for merge review before merging to develop
 ```
 
-### Block 15: Update FLOW.md
-Add B3 section:
+### Block 18: Update FLOW.md
+Add B4 section:
 ```markdown
-## B3 — SEC-L1: Bind Address + TLS + Timeouts + Weak Secret Denylist — READY FOR MERGE REVIEW
-- Branch: fix/sec-l1
-- 5 commits, 4 files changed
+## B4 — SEC-L2a: Token Hardening — READY FOR MERGE REVIEW
+- Branch: fix/sec-l2a
+- 8 commits
 - Gates G1-G7: ALL PASS
-- Acceptance tests: 13/13 PASS
+- Acceptance tests: 7/7 PASS (NEW — written from scratch)
 - Contamination: CLEAN
 - Waiting on Cowork merge review
-- Next: B4 (SEC-L2a: Token Hardening)
+- Next: B5 (SEC-L2b: HTTP Hardening)
 ```
 
-### Block 16: Commit MEMORY.md and FLOW.md
+### Block 19: Commit MEMORY.md and FLOW.md
 ```bash
 git add MEMORY.md FLOW.md
-git commit -m "docs: B3 complete — update FLOW.md and MEMORY.md, awaiting merge review"
+git commit -m "docs: B4 complete — update FLOW.md and MEMORY.md, awaiting merge review"
 ```
 
-### Block 17: STOP — Notify Cowork
-Do NOT merge to develop. Tell the user: "B3 is complete on fix/sec-l1. All gates pass, 13/13 acceptance tests pass. Ready for Cowork merge review."
+### Block 20: STOP — Notify Cowork
+Do NOT merge to develop. Tell the user: "B4 is complete on fix/sec-l2a. All gates pass, 7/7 acceptance tests pass. Ready for Cowork merge review."
 
 ---
 
 ## Recent Changes Log
 
-### 2026-03-29 — Cowork Session (B3 setup)
-- B2 merge review completed: PASS — 9/9 stories, 8/10 security findings addressed, 2 deferred as tech debt (TD-S06, TD-S07)
-- B3 instructions written to COWORK_SESSION.md using taskcreate/addblock format
-- Next: Claude Code executes B3, Cowork reviews before merge
+### 2026-03-29 — Cowork Session (B4 setup)
+- B3 merge review completed: PASS — 12/12 stories, contamination clean
+- B4 instructions written with 7 NEW acceptance test stories (none existed in agentauth)
+- B4 has HIGH conflict risk — cherry-pick one commit at a time
+- Tech debt TD-S08 through TD-S15 reviewed and acknowledged
+
+### 2026-03-29 — Claude Code Session (B3 merge)
+- B3 merged to develop: fix/sec-l1 → develop
+- 5 commits cherry-picked, 12/12 acceptance tests PASS
+- Docker bind address fix: AA_BIND_ADDRESS=0.0.0.0 in docker-compose.yml
+- Tech debt TD-S08 through TD-S15 added
 
 ### 2026-03-29 — Claude Code Session (B2 merge)
 - B2 merged to develop: fix/p1-admin-secret → develop
-- 10 commits, 33 files changed
-- Gates G1-G7: ALL PASS
-- Acceptance tests: 9/9 PASS + 3 security reviews
-- tracker.jsonl, MEMORY.md, FLOW.md updated
-- Tech debt added: TD-S06 (rate limiting), TD-S07 (post-migration doc refresh)
-
-### 2026-03-29 — Claude Code Session (B1)
-- B1 cherry-pick (P0 — persistent signing key + graceful shutdown)
-- All 6 commits cherry-picked cleanly — zero conflicts
-- Gates G1-G7: ALL PASS
-- B1 merged to develop
-
-### 2026-03-29 — Claude Code Session (B0)
-- B0 fixes and merge (sidecar removal)
-- Secret changed to `live-test-secret-32bytes-long-ok`
-- Port pre-flight check added
-- B0 merged to develop
+- 10 commits, 9/9 PASS + 3 security reviews
+- Tech debt: TD-S06 (rate limiting), TD-S07 (post-migration doc refresh)
 
 ---
 
 ## Current State
 
-**Branch:** `develop` (B0+B1+B2 merged)
-**Active task:** B3 cherry-pick on `fix/sec-l1` (Claude Code executing)
+**Branch:** `develop` (B0+B1+B2+B3 merged)
+**Active task:** B4 cherry-pick on `fix/sec-l2a` (Claude Code executing)
 **Tracker:** `.plans/tracker.jsonl` — source of truth for batch/gate/story status
 
 ---
 
 ## Uncommitted Changes
 
-Track what's in the working tree but not committed yet. Clear entries after commit.
-
 | File | Changed By | What | Status |
 |------|-----------|------|--------|
-| `COWORK_SESSION.md` | Cowork | B3 instructions | needs commit by Claude Code |
+| `COWORK_SESSION.md` | Cowork | B4 instructions | needs commit by Claude Code |
