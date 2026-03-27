@@ -43,8 +43,13 @@ func TestHeartbeatMissedAccumulates(t *testing.T) {
 	_ = alive
 }
 
+// nopRevStore is a no-op RevocationStore for tests that don't need persistence.
+type nopRevStore struct{}
+
+func (nopRevStore) SaveRevocation(_, _ string) error { return nil }
+
 func TestHeartbeatAutoRevocation(t *testing.T) {
-	revSvc := revoke.NewRevSvc(nil)
+	revSvc := revoke.NewRevSvc(nopRevStore{})
 	hb := NewHeartbeatMgr(revSvc)
 	hb.interval = 10 * time.Millisecond
 	hb.maxMiss = 2

@@ -11,8 +11,13 @@ import (
 	"github.com/divineartis/agentauth/internal/token"
 )
 
+// nopRevStoreInternal is a no-op RevocationStore for internal handler tests.
+type nopRevStoreInternal struct{}
+
+func (nopRevStoreInternal) SaveRevocation(_, _ string) error { return nil }
+
 func TestReleaseHdl_ReleasesOwnToken(t *testing.T) {
-	revSvc := revoke.NewRevSvc(nil)
+	revSvc := revoke.NewRevSvc(nopRevStoreInternal{})
 	auditLog := audit.NewAuditLog(nil)
 	hdl := NewReleaseHdl(revSvc, auditLog)
 
@@ -37,7 +42,7 @@ func TestReleaseHdl_ReleasesOwnToken(t *testing.T) {
 }
 
 func TestReleaseHdl_DoubleReleaseIdempotent(t *testing.T) {
-	revSvc := revoke.NewRevSvc(nil)
+	revSvc := revoke.NewRevSvc(nopRevStoreInternal{})
 	auditLog := audit.NewAuditLog(nil)
 	hdl := NewReleaseHdl(revSvc, auditLog)
 
@@ -64,7 +69,7 @@ func TestReleaseHdl_DoubleReleaseIdempotent(t *testing.T) {
 }
 
 func TestReleaseHdl_NoClaims401(t *testing.T) {
-	revSvc := revoke.NewRevSvc(nil)
+	revSvc := revoke.NewRevSvc(nopRevStoreInternal{})
 	hdl := NewReleaseHdl(revSvc, nil)
 
 	req := httptest.NewRequest("POST", "/v1/token/release", nil)
@@ -77,7 +82,7 @@ func TestReleaseHdl_NoClaims401(t *testing.T) {
 }
 
 func TestReleaseHdl_AuditEventRecorded(t *testing.T) {
-	revSvc := revoke.NewRevSvc(nil)
+	revSvc := revoke.NewRevSvc(nopRevStoreInternal{})
 	auditLog := audit.NewAuditLog(nil)
 	hdl := NewReleaseHdl(revSvc, auditLog)
 

@@ -48,6 +48,9 @@ type RevSvc struct {
 // NewRevSvc returns an empty revocation service ready for use. If store is
 // non-nil, every Revoke call writes through to the persistence backend.
 func NewRevSvc(store RevocationStore) *RevSvc {
+	if store == nil {
+		panic("rev_svc: RevocationStore must not be nil")
+	}
 	return &RevSvc{
 		tokens: make(map[string]bool),
 		agents: make(map[string]bool),

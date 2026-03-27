@@ -27,6 +27,11 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// nopRevStore is a no-op RevocationStore for tests that don't need persistence.
+type nopRevStore struct{}
+
+func (nopRevStore) SaveRevocation(_, _ string) error { return nil }
+
 const testAdminSecret = "integration-test-secret-32bytes!"
 
 var testAdminSecretHash string
@@ -66,7 +71,7 @@ func newTestBroker(t *testing.T) *testBroker {
 	sqlStore := store.NewSqlStore()
 	auditLog := audit.NewAuditLog(nil)
 	tknSvc := token.NewTknSvc(priv, pub, c)
-	revSvc := revoke.NewRevSvc(nil)
+	revSvc := revoke.NewRevSvc(nopRevStore{})
 	idSvc := identity.NewIdSvc(sqlStore, tknSvc, c.TrustDomain, auditLog, "")
 	delegSvc := deleg.NewDelegSvc(tknSvc, sqlStore, auditLog, priv)
 	adminSvc := admin.NewAdminSvc(testAdminSecretHash, tknSvc, sqlStore, auditLog, "")
