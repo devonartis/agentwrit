@@ -216,6 +216,13 @@ func (s *TknSvc) Renew(tokenStr string) (*IssueResp, error) {
 		return nil, err
 	}
 
+	// Mandatory predecessor revocation — renewal fails if revocation fails (M5).
+	if s.revoker != nil {
+		if err := s.revoker.RevokeByJTI(claims.Jti); err != nil {
+			return nil, fmt.Errorf("revoke predecessor: %w", err)
+		}
+	}
+
 	return s.Issue(IssueReq{
 		Sub:        claims.Sub,
 		Aud:        claims.Aud,

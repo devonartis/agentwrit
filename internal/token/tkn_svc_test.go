@@ -396,7 +396,7 @@ func TestRenew_RevokesPredecessor(t *testing.T) {
 	}
 }
 
-func TestRenew_RevokeFailureDoesNotBlockRenewal(t *testing.T) {
+func TestRenew_RevokeFailureBlocksRenewal(t *testing.T) {
 	pub, priv := testKeyPair(t)
 	svc := NewTknSvc(priv, pub, testCfg())
 
@@ -412,12 +412,12 @@ func TestRenew_RevokeFailureDoesNotBlockRenewal(t *testing.T) {
 	mock := &mockRevoker{err: errors.New("revocation storage down")}
 	svc.SetRevoker(mock)
 
-	resp2, err := svc.Renew(resp1.AccessToken)
-	if err != nil {
-		t.Fatalf("Renew should succeed even when revocation fails: %v", err)
+	_, err = svc.Renew(resp1.AccessToken)
+	if err == nil {
+		t.Fatal("Renew should fail when revocation fails")
 	}
-	if resp2.AccessToken == "" {
-		t.Fatal("renewed token is empty")
+	if !strings.Contains(err.Error(), "revoke predecessor") {
+		t.Errorf("error = %v, want 'revoke predecessor' prefix", err)
 	}
 }
 
