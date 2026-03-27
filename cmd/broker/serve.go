@@ -15,9 +15,9 @@ import (
 	"github.com/divineartis/agentauth/internal/obs"
 )
 
-// buildServer creates an http.Server with hardened timeouts.
+// buildServer creates an http.Server with hardened timeouts and TLS config.
 func buildServer(c cfg.Cfg, addr string, handler http.Handler) *http.Server {
-	return &http.Server{
+	srv := &http.Server{
 		Addr:              addr,
 		Handler:           handler,
 		ReadTimeout:       15 * time.Second,
@@ -26,6 +26,33 @@ func buildServer(c cfg.Cfg, addr string, handler http.Handler) *http.Server {
 		IdleTimeout:       120 * time.Second,
 		MaxHeaderBytes:    1 << 20, // 1 MB
 	}
+
+	// AEAD-only cipher suites — no CBC, no RC4.
+	aeadCiphers := []uint16{
+		tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+		tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+		tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+	}
+
+	switch c.TLSMode {
+	case "tls":
+		srv.TLSConfig = &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			CipherSuites: aeadCiphers,
+		}
+	case "mtls":
+		srv.TLSConfig = &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			CipherSuites: aeadCiphers,
+			ClientAuth:   tls.RequireAndVerifyClientCert,
+			// ClientCAs set in serve() after loading the CA file.
+		}
+	}
+
+	return srv
 }
 
 // serve starts the HTTP server and blocks until SIGINT or SIGTERM is received.
@@ -35,18 +62,13 @@ func buildServer(c cfg.Cfg, addr string, handler http.Handler) *http.Server {
 func serve(c cfg.Cfg, addr string, handler http.Handler, onShutdown func()) error {
 	srv := buildServer(c, addr, handler)
 
-	switch c.TLSMode {
-	case "tls":
-		srv.TLSConfig = &tls.Config{}
-	case "mtls":
+	// mTLS: load client CA into the TLSConfig created by buildServer.
+	if c.TLSMode == "mtls" {
 		pool, err := loadCA(c.TLSClientCA)
 		if err != nil {
 			return fmt.Errorf("loading client CA: %w", err)
 		}
-		srv.TLSConfig = &tls.Config{
-			ClientAuth: tls.RequireAndVerifyClientCert,
-			ClientCAs:  pool,
-		}
+		srv.TLSConfig.ClientCAs = pool
 	}
 
 	// Start server in background
