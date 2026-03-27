@@ -3,6 +3,7 @@ package token
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -19,6 +20,7 @@ import (
 var (
 	ErrInvalidToken     = errors.New("invalid token format")
 	ErrSignatureInvalid = errors.New("signature verification failed")
+	ErrTokenRevoked     = errors.New("token has been revoked")
 )
 
 // IssueReq contains the parameters for issuing a new token via
@@ -50,6 +52,15 @@ type IssueResp struct {
 type jwtHeader struct {
 	Alg string `json:"alg"`
 	Typ string `json:"typ"`
+	Kid string `json:"kid,omitempty"`
+}
+
+// computeKid returns the RFC 7638 JWK Thumbprint of an Ed25519 public key.
+func computeKid(pub ed25519.PublicKey) string {
+	x := base64.RawURLEncoding.EncodeToString(pub)
+	canonical := `{"crv":"Ed25519","kty":"OKP","x":"` + x + `"}`
+	h := sha256.Sum256([]byte(canonical))
+	return base64.RawURLEncoding.EncodeToString(h[:])
 }
 
 // TknSvc is the core token service. It holds an Ed25519 key pair and
@@ -59,16 +70,28 @@ type jwtHeader struct {
 type TknSvc struct {
 	signingKey ed25519.PrivateKey
 	pubKey     ed25519.PublicKey
+	kid        string // RFC 7638 JWK Thumbprint
 	cfg        cfg.Cfg
+	revoker    Revoker
+}
+
+// SetRevoker injects a Revoker implementation (typically RevSvc) after
+// construction. Called at broker bootstrap to break the circular dependency
+// between TknSvc and RevSvc.
+func (s *TknSvc) SetRevoker(r Revoker) {
+	s.revoker = r
 }
 
 // NewTknSvc creates a new token service with the given Ed25519 key pair
 // and broker configuration. The key pair is used for signing (Issue) and
-// verification (Verify) of all tokens.
+// verification (Verify) of all tokens. The kid (Key ID) is computed as
+// the RFC 7638 JWK Thumbprint of the public key.
 func NewTknSvc(signingKey ed25519.PrivateKey, pubKey ed25519.PublicKey, c cfg.Cfg) *TknSvc {
+	kid := computeKid(pubKey)
 	return &TknSvc{
 		signingKey: signingKey,
 		pubKey:     pubKey,
+		kid:        kid,
 		cfg:        c,
 	}
 }
@@ -176,6 +199,10 @@ func (s *TknSvc) Verify(tokenStr string) (*TknClaims, error) {
 		return nil, err
 	}
 
+	if s.revoker != nil && s.revoker.IsRevoked(&claims) {
+		return nil, ErrTokenRevoked
+	}
+
 	return &claims, nil
 }
 
@@ -209,7 +236,7 @@ func (s *TknSvc) PublicKey() ed25519.PublicKey {
 }
 
 func (s *TknSvc) sign(claims *TknClaims) (string, error) {
-	hdr := jwtHeader{Alg: "EdDSA", Typ: "JWT"}
+	hdr := jwtHeader{Alg: "EdDSA", Typ: "JWT", Kid: s.kid}
 	hdrJSON, err := json.Marshal(hdr)
 	if err != nil {
 		return "", err

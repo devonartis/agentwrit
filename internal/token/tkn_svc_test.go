@@ -363,6 +363,186 @@ func TestIssueWithoutSid_DefaultsEmpty(t *testing.T) {
 	}
 }
 
+
+func TestRenew_RevokesPredecessor(t *testing.T) {
+	pub, priv := testKeyPair(t)
+	svc := NewTknSvc(priv, pub, testCfg())
+
+	resp1, err := svc.Issue(IssueReq{
+		Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+		Scope: []string{"read:data:*"},
+		TTL:   300,
+	})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	mock := &mockRevoker{}
+	svc.SetRevoker(mock)
+
+	resp2, err := svc.Renew(resp1.AccessToken)
+	if err != nil {
+		t.Fatalf("Renew: %v", err)
+	}
+	if resp2.AccessToken == "" {
+		t.Fatal("renewed token is empty")
+	}
+
+	if len(mock.revoked) != 1 {
+		t.Fatalf("expected 1 revocation call, got %d", len(mock.revoked))
+	}
+	if mock.revoked[0] != resp1.Claims.Jti {
+		t.Errorf("revoked JTI = %q, want %q", mock.revoked[0], resp1.Claims.Jti)
+	}
+}
+
+func TestRenew_RevokeFailureDoesNotBlockRenewal(t *testing.T) {
+	pub, priv := testKeyPair(t)
+	svc := NewTknSvc(priv, pub, testCfg())
+
+	resp1, err := svc.Issue(IssueReq{
+		Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+		Scope: []string{"read:data:*"},
+		TTL:   300,
+	})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	mock := &mockRevoker{err: errors.New("revocation storage down")}
+	svc.SetRevoker(mock)
+
+	resp2, err := svc.Renew(resp1.AccessToken)
+	if err != nil {
+		t.Fatalf("Renew should succeed even when revocation fails: %v", err)
+	}
+	if resp2.AccessToken == "" {
+		t.Fatal("renewed token is empty")
+	}
+}
+
+func TestKidInJWTHeader(t *testing.T) {
+	pub, priv := testKeyPair(t)
+	svc := NewTknSvc(priv, pub, testCfg())
+
+	kid := svc.Kid()
+	if kid == "" {
+		t.Fatal("Kid() returned empty string")
+	}
+
+	resp, err := svc.Issue(IssueReq{
+		Sub:   "spiffe://agentauth.local/agent/test-agent",
+		Scope: []string{"read:data:*"},
+	})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	// Decode the JWT header (first segment)
+	parts := strings.SplitN(resp.AccessToken, ".", 3)
+	if len(parts) != 3 {
+		t.Fatal("token does not have 3 parts")
+	}
+	hdrJSON, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		t.Fatalf("decode header: %v", err)
+	}
+	var hdr struct {
+		Alg string `json:"alg"`
+		Typ string `json:"typ"`
+		Kid string `json:"kid"`
+	}
+	if err := json.Unmarshal(hdrJSON, &hdr); err != nil {
+		t.Fatalf("unmarshal header: %v", err)
+	}
+	if hdr.Kid == "" {
+		t.Fatal("kid missing from JWT header")
+	}
+	if hdr.Kid != kid {
+		t.Errorf("header kid=%q, Kid()=%q — mismatch", hdr.Kid, kid)
+	}
+}
+
+func TestKidIsRFC7638Thumbprint(t *testing.T) {
+	pub, priv := testKeyPair(t)
+	svc := NewTknSvc(priv, pub, testCfg())
+
+	kid := svc.Kid()
+
+	// Manually compute expected thumbprint: {"crv":"Ed25519","kty":"OKP","x":"<b64url>"}
+	xB64 := base64.RawURLEncoding.EncodeToString(pub)
+	canonical := `{"crv":"Ed25519","kty":"OKP","x":"` + xB64 + `"}`
+
+	// SHA-256 → base64url
+	h := sha256.Sum256([]byte(canonical))
+	expected := base64.RawURLEncoding.EncodeToString(h[:])
+
+	if kid != expected {
+		t.Errorf("Kid()=%q, expected RFC7638=%q", kid, expected)
+	}
+}
+
+func TestKidStableAcrossInstances(t *testing.T) {
+	pub, priv := testKeyPair(t)
+	svc1 := NewTknSvc(priv, pub, testCfg())
+	svc2 := NewTknSvc(priv, pub, testCfg())
+
+	if svc1.Kid() != svc2.Kid() {
+		t.Errorf("kid not stable: %q vs %q", svc1.Kid(), svc2.Kid())
+	}
+}
+
+func TestIssClaimMatchesConfig(t *testing.T) {
+	pub, priv := testKeyPair(t)
+	c := testCfg()
+	c.IssuerURL = "https://broker.example.com"
+	svc := NewTknSvc(priv, pub, c)
+
+	resp, err := svc.Issue(IssueReq{
+		Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+		Scope: []string{"read:Customers:*"},
+	})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	claims, err := svc.Verify(resp.AccessToken)
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+
+	if claims.Iss != "https://broker.example.com" {
+		t.Errorf("iss = %q, want %q", claims.Iss, "https://broker.example.com")
+	}
+}
+
+func TestVerifyRejectsWrongIssuer(t *testing.T) {
+	pub, priv := testKeyPair(t)
+
+	// Issue with one issuer
+	c1 := testCfg()
+	c1.IssuerURL = "https://broker-a.example.com"
+	svc1 := NewTknSvc(priv, pub, c1)
+
+	resp, err := svc1.Issue(IssueReq{
+		Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+		Scope: []string{"read:Customers:*"},
+	})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	// Verify with different issuer expectation (same key, different config)
+	c2 := testCfg()
+	c2.IssuerURL = "https://broker-b.example.com"
+	svc2 := NewTknSvc(priv, pub, c2)
+
+	_, err = svc2.Verify(resp.AccessToken)
+	if err != ErrInvalidIssuer {
+		t.Errorf("expected ErrInvalidIssuer, got %v", err)
+	}
+}
+
 func TestRenew_PreservesSid(t *testing.T) {
 	pub, priv := testKeyPair(t)
 	svc := NewTknSvc(priv, pub, testCfg())
@@ -536,6 +716,28 @@ func TestVerify_AcceptsEmptyKid(t *testing.T) {
 	_, err = svc.Verify(token)
 	if err != nil {
 		t.Errorf("Verify(empty kid) should succeed, got %v", err)
+	}
+}
+
+func TestVerify_RejectsRevokedToken(t *testing.T) {
+	pub, priv := testKeyPair(t)
+	svc := NewTknSvc(priv, pub, testCfg())
+
+	resp, err := svc.Issue(IssueReq{
+		Sub:   "spiffe://agentauth.local/agent/test/task/abc",
+		Scope: []string{"read:data:*"},
+		TTL:   300,
+	})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	mock := &mockRevoker{isRevoked: true}
+	svc.SetRevoker(mock)
+
+	_, err = svc.Verify(resp.AccessToken)
+	if !errors.Is(err, ErrTokenRevoked) {
+		t.Errorf("Verify(revoked) = %v, want ErrTokenRevoked", err)
 	}
 }
 
