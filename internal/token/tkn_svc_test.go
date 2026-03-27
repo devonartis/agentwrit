@@ -394,6 +394,63 @@ func TestRenew_PreservesSid(t *testing.T) {
 	}
 }
 
+func TestIssue_MaxTTL_Clamps(t *testing.T) {
+	pub, priv := testKeyPair(t)
+	c := testCfg()
+	c.MaxTTL = 3600 // 1 hour max
+	svc := NewTknSvc(priv, pub, c)
+
+	resp, err := svc.Issue(IssueReq{
+		Sub:   "spiffe://agentauth.local/agent/test/task/abc",
+		Scope: []string{"read:data:*"},
+		TTL:   7200, // request 2 hours
+	})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	if resp.ExpiresIn != 3600 {
+		t.Errorf("ExpiresIn = %d, want 3600 (clamped)", resp.ExpiresIn)
+	}
+}
+
+func TestIssue_MaxTTL_Zero_NoLimit(t *testing.T) {
+	pub, priv := testKeyPair(t)
+	c := testCfg()
+	c.MaxTTL = 0 // no limit
+	svc := NewTknSvc(priv, pub, c)
+
+	resp, err := svc.Issue(IssueReq{
+		Sub:   "spiffe://agentauth.local/agent/test/task/abc",
+		Scope: []string{"read:data:*"},
+		TTL:   86400,
+	})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	if resp.ExpiresIn != 86400 {
+		t.Errorf("ExpiresIn = %d, want 86400 (no limit)", resp.ExpiresIn)
+	}
+}
+
+func TestIssue_MaxTTL_UnderLimit_Unchanged(t *testing.T) {
+	pub, priv := testKeyPair(t)
+	c := testCfg()
+	c.MaxTTL = 3600
+	svc := NewTknSvc(priv, pub, c)
+
+	resp, err := svc.Issue(IssueReq{
+		Sub:   "spiffe://agentauth.local/agent/test/task/abc",
+		Scope: []string{"read:data:*"},
+		TTL:   1800,
+	})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	if resp.ExpiresIn != 1800 {
+		t.Errorf("ExpiresIn = %d, want 1800 (under limit)", resp.ExpiresIn)
+	}
+}
+
 func TestVerify_RejectsWrongAlg(t *testing.T) {
 	pub, priv := testKeyPair(t)
 	svc := NewTknSvc(priv, pub, testCfg())

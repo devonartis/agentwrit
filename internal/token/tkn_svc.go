@@ -81,6 +81,9 @@ func (s *TknSvc) Issue(req IssueReq) (*IssueResp, error) {
 	if ttl <= 0 {
 		ttl = s.cfg.DefaultTTL
 	}
+	if s.cfg.MaxTTL > 0 && ttl > s.cfg.MaxTTL {
+		ttl = s.cfg.MaxTTL
+	}
 
 	now := time.Now().Unix()
 	jti := randomJTI()
