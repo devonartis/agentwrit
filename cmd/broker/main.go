@@ -172,19 +172,19 @@ func main() {
 	mux.Handle("GET /v1/metrics", metricsHdl)
 
 	// Token validation (no auth required per spec)
-	mux.Handle("POST /v1/token/validate", problemdetails.MaxBytesBody(valHdl))
+	mux.Handle("POST /v1/token/validate", valHdl)
 
 	// Agent registration (launch token auth, not Bearer)
-	mux.Handle("POST /v1/register", problemdetails.MaxBytesBody(regHdl))
+	mux.Handle("POST /v1/register", regHdl)
 
 	// Authenticated endpoints (Bearer token)
-	mux.Handle("POST /v1/token/renew", problemdetails.MaxBytesBody(valMw.Wrap(renewHdl)))
-	mux.Handle("POST /v1/delegate", problemdetails.MaxBytesBody(valMw.Wrap(delegHdl)))
-	mux.Handle("POST /v1/token/release", problemdetails.MaxBytesBody(valMw.Wrap(releaseHdl)))
+	mux.Handle("POST /v1/token/renew", valMw.Wrap(renewHdl))
+	mux.Handle("POST /v1/delegate", valMw.Wrap(delegHdl))
+	mux.Handle("POST /v1/token/release", valMw.Wrap(releaseHdl))
 
 	// Admin endpoints (Bearer + admin scope)
 	mux.Handle("POST /v1/revoke",
-		problemdetails.MaxBytesBody(valMw.Wrap(valMw.RequireScope("admin:revoke:*", revokeHdl))))
+		valMw.Wrap(valMw.RequireScope("admin:revoke:*", revokeHdl)))
 	mux.Handle("GET /v1/audit/events",
 		valMw.Wrap(valMw.RequireScope("admin:audit:*", auditHdl)))
 
@@ -196,6 +196,8 @@ func main() {
 
 	// Global Middleware
 	var rootHandler http.Handler = mux
+	rootHandler = handler.SecurityHeaders(c.TLSMode)(rootHandler)
+	rootHandler = problemdetails.MaxBytesBody(rootHandler)
 	rootHandler = handler.LoggingMiddleware(rootHandler)
 	rootHandler = problemdetails.RequestIDMiddleware(rootHandler)
 

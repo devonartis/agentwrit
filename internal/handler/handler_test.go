@@ -93,18 +93,20 @@ func newTestBroker(t *testing.T) *testBroker {
 	mux.Handle("GET /v1/challenge", challengeHdl)
 	mux.Handle("GET /v1/health", healthHdl)
 	mux.Handle("GET /v1/metrics", metricsHdl)
-	mux.Handle("POST /v1/token/validate", problemdetails.MaxBytesBody(valHdl))
-	mux.Handle("POST /v1/register", problemdetails.MaxBytesBody(regHdl))
-	mux.Handle("POST /v1/token/renew", problemdetails.MaxBytesBody(valMw.Wrap(renewHdl)))
-	mux.Handle("POST /v1/delegate", problemdetails.MaxBytesBody(valMw.Wrap(delegHdl)))
+	mux.Handle("POST /v1/token/validate", valHdl)
+	mux.Handle("POST /v1/register", regHdl)
+	mux.Handle("POST /v1/token/renew", valMw.Wrap(renewHdl))
+	mux.Handle("POST /v1/delegate", valMw.Wrap(delegHdl))
 	mux.Handle("POST /v1/revoke",
-		problemdetails.MaxBytesBody(valMw.Wrap(valMw.RequireScope("admin:revoke:*", revokeHdl))))
+		valMw.Wrap(valMw.RequireScope("admin:revoke:*", revokeHdl)))
 	mux.Handle("GET /v1/audit/events",
 		valMw.Wrap(valMw.RequireScope("admin:audit:*", auditHdl)))
 	adminHdl.RegisterRoutes(mux)
 
 	// Wrap with global middleware matching cmd/broker/main.go ordering.
 	var root http.Handler = mux
+	root = handler.SecurityHeaders("none")(root)
+	root = problemdetails.MaxBytesBody(root)
 	root = handler.LoggingMiddleware(root)
 	root = problemdetails.RequestIDMiddleware(root)
 
@@ -1252,5 +1254,133 @@ func TestMethodRestriction(t *testing.T) {
 				t.Fatalf("%s %s: got %d, want 405", tc.method, tc.path, rr.Code)
 			}
 		})
+	}
+}
+
+// --- SEC-L2b H4: Renew error response must be generic ---
+
+func TestRenew_ErrorMessageIsGeneric(t *testing.T) {
+	b := newTestBroker(t)
+
+	adminToken := getAdminToken(t, b)
+	_, _ = registerAgentHTTP(t, b, adminToken, []string{"read:data:foo"})
+
+	// Tamper the token to force a rejection
+	tamperedToken := "eyJhbGciOiJIUzI1NiJ9.tampered.signature"
+
+	req := httptest.NewRequest("POST", "/v1/token/renew", nil)
+	req.Header.Set("Authorization", "Bearer "+tamperedToken)
+	rr := b.do(req)
+
+	// ValMw rejects before RenewHdl — must be 401
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rr.Code)
+	}
+	body := rr.Body.String()
+	// Response must not leak internal error details
+	if strings.Contains(body, "signature") || strings.Contains(body, "segment") {
+		t.Errorf("response leaks error details: %s", body)
+	}
+}
+
+func TestRenew_DirectErrorMessageIsGeneric(t *testing.T) {
+	// Build a tknSvc and issue a valid token so we have a real JWT to present.
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	c := cfg.Cfg{DefaultTTL: 300, TrustDomain: "test.local"}
+	tknSvc := token.NewTknSvc(priv, pub, c)
+
+	issueResp, err := tknSvc.Issue(token.IssueReq{
+		Sub:    "spiffe://test.local/agent/orch-1/task-1/abc",
+		Scope:  []string{"read:data:*"},
+		TaskId: "task-1",
+		OrchId: "orch-1",
+	})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	// Install a revoker whose RevokeByJTI always fails.
+	// This causes tknSvc.Renew() to return an error even for a valid token,
+	// which forces RenewHdl's error branch to execute.
+	tknSvc.SetRevoker(&failingRevoker{})
+
+	// Construct RenewHdl directly — bypassing ValMw so we reach RenewHdl's
+	// own error handling (not ValMw's).
+	hdl := handler.NewRenewHdl(tknSvc, nil)
+
+	// Verify the token with a fresh svc (no failing revoker) to get valid claims.
+	// ValMw normally injects claims into context; we replicate that here directly.
+	verifyOnlySvc := token.NewTknSvc(priv, pub, c)
+	claims, err := verifyOnlySvc.Verify(issueResp.AccessToken)
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+
+	req := httptest.NewRequest("POST", "/v1/token/renew", nil)
+	req.Header.Set("Authorization", "Bearer "+issueResp.AccessToken)
+	ctx := authz.ContextWithClaims(context.Background(), claims)
+	req = req.WithContext(ctx)
+
+	w := httptest.NewRecorder()
+	hdl.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 from RenewHdl error branch, got %d (body: %s)", w.Code, w.Body.String())
+	}
+
+	var pd map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&pd); err != nil {
+		t.Fatalf("decode problem-details: %v", err)
+	}
+	detail, _ := pd["detail"].(string)
+	if detail != "token renewal failed" {
+		t.Errorf("RenewHdl error branch: expected generic detail %q, got %q", "token renewal failed", detail)
+	}
+}
+
+// failingRevoker is a token.Revoker whose RevokeByJTI always returns an error,
+// forcing tknSvc.Renew() to fail and exercising RenewHdl's error branch.
+type failingRevoker struct{}
+
+func (failingRevoker) RevokeByJTI(_ string) error  { return errors.New("simulated store failure") }
+func (failingRevoker) IsRevoked(_ *token.TknClaims) bool { return false }
+
+// --- SEC-L2b H1/H7: Security headers present on all responses ---
+
+func TestSecurityHeaders_PresentOnAllResponses(t *testing.T) {
+	b := newTestBroker(t)
+
+	endpoints := []struct {
+		method string
+		path   string
+	}{
+		{"GET", "/v1/health"},
+		{"GET", "/v1/metrics"},
+		{"POST", "/v1/token/validate"},
+	}
+	for _, ep := range endpoints {
+		req := httptest.NewRequest(ep.method, ep.path, nil)
+		rr := b.do(req)
+		for _, h := range []string{"X-Content-Type-Options", "X-Frame-Options"} {
+			if rr.Header().Get(h) == "" {
+				t.Errorf("%s %s: missing header %s", ep.method, ep.path, h)
+			}
+		}
+	}
+}
+
+func TestGlobalBodyLimit_OversizedPayload(t *testing.T) {
+	b := newTestBroker(t)
+
+	// 1MB + 1 byte body
+	oversized := make([]byte, 1<<20+1)
+	req := httptest.NewRequest("POST", "/v1/token/validate", bytes.NewReader(oversized))
+	rr := b.do(req)
+
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("expected 413, got %d", rr.Code)
 	}
 }
