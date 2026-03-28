@@ -231,6 +231,13 @@ func (s *TknSvc) Renew(tokenStr string) (*IssueResp, error) {
 		}
 	}
 
+	// Carry forward the original TTL from the token being renewed.
+	// This prevents renewal from escalating to s.cfg.DefaultTTL.
+	originalTTL := int(claims.Exp - claims.Iat)
+	if originalTTL <= 0 {
+		originalTTL = s.cfg.DefaultTTL
+	}
+
 	return s.Issue(IssueReq{
 		Sub:        claims.Sub,
 		Aud:        claims.Aud,
@@ -238,6 +245,7 @@ func (s *TknSvc) Renew(tokenStr string) (*IssueResp, error) {
 		TaskId:     claims.TaskId,
 		OrchId:     claims.OrchId,
 		Sid:        claims.Sid,
+		TTL:        originalTTL,
 		DelegChain: claims.DelegChain,
 		ChainHash:  claims.ChainHash,
 	})
