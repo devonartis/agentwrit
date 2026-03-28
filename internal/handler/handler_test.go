@@ -444,6 +444,20 @@ func TestValidate_InvalidToken(t *testing.T) {
 	}
 }
 
+func TestValidate_ErrorMessageIsGeneric(t *testing.T) {
+	b := newTestBroker(t)
+
+	body := jsonBody(t, map[string]string{"token": "not-a-valid-token"})
+	req := httptest.NewRequest("POST", "/v1/token/validate", body)
+	rr := b.do(req)
+
+	var resp map[string]any
+	_ = json.NewDecoder(rr.Body).Decode(&resp)
+	if resp["error"] != "token is invalid or expired" {
+		t.Errorf("expected generic error message, got %q", resp["error"])
+	}
+}
+
 func TestValidate_MissingToken(t *testing.T) {
 	b := newTestBroker(t)
 
