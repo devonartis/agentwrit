@@ -170,6 +170,7 @@ func (s *TknSvc) Verify(tokenStr string) (*TknClaims, error) {
 		return nil, ErrInvalidToken
 	}
 	if hdr.Kid != "" && hdr.Kid != s.kid {
+		obs.Warn("TOKEN", "verify", "kid mismatch — possible key rotation or wrong key", "got="+hdr.Kid, "want="+s.kid)
 		return nil, ErrInvalidToken
 	}
 

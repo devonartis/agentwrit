@@ -30,6 +30,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/divineartis/agentauth/internal/obs"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -128,6 +130,10 @@ func Load() (Cfg, error) {
 
 	// Security hardening (L2a)
 	c.MaxTTL = envIntOr("AA_MAX_TTL", 86400)
+	if c.MaxTTL > 0 && c.DefaultTTL > c.MaxTTL {
+		obs.Warn("CFG", "load", "AA_DEFAULT_TTL exceeds AA_MAX_TTL — tokens will be clamped to MaxTTL",
+			fmt.Sprintf("default_ttl=%d max_ttl=%d", c.DefaultTTL, c.MaxTTL))
+	}
 
 	return c, nil
 }
