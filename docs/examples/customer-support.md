@@ -16,7 +16,7 @@ An AI-powered customer support system uses three agents to handle incoming ticke
 2. **Knowledge Agent** -- searches the knowledge base and customer history for solutions
 3. **Response Agent** -- drafts and sends personalized responses to customers
 
-The **operator** (your platform team) deploys the sidecar with a scope ceiling that enforces PII boundaries. The operator is not an agent -- it is one-time infrastructure setup. The agents only talk to the sidecar.
+The **operator** (your platform team) deploys the broker with an app and launch tokens that enforce PII boundaries. The operator is not an agent -- it is one-time infrastructure setup. The agents register directly with the broker.
 
 Each agent is an LLM-powered process that spawns per-ticket and terminates when done. A single support queue processes hundreds of tickets per hour, meaning hundreds of ephemeral agent instances are created, do their work, and disappear.
 
@@ -45,7 +45,7 @@ Without agent-level identity and scope enforcement, a single prompt injection co
 ```mermaid
 flowchart TB
     subgraph operator["Operator (your platform team)"]
-        O["Operator<br/>Deploys sidecar with<br/>PII-aware scope ceiling"]
+        O["Operator<br/>Creates app with<br/>PII-aware scope policy"]
     end
 
     subgraph agents["Agent Pool (per ticket)"]
@@ -61,14 +61,13 @@ flowchart TB
     end
 
     subgraph agentauth["AgentAuth"]
-        Sidecar["Sidecar<br/>Scope Ceiling"]
-        Broker["Broker"]
+        B["Broker<br/>Token Issuance<br/>Scope Enforcement"]
         Audit["Audit Trail"]
     end
 
-    O -->|"configures scope ceiling"| Sidecar
-    T & K & R -->|"POST /v1/token"| Sidecar
-    Sidecar -->|"auto-registers agents"| Broker
+    O -->|"creates app + launch tokens"| B
+    T & K & R -->|"POST /v1/register"| B
+    B -->|"records all access"| Audit
 
     T -->|"read tickets"| TDB
     T -->|"write metadata"| TDB
@@ -76,8 +75,6 @@ flowchart TB
     K -->|"read history"| CDB
     R -->|"read contact info ONLY"| CDB
     R -->|"write response + status"| TDB
-
-    Broker -->|"records all access"| Audit
 
     style CDB fill:#fce4ec,stroke:#c62828
     style R fill:#fff3e0,stroke:#e65100
@@ -113,67 +110,69 @@ flowchart LR
 | **Knowledge** | Find solutions | `read:kb:*`, `read:customer:history` | History only (no contact, no payment) | Medium |
 | **Response** | Send replies | `write:tickets:response`, `write:tickets:status`, `read:customer:contact` | Contact info only (name, email) | High |
 
-> **Note:** The operator configures the sidecar's scope ceiling to cover all these agents while excluding payment data scopes. The operator is not an agent -- see the [Operator section](#operator-deploy-sidecar-with-pii-aware-scope-ceiling) below. Developers call `POST /v1/token` on the sidecar and never deal with launch tokens.
+> **Note:** The operator creates an app with scope policies that cover all these agents while excluding payment data scopes. The operator is not an agent -- see the [Operator section](#operator-create-pii-aware-app) below. Developers receive launch tokens and perform challenge-response registration with the broker.
 
 ---
 
 ## 2. The Happy Path (With AgentAuth)
 
-### Operator: Deploy Sidecar with PII-Aware Scope Ceiling
+### Operator: Create PII-Aware App
 
-The operator deploys the broker and sidecar as centralized services. The sidecar is configured with `AA_ADMIN_SECRET` and a scope ceiling that deliberately excludes payment data scopes -- no agent in this system can ever access payment information.
+The operator deploys the broker as a centralized service. The operator creates an app with launch token scope policies that deliberately exclude payment data scopes -- no agent in this system can ever access payment information.
 
 ```python
-# Operator configures the sidecar (one-time infrastructure setup).
-# The sidecar is already running with:
+# Operator creates an app with PII-aware scope policies (one-time infrastructure setup).
+# The broker is running with:
 #   AA_ADMIN_SECRET=<secret>
-#   AA_SIDECAR_SCOPE_CEILING=read:tickets:*,write:tickets:metadata,read:kb:*,read:customer:history,write:tickets:response,write:tickets:status,read:customer:contact
 #
-# The ceiling is the UNION of all scopes any agent in this system might need.
+# The operator creates an app with launch token scope policy:
+#   read:tickets:*,write:tickets:metadata,read:kb:*,read:customer:history,write:tickets:response,write:tickets:status,read:customer:contact
+#
+# The scope policy is the UNION of all scopes any agent in this system might need.
 # Each agent requests only what IT needs (scope attenuation):
 #   - Triage Agent requests:    read:tickets:*, write:tickets:metadata
 #   - Knowledge Agent requests: read:kb:*, read:customer:history
 #   - Response Agent requests:  write:tickets:response, write:tickets:status, read:customer:contact
 #
-# CRITICAL: read:customer:payment is NOT in the ceiling.
+# CRITICAL: read:customer:payment is NOT in the scope policy.
 # No agent can ever obtain payment data access, regardless of what it requests.
 # This is cryptographic enforcement of PII data minimization (GDPR Article 5(1)(c)).
 #
 # Developers receive:
-#   AGENTAUTH_SIDECAR_URL=https://sidecar.internal.company.com
-#   Allowed scopes: the ceiling above
+#   AGENTAUTH_BROKER_URL=https://agentauth.internal.company.com
+#   Launch tokens for the app (created by operator via aactl or admin API)
 ```
 
 Key design decisions in this setup:
 
-- **PII-aware scope ceiling** -- the ceiling deliberately excludes `read:customer:payment` and `read:customer:profile`. No agent can access payment data or full customer profiles through this sidecar.
-- **Scope attenuation** -- although the ceiling includes `read:customer:contact`, only the Response Agent actually requests it. The Triage Agent and Knowledge Agent never see contact PII.
-- **Sidecar-managed lifecycle** -- the sidecar handles admin auth, launch token creation, key generation, and challenge-response transparently. Developers never see `AA_ADMIN_SECRET`.
+- **PII-aware scope policy** -- the policy deliberately excludes `read:customer:payment` and `read:customer:profile`. No agent can access payment data or full customer profiles through this app.
+- **Scope attenuation** -- although the policy includes `read:customer:contact`, only the Response Agent actually requests it. The Triage Agent and Knowledge Agent never see contact PII.
+- **Broker-enforced validation** -- the broker validates scopes on every request. Developers never see `AA_ADMIN_SECRET`.
 
-> **Advanced: per-PII-zone sidecar isolation.** For maximum PII isolation, deploy separate sidecars per PII zone. For example, a "no-PII sidecar" for the Triage Agent with ceiling `read:tickets:*,write:tickets:metadata`, and a "contact-PII sidecar" for the Response Agent with ceiling `write:tickets:response,write:tickets:status,read:customer:contact`. This ensures the Triage Agent's sidecar physically cannot issue tokens with any customer data scopes.
+> **Advanced: per-PII-zone app isolation.** For maximum PII isolation, create separate apps per PII zone. For example, a "no-PII app" for the Triage Agent with policy `read:tickets:*,write:tickets:metadata`, and a "contact-PII app" for the Response Agent with policy `write:tickets:response,write:tickets:status,read:customer:contact`. This ensures the Triage Agent's app physically cannot issue tokens with any customer data scopes.
 
 ---
 
 ### Developer: Agent Code
 
-Your operator has set up AgentAuth. You have a sidecar URL and your allowed scopes. The following sections show the pure agent code for each role.
+Your operator has set up AgentAuth. You have a broker URL and launch token. The following sections show the pure agent code for each role.
 
 #### Triage Agent
 
-The Triage Agent reads new tickets, classifies them, and updates ticket metadata. It uses the sidecar for transparent token management.
+The Triage Agent reads new tickets, classifies them, and updates ticket metadata. It registers with the broker using challenge-response.
 
 ```python
 import os
 import requests
 
-# Agent code uses the sidecar only -- agents never talk to the broker directly.
-SIDECAR = os.environ.get("AGENTAUTH_SIDECAR_URL", "https://sidecar.internal.company.com")
+# Agent code talks directly to the broker
+BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://agentauth.internal.company.com")
 TICKET_API = os.environ.get("TICKET_API_URL", "https://ticket-service.internal.company.com")
 
-# ── Get scoped token via sidecar ──────────────────────────────────
-# The sidecar handles Ed25519 key generation, challenge-response,
+# ── Perform challenge-response registration ──────────────────────────────────
+# Agent generates Ed25519 key pair and proves it to the broker
 # and broker registration transparently.
-token_resp = requests.post(f"{SIDECAR}/v1/token", json={
+token_resp = requests.post(f"{BROKER}/v1/register", json={
     "agent_name": "triage-agent",
     "task_id": f"ticket-{ticket_id}",
     "scope": ["read:tickets:*", "write:tickets:metadata"],
@@ -230,13 +229,13 @@ The Knowledge Agent searches the knowledge base and customer history to find rel
 import os
 import requests
 
-# Agent code uses the sidecar only -- agents never talk to the broker directly.
-SIDECAR = os.environ.get("AGENTAUTH_SIDECAR_URL", "https://sidecar.internal.company.com")
+# Agent code talks directly to the broker
+BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://agentauth.internal.company.com")
 KB_API = os.environ.get("KB_API_URL", "https://kb-service.internal.company.com")
 CUSTOMER_API = os.environ.get("CUSTOMER_API_URL", "https://customer-service.internal.company.com")
 
-# ── Get read-only token via sidecar ───────────────────────────────
-token_resp = requests.post(f"{SIDECAR}/v1/token", json={
+# ── Perform challenge-response registration ───────────────────────────────
+token_resp = requests.post(f"{BROKER}/v1/register", json={
     "agent_name": "knowledge-agent",
     "task_id": f"ticket-{ticket_id}",
     "scope": ["read:kb:*", "read:customer:history"],
@@ -294,7 +293,7 @@ assert payment_resp.status_code == 403  # No read:customer:payment scope exists 
 # Knowledge Agent has read:kb:* but Response Agent only needs one FAQ.
 # Delegation narrows scope: read:kb:* -> read:kb:billing-faq
 deleg_resp = requests.post(
-    f"{SIDECAR}/v1/delegate",
+    f"{BROKER}/v1/delegate",
     headers=auth,
     json={
         "delegate_to": response_agent_id,                # SPIFFE ID of the Response Agent
@@ -325,15 +324,15 @@ The Response Agent drafts and sends personalized responses. It has the most sens
 import os
 import requests
 
-# Agent code uses the sidecar only -- agents never talk to the broker directly.
-SIDECAR = os.environ.get("AGENTAUTH_SIDECAR_URL", "https://sidecar.internal.company.com")
+# Agent code talks directly to the broker
+BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://agentauth.internal.company.com")
 TICKET_API = os.environ.get("TICKET_API_URL", "https://ticket-service.internal.company.com")
 CUSTOMER_API = os.environ.get("CUSTOMER_API_URL", "https://customer-service.internal.company.com")
 EMAIL_API = os.environ.get("EMAIL_API_URL", "https://email-service.internal.company.com")
 KB_API = os.environ.get("KB_API_URL", "https://kb-service.internal.company.com")
 
 # ── Get token with response-writing scopes ────────────────────────
-token_resp = requests.post(f"{SIDECAR}/v1/token", json={
+token_resp = requests.post(f"{BROKER}/v1/register", json={
     "agent_name": "response-agent",
     "task_id": f"ticket-{ticket_id}",
     "scope": [
@@ -455,14 +454,14 @@ export_resp = requests.get(
 # for the specific customer it's working with, but cannot bulk export.
 
 # Attempt 3: Try to escalate by requesting a new token with broader scope
-escalation_resp = requests.post(f"{SIDECAR}/v1/token", json={
+escalation_resp = requests.post(f"{BROKER}/v1/register", json={
     "agent_name": "response-agent",
     "task_id": f"ticket-{ticket_id}",
     "scope": ["read:customer:*"],          # Broader than allowed
     "ttl": 300,
 })
 # Result: 403 Forbidden
-# The sidecar's scope ceiling does not include read:customer:*
+# The broker's app scope policy does not include read:customer:*
 # Scope attenuation is one-way: permissions can only narrow, never expand.
 ```
 
@@ -476,8 +475,7 @@ BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://agentauth.internal.comp
 
 # ── Operator detects the attack via audit trail ───────────────────
 admin_token = requests.post(f"{BROKER}/v1/admin/auth", json={
-    "client_id": "support-ops",
-    "client_secret": os.environ["AA_ADMIN_SECRET"],
+    "secret": os.environ["AA_ADMIN_SECRET"],
 }).json()["access_token"]
 
 admin_auth = {"Authorization": f"Bearer {admin_token}"}
@@ -535,8 +533,7 @@ BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://agentauth.internal.comp
 # "Which agents accessed customer X's data and when?"
 
 admin_token = requests.post(f"{BROKER}/v1/admin/auth", json={
-    "client_id": "compliance-auditor",
-    "client_secret": os.environ["AA_ADMIN_SECRET"],
+    "secret": os.environ["AA_ADMIN_SECRET"],
 }).json()["access_token"]
 
 admin_auth = {"Authorization": f"Bearer {admin_token}"}
@@ -790,12 +787,12 @@ For local development and testing, you can run the full AgentAuth stack with Doc
 
 ```bash
 export AA_ADMIN_SECRET=your-secret-here
-export AA_SIDECAR_SCOPE_CEILING="read:tickets:*,write:tickets:metadata,read:kb:*,read:customer:history,write:tickets:response,write:tickets:status,read:customer:contact"
+export # App scope policy: read:tickets:*,write:tickets:metadata,read:kb:*,read:customer:history,write:tickets:response,write:tickets:status,read:customer:contact"
 ./scripts/stack_up.sh
 
 # Override URLs for local development
 export AGENTAUTH_BROKER_URL="http://localhost:8080"
-export AGENTAUTH_SIDECAR_URL="http://localhost:8081"
+
 ```
 
 Note that `read:customer:payment` is deliberately absent from the scope ceiling -- no agent in this system can ever obtain payment data access, regardless of what they request.
@@ -807,6 +804,6 @@ See the [Getting Started: Operator](../getting-started-operator.md) guide for fu
 ## Further Reading
 
 - [Concepts: Why AgentAuth Exists](../concepts.md) -- the full security pattern and 7 components
-- [Getting Started: Developer](../getting-started-developer.md) -- integrate an agent with the sidecar in 15 lines
-- [Getting Started: Operator](../getting-started-operator.md) -- deploy the broker, configure sidecars, create launch tokens
+- [Getting Started: Developer](../getting-started-developer.md) -- integrate an agent with the broker in 15 lines
+- [Getting Started: Operator](../getting-started-operator.md) -- deploy the broker, create apps and launch tokens
 - [API Reference](../api.md) -- complete endpoint documentation

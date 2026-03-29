@@ -8,7 +8,7 @@
 
 ## 1. Scenario Overview
 
-A data analytics company runs an automated research pipeline. When a customer requests a market analysis report, the system spins up three AI agents that work concurrently: a **Research Agent** that gathers data from web APIs, databases, and document stores; a **Writer Agent** that synthesizes findings into a polished report; and a **Review Agent** that quality-checks the output before delivery. The **operator** (your platform team) deploys the sidecar with a scope ceiling that covers all agents -- this is not a fourth agent, it is one-time infrastructure setup.
+A data analytics company runs an automated research pipeline. When a customer requests a market analysis report, the system spins up three AI agents that work concurrently: a **Research Agent** that gathers data from web APIs, databases, and document stores; a **Writer Agent** that synthesizes findings into a polished report; and a **Review Agent** that quality-checks the output before delivery. The **operator** (your platform team) deploys the broker with an app and launch tokens -- this is one-time infrastructure setup.
 
 Each agent is ephemeral -- it starts when the task begins, runs for a few minutes, and terminates when its work is done. The agents access sensitive data sources (customer databases, proprietary document stores) and produce deliverables stored in shared file storage. The pipeline runs hundreds of times per day across different customers.
 
@@ -17,11 +17,10 @@ The question this example answers: **How do you give each agent exactly the acce
 ```mermaid
 flowchart TB
     subgraph operator["Operator (your platform team)"]
-        O["Deploys sidecar with<br/>scope ceiling config"]
+        O["Creates app<br/>and launch tokens"]
     end
 
     subgraph agentauth["AgentAuth"]
-        SC["Sidecar<br/>Scope Ceiling Enforcement"]
         B["Broker<br/>Token Issuance<br/>Audit Trail"]
     end
 
@@ -39,10 +38,9 @@ flowchart TB
         NF["Notification Service"]
     end
 
-    O -->|"1. Configure scope ceiling"| SC
-    SC -->|"2. Auto-registers agents"| B
-    agents -->|"POST /v1/token"| SC
-    SC -->|"3. Issue scoped tokens"| agents
+    O -->|"1. Create app + launch tokens"| B
+    agents -->|"2. POST /v1/register"| B
+    B -->|"3. Issue scoped tokens"| agents
 
     R -->|"read:webapi:*"| API
     R -->|"read:database:*"| DB
@@ -69,76 +67,81 @@ flowchart TB
 | **Writer Agent** | Synthesize research into reports, send completion notifications | `write:files:*`, `write:notifications:*` | 1-2 minutes |
 | **Review Agent** | Quality-check writer output, approve or request rewrites | `read:files:*`, `write:files:review` | 1 minute |
 
-> **Note:** The operator configures the sidecar's scope ceiling to cover all these agents. The operator is not an agent -- see the [Operator section](#operator-deploy-sidecar-with-scope-ceiling) below. Developers call `POST /v1/token` on the sidecar and never deal with launch tokens.
+> **Note:** The operator creates an app with launch token policies to cover all these agents. The operator is not an agent -- see the [Operator section](#operator-create-app-and-launch-tokens) below. Developers receive launch tokens and perform challenge-response registration with the broker.
 
 ---
 
 ## 2. The Happy Path (With AgentAuth)
 
-### Operator: Deploy Sidecar with Scope Ceiling
+### Operator: Create App and Launch Tokens
 
-The operator deploys the broker and sidecar as centralized services. The sidecar is configured with `AA_ADMIN_SECRET` (so it can autonomously create launch tokens and register agents) and `AA_SIDECAR_SCOPE_CEILING` (the maximum permissions any agent can request through this sidecar).
+The operator configures the broker with an app and launch tokens. The broker is configured with `AA_ADMIN_SECRET` (for operator authentication) and the app has launch token policies that define the maximum scopes for each agent.
 
 ```python
-# Operator configures the sidecar (one-time infrastructure setup).
-# The sidecar is already running with:
+# Operator creates an app with launch token policies (one-time infrastructure setup).
+# The broker is running with:
 #   AA_ADMIN_SECRET=<secret>
-#   AA_SIDECAR_SCOPE_CEILING=read:webapi:*,read:database:*,read:docstore:*,write:files:*,write:notifications:*,read:files:*,write:files:review
 #
-# The ceiling is the UNION of all scopes any agent in this pipeline might need.
+# The operator creates an app with launch token scopes:
+#   read:webapi:*,read:database:*,read:docstore:*,write:files:*,write:notifications:*,read:files:*,write:files:review
+#
+# The scope policy is the UNION of all scopes any agent in this pipeline might need.
 # Each agent requests only what IT needs (scope attenuation):
 #   - Research Agent requests: read:webapi:*, read:database:*, read:docstore:*
 #   - Writer Agent requests:   write:files:*, write:notifications:*
 #   - Review Agent requests:   read:files:*, write:files:review
 #
 # Developers receive:
-#   AGENTAUTH_SIDECAR_URL=https://sidecar.internal.company.com
-#   Allowed scopes: the ceiling above
+#   AGENTAUTH_BROKER_URL=https://agentauth.internal.company.com
+#   Launch tokens for the app (created by operator via aactl or admin API)
 #
-# The sidecar handles everything else transparently:
-#   1. Admin auth with the broker (using AA_ADMIN_SECRET)
-#   2. Launch token creation per agent
-#   3. Ed25519 key generation
-#   4. Challenge-response registration
-#   5. Token exchange
+# The broker validates scopes on every request:
+#   1. Agent presents launch token + performs challenge-response registration
+#   2. Broker validates scope against the app's scope policy
+#   3. If scope exceeds the policy, broker rejects immediately (403)
+#   4. Token is issued with the agent's requested scopes (if within policy)
 #
 # Think of it like AWS IAM:
-#   - Operator creates IAM role with permission boundary = deploys sidecar with scope ceiling
-#   - Developer assumes role and gets temporary STS credentials = calls POST /v1/token
-#   - Developer never sees root credentials = AA_ADMIN_SECRET stays on the sidecar
+#   - Operator creates IAM role with permission boundary = creates app with scope policy
+#   - Developer assumes role and gets temporary STS credentials = performs challenge-response with launch token
+#   - Developer never sees root credentials = AA_ADMIN_SECRET stays with operator
 ```
 
-No agent ever sees the `AA_ADMIN_SECRET`. The sidecar enforces the scope ceiling on every request -- if an agent requests a scope outside the ceiling, the sidecar rejects it immediately (403) without contacting the broker.
+No agent ever sees the `AA_ADMIN_SECRET`. The broker enforces the scope policy on every request -- if an agent requests a scope outside the policy, the broker rejects it immediately (403).
 
-> **Advanced: per-agent scope ceiling isolation.** If different groups of agents need isolated ceilings (e.g., PII-handling agents must be separated from non-PII agents), deploy multiple sidecars with different `AA_SIDECAR_SCOPE_CEILING` values. Each developer group receives the URL of the sidecar appropriate to their agents.
+> **Advanced: per-agent scope isolation.** If different groups of agents need isolated scope policies (e.g., PII-handling agents must be separated from non-PII agents), create multiple apps with different scope policies. Each developer group receives launch tokens for the app appropriate to their agents.
 
 ---
 
 ### Developer: Agent Code
 
-Your operator has set up AgentAuth. You have a sidecar URL and your allowed scopes. The following sections show the pure agent code for each role in the pipeline.
+Your operator has set up AgentAuth. You have a broker URL and launch token. The following sections show the pure agent code for each role in the pipeline.
 
 #### Research Agent
 
-The Research Agent gets a scoped token via the sidecar, searches three data sources in parallel, renews its token mid-task, and delegates a narrow read scope to the Writer Agent.
+The Research Agent registers with the broker to get a scoped token, searches three data sources in parallel, renews its token mid-task, and delegates a narrow read scope to the Writer Agent.
 
-This example also shows the BYOK (Bring Your Own Key) registration flow as a secondary option for agents that need to manage their own Ed25519 keys. Most agents should use the simpler sidecar path shown first.
+This example shows the standard challenge-response registration flow where agents manage their own Ed25519 keys.
 
 ```python
 import os
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Agent code uses the sidecar only -- agents never talk to the broker directly.
-SIDECAR = os.environ.get("AGENTAUTH_SIDECAR_URL", "https://sidecar.internal.company.com")
+# Agent code talks directly to the broker
+BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://agentauth.internal.company.com")
+LAUNCH_TOKEN = os.environ.get("AGENTAUTH_LAUNCH_TOKEN")
 TASK_ID = "pipeline-market-analysis-2026-0215"
 
-# ── Get token via sidecar (recommended path) ──────────────────────
+# ── Perform challenge-response registration with broker ──────────────
 
-# One API call. The sidecar handles admin auth, launch token creation,
-# Ed25519 key generation, challenge-response, and token exchange --
-# all transparently behind this single POST.
-token_resp = requests.post(f"{SIDECAR}/v1/token", json={
+# Agent generates Ed25519 key pair and registers with broker
+import cryptography.hazmat.primitives.asymmetric.ed25519 as ed25519
+private_key = ed25519.Ed25519PrivateKey.generate()
+public_key = private_key.public_key()
+
+# Get challenge from broker
+challenge_resp = requests.post(f"{BROKER}/v1/register", json={
     "agent_name": "research-agent",
     "task_id": TASK_ID,
     "scope": [
@@ -146,7 +149,19 @@ token_resp = requests.post(f"{SIDECAR}/v1/token", json={
         "read:database:*",
         "read:docstore:*",
     ],
+    "launch_token": LAUNCH_TOKEN,
+    "public_key": public_key.public_bytes_raw().hex(),
     "ttl": 300,
+})
+
+assert challenge_resp.status_code == 200, f"Challenge request failed: {challenge_resp.text}"
+challenge = challenge_resp.json()["challenge"]
+
+# Sign challenge and exchange for JWT
+signature = private_key.sign(challenge.encode())
+token_resp = requests.post(f"{BROKER}/v1/register/verify", json={
+    "challenge": challenge,
+    "signature": signature.hex(),
 })
 
 assert token_resp.status_code == 200, f"Token request failed: {token_resp.text}"
@@ -161,7 +176,7 @@ print(f"  Token expires in: {expires_in}s")
 #   SPIFFE ID: spiffe://agentauth.local/agent/orch-data-pipeline-001/pipeline-market-analysis-2026-0215/a1b2c3d4
 #   Token expires in: 300s
 
-# The sidecar enforced that these scopes are within its scope ceiling.
+# The broker enforced that these scopes are within the app's scope policy.
 # If we requested admin:revoke:*, it would return 403 immediately.
 
 
@@ -202,9 +217,9 @@ with ThreadPoolExecutor(max_workers=3) as pool:
 # ── Renew token mid-task (long research) ──────────────────────────
 
 # After a few minutes of research, the token is nearing expiry.
-# Renew it to get fresh timestamps with the same identity and scope.
+# Renew it with the broker to get a fresh token with the same identity and scope.
 renew_resp = requests.post(
-    f"{SIDECAR}/v1/token/renew",
+    f"{BROKER}/v1/token/renew",
     headers={"Authorization": f"Bearer {access_token}"},
 )
 assert renew_resp.status_code == 200, f"Renewal failed: {renew_resp.text}"
@@ -224,7 +239,7 @@ print(f"Token renewed. New expiry in {renew_resp.json()['expires_in']}s")
 writer_agent_id = "spiffe://agentauth.local/agent/orch-data-pipeline-001/pipeline-market-analysis-2026-0215/writer-instance-id"
 
 delegate_resp = requests.post(
-    f"{SIDECAR}/v1/delegate",
+    f"{BROKER}/v1/delegate",
     headers={"Authorization": f"Bearer {access_token}"},
     json={
         "delegate_to": writer_agent_id,
@@ -246,44 +261,61 @@ else:
 ```
 
 Key security properties demonstrated:
-- The sidecar generated an Ed25519 key pair and performed challenge-response registration transparently
-- The developer never handled launch tokens, admin secrets, or broker URLs
-- The sidecar's scope ceiling prevented any scope escalation beyond the operator's configured ceiling
+- The agent generated an Ed25519 key pair and performed challenge-response registration with the broker
+- The developer used the launch token (never handling admin secrets)
+- The broker's app scope policy prevented any scope escalation beyond the operator's configured ceiling
 - Each data source request carried the scoped Bearer token
 - The delegation to the Writer Agent narrowed `read:database:*` down to `read:database:results`
 
 #### Writer Agent
 
-The Writer Agent uses the sidecar for simplified token management. The sidecar handles key generation, challenge-response registration, and token exchange transparently.
+The Writer Agent registers directly with the broker using challenge-response to get a scoped token.
 
 ```python
 import os
 import requests
 
-# Agent code uses the sidecar only -- agents never talk to the broker directly.
-SIDECAR = os.environ.get("AGENTAUTH_SIDECAR_URL", "https://sidecar.internal.company.com")
+# Agent code talks directly to the broker
+BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://agentauth.internal.company.com")
+LAUNCH_TOKEN = os.environ.get("AGENTAUTH_LAUNCH_TOKEN")
 TASK_ID = "pipeline-market-analysis-2026-0215"
 
-# ── Get token via sidecar (simplified path) ────────────────────────
+# ── Perform challenge-response registration with broker ──────────────
 
-# The sidecar handles registration + key management automatically.
-# One API call instead of the 3-step challenge-response flow.
-token_resp = requests.post(f"{SIDECAR}/v1/token", json={
+# Agent generates Ed25519 key pair and registers with broker
+import cryptography.hazmat.primitives.asymmetric.ed25519 as ed25519
+private_key = ed25519.Ed25519PrivateKey.generate()
+public_key = private_key.public_key()
+
+# Get challenge from broker
+challenge_resp = requests.post(f"{BROKER}/v1/register", json={
     "agent_name": "writer-agent",
     "task_id": TASK_ID,
     "scope": ["write:files:*", "write:notifications:*"],
+    "launch_token": LAUNCH_TOKEN,
+    "public_key": public_key.public_bytes_raw().hex(),
     "ttl": 300,
 })
 
-assert token_resp.status_code == 200, f"Sidecar token failed: {token_resp.text}"
+assert challenge_resp.status_code == 200, f"Challenge request failed: {challenge_resp.text}"
+challenge = challenge_resp.json()["challenge"]
+
+# Sign challenge and exchange for JWT
+signature = private_key.sign(challenge.encode())
+token_resp = requests.post(f"{BROKER}/v1/register/verify", json={
+    "challenge": challenge,
+    "signature": signature.hex(),
+})
+
+assert token_resp.status_code == 200, f"Token request failed: {token_resp.text}"
 writer_token = token_resp.json()["access_token"]
 writer_agent_id = token_resp.json()["agent_id"]
 print(f"Writer Agent ready: {writer_agent_id}")
 print(f"  Scopes: {token_resp.json()['scope']}")
 
-# The sidecar enforced that write:files:* and write:notifications:*
-# are within its scope ceiling. If we requested admin:revoke:*, it
-# would return 403 immediately -- never even reaching the broker.
+# The broker enforced that write:files:* and write:notifications:*
+# are within the app's scope policy. If we requested admin:revoke:*, it
+# would return 403 immediately.
 
 
 # ── Use delegated token from Research Agent ────────────────────────
@@ -351,17 +383,35 @@ The Review Agent has intentionally restricted scope: it can read any file but ca
 import os
 import requests
 
-# Agent code uses the sidecar only -- agents never talk to the broker directly.
-SIDECAR = os.environ.get("AGENTAUTH_SIDECAR_URL", "https://sidecar.internal.company.com")
+# Agent code talks directly to the broker
+BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://agentauth.internal.company.com")
+LAUNCH_TOKEN = os.environ.get("AGENTAUTH_LAUNCH_TOKEN")
 TASK_ID = "pipeline-market-analysis-2026-0215"
 
-# ── Get token via sidecar ──────────────────────────────────────────
+# ── Perform challenge-response registration with broker ──────────────
 
-token_resp = requests.post(f"{SIDECAR}/v1/token", json={
+import cryptography.hazmat.primitives.asymmetric.ed25519 as ed25519
+private_key = ed25519.Ed25519PrivateKey.generate()
+public_key = private_key.public_key()
+
+# Get challenge from broker
+challenge_resp = requests.post(f"{BROKER}/v1/register", json={
     "agent_name": "review-agent",
     "task_id": TASK_ID,
     "scope": ["read:files:*", "write:files:review"],
+    "launch_token": LAUNCH_TOKEN,
+    "public_key": public_key.public_bytes_raw().hex(),
     "ttl": 120,  # shorter TTL -- review is quick
+})
+
+assert challenge_resp.status_code == 200, f"Challenge request failed: {challenge_resp.text}"
+challenge = challenge_resp.json()["challenge"]
+
+# Sign challenge and exchange for JWT
+signature = private_key.sign(challenge.encode())
+token_resp = requests.post(f"{BROKER}/v1/register/verify", json={
+    "challenge": challenge,
+    "signature": signature.hex(),
 })
 
 assert token_resp.status_code == 200
@@ -712,7 +762,7 @@ With AgentAuth's delegation, scope can only narrow at each hop. The Research Age
 | **Identity** | Unique SPIFFE ID per agent instance (`spiffe://domain/agent/orch/task/instance`) | Shared service account (`service-account-pipeline`) |
 | **Scope** | Task-specific (`read:database:*`, `write:files:review`) | Full access to everything the API key permits |
 | **Credential lifetime** | 5 minutes (default), configurable down to seconds | Months or years until manual rotation |
-| **Bootstrap** | Sidecar-managed: one `POST /v1/token` call; sidecar handles launch tokens internally | Long-lived API key in environment variable |
+| **Bootstrap** | Challenge-response registration: agent proves control of Ed25519 key to get JWT | Long-lived API key in environment variable |
 | **Revocation granularity** | 4 levels: token, agent, task, chain -- millisecond response | Rotate shared key (all agents stop) or block IP (coarse, unreliable) |
 | **Revocation speed** | Next request (milliseconds) | Minutes to hours for key rotation and redeployment |
 | **Audit trail** | Per-agent, hash-chained, PII-sanitized, filterable by agent/task/event type | Generic HTTP access logs with no agent attribution |
@@ -725,7 +775,7 @@ With AgentAuth's delegation, scope can only narrow at each hop. The Research Age
 
 ## 5. Key Takeaways
 
-- **Least privilege is enforced at every layer.** Launch token scope ceilings, registration scope attenuation, delegation scope narrowing, and per-request scope validation create defense in depth. No single failure bypasses all layers.
+- **Least privilege is enforced at every layer.** Launch token scopes, registration scope attenuation, delegation scope narrowing, and per-request scope validation create defense in depth. No single failure bypasses all layers.
 
 - **Ephemeral credentials eliminate the "credential exposure window" problem.** A 5-minute token stolen from the Research Agent is useless 5 minutes later. A shared API key stolen from the same agent is usable for months.
 
@@ -745,7 +795,6 @@ export AA_ADMIN_SECRET=your-secret-here
 
 # Override URLs for local development
 export AGENTAUTH_BROKER_URL="http://localhost:8080"
-export AGENTAUTH_SIDECAR_URL="http://localhost:8081"
 ```
 
 See the [Getting Started: Operator](../getting-started-operator.md) guide for full deployment instructions.

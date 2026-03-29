@@ -12,7 +12,7 @@
 
 **Priority:** High — blocks demo readiness for Python developers
 
-The current developer guide (`getting-started-developer.md`) shows raw HTTP examples. Python developers need a guide built around the Python SDK (once built). This guide should cover: `uv add agentauth` (using [Astral uv](https://docs.astral.sh/uv/) as the package manager), connecting to a sidecar, requesting tokens, token renewal, and token release. Think of it as the 5-minute onboarding path for a developer who has never seen AgentAuth. All Python tooling should use `uv` — not pip — for dependency management, virtual environments, and script execution.
+The current developer guide (`getting-started-developer.md`) shows raw HTTP examples. Python developers need a guide built around the Python SDK (once built). This guide should cover: `uv add agentauth` (using [Astral uv](https://docs.astral.sh/uv/) as the package manager), registering with the broker, requesting tokens, token renewal, and token release. Think of it as the 5-minute onboarding path for a developer who has never seen AgentAuth. All Python tooling should use `uv` — not pip — for dependency management, virtual environments, and script execution.
 
 ### 2. ~~Sidecar Deployment Guide~~ (`docs/sidecar-deployment.md`) — DONE
 
@@ -22,7 +22,7 @@ Completed. Comprehensive guide covering Docker Compose, systemd, trust boundary 
 
 **Priority:** High — production readiness requirement
 
-A dedicated guide covering: enabling mTLS end-to-end (broker + sidecar), UDS socket permissions and ownership, admin secret management (rotation, vault integration patterns), network segmentation recommendations, and how to address each known issue (KI-001 through KI-004). The current SECURITY.md covers vulnerability reporting but not operational hardening.
+A dedicated guide covering: enabling mTLS end-to-end on the broker, UDS socket permissions and ownership, admin secret management (rotation, vault integration patterns), network segmentation recommendations, and how to address each known issue (KI-001 through KI-004). The current SECURITY.md covers vulnerability reporting but not operational hardening.
 
 ### 4. Migration / Upgrade Guide (`docs/upgrade-guide.md`)
 
@@ -34,7 +34,7 @@ Document what happens when upgrading between versions: SQLite schema migrations,
 
 **Priority:** Medium — operators need this for production
 
-Document all Prometheus metrics (broker and sidecar), recommended alert thresholds (token issuance rate, circuit breaker state, audit event volume, revocation count), Grafana dashboard examples. The metrics exist but aren't documented anywhere except the code.
+Document all Prometheus metrics (broker), recommended alert thresholds (token issuance rate, circuit breaker state, audit event volume, revocation count), Grafana dashboard examples. The metrics exist but aren't documented anywhere except the code.
 
 ### 6. ~~Integration Patterns Guide~~ (`docs/integration-patterns.md`) — DONE
 
@@ -46,7 +46,7 @@ Completed. Six integration patterns with mermaid diagrams, Python examples, secu
 
 ### ~~OpenAPI Spec~~ (`docs/api/openapi.yaml`) — DONE
 
-Updated. Added: `POST /v1/token/release`, `GET /v1/admin/sidecars`, `GET/PUT /v1/admin/sidecars/{id}/ceiling`, `outcome` query parameter, structured audit fields, `token_released` and `scopes_ceiling_updated` event types, health response fields, and sidecar management schemas. Fixed license (MIT → Apache 2.0) and removed duplicate response keys.
+Updated. Added: `POST /v1/token/release`, `GET /v1/admin/agents`, `GET/PUT /v1/admin/agents/{id}/ceiling`, `outcome` query parameter, structured audit fields, `token_released` and `scopes_ceiling_updated` event types, health response fields, and agent registration schemas. Fixed license (MIT → Apache 2.0) and removed duplicate response keys.
 
 ### ~~aactl Man Pages / Help Text~~ (`docs/aactl-reference.md`) — DONE
 
@@ -54,7 +54,7 @@ Completed. Comprehensive CLI reference with all commands, flags, examples, commo
 
 ### Architecture Decision Records (ADRs)
 
-ADR-002 (sidecar architecture decision) was archived during pre-release cleanup. Consider creating a `docs/adr/` directory in the repo for accepted ADRs that should be part of the public record. Future ADRs (admin secret narrowing, direct broker access, etc.) should live here.
+ADR-002 (sidecar architecture decision) was archived during pre-release cleanup (Session 46). The sidecar was removed in favor of broker-only architecture. Consider creating a `docs/adr/` directory in the repo for accepted ADRs that should be part of the public record. Future ADRs should live here.
 
 ---
 
@@ -62,9 +62,9 @@ ADR-002 (sidecar architecture decision) was archived during pre-release cleanup.
 
 ### Immediate (Before Demo)
 
-1. **Python SDK** — First demo audience is Python developers. SDK should cover: agent registration, token request via sidecar, token renewal, token release. The sidecar API is the primary interface (not the broker).
+1. **Python SDK** — First demo audience is Python developers. SDK should cover: agent registration with broker, token request, token renewal, token release. The broker API is the primary interface.
 
-2. **KI-001 Fix (Admin Secret Narrowing)** — High-priority security fix. New `POST /v1/sidecar/launch-tokens` endpoint gated by `sidecar:manage:*` scope. Sidecars stop needing admin secret after bootstrap.
+2. **KI-001 Fix (Admin Secret Narrowing)** — High-priority security fix. New `POST /v1/admin/launch-tokens` endpoint for credential bootstrap. Agents can use narrower scopes after initial registration instead of requiring admin secret.
 
 ### Short-Term (Post Demo)
 
@@ -78,7 +78,7 @@ ADR-002 (sidecar architecture decision) was archived during pre-release cleanup.
 
 ### Medium-Term (Production Readiness)
 
-8. **KI-003 Fix (Per-Sidecar Credentials)** — Each sidecar gets unique credentials instead of sharing admin secret. Enables sidecar-level audit attribution.
+8. **KI-003 Fix (Per-Agent Credentials)** — Each agent gets unique credentials instead of sharing admin secret. Enables agent-level audit attribution.
 
 9. **Key Rotation** — Support for rolling key rotation without dropping all in-flight tokens. Dual-key verification window during rotation.
 

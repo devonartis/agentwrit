@@ -8,7 +8,7 @@
 
 ## 1. Scenario Overview
 
-Three AI agents collaborate to build software: a planning agent reads the codebase and designs a solution, a coder agent writes and commits code, and a test agent runs the suite and reports results. The **operator** deploys the sidecar with a scope ceiling that covers all agents -- this is not a fourth agent, it is one-time infrastructure setup.
+Three AI agents collaborate to build software: a planning agent reads the codebase and designs a solution, a coder agent writes and commits code, and a test agent runs the suite and reports results. The **operator** deploys the broker with an app and launch token configuration -- this is one-time infrastructure setup.
 
 This is one of the highest-risk AI agent use cases in production today: **agents with write access to your source code repository**. A single overprivileged credential means a hallucinating LLM can push to `main`, access production secrets, or inject malicious dependencies -- and you may not find out until the damage is done.
 
@@ -17,7 +17,7 @@ This is one of the highest-risk AI agent use cases in production today: **agents
 ```mermaid
 flowchart LR
     Operator["Operator<br/>(your platform team)"]
-    SC["Sidecar<br/>Scope Ceiling"]
+    Broker["Broker<br/>Token Issuance<br/>Scope Enforcement"]
 
     subgraph pipeline["Code Generation Pipeline (Developer Agents)"]
         direction LR
@@ -26,8 +26,8 @@ flowchart LR
         Test["Test Agent<br/>read:repo:*<br/>write:ci:*<br/>write:pr-status:*"]
     end
 
-    Operator -->|"configures scope ceiling"| SC
-    Plan & Code & Test -->|"POST /v1/token"| SC
+    Operator -->|"creates app + launch tokens"| Broker
+    Plan & Code & Test -->|"POST /v1/register"| Broker
 
     Plan -->|"delegates read:repo:src/auth"| Code
     Code -->|"delegates read:repo:feature-xyz"| Test
@@ -40,7 +40,7 @@ flowchart LR
 
 ### Agent Roles
 
-These are the developer's agents. The operator configures the sidecar's scope ceiling to cover all of them (see [Operator section](#operator-configure-scope-ceilings) below). Developers call `POST /v1/token` on the sidecar and never deal with launch tokens.
+These are the developer's agents. The operator configures the broker with an app and launch tokens (see [Operator section](#operator-configure-scope-ceilings) below). Developers receive launch tokens and perform challenge-response registration with the broker to get JWTs.
 
 | Agent | Purpose | Scopes | What It Cannot Do |
 |-------|---------|--------|-------------------|
@@ -54,55 +54,72 @@ These are the developer's agents. The operator configures the sidecar's scope ce
 
 ### Operator: Configure Scope Ceilings
 
-The operator deploys the broker and sidecar as centralized services. The sidecar is configured with `AA_ADMIN_SECRET` (so it can autonomously create launch tokens and register agents) and `AA_SIDECAR_SCOPE_CEILING` (the maximum permissions any agent can request through this sidecar).
+The operator deploys the broker as a centralized service. The operator creates an app with launch token policies that define the maximum permissions any agent can request.
 
 ```python
-# Operator configures the sidecar (one-time infrastructure setup).
-# The sidecar is already running with:
+# Operator configures the broker (one-time infrastructure setup).
+# The operator creates an app with launch token policies:
 #   AA_ADMIN_SECRET=<secret>
-#   AA_SIDECAR_SCOPE_CEILING=read:repo:*,read:issues:*,read:docs:*,write:repo:feature-*,write:ci:*,write:pr-status:*
+#   App launch token scopes: read:repo:*,read:issues:*,read:docs:*,write:repo:feature-*,write:ci:*,write:pr-status:*
 #
-# The ceiling is the UNION of all scopes any agent in this pipeline might need.
+# The policy scope is the UNION of all scopes any agent in this pipeline might need.
 # Each agent requests only what IT needs (scope attenuation):
 #   - Planning Agent requests: read:repo:*, read:issues:*, read:docs:*
 #   - Coder Agent requests:    write:repo:feature-xyz, read:repo:*
 #   - Test Agent requests:     read:repo:*, write:ci:*, write:pr-status:*
 #
-# Key security property: write:repo:main is NOT in the ceiling.
+# Key security property: write:repo:main is NOT in the launch token policy.
 # No agent in this pipeline can ever push to main, regardless of what it requests.
 #
 # Developers receive:
-#   AGENTAUTH_SIDECAR_URL=https://sidecar.internal.company.com
-#   Allowed scopes: the ceiling above
+#   AGENTAUTH_BROKER_URL=https://agentauth.internal.company.com
+#   Launch tokens valid for this app
 ```
 
-The scope ceiling means even if an agent tries to request `write:repo:main`, the sidecar rejects it immediately (403) -- the request never reaches the broker. This is defense in depth independent of git server branch protection.
+The launch token policy means even if an agent tries to request `write:repo:main`, the broker rejects it immediately (403) during token validation. This is defense in depth independent of git server branch protection.
 
-> **Advanced: per-agent scope ceiling isolation.** If you need the Planning Agent to be physically unable to request any write scopes (even if the sidecar ceiling includes them), deploy a separate read-only sidecar with `AA_SIDECAR_SCOPE_CEILING=read:repo:*,read:issues:*,read:docs:*` for the Planning Agent.
+> **Advanced: per-agent scope isolation.** If you need the Planning Agent to be physically unable to request any write scopes, create a separate app with a read-only launch token policy for the Planning Agent.
 
 ---
 
 ### Developer: Agent Code
 
-Your operator has set up AgentAuth. You have a sidecar URL and your allowed scopes. The following sections show the pure agent code for each role.
+Your operator has set up AgentAuth. You have a broker URL and launch token. The following sections show the pure agent code for each role.
 
 #### Planning Agent -- Read-Only Analysis
 
-The Planning Agent gets a read-only token via the sidecar. It reads the codebase, analyzes the issue, and produces an implementation plan. It cannot modify a single file.
+The Planning Agent registers directly with the broker to get a read-only token. It reads the codebase, analyzes the issue, and produces an implementation plan. It cannot modify a single file.
 
 ```python
 import os
 import requests
 
-# Agent code uses the sidecar only -- agents never talk to the broker directly.
-SIDECAR = os.environ.get("AGENTAUTH_SIDECAR_URL", "https://sidecar.internal.company.com")
+# Agent code talks directly to the broker
+BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://agentauth.internal.company.com")
+LAUNCH_TOKEN = os.environ.get("AGENTAUTH_LAUNCH_TOKEN")
 
-# --- Get a scoped token from the sidecar ---
-# The sidecar handles all crypto (Ed25519 keys, challenge-response, etc.)
-token_resp = requests.post(f"{SIDECAR}/v1/token", json={
+# --- Perform challenge-response registration with the broker ---
+# The agent generates an Ed25519 key pair and proves it to the broker
+import cryptography.hazmat.primitives.asymmetric.ed25519 as ed25519
+private_key = ed25519.Ed25519PrivateKey.generate()
+public_key = private_key.public_key()
+
+# Get challenge from broker
+challenge_resp = requests.post(f"{BROKER}/v1/register", json={
     "agent_name": "planning-agent",
     "task_id": "feature-xyz-plan",
     "scope": ["read:repo:*", "read:issues:*", "read:docs:*"],
+    "launch_token": LAUNCH_TOKEN,
+    "public_key": public_key.public_bytes_raw().hex(),
+})
+challenge_resp.raise_for_status()
+challenge = challenge_resp.json()["challenge"]
+
+# Sign challenge and exchange for JWT
+signature = private_key.sign(challenge.encode())
+token_resp = requests.post(f"{BROKER}/v1/register/verify", json={
+    "challenge": challenge,
+    "signature": signature.hex(),
 })
 token_resp.raise_for_status()
 
@@ -163,16 +180,33 @@ The Coder Agent receives a token that can write to `feature-*` branches but noth
 import os
 import requests
 
-# Agent code uses the sidecar only -- agents never talk to the broker directly.
-SIDECAR = os.environ.get("AGENTAUTH_SIDECAR_URL", "https://sidecar.internal.company.com")
+# Agent code talks directly to the broker
+BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://agentauth.internal.company.com")
+LAUNCH_TOKEN = os.environ.get("AGENTAUTH_LAUNCH_TOKEN")
 
-# --- Get a scoped token from the sidecar ---
-token_resp = requests.post(f"{SIDECAR}/v1/token", json={
+# --- Perform challenge-response registration with the broker ---
+import cryptography.hazmat.primitives.asymmetric.ed25519 as ed25519
+private_key = ed25519.Ed25519PrivateKey.generate()
+public_key = private_key.public_key()
+
+# Get challenge from broker
+challenge_resp = requests.post(f"{BROKER}/v1/register", json={
     "agent_name": "coder-agent",
     "task_id": "feature-xyz-code",
     "scope": ["write:repo:feature-xyz", "read:repo:*"],
     # Note: requesting write to specific branch "feature-xyz"
-    # This is narrower than the ceiling "write:repo:feature-*"
+    # This is narrower than the app's scope ceiling "write:repo:feature-*"
+    "launch_token": LAUNCH_TOKEN,
+    "public_key": public_key.public_bytes_raw().hex(),
+})
+challenge_resp.raise_for_status()
+challenge = challenge_resp.json()["challenge"]
+
+# Sign challenge and exchange for JWT
+signature = private_key.sign(challenge.encode())
+token_resp = requests.post(f"{BROKER}/v1/register/verify", json={
+    "challenge": challenge,
+    "signature": signature.hex(),
 })
 token_resp.raise_for_status()
 
@@ -231,14 +265,31 @@ The Test Agent runs the test suite against the feature branch and reports result
 import os
 import requests
 
-# Agent code uses the sidecar only -- agents never talk to the broker directly.
-SIDECAR = os.environ.get("AGENTAUTH_SIDECAR_URL", "https://sidecar.internal.company.com")
+# Agent code talks directly to the broker
+BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://agentauth.internal.company.com")
+LAUNCH_TOKEN = os.environ.get("AGENTAUTH_LAUNCH_TOKEN")
 
-# --- Get a scoped token from the sidecar ---
-token_resp = requests.post(f"{SIDECAR}/v1/token", json={
+# --- Perform challenge-response registration with the broker ---
+import cryptography.hazmat.primitives.asymmetric.ed25519 as ed25519
+private_key = ed25519.Ed25519PrivateKey.generate()
+public_key = private_key.public_key()
+
+# Get challenge from broker
+challenge_resp = requests.post(f"{BROKER}/v1/register", json={
     "agent_name": "test-agent",
     "task_id": "feature-xyz-test",
     "scope": ["read:repo:*", "write:ci:*", "write:pr-status:*"],
+    "launch_token": LAUNCH_TOKEN,
+    "public_key": public_key.public_bytes_raw().hex(),
+})
+challenge_resp.raise_for_status()
+challenge = challenge_resp.json()["challenge"]
+
+# Sign challenge and exchange for JWT
+signature = private_key.sign(challenge.encode())
+token_resp = requests.post(f"{BROKER}/v1/register/verify", json={
+    "challenge": challenge,
+    "signature": signature.hex(),
 })
 token_resp.raise_for_status()
 
@@ -354,8 +405,7 @@ BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://agentauth.internal.comp
 
 # Authenticate as operator
 admin_resp = requests.post(f"{BROKER}/v1/admin/auth", json={
-    "client_id": "operator",
-    "client_secret": os.environ["AA_ADMIN_SECRET"],
+    "secret": os.environ["AA_ADMIN_SECRET"],
 })
 admin_token = admin_resp.json()["access_token"]
 admin_headers = {"Authorization": f"Bearer {admin_token}"}
@@ -634,7 +684,6 @@ export AA_ADMIN_SECRET=your-secret-here
 
 # Override URLs for local development
 export AGENTAUTH_BROKER_URL="http://localhost:8080"
-export AGENTAUTH_SIDECAR_URL="http://localhost:8081"
 ```
 
 See the [Getting Started: Operator](../getting-started-operator.md) guide for full deployment instructions.
@@ -644,6 +693,6 @@ See the [Getting Started: Operator](../getting-started-operator.md) guide for fu
 ## Further Reading
 
 - [Concepts: Why AgentAuth Exists](../concepts.md) -- the full security pattern and 7 components
-- [Getting Started: Developer](../getting-started-developer.md) -- integrate an agent with the sidecar in 15 lines
-- [Getting Started: Operator](../getting-started-operator.md) -- deploy the broker, configure sidecars, create launch tokens
+- [Getting Started: Developer](../getting-started-developer.md) -- integrate an agent with the broker in 15 lines
+- [Getting Started: Operator](../getting-started-operator.md) -- deploy the broker, configure apps and launch tokens
 - [API Reference](../api.md) -- complete endpoint documentation

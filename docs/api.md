@@ -1,6 +1,6 @@
 # API Reference
 
-> **Document Version:** 2.0 | **Last Updated:** February 2026 | **Status:** Current
+> **Document Version:** 3.0 | **Last Updated:** March 2026 | **Status:** Current
 >
 > **Audience:** Developers and operators who need the definitive contract for every endpoint.
 >
@@ -12,7 +12,7 @@
 
 ## Overview
 
-AgentAuth exposes a JSON HTTP API. All request and response bodies use `Content-Type: application/json`. The broker listens on port 8080 by default (`AA_PORT`), and the sidecar on port 8081 (`AA_SIDECAR_PORT`).
+AgentAuth exposes a JSON HTTP API. All request and response bodies use `Content-Type: application/json`. The broker listens on port 8080 by default (`AA_PORT`).
 
 All error responses use RFC 7807 `application/problem+json` format:
 
@@ -29,7 +29,7 @@ All error responses use RFC 7807 `application/problem+json` format:
 }
 ```
 
-The `error_code` field is always present. The `hint` field is only present on extended error responses (token exchange, sidecar activation).
+The `error_code` field is always present. The `hint` field is optional and present on extended error responses.
 
 All responses include an `X-Request-ID` header. If the client sends `X-Request-ID`, it is propagated; otherwise the broker generates one.
 
@@ -45,32 +45,25 @@ This diagram shows the complete flow from operator bootstrap through developer t
 sequenceDiagram
     participant Admin as Operator
     participant BR as Broker
-    participant SC as Sidecar
-    participant DEV as Developer App
+    participant Agent as Agent
 
     Note over Admin,BR: 1. Operator Bootstrap
-    Admin->>BR: POST /v1/admin/auth<br/>{"client_id", "client_secret"}
+    Admin->>BR: POST /v1/admin/auth<br/>{"secret": "admin-secret"}
     BR-->>Admin: {"access_token": "admin-jwt"}
 
     Admin->>BR: POST /v1/admin/launch-tokens<br/>{"agent_name", "allowed_scope", ...}
     BR-->>Admin: {"launch_token": "64-hex-chars"}
 
-    Note over SC,BR: 2. Sidecar Bootstrap
-    SC->>BR: POST /v1/admin/auth
-    BR-->>SC: admin JWT
-    SC->>BR: POST /v1/admin/sidecar-activations
-    BR-->>SC: activation JWT
-    SC->>BR: POST /v1/sidecar/activate
-    BR-->>SC: sidecar bearer token
+    Note over Agent,BR: 2. Agent Registration
+    Agent->>BR: GET /v1/challenge
+    BR-->>Agent: {"nonce": "64-hex-chars"}
+    Agent->>BR: POST /v1/register<br/>{"launch_token", "nonce", "public_key", "signature", ...}
+    BR-->>Agent: {"access_token": "agent-jwt", "agent_id"}
 
-    Note over DEV,BR: 3. Developer Token Request
-    DEV->>SC: POST /v1/token<br/>{"agent_name", "scope", "task_id"}
-    SC->>BR: (challenge, register, exchange)
-    BR-->>SC: agent JWT
-    SC-->>DEV: {"access_token", "agent_id"}
-
-    Note over DEV: 4. Use Token
-    DEV->>DEV: Authorization: Bearer <token>
+    Note over Agent: 3. Use Token
+    Agent->>Agent: Authorization: Bearer <token>
+    Agent->>BR: Any authenticated endpoint
+    BR-->>Agent: Response
 ```
 
 ---
@@ -79,7 +72,7 @@ sequenceDiagram
 
 Three mechanisms are used, depending on the endpoint:
 
-1. **None** -- Public endpoints (health, metrics, challenge, validate, admin auth, sidecar activate)
+1. **None** -- Public endpoints (health, metrics, challenge, validate, token validate, admin auth)
 2. **Bearer token** -- JWT in the `Authorization: Bearer <token>` header. The `ValMw` middleware verifies signature, checks revocation, and injects claims into context.
 3. **Launch token** -- Passed in the request body field `launch_token` during agent registration. Not a Bearer token.
 
@@ -245,14 +238,14 @@ The admin JWT carries scopes: `admin:launch-tokens:*`, `admin:revoke:*`, `admin:
 
 | Status | Type | Condition |
 |---|---|---|
-| 400 | `invalid_request` | Missing `client_id` or `client_secret` |
+| 400 | `invalid_request` | Missing `secret` field or malformed JSON |
 | 401 | `unauthorized` | Invalid credentials |
 | 429 | `rate_limited` | Rate limit exceeded (`Retry-After: 1` header) |
 
 ```bash
 curl -X POST http://localhost:8080/v1/admin/auth \
   -H "Content-Type: application/json" \
-  -d '{"client_id": "admin", "client_secret": "my-dev-secret"}'
+  -d '{"secret": "my-dev-secret"}'
 ```
 
 ```json
@@ -260,56 +253,6 @@ curl -X POST http://localhost:8080/v1/admin/auth \
   "access_token": "eyJ...",
   "expires_in": 300,
   "token_type": "Bearer"
-}
-```
-
----
-
-#### POST /v1/sidecar/activate
-
-Exchange a single-use sidecar activation token for a functional sidecar bearer token.
-
-**Auth:** None (rate-limited: 5 req/s, burst 10; single-use JTI consumption)
-
-**Request body:**
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `sidecar_activation_token` | string | Yes | JWT from `POST /v1/admin/sidecar-activations` |
-
-**Response 200:**
-
-| Field | Type | Description |
-|---|---|---|
-| `access_token` | string | Sidecar bearer JWT (TTL up to 900s) |
-| `expires_in` | int | TTL in seconds |
-| `token_type` | string | Always `"Bearer"` |
-| `sidecar_id` | string | JTI of the consumed activation token |
-
-The sidecar bearer token has `sub="sidecar:{jti}"` and scopes including `sidecar:manage:*` plus `sidecar:scope:{each_allowed_scope}`.
-
-**Error responses:**
-
-| Status | Error Code | Condition |
-|---|---|---|
-| 400 | `invalid_request` | Malformed JSON |
-| 401 | `invalid_activation_token` | Invalid, expired, or malformed activation token |
-| 401 | `activation_token_replayed` | Activation token already used |
-| 429 | `rate_limited` | Rate limit exceeded (`Retry-After: 1` header) |
-| 500 | `internal_error` | Activation failed |
-
-```bash
-curl -X POST http://localhost:8080/v1/sidecar/activate \
-  -H "Content-Type: application/json" \
-  -d '{"sidecar_activation_token": "eyJ..."}'
-```
-
-```json
-{
-  "access_token": "eyJ...",
-  "expires_in": 600,
-  "token_type": "Bearer",
-  "sidecar_id": "abc123..."
 }
 ```
 
@@ -563,53 +506,6 @@ curl -X POST http://localhost:8080/v1/admin/launch-tokens \
 
 ---
 
-#### POST /v1/admin/sidecar-activations
-
-Create a sidecar activation token. This is a single-use JWT that the sidecar exchanges at `POST /v1/sidecar/activate` for a functional bearer token.
-
-**Auth:** Bearer token with `admin:launch-tokens:*` scope
-
-**Request body:**
-
-| Field | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `allowed_scopes` | string[] | Yes | -- | Scope ceiling for the sidecar |
-| `ttl` | int | No | 900 | Activation token TTL in seconds |
-
-**Response 201:**
-
-| Field | Type | Description |
-|---|---|---|
-| `activation_token` | string | JWT string |
-| `expires_at` | string | RFC3339 expiration timestamp |
-| `scope` | string | Space-separated `sidecar:activate:{scope}` entries |
-
-**Error responses:**
-
-| Status | Type | Condition |
-|---|---|---|
-| 400 | `invalid_request` | Empty `allowed_scopes` |
-| 401 | `unauthorized` | Missing or invalid Bearer token |
-| 403 | `insufficient_scope` | Token lacks `admin:launch-tokens:*` scope |
-| 500 | `internal_error` | Token creation failed |
-
-```bash
-curl -X POST http://localhost:8080/v1/admin/sidecar-activations \
-  -H "Authorization: Bearer <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{"allowed_scopes": ["read:data:*", "write:data:*"], "ttl": 600}'
-```
-
-```json
-{
-  "activation_token": "eyJ...",
-  "expires_at": "2026-02-15T12:10:00Z",
-  "scope": "sidecar:activate:read:data:* sidecar:activate:write:data:*"
-}
-```
-
----
-
 #### POST /v1/revoke
 
 Revoke tokens at one of four levels.
@@ -713,7 +609,6 @@ The 23 event types include the original lifecycle events (`admin_auth`, `agent_r
 | `token_auth_failed` | Bad signature, expired, or malformed JWT presented |
 | `token_revoked_access` | Revoked token used on any endpoint |
 | `scope_violation` | Token lacks required scope for endpoint |
-| `scope_ceiling_exceeded` | Sidecar scope ceiling exceeded |
 | `delegation_attenuation_violation` | Delegation attempted to widen scope |
 | `token_released` | Agent voluntarily surrendered its credential |
 
@@ -752,74 +647,202 @@ curl "http://localhost:8080/v1/audit/events?event_type=agent_registered&limit=10
 
 ---
 
-### Sidecar-Only Endpoint (Bearer + sidecar:manage:* scope)
+### App Management Endpoints (Bearer + admin scope required)
 
 ---
 
-#### POST /v1/token/exchange
+#### POST /v1/admin/apps
 
-Sidecar-mediated token issuance. The sidecar calls this endpoint with its own Bearer token to request a scoped token for an agent.
+Create a new registered application.
 
-**Auth:** Bearer token with `sidecar:manage:*` scope (validated by `ValMw` + `ValMw.RequireScope`)
-
-```mermaid
-sequenceDiagram
-    participant SC as Sidecar
-    participant BR as Broker
-
-    SC->>BR: POST /v1/token/exchange<br/>Bearer: sidecar-token<br/>{"agent_id", "scope", "ttl"}
-    BR->>BR: ValMw: verify sidecar Bearer
-    BR->>BR: ValMw.RequireScope: sidecar:manage:*
-    BR->>BR: Derive sidecar_id from token sid claim
-    BR->>BR: Extract sidecar:scope:* entries from token
-    BR->>BR: Check requested scope within ceiling
-    BR->>BR: Look up agent in store
-    BR->>BR: TknSvc.Issue(sub=agent, scope, sidecar_id)
-    BR-->>SC: {"access_token", "expires_in",<br/>"token_type", "agent_id", "sidecar_id"}
-```
+**Auth:** Bearer token with `admin:apps:create` scope
 
 **Request body:**
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `agent_id` | string | Yes | SPIFFE ID of the target agent |
-| `scope` | string[] | Yes | Requested scopes (must be subset of sidecar ceiling) |
-| `ttl` | int | No | TTL in seconds (0 = default 900, valid range 0-900; negative values rejected) |
-| `sidecar_id` | string | No | Ignored; derived from caller token's `sid` claim |
+| `name` | string | Yes | Application name |
+| `client_id` | string | Yes | Unique client identifier |
+| `description` | string | No | Application description |
+
+**Response 201:**
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Application ID |
+| `name` | string | Application name |
+| `client_id` | string | Client identifier |
+| `client_secret` | string | Generated secret (returned only once) |
+| `created_at` | string | RFC3339 creation timestamp |
+
+**Error responses:**
+
+| Status | Type | Condition |
+|---|---|---|
+| 400 | `invalid_request` | Missing required fields or invalid format |
+| 401 | `unauthorized` | Missing or invalid Bearer token |
+| 403 | `insufficient_scope` | Token lacks required scope |
+| 409 | `conflict` | Client ID already exists |
+| 500 | `internal_error` | Application creation failed |
+
+```bash
+curl -X POST http://localhost:8080/v1/admin/apps \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-app", "client_id": "app-001"}'
+```
+
+---
+
+#### GET /v1/admin/apps
+
+List all registered applications.
+
+**Auth:** Bearer token with `admin:apps:read` scope
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `limit` | int | 100 | Max applications to return |
+| `offset` | int | 0 | Pagination offset |
 
 **Response 200:**
 
 | Field | Type | Description |
 |---|---|---|
-| `access_token` | string | JWT for the agent |
-| `expires_in` | int | TTL in seconds |
-| `token_type` | string | Always `"Bearer"` |
-| `agent_id` | string | SPIFFE ID of the agent |
-| `sidecar_id` | string | Derived from authenticated caller token |
+| `apps` | App[] | Array of applications |
+| `total` | int | Total application count |
 
 **Error responses:**
 
-| Status | Error Code | Condition |
+| Status | Type | Condition |
 |---|---|---|
-| 400 | `missing_field` | Missing `agent_id` or `scope` |
-| 400 | `invalid_ttl` | TTL < 0 or > 900 |
-| 400 | `invalid_scope_format` | Scope not in `action:resource:identifier` format |
-| 400 | `invalid_content_type` | Content-Type is not `application/json` |
-| 401 | `missing_credentials` | Missing Bearer token |
-| 403 | `scope_escalation_denied` | Requested scope exceeds sidecar ceiling |
-| 403 | `sidecar_scope_missing` | Caller token has no `sidecar:scope:*` entries |
-| 404 | `agent_not_found` | Agent not registered |
-| 500 | `token_issuance_failed` | Token issuance failed |
+| 401 | `unauthorized` | Missing or invalid Bearer token |
+| 403 | `insufficient_scope` | Token lacks required scope |
 
 ```bash
-curl -X POST http://localhost:8080/v1/token/exchange \
-  -H "Authorization: Bearer <sidecar-token>" \
+curl "http://localhost:8080/v1/admin/apps?limit=10" \
+  -H "Authorization: Bearer <admin-token>"
+```
+
+---
+
+#### GET /v1/admin/apps/{id}
+
+Get details of a specific application.
+
+**Auth:** Bearer token with `admin:apps:read` scope
+
+**Response 200:** Application details (without client_secret)
+
+**Error responses:**
+
+| Status | Type | Condition |
+|---|---|---|
+| 401 | `unauthorized` | Missing or invalid Bearer token |
+| 403 | `insufficient_scope` | Token lacks required scope |
+| 404 | `not_found` | Application not found |
+
+```bash
+curl http://localhost:8080/v1/admin/apps/{id} \
+  -H "Authorization: Bearer <admin-token>"
+```
+
+---
+
+#### PUT /v1/admin/apps/{id}
+
+Update an application.
+
+**Auth:** Bearer token with `admin:apps:update` scope
+
+**Request body:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | No | New application name |
+| `description` | string | No | New description |
+
+**Response 200:** Updated application details
+
+**Error responses:**
+
+| Status | Type | Condition |
+|---|---|---|
+| 400 | `invalid_request` | Malformed request |
+| 401 | `unauthorized` | Missing or invalid Bearer token |
+| 403 | `insufficient_scope` | Token lacks required scope |
+| 404 | `not_found` | Application not found |
+| 500 | `internal_error` | Update failed |
+
+```bash
+curl -X PUT http://localhost:8080/v1/admin/apps/{id} \
+  -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
-  -d '{
-    "agent_id": "spiffe://agentauth.local/agent/orch/task/instance",
-    "scope": ["read:data:*"],
-    "ttl": 300
-  }'
+  -d '{"name": "updated-name"}'
+```
+
+---
+
+#### DELETE /v1/admin/apps/{id}
+
+Delete an application.
+
+**Auth:** Bearer token with `admin:apps:delete` scope
+
+**Response 204:** No Content (success)
+
+**Error responses:**
+
+| Status | Type | Condition |
+|---|---|---|
+| 401 | `unauthorized` | Missing or invalid Bearer token |
+| 403 | `insufficient_scope` | Token lacks required scope |
+| 404 | `not_found` | Application not found |
+| 500 | `internal_error` | Deletion failed |
+
+```bash
+curl -X DELETE http://localhost:8080/v1/admin/apps/{id} \
+  -H "Authorization: Bearer <admin-token>"
+```
+
+---
+
+#### POST /v1/app/auth
+
+Authenticate as an application using client credentials.
+
+**Auth:** None (rate-limited: 5 req/s, burst 10)
+
+**Request body:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `client_id` | string | Yes | Application client ID |
+| `client_secret` | string | Yes | Application client secret |
+
+**Response 200:**
+
+| Field | Type | Description |
+|---|---|---|
+| `access_token` | string | App JWT (TTL 300s) |
+| `expires_in` | int | Always 300 |
+| `token_type` | string | Always `"Bearer"` |
+| `scopes` | string[] | Granted scopes |
+
+**Error responses:**
+
+| Status | Type | Condition |
+|---|---|---|
+| 400 | `invalid_request` | Missing `client_id` or `client_secret` |
+| 401 | `unauthorized` | Invalid credentials |
+| 429 | `rate_limited` | Rate limit exceeded |
+
+```bash
+curl -X POST http://localhost:8080/v1/app/auth \
+  -H "Content-Type: application/json" \
+  -d '{"client_id": "app-001", "client_secret": "secret..."}'
 ```
 
 ```json
@@ -827,8 +850,7 @@ curl -X POST http://localhost:8080/v1/token/exchange \
   "access_token": "eyJ...",
   "expires_in": 300,
   "token_type": "Bearer",
-  "agent_id": "spiffe://agentauth.local/agent/orch/task/instance",
-  "sidecar_id": "abc123..."
+  "scopes": ["read:data:*"]
 }
 ```
 
@@ -932,8 +954,7 @@ Examples:
 - `admin:revoke:*` -- Admin revocation on any target
 - `admin:launch-tokens:*` -- Admin launch token management
 - `admin:audit:*` -- Admin audit access
-- `sidecar:manage:*` -- Sidecar management scope
-- `sidecar:scope:read:data:*` -- Sidecar scope ceiling entry
+- `admin:apps:*` -- Application management
 
 ### Wildcard Rules
 
@@ -945,11 +966,10 @@ A `*` in the identifier position of an allowed scope covers any specific identif
 
 ### Attenuation
 
-Scopes can only narrow, never expand. This is enforced at three points:
+Scopes can only narrow, never expand. This is enforced at two points:
 
 1. **Registration:** `requested_scope` must be a subset of `launch_token.allowed_scope`
 2. **Delegation:** `delegated_scope` must be a subset of `delegator.scope`
-3. **Token exchange:** `requested_scope` must be covered by sidecar's `sidecar:scope:*` entries
 
 ---
 
@@ -962,14 +982,12 @@ All tokens issued by AgentAuth use EdDSA (Ed25519) signing with compact JWT seri
 | Field | JSON Key | Type | Description |
 |---|---|---|---|
 | `Iss` | `iss` | string | Always `"agentauth"` |
-| `Sub` | `sub` | string | SPIFFE agent ID or `"admin"` or `"sidecar:{id}"` |
-| `Aud` | `aud` | string[] | Audience (optional, used for sidecar activation) |
+| `Sub` | `sub` | string | SPIFFE agent ID, `"admin"`, or `"app:{client_id}"` |
+| `Aud` | `aud` | string[] | Audience (optional) |
 | `Exp` | `exp` | int64 | Expiration timestamp (Unix seconds) |
 | `Nbf` | `nbf` | int64 | Not-before timestamp (Unix seconds) |
 | `Iat` | `iat` | int64 | Issued-at timestamp (Unix seconds) |
 | `Jti` | `jti` | string | Unique token ID (32 hex chars from 16 random bytes) |
-| `Sid` | `sid` | string | Session/sidecar ID (optional) |
-| `SidecarID` | `sidecar_id` | string | Sidecar identifier (optional) |
 | `Scope` | `scope` | string[] | Granted scopes |
 | `TaskId` | `task_id` | string | Task identifier (optional) |
 | `OrchId` | `orch_id` | string | Orchestration identifier (optional) |
@@ -997,31 +1015,20 @@ base64url({"alg":"EdDSA","typ":"JWT"}).base64url(claims).base64url(ed25519_signa
 | `not_found` | 404 | Agent or resource not found |
 | `internal_error` | 500 | Unexpected server failure |
 
-### Extended Error Codes (Token Exchange)
+### Extended Error Codes (App Endpoints)
 
 | Error Code | Status | Description |
 |---|---|---|
-| `missing_credentials` | 401 | No Bearer token provided |
-| `missing_field` | 400 | Required field missing (agent_id, scope) |
-| `invalid_ttl` | 400 | TTL out of range (negative or > 900; 0 is valid and defaults to 900) |
-| `invalid_scope_format` | 400 | Scope not in `action:resource:identifier` format |
-| `invalid_content_type` | 400 | Content-Type must be `application/json` |
-| `scope_escalation_denied` | 403 | Scope exceeds sidecar ceiling |
-| `sidecar_scope_missing` | 403 | Caller token has no sidecar scope entries |
-| `agent_not_found` | 404 | Agent not registered |
-| `token_issuance_failed` | 500 | Token creation failed |
-| `sidecar_derivation_failed` | 500 | Could not derive sidecar identity |
-
-### Extended Error Codes (Sidecar Activation)
-
-| Error Code | Status | Description |
-|---|---|---|
-| `invalid_activation_token` | 401 | Activation token is invalid or expired |
-| `activation_token_replayed` | 401 | Activation token has already been used |
+| `invalid_request` | 400 | Missing or malformed fields |
+| `unauthorized` | 401 | Invalid or missing credentials |
+| `insufficient_scope` | 403 | Caller token lacks required scope |
+| `conflict` | 409 | Resource already exists (e.g., duplicate client_id) |
+| `not_found` | 404 | Resource not found |
+| `internal_error` | 500 | Server-side failure |
 
 ### Rate Limiting
 
-Applied to `POST /v1/admin/auth` and `POST /v1/sidecar/activate`:
+Applied to `POST /v1/admin/auth` and `POST /v1/app/auth`:
 - Rate: 5 requests per second per IP
 - Burst: 10
 - Response: HTTP 429 with `Retry-After: 1` header
@@ -1044,16 +1051,3 @@ Applied to `POST /v1/admin/auth` and `POST /v1/sidecar/activate`:
 | `agentauth_request_duration_seconds` | HistogramVec | `endpoint` | Request latency |
 | `agentauth_clock_skew_total` | Counter | -- | Clock skew events |
 
-### Sidecar Metrics
-
-| Metric | Type | Labels | Description |
-|---|---|---|---|
-| `agentauth_sidecar_bootstrap_total` | CounterVec | `status` | Bootstrap attempts |
-| `agentauth_sidecar_renewals_total` | CounterVec | `status` | Token renewal attempts |
-| `agentauth_sidecar_token_exchanges_total` | CounterVec | `status` | Agent token exchanges |
-| `agentauth_sidecar_scope_denials_total` | Counter | -- | Scope ceiling denials |
-| `agentauth_sidecar_agents_registered` | Gauge | -- | Agents in memory |
-| `agentauth_sidecar_request_duration_seconds` | HistogramVec | `endpoint` | Request latency |
-| `agentauth_sidecar_circuit_state` | Gauge | -- | Circuit breaker state (0=closed, 1=open, 2=probing) |
-| `agentauth_sidecar_circuit_trips_total` | Counter | -- | Circuit trips |
-| `agentauth_sidecar_cached_tokens_served_total` | Counter | -- | Cached tokens served during circuit open |

@@ -13,12 +13,6 @@ if ! grep -q "broker:" docker-compose.yml; then
     exit 1
 fi
 
-echo "Checking for sidecar service..."
-if ! grep -q "sidecar:" docker-compose.yml; then
-    echo "FAIL: docker-compose.yml missing 'sidecar' service"
-    exit 1
-fi
-
 echo "Checking for AA_ADMIN_SECRET environment variable..."
 if ! grep -q "AA_ADMIN_SECRET" docker-compose.yml; then
     echo "FAIL: broker service missing 'AA_ADMIN_SECRET' environment variable"

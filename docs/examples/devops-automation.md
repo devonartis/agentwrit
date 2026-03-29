@@ -16,7 +16,7 @@ A production incident hits at 2:47 AM. Your AI-powered incident response system 
 | **Remediation Agent** | Scales services, restarts pods, rolls back deployments | `write:infra:scale`, `write:infra:restart`, `write:deploy:rollback` | Delete infrastructure. Modify networking. Access secrets. |
 | **Notification Agent** | Sends Slack alerts, updates status page, creates post-mortem draft | `write:slack:incidents`, `write:statuspage:*`, `write:docs:postmortem` | Touch infrastructure at all. No `write:infra` scope. |
 
-The **operator** (your platform/SRE team) deploys the sidecar with a surgical scope ceiling. The operator is not an agent -- it is one-time infrastructure setup. The agents only talk to the sidecar.
+The **operator** (your platform/SRE team) deploys the broker with an app and launch tokens with surgical scope policies. The operator is not an agent -- it is one-time infrastructure setup. The agents register directly with the broker.
 
 These agents are LLM-powered. They make decisions autonomously. And two of them have write access to production infrastructure.
 
@@ -25,11 +25,11 @@ Without proper credentialing, a single hallucination could delete your database.
 ```mermaid
 flowchart TB
     subgraph operator["Operator (your platform team)"]
-        O["Operator<br/>Deploys sidecar with<br/>scope ceiling config"]
+        O["Operator<br/>Creates app<br/>and launch tokens"]
     end
 
     subgraph agentauth["AgentAuth"]
-        SC["Sidecar<br/>Scope Ceiling Enforcement"]
+        B["Broker<br/>Token Issuance<br/>Scope Enforcement"]
     end
 
     subgraph agents["AI Agents — Each With Its Own Blast Radius"]
@@ -39,13 +39,13 @@ flowchart TB
     end
 
     subgraph walls["Scope Walls — Hard Boundaries"]
-        W1["No agent can escalate<br/>beyond the ceiling"]
+        W1["No agent can escalate<br/>beyond policy"]
         W2["No agent can access<br/>resources outside its scope"]
         W3["Tokens expire in 5 min<br/>even if agent is compromised"]
     end
 
-    O -->|"configures scope ceiling"| SC
-    M & R & N -->|"POST /v1/token"| SC
+    O -->|"creates app + launch tokens"| B
+    M & R & N -->|"POST /v1/register"| B
 
     M -.->|"cannot cross"| W1
     R -.->|"cannot cross"| W2
@@ -56,23 +56,25 @@ flowchart TB
 
 ## The Happy Path (With AgentAuth)
 
-### Operator: Deploy Sidecar with Surgical Scope Ceiling
+### Operator: Create App and Launch Tokens with Surgical Scope Policies
 
-The operator deploys the broker and sidecar as centralized services. The sidecar is configured with `AA_ADMIN_SECRET` and a scope ceiling that covers the three incident response roles -- with surgical precision about what write access is permitted.
+The operator deploys the broker as a centralized service. The operator creates an app with launch token policies that covers the three incident response roles -- with surgical precision about what write access is permitted.
 
 ```python
-# Operator configures the sidecar (one-time infrastructure setup).
-# The sidecar is already running with:
+# Operator creates an app with launch token policies (one-time infrastructure setup).
+# The broker is running with:
 #   AA_ADMIN_SECRET=<secret>
-#   AA_SIDECAR_SCOPE_CEILING=read:metrics:*,read:logs:*,read:infra:*,write:infra:scale,write:infra:restart,write:deploy:rollback,write:slack:incidents,write:statuspage:*,write:docs:postmortem
 #
-# The ceiling is the UNION of all scopes any agent in this pipeline might need.
+# The operator creates an app with launch token scope policy:
+#   read:metrics:*,read:logs:*,read:infra:*,write:infra:scale,write:infra:restart,write:deploy:rollback,write:slack:incidents,write:statuspage:*,write:docs:postmortem
+#
+# The scope policy is the UNION of all scopes any agent in this incident response might need.
 # Each agent requests only what IT needs (scope attenuation):
 #   - Monitor Agent requests:      read:metrics:*, read:logs:*, read:infra:*
 #   - Remediation Agent requests:  write:infra:scale, write:infra:restart, write:deploy:rollback
 #   - Notification Agent requests: write:slack:incidents, write:statuspage:*, write:docs:postmortem
 #
-# CRITICAL scopes deliberately ABSENT from the ceiling:
+# CRITICAL scopes deliberately ABSENT from the policy:
 #   - write:infra:delete  -- no agent can delete infrastructure
 #   - write:infra:*       -- no wildcard infra write (only scale, restart)
 #   - write:network:*     -- no agent can modify networking or security groups
@@ -80,30 +82,30 @@ The operator deploys the broker and sidecar as centralized services. The sidecar
 #
 # These omissions are the hard walls. Even if an LLM hallucinates a
 # "better fix" that involves deleting services or reading secrets,
-# the sidecar rejects the scope request before it reaches the broker.
+# the broker rejects the scope request immediately (403).
 #
 # Developers receive:
-#   AGENTAUTH_SIDECAR_URL=https://sidecar.internal.company.com
-#   Allowed scopes: the ceiling above
+#   AGENTAUTH_BROKER_URL=https://agentauth.internal.company.com
+#   Launch tokens for the app (created by operator via aactl or admin API)
 ```
 
 Key properties of this configuration:
-- **Scope ceiling as hard wall**: the sidecar enforces that no agent can request scopes outside the ceiling, regardless of what the LLM decides
-- **No delete, no network, no secrets**: these are deliberately absent from the ceiling -- cryptographic enforcement, not policy
+- **Scope policy as hard wall**: the broker enforces that no agent can request scopes outside the policy, regardless of what the LLM decides
+- **No delete, no network, no secrets**: these are deliberately absent from the policy -- cryptographic enforcement, not policy
 - **Incident-scoped naming**: agents use `task_id` like `incident-INC-2026-0215-0247` for audit trail correlation
 - **5-minute token TTL**: incident tokens die with the incident window
 
-> **Advanced: separate read and write sidecars.** For maximum isolation, deploy a read-only sidecar with ceiling `read:metrics:*,read:logs:*,read:infra:*` for the Monitor Agent, and a write sidecar with the remediation + notification scopes. This ensures the Monitor Agent's sidecar physically cannot issue tokens with any write scope.
+> **Advanced: separate read and write apps.** For maximum isolation, create a read-only app with policy `read:metrics:*,read:logs:*,read:infra:*` for the Monitor Agent, and a write app with the remediation + notification scopes. This ensures the Monitor Agent's app physically cannot issue tokens with any write scope.
 
 ---
 
 ### Developer: Agent Code
 
-Your operator has set up AgentAuth. You have a sidecar URL and your allowed scopes. The following sections show the pure agent code for each role.
+Your operator has set up AgentAuth. You have a broker URL and launch token. The following sections show the pure agent code for each role.
 
 #### Monitor Agent -- Pure Observation, Zero Write Access
 
-The Monitor Agent gets a read-only token via the sidecar and diagnoses the root cause. It cannot modify anything.
+The Monitor Agent registers with the broker to get a read-only token and diagnoses the root cause. It cannot modify anything.
 
 ```python
 #!/usr/bin/env python3
@@ -116,8 +118,9 @@ CANNOT modify any infrastructure.
 import os
 import requests
 
-# Agent code uses the sidecar only -- agents never talk to the broker directly.
-SIDECAR = os.environ.get("AGENTAUTH_SIDECAR_URL", "https://sidecar.internal.company.com")
+# Agent code talks directly to the broker
+BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://agentauth.internal.company.com")
+LAUNCH_TOKEN = os.environ.get("AGENTAUTH_LAUNCH_TOKEN")
 
 
 class MonitorAgent:
@@ -128,11 +131,15 @@ class MonitorAgent:
 
     def register(self):
         """
-        Get a scoped token via the sidecar.
-        The sidecar handles admin auth, launch token creation, key generation,
-        challenge-response, and token exchange -- all transparently.
+        Perform challenge-response registration with the broker.
+        Agent generates Ed25519 key pair and proves it to the broker.
         """
-        resp = requests.post(f"{SIDECAR}/v1/token", json={
+        import cryptography.hazmat.primitives.asymmetric.ed25519 as ed25519
+        private_key = ed25519.Ed25519PrivateKey.generate()
+        public_key = private_key.public_key()
+
+        # Get challenge from broker
+        challenge_resp = requests.post(f"{BROKER}/v1/register", json={
             "agent_name": f"monitor-{self.incident_id}",
             "task_id": f"incident-{self.incident_id}",
             "scope": [
@@ -140,9 +147,20 @@ class MonitorAgent:
                 "read:logs:*",
                 "read:infra:*",
             ],
+            "launch_token": LAUNCH_TOKEN,
+            "public_key": public_key.public_bytes_raw().hex(),
         })
-        resp.raise_for_status()
-        data = resp.json()
+        challenge_resp.raise_for_status()
+        challenge = challenge_resp.json()["challenge"]
+
+        # Sign challenge and exchange for JWT
+        signature = private_key.sign(challenge.encode())
+        token_resp = requests.post(f"{BROKER}/v1/register/verify", json={
+            "challenge": challenge,
+            "signature": signature.hex(),
+        })
+        token_resp.raise_for_status()
+        data = token_resp.json()
         self.token = data["access_token"]
         self.agent_id = data["agent_id"]
 
@@ -216,7 +234,7 @@ class MonitorAgent:
         Scope attenuation: narrowing from read:metrics:* to read:metrics:service-x.
         """
         resp = requests.post(
-            f"{SIDECAR}/v1/delegate",
+            f"{BROKER}/v1/delegate",
             headers={"Authorization": f"Bearer {self.token}"},
             json={
                 "delegate_to": remediation_agent_id,
@@ -263,8 +281,9 @@ CANNOT delete infrastructure, modify networking, or access secrets.
 import os
 import requests
 
-# Agent code uses the sidecar only -- agents never talk to the broker directly.
-SIDECAR = os.environ.get("AGENTAUTH_SIDECAR_URL", "https://sidecar.internal.company.com")
+# Agent code talks directly to the broker
+BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://agentauth.internal.company.com")
+LAUNCH_TOKEN = os.environ.get("AGENTAUTH_LAUNCH_TOKEN")
 
 
 class RemediationAgent:
@@ -274,8 +293,13 @@ class RemediationAgent:
         self.agent_id = None
 
     def register(self):
-        """Register via sidecar with specific write scopes."""
-        resp = requests.post(f"{SIDECAR}/v1/token", json={
+        """Register with the broker using challenge-response."""
+        import cryptography.hazmat.primitives.asymmetric.ed25519 as ed25519
+        private_key = ed25519.Ed25519PrivateKey.generate()
+        public_key = private_key.public_key()
+
+        # Get challenge from broker
+        challenge_resp = requests.post(f"{BROKER}/v1/register", json={
             "agent_name": f"remediation-{self.incident_id}",
             "task_id": f"incident-{self.incident_id}",
             "scope": [
@@ -283,9 +307,20 @@ class RemediationAgent:
                 "write:infra:restart",     # can restart pods
                 "write:deploy:rollback",   # can rollback deployments
             ],
+            "launch_token": LAUNCH_TOKEN,
+            "public_key": public_key.public_bytes_raw().hex(),
         })
-        resp.raise_for_status()
-        data = resp.json()
+        challenge_resp.raise_for_status()
+        challenge = challenge_resp.json()["challenge"]
+
+        # Sign challenge and exchange for JWT
+        signature = private_key.sign(challenge.encode())
+        token_resp = requests.post(f"{BROKER}/v1/register/verify", json={
+            "challenge": challenge,
+            "signature": signature.hex(),
+        })
+        token_resp.raise_for_status()
+        data = token_resp.json()
         self.token = data["access_token"]
         self.agent_id = data["agent_id"]
         print(f"Remediation registered: {self.agent_id}")
@@ -344,7 +379,7 @@ class RemediationAgent:
     def renew_token(self):
         """Renew token if the incident is still ongoing."""
         resp = requests.post(
-            f"{SIDECAR}/v1/token/renew",
+            f"{BROKER}/v1/token/renew",
             headers={"Authorization": f"Bearer {self.token}"},
         )
         if resp.status_code == 200:
@@ -397,8 +432,9 @@ Has notification-only scopes. CANNOT touch infrastructure.
 import os
 import requests
 
-# Agent code uses the sidecar only -- agents never talk to the broker directly.
-SIDECAR = os.environ.get("AGENTAUTH_SIDECAR_URL", "https://sidecar.internal.company.com")
+# Agent code talks directly to the broker
+BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://agentauth.internal.company.com")
+LAUNCH_TOKEN = os.environ.get("AGENTAUTH_LAUNCH_TOKEN")
 
 
 class NotificationAgent:
@@ -408,8 +444,13 @@ class NotificationAgent:
         self.agent_id = None
 
     def register(self):
-        """Register via sidecar with notification-only scopes."""
-        resp = requests.post(f"{SIDECAR}/v1/token", json={
+        """Register with the broker using challenge-response."""
+        import cryptography.hazmat.primitives.asymmetric.ed25519 as ed25519
+        private_key = ed25519.Ed25519PrivateKey.generate()
+        public_key = private_key.public_key()
+
+        # Get challenge from broker
+        challenge_resp = requests.post(f"{BROKER}/v1/register", json={
             "agent_name": f"notification-{self.incident_id}",
             "task_id": f"incident-{self.incident_id}",
             "scope": [
@@ -417,9 +458,20 @@ class NotificationAgent:
                 "write:statuspage:*",
                 "write:docs:postmortem",
             ],
+            "launch_token": LAUNCH_TOKEN,
+            "public_key": public_key.public_bytes_raw().hex(),
         })
-        resp.raise_for_status()
-        data = resp.json()
+        challenge_resp.raise_for_status()
+        challenge = challenge_resp.json()["challenge"]
+
+        # Sign challenge and exchange for JWT
+        signature = private_key.sign(challenge.encode())
+        token_resp = requests.post(f"{BROKER}/v1/register/verify", json={
+            "challenge": challenge,
+            "signature": signature.hex(),
+        })
+        token_resp.raise_for_status()
+        data = token_resp.json()
         self.token = data["access_token"]
         self.agent_id = data["agent_id"]
         print(f"Notification registered: {self.agent_id}")
@@ -1020,10 +1072,9 @@ export AA_ADMIN_SECRET=your-secret-here
 
 # Override URLs for local development
 export AGENTAUTH_BROKER_URL="http://localhost:8080"
-export AGENTAUTH_SIDECAR_URL="http://localhost:8081"
 ```
 
-The sidecar scope ceiling must include the scopes used by the agents in this example. Set `AA_SIDECAR_SCOPE_CEILING` to cover the required scopes for your deployment.
+The app's launch token scope policy must include the scopes used by the agents in this example. Create an app with the required scopes for your deployment.
 
 See the [Getting Started: Operator](../getting-started-operator.md) guide for full deployment instructions.
 
@@ -1033,5 +1084,5 @@ See the [Getting Started: Operator](../getting-started-operator.md) guide for fu
 
 - [Concepts: The Ephemeral Agent Credentialing Pattern](../concepts.md) -- why this pattern exists and how all 7 components work together
 - [Getting Started: Developer](../getting-started-developer.md) -- integrate an agent in 15 lines of Python
-- [Getting Started: Operator](../getting-started-operator.md) -- deploy the broker, configure sidecars, create launch tokens
+- [Getting Started: Operator](../getting-started-operator.md) -- deploy the broker, create apps and launch tokens
 - [API Reference](../api.md) -- full API documentation with request/response formats

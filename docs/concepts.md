@@ -340,11 +340,12 @@ sequenceDiagram
 ```
 
 **What AgentAuth implements:**
-- `MutAuthHdl` provides the 3-step handshake as a Go API (`InitiateHandshake`, `RespondToHandshake`, `CompleteHandshake`)
-- `DiscoveryRegistry` maps agent IDs to network endpoints, enabling agents to find each other
-- `HeartbeatMgr` tracks agent liveness with configurable intervals (default 30s) and auto-revokes agents that miss 3 consecutive heartbeats
+- Agents register directly with the broker via `POST /v1/register`, receiving a unique SPIFFE ID and JWT token
 - Anti-spoofing checks verify that declared agent identity matches the token's `sub` claim at every step
-- Note: Mutual auth is currently a Go API only, not exposed as HTTP endpoints
+- Agents exchange tokens with each other via application-layer protocols (HTTP, gRPC, etc.), presenting their broker-issued JWT
+- Token validation is performed by the receiving agent via `POST /v1/token/validate` to confirm authenticity
+- The broker's public key is published via `/v1/health` for agents to verify token signatures
+- Note: Agent-to-agent mutual auth relies on standard JWT verification and the broker's published public key
 
 ---
 
@@ -489,7 +490,7 @@ sequenceDiagram
     participant Broker
     participant Agent
 
-    Admin->>Broker: POST /v1/admin/auth<br/>{ client_id, client_secret }
+    Admin->>Broker: POST /v1/admin/auth<br/>{ secret }
     Broker-->>Admin: { access_token: "admin-jwt" }
 
     Admin->>Broker: POST /v1/admin/launch-tokens<br/>{ agent_name, allowed_scope,<br/>max_ttl: 300, single_use: true, ttl: 30 }
@@ -515,8 +516,6 @@ The launch token has several properties that limit risk:
 - **Single-use** -- even if intercepted, it can only be used once
 - **Scope ceiling** -- the launch token limits what scope the agent can request
 - **Operator-controlled** -- launch tokens are created on demand, not pre-provisioned
-
-For sidecar deployments, the bootstrap is even more controlled: the sidecar uses a sidecar activation token (also single-use) to establish its own identity, then handles all agent registration transparently.
 
 ---
 
@@ -548,4 +547,4 @@ The core lesson: agents should never hold long-lived secrets in their environmen
 ## Next Steps
 
 - **Developers:** Read [Getting Started: Developer](getting-started-developer.md) to integrate an agent with AgentAuth in 15 lines of Python
-- **Operators:** Read [Getting Started: Operator](getting-started-operator.md) to deploy the broker, configure sidecars, and create launch tokens
+- **Operators:** Read [Getting Started: Operator](getting-started-operator.md) to deploy the broker, configure apps, and create launch tokens
