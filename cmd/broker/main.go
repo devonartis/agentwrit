@@ -126,6 +126,7 @@ func main() {
 	}
 	tknSvc := token.NewTknSvc(privKey, pubKey, c)
 	revSvc := revoke.NewRevSvc(sqlStore)
+	tknSvc.SetRevoker(revSvc)
 	if len(revEntries) > 0 {
 		typed := make([]struct{ Level, Target string }, len(revEntries))
 		for i, e := range revEntries {

@@ -111,7 +111,22 @@ Contamination: CLEAN
 Tech debt TD-S08 through TD-S15 added for doc drift (two CRITICAL: wrong API field names + rejected secret in examples)
 Waiting on Cowork merge review
 
-### Current Step: B3 merge review → B4 cherry-pick
+### B4 Status: ACCEPTANCE TESTS PASS — ready for merge review (2026-03-29)
+
+Branch: `fix/sec-l2a`
+8 cherry-picks + 5 fix commits (revoker wiring, error sanitization, docstring, comment, RevokeByJTI method)
+Gates G1-G7: ALL PASS (build, lint, unit tests — gosec WARN non-blocking)
+Acceptance tests: 13/13 PASS (S1-S7, N1-N5, SEC1)
+- S4/S5 initially FAILED — root cause: TknSvc.revoker nil at runtime (C1 finding)
+- Fixed by adding `tknSvc.SetRevoker(revSvc)` in main.go + `RevokeByJTI()` on RevSvc
+- H1 fix: renewal error info leakage sanitized in renew_hdl.go
+- M1/M3 fixes: docstring and design comment updates
+Container mode: 7/7 PASS (S1, S4, S5, S7, N1, N2, N4)
+Contamination: CLEAN
+Evidence: `tests/sec-l2a/evidence/`
+Waiting on Cowork merge review.
+
+### Current Step: B4 merge review → B5 cherry-pick
 3. Tracker: `.plans/tracker.jsonl`
 
 **Guides:**

@@ -22,6 +22,7 @@ var (
 	ErrInvalidIssuer    = errors.New("invalid issuer")
 	ErrMissingJTI       = errors.New("missing jti")
 	ErrMissingSubject   = errors.New("missing subject")
+	ErrNoExpiry         = errors.New("token has no expiry")
 )
 
 // TknClaims represents the JWT payload for an AgentAuth token. Standard
@@ -68,7 +69,10 @@ func (c *TknClaims) Validate() error {
 		return ErrMissingJTI
 	}
 	now := time.Now().Unix()
-	if c.Exp != 0 && now > c.Exp {
+	if c.Exp <= 0 {
+		return ErrNoExpiry
+	}
+	if now > c.Exp {
 		return ErrTokenExpired
 	}
 	if c.Nbf != 0 && now < c.Nbf {

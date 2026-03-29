@@ -6,6 +6,7 @@ import (
 )
 
 func TestLoad_DBPathDefault(t *testing.T) {
+	t.Setenv("AA_ADMIN_SECRET", "test-cfg-secret")
 	os.Unsetenv("AA_DB_PATH")
 	c, err := Load()
 	if err != nil {
@@ -17,6 +18,7 @@ func TestLoad_DBPathDefault(t *testing.T) {
 }
 
 func TestLoad_DBPathCustom(t *testing.T) {
+	t.Setenv("AA_ADMIN_SECRET", "test-cfg-secret")
 	os.Setenv("AA_DB_PATH", "/tmp/test.db")
 	defer os.Unsetenv("AA_DB_PATH")
 	c, err := Load()
@@ -29,6 +31,7 @@ func TestLoad_DBPathCustom(t *testing.T) {
 }
 
 func TestLoad_TLSModeDefault(t *testing.T) {
+	t.Setenv("AA_ADMIN_SECRET", "test-cfg-secret")
 	os.Unsetenv("AA_TLS_MODE")
 	c, err := Load()
 	if err != nil {
@@ -40,6 +43,7 @@ func TestLoad_TLSModeDefault(t *testing.T) {
 }
 
 func TestLoad_TLSModeSet(t *testing.T) {
+	t.Setenv("AA_ADMIN_SECRET", "test-cfg-secret")
 	os.Setenv("AA_TLS_MODE", "mtls")
 	defer os.Unsetenv("AA_TLS_MODE")
 	c, err := Load()
@@ -52,6 +56,7 @@ func TestLoad_TLSModeSet(t *testing.T) {
 }
 
 func TestLoad_AudienceDefault(t *testing.T) {
+	t.Setenv("AA_ADMIN_SECRET", "test-cfg-secret")
 	os.Unsetenv("AA_AUDIENCE")
 	c, err := Load()
 	if err != nil {
@@ -63,6 +68,7 @@ func TestLoad_AudienceDefault(t *testing.T) {
 }
 
 func TestLoad_AudienceCustom(t *testing.T) {
+	t.Setenv("AA_ADMIN_SECRET", "test-cfg-secret")
 	os.Setenv("AA_AUDIENCE", "my-broker")
 	defer os.Unsetenv("AA_AUDIENCE")
 	c, err := Load()
@@ -75,6 +81,7 @@ func TestLoad_AudienceCustom(t *testing.T) {
 }
 
 func TestLoad_AudienceEmpty(t *testing.T) {
+	t.Setenv("AA_ADMIN_SECRET", "test-cfg-secret")
 	os.Setenv("AA_AUDIENCE", "")
 	defer os.Unsetenv("AA_AUDIENCE")
 	c, err := Load()
@@ -87,6 +94,7 @@ func TestLoad_AudienceEmpty(t *testing.T) {
 }
 
 func TestLoad_AppTokenTTLDefault(t *testing.T) {
+	t.Setenv("AA_ADMIN_SECRET", "test-cfg-secret")
 	os.Unsetenv("AA_APP_TOKEN_TTL")
 	c, err := Load()
 	if err != nil {
@@ -98,6 +106,7 @@ func TestLoad_AppTokenTTLDefault(t *testing.T) {
 }
 
 func TestLoad_AppTokenTTLCustom(t *testing.T) {
+	t.Setenv("AA_ADMIN_SECRET", "test-cfg-secret")
 	os.Setenv("AA_APP_TOKEN_TTL", "3600")
 	defer os.Unsetenv("AA_APP_TOKEN_TTL")
 	c, err := Load()
@@ -110,6 +119,7 @@ func TestLoad_AppTokenTTLCustom(t *testing.T) {
 }
 
 func TestLoad_SigningKeyPathDefault(t *testing.T) {
+	t.Setenv("AA_ADMIN_SECRET", "test-cfg-secret")
 	os.Unsetenv("AA_SIGNING_KEY_PATH")
 	c, err := Load()
 	if err != nil {
@@ -121,6 +131,7 @@ func TestLoad_SigningKeyPathDefault(t *testing.T) {
 }
 
 func TestLoad_SigningKeyPathCustom(t *testing.T) {
+	t.Setenv("AA_ADMIN_SECRET", "test-cfg-secret")
 	os.Setenv("AA_SIGNING_KEY_PATH", "/data/signing.key")
 	defer os.Unsetenv("AA_SIGNING_KEY_PATH")
 	c, err := Load()
@@ -132,7 +143,31 @@ func TestLoad_SigningKeyPathCustom(t *testing.T) {
 	}
 }
 
+func TestLoad_MaxTTL_Default(t *testing.T) {
+	t.Setenv("AA_ADMIN_SECRET", "test-secret-for-cfg-maxttl")
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.MaxTTL != 86400 {
+		t.Errorf("MaxTTL = %d, want 86400", c.MaxTTL)
+	}
+}
+
+func TestLoad_MaxTTL_Custom(t *testing.T) {
+	t.Setenv("AA_ADMIN_SECRET", "test-secret-for-cfg-maxttl-custom")
+	t.Setenv("AA_MAX_TTL", "3600")
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.MaxTTL != 3600 {
+		t.Errorf("MaxTTL = %d, want 3600", c.MaxTTL)
+	}
+}
+
 func TestLoad_TLSFields(t *testing.T) {
+	t.Setenv("AA_ADMIN_SECRET", "test-cfg-secret")
 	os.Setenv("AA_TLS_CERT", "/etc/certs/cert.pem")
 	os.Setenv("AA_TLS_KEY", "/etc/certs/key.pem")
 	os.Setenv("AA_TLS_CLIENT_CA", "/etc/certs/ca.pem")

@@ -48,6 +48,9 @@ type RevSvc struct {
 // NewRevSvc returns an empty revocation service ready for use. If store is
 // non-nil, every Revoke call writes through to the persistence backend.
 func NewRevSvc(store RevocationStore) *RevSvc {
+	if store == nil {
+		panic("rev_svc: RevocationStore must not be nil")
+	}
 	return &RevSvc{
 		tokens: make(map[string]bool),
 		agents: make(map[string]bool),
@@ -125,6 +128,14 @@ func (s *RevSvc) Revoke(level, target string) (int, error) {
 		}
 	}
 	return 1, nil
+}
+
+// RevokeByJTI revokes a single token by its JTI. This implements
+// [token.Revoker] so RevSvc can be wired into TknSvc for revocation
+// checks inside Verify() and Renew().
+func (s *RevSvc) RevokeByJTI(jti string) error {
+	_, err := s.Revoke("token", jti)
+	return err
 }
 
 // LoadFromEntries populates the in-memory revocation maps from a slice
