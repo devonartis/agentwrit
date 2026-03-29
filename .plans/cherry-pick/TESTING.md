@@ -319,3 +319,31 @@ The gate commands are all shell one-liners or short scripts — they translate d
 | 2026-03-29 | B0 | G5:DockerStart | PASS | branch=fix/sidecar-removal |
 | 2026-03-29 | B0 | G6:SmokeTest | FAIL | 4 of 7 checks failed |
 | 2026-03-29 | B0 | G7:BatchSpecific(B0) | PASS | branch=fix/sidecar-removal |
+
+| 2026-03-29 | B0 | G1:Compile | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G2:UnitTests | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G3:Contamination | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G4:DockerBuild | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G5:DockerStart | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G6:SmokeTest | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G7:BatchSpecific(B0) | PASS | branch=fix/sidecar-removal |
+
+| 2026-03-29 | B1 | G1:Compile | PASS | branch=fix/p0-persistent-key |
+| 2026-03-29 | B1 | G2:UnitTests | PASS | branch=fix/p0-persistent-key |
+| 2026-03-29 | B1 | G3:Contamination | PASS | branch=fix/p0-persistent-key |
+| 2026-03-29 | B1 | G4:DockerBuild | PASS | branch=fix/p0-persistent-key |
+| 2026-03-29 | B1 | G5:DockerStart | PASS | branch=fix/p0-persistent-key |
+| 2026-03-29 | B1 | G6:SmokeTest | PASS | branch=fix/p0-persistent-key |
+| 2026-03-29 | B1 | G7:BatchSpecific(B1) | FAIL | 1 checks failed |
+
+| 2026-03-29 | B1 | G1:Compile | PASS | branch=fix/p0-persistent-key |
+| 2026-03-29 | B1 | G2:UnitTests | PASS | branch=fix/p0-persistent-key |
+| 2026-03-29 | B1 | G3:Contamination | PASS | branch=fix/p0-persistent-key |
+
+| 2026-03-29 | B1 | G1:Compile | PASS | branch=fix/p0-persistent-key |
+| 2026-03-29 | B1 | G2:UnitTests | PASS | branch=fix/p0-persistent-key |
+| 2026-03-29 | B1 | G3:Contamination | PASS | branch=fix/p0-persistent-key |
+| 2026-03-29 | B1 | G4:DockerBuild | PASS | branch=fix/p0-persistent-key |
+| 2026-03-29 | B1 | G5:DockerStart | PASS | branch=fix/p0-persistent-key |
+| 2026-03-29 | B1 | G6:SmokeTest | PASS | branch=fix/p0-persistent-key |
+| 2026-03-29 | B1 | G7:BatchSpecific(B1) | PASS | branch=fix/p0-persistent-key |

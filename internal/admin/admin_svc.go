@@ -13,7 +13,6 @@ package admin
 
 import (
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -23,6 +22,7 @@ import (
 	"github.com/divineartis/agentauth/internal/obs"
 	"github.com/divineartis/agentauth/internal/store"
 	"github.com/divineartis/agentauth/internal/token"
+	"golang.org/x/crypto/bcrypt"
 )
 
 const (
@@ -83,24 +83,24 @@ type LaunchTokenPolicy struct {
 // storage is delegated to [store.SqlStore] so that tokens are visible
 // to the identity service during registration.
 type AdminSvc struct {
-	adminSecret []byte
-	tknSvc      *token.TknSvc
-	store       *store.SqlStore
-	auditLog    *audit.AuditLog
-	audience    string
+	adminSecretHash []byte
+	tknSvc          *token.TknSvc
+	store           *store.SqlStore
+	auditLog        *audit.AuditLog
+	audience        string
 }
 
-// NewAdminSvc creates a new admin service. The adminSecret is the shared
-// secret that administrators must present to authenticate. The auditLog
-// parameter may be nil to disable audit recording. The audience is
-// populated into all issued tokens.
-func NewAdminSvc(adminSecret string, tknSvc *token.TknSvc, st *store.SqlStore, al *audit.AuditLog, audience string) *AdminSvc {
+// NewAdminSvc creates a new admin service. The adminSecretHash is the
+// bcrypt hash of the admin secret, derived at config load time. The
+// auditLog parameter may be nil to disable audit recording. The audience
+// is populated into all issued tokens.
+func NewAdminSvc(adminSecretHash string, tknSvc *token.TknSvc, st *store.SqlStore, al *audit.AuditLog, audience string) *AdminSvc {
 	return &AdminSvc{
-		adminSecret: []byte(adminSecret),
-		tknSvc:      tknSvc,
-		store:       st,
-		auditLog:    al,
-		audience:    audience,
+		adminSecretHash: []byte(adminSecretHash),
+		tknSvc:          tknSvc,
+		store:           st,
+		auditLog:        al,
+		audience:        audience,
 	}
 }
 
@@ -113,14 +113,11 @@ func (s *AdminSvc) audienceSlice() []string {
 	return []string{s.audience}
 }
 
-// Authenticate validates the admin secret using constant-time comparison
-// (preventing timing attacks) and issues a short-lived admin JWT with
-// the full admin scope set. It returns [ErrInvalidSecret] on mismatch.
+// Authenticate validates the admin secret against the stored bcrypt hash
+// and issues a short-lived admin JWT with the full admin scope set.
+// It returns [ErrInvalidSecret] on mismatch.
 func (s *AdminSvc) Authenticate(secret string) (*token.IssueResp, error) {
-	secretBytes := []byte(secret)
-
-	// Constant-time comparison to prevent timing attacks (Security Invariant #8).
-	if subtle.ConstantTimeCompare(secretBytes, s.adminSecret) != 1 {
+	if err := bcrypt.CompareHashAndPassword(s.adminSecretHash, []byte(secret)); err != nil {
 		obs.AdminAuthTotal.WithLabelValues("failure").Inc()
 		obs.Warn(mod, cmp, "authentication failed")
 		if s.auditLog != nil {

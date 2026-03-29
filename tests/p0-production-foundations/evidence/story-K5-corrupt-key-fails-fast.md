@@ -3186,3 +3186,8 @@ AgentAuth broker v2.0.0 listening on :8080
 [AA:HTTP:OK] 2026-03-29T15:21:26Z | handler | request completed | method=GET, path=/v1/health, status=200, latency=195.542µs, request_id=93db3786f8680473
 [AA:HTTP:OK] 2026-03-29T15:21:28Z | handler | request completed | method=GET, path=/v1/health, status=200, latency=27.292µs, request_id=d7b2d16e8dd8459c
 [AA:HTTP:OK] 2026-03-29T15:21:30Z | handler | request completed | method=GET, path=/v1/health, status=200, latency=42.459µs, request_id=756f42ad4441e9de
+[AA:HTTP:OK] 2026-03-29T15:21:32Z | handler | request completed | method=GET, path=/v1/health, status=200, latency=26.792µs, request_id=b19111327c39ab64
+[AA:HTTP:OK] 2026-03-29T15:21:34Z | handler | request completed | method=GET, path=/v1/health, status=200, latency=30.041µs, request_id=a31df67d86f53e92
+[AA:HTTP:OK] 2026-03-29T15:21:36Z | handler | request completed | method=GET, path=/v1/health, status=200, latency=27.25µs, request_id=9b181b234a81ebd5
+[AA:HTTP:OK] 2026-03-29T15:21:38Z | handler | request completed | method=GET, path=/v1/health, status=200, latency=24.792µs, request_id=88b3d4002755c96e
+[AA:HTTP:OK] 2026-03-29T15:21:40Z | handler | request completed | method=GET, path=/v1/health, status=200, latency=27.084µs, request_id=c81738c14c66bce6

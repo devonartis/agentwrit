@@ -229,8 +229,7 @@ Authenticate as an administrator using the shared secret.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `client_id` | string | Yes | Identifier for the admin client |
-| `client_secret` | string | Yes | Value of `AA_ADMIN_SECRET` |
+| `secret` | string | Yes | The plaintext admin secret (compared against the stored bcrypt hash) |
 
 **Response 200:**
 
@@ -863,225 +862,57 @@ curl -X POST http://localhost:8080/v1/token/release \
 
 ---
 
-## Sidecar Endpoints
+## Configuration
 
----
+### Config File
 
-### GET /v1/health (Sidecar)
+The broker reads configuration from a config file and environment variables. Environment variables always override config file values.
 
-Sidecar health and readiness.
+**Config file location priority:**
 
-**Auth:** None
+1. `AA_CONFIG_PATH` environment variable (explicit path)
+2. `/etc/agentauth/config` (system-wide)
+3. `~/.agentauth/config` (user-local)
 
-**Response 200 (healthy):**
+**Config file format:** Simple KEY=VALUE, one per line. Comments (`#`) and blank lines are ignored.
 
-| Field | Type | Description |
-|---|---|---|
-| `status` | string | `"ok"` or `"degraded"` |
-| `broker_connected` | bool | Whether sidecar has a valid broker token |
-| `healthy` | bool | Overall health status |
-| `sidecar_id` | string | Stable sidecar identifier (derived from activation). Use this value for runtime ceiling management via `PUT /v1/admin/sidecars/{id}/ceiling`. |
-| `scope_ceiling` | string[] | Configured scope ceiling |
-| `agents_registered` | int | Agents in sidecar memory |
-| `last_renewal` | string | RFC3339 timestamp of last token renewal |
-| `uptime_seconds` | float | Seconds since bootstrap |
-
-**Response 503 (bootstrapping):**
-
-```json
-{
-  "status": "bootstrapping",
-  "healthy": false
-}
 ```
+# AgentAuth Configuration
+MODE=production
+ADMIN_SECRET=$2a$12$...bcrypt-hash...
+```
+
+**Supported keys:**
+
+| Key | Description |
+|---|---|
+| `MODE` | `development` or `production` (default: `development`) |
+| `ADMIN_SECRET` | Admin secret — plaintext (dev) or bcrypt hash (prod) |
+
+### `aactl init`
+
+Generate a secure admin secret and write a config file:
 
 ```bash
-curl http://localhost:8081/v1/health
+# Development mode: plaintext secret stored in config
+aactl init --mode=dev
+
+# Production mode: only bcrypt hash stored, plaintext shown once
+aactl init --mode=prod
+
+# Custom config path
+aactl init --mode=prod --config-path=/etc/agentauth/config
+
+# Overwrite existing config
+aactl init --mode=dev --force
 ```
 
----
+### Admin Secret Handling
 
-### GET /v1/metrics (Sidecar)
-
-Prometheus metrics for the sidecar.
-
-**Auth:** None
-
-See [Prometheus Metrics](#prometheus-metrics) for the full metric list.
-
-```bash
-curl http://localhost:8081/v1/metrics
-```
-
----
-
-### POST /v1/token (Sidecar)
-
-Request a scoped agent token. The sidecar handles key generation, challenge-response registration, and token exchange with the broker transparently.
-
-**Auth:** None
-
-**Request body:**
-
-| Field | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `agent_name` | string | Yes | -- | Agent identifier |
-| `task_id` | string | No | `"default"` | Task identifier |
-| `scope` | string[] | Yes | -- | Requested scopes (must be within sidecar ceiling) |
-| `ttl` | int | No | 300 | Token TTL in seconds |
-
-**Response 200:**
-
-| Field | Type | Description |
-|---|---|---|
-| `access_token` | string | JWT for the agent |
-| `expires_in` | int | TTL in seconds |
-| `scope` | string[] | Granted scopes |
-| `agent_id` | string | SPIFFE ID of the agent |
-
-**Response 200 (circuit open, cached token):**
-
-Same body as above, but with the header `X-AgentAuth-Cached: true`.
-
-**Error responses:**
-
-| Status | Detail | Condition |
-|---|---|---|
-| 400 | `scope is required` | Empty scope array |
-| 400 | `agent_name is required` | Missing agent_name |
-| 403 | `requested scope exceeds sidecar ceiling` | Scope not within ceiling |
-| 502 | `agent registration failed: ...` | Broker registration failed |
-| 502 | `broker token exchange failed: ...` | Broker exchange failed |
-| 503 | `broker unavailable and no cached token` | Circuit open, no cache |
-
-```bash
-curl -X POST http://localhost:8081/v1/token \
-  -H "Content-Type: application/json" \
-  -d '{
-    "agent_name": "my-agent",
-    "task_id": "task-001",
-    "scope": ["read:data:*"],
-    "ttl": 300
-  }'
-```
-
-```json
-{
-  "access_token": "eyJ...",
-  "expires_in": 300,
-  "scope": ["read:data:*"],
-  "agent_id": "spiffe://agentauth.local/agent/my-agent/task-001/a1b2c3d4"
-}
-```
-
----
-
-### POST /v1/token/renew (Sidecar)
-
-Renew an existing token by proxying to the broker's renew endpoint.
-
-**Auth:** Bearer token (in Authorization header)
-
-**Request body:** None
-
-**Response 200:**
-
-| Field | Type | Description |
-|---|---|---|
-| `access_token` | string | New JWT |
-| `expires_in` | int | TTL in seconds |
-
-**Error responses:**
-
-| Status | Detail | Condition |
-|---|---|---|
-| 401 | `missing or invalid Authorization bearer token` | No Bearer token |
-| 502 | `broker token renew failed: ...` | Broker renew failed |
-
-```bash
-curl -X POST http://localhost:8081/v1/token/renew \
-  -H "Authorization: Bearer eyJ..."
-```
-
----
-
-### GET /v1/challenge (Sidecar)
-
-Proxy the broker's challenge endpoint for BYOK developers.
-
-**Auth:** None
-
-**Response 200:**
-
-| Field | Type | Description |
-|---|---|---|
-| `nonce` | string | 64-character hex nonce (from broker) |
-| `expires_in` | int | Always 30 |
-
-```bash
-curl http://localhost:8081/v1/challenge
-```
-
----
-
-### POST /v1/register (Sidecar BYOK)
-
-Register an agent using developer-provided Ed25519 keys (Bring Your Own Key).
-
-**Auth:** None
-
-**Request body:**
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `agent_name` | string | Yes | Agent identifier |
-| `task_id` | string | No | Task identifier (default: `"default"`) |
-| `public_key` | string | Yes | Base64-encoded Ed25519 public key (32 bytes) |
-| `signature` | string | Yes | Base64-encoded Ed25519 signature of nonce bytes |
-| `nonce` | string | Yes | Hex nonce from GET /v1/challenge |
-
-**Response 200:**
-
-| Field | Type | Description |
-|---|---|---|
-| `agent_id` | string | SPIFFE ID of the registered agent |
-
-**Response 200 (already registered):**
-
-```json
-{
-  "agent_id": "spiffe://...",
-  "cached": true
-}
-```
-
-**Error responses:**
-
-| Status | Detail | Condition |
-|---|---|---|
-| 400 | `agent_name is required` | Missing agent_name |
-| 400 | `public_key, signature, and nonce are required` | Missing crypto fields |
-| 400 | `invalid public key: must be 32-byte Ed25519 key, base64-encoded` | Bad key |
-| 502 | `admin auth failed: ...` | Broker admin auth failed |
-| 502 | `broker registration failed: ...` | Broker registration failed |
-
-```bash
-curl -X POST http://localhost:8081/v1/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "agent_name": "my-agent",
-    "task_id": "task-001",
-    "public_key": "base64Ed25519PubKey==",
-    "signature": "base64SignatureOfNonceBytes==",
-    "nonce": "deadbeef...64chars"
-  }'
-```
-
-```json
-{
-  "agent_id": "spiffe://agentauth.local/agent/my-agent/task-001/a1b2c3d4"
-}
-```
+- **Development mode:** Plaintext secret stored in config file. Bcrypt hash derived at broker startup.
+- **Production mode:** Only the bcrypt hash is stored. The plaintext is shown once during `aactl init` and never saved to disk.
+- **Environment variable:** `AA_ADMIN_SECRET` continues to work (backward compatible). If set, it overrides the config file value.
+- **Authentication:** `POST /v1/admin/auth` always uses `bcrypt.CompareHashAndPassword` regardless of mode.
 
 ---
 

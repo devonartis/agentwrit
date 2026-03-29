@@ -7,11 +7,13 @@ services:
       - "${AA_HOST_PORT:-8080}:8080"
     environment:
       - AA_PORT=8080
-      - AA_ADMIN_SECRET=${AA_ADMIN_SECRET:-change-me-in-production}
+      # Admin secret: use aactl init + config file mount, or set AA_ADMIN_SECRET in .env
+      - AA_ADMIN_SECRET=${AA_ADMIN_SECRET:-}
       - AA_SEED_TOKENS=${AA_SEED_TOKENS:-false}
       - AA_LOG_LEVEL=${AA_LOG_LEVEL:-standard}
       - AA_DB_PATH=${AA_DB_PATH:-/data/agentauth.db}
       - AA_SIGNING_KEY_PATH=${AA_SIGNING_KEY_PATH:-/data/signing.key}
+      - AA_CONFIG_PATH=${AA_CONFIG_PATH:-}
       - AA_TLS_MODE=${AA_TLS_MODE:-none}
       - AA_TLS_CERT=${AA_TLS_CERT:-}
       - AA_TLS_KEY=${AA_TLS_KEY:-}

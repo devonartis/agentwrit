@@ -7,6 +7,146 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — P1: Admin Secret (Bcrypt + `aactl init`)
+
+- `aactl init` command for secure admin secret generation (`--mode=dev|prod`, `--force`, `--config-path`)
+- Config file support: KEY=VALUE format at `AA_CONFIG_PATH` > `/etc/agentauth/config` > `~/.agentauth/config`
+- Config file permissions: 0600 (file), 0700 (directory)
+- `Cfg.Mode`, `Cfg.AdminSecretHash`, `Cfg.ConfigPath` fields
+- Bcrypt hashing for admin secret comparison (always-on, replaces constant-time byte comparison)
+- Dev mode: plaintext in config, bcrypt hash derived at startup
+- Prod mode: only bcrypt hash stored, plaintext shown once during `aactl init`
+- `golang.org/x/crypto/bcrypt` promoted from indirect to direct dependency
+- Backward compatible: `AA_ADMIN_SECRET` env var continues to work, overrides config file
+
+### Added — Executive Overview & Marketing Document (Session 42 cont.)
+
+**New executive overview document (`docs/agentauth-executive-overview`):**
+- Created CISO-focused, marketing-friendly executive overview in three formats: `.md`, `.html`, `.docx`
+- Clear-language explanation of all 8 security components using hotel key card mental model
+- Covers the complete Ephemeral Agent Credentialing pattern with non-technical analogies
+- Strong NIST NCCoE alignment section mapping all 9 areas of interest to implemented components
+- Three real-world scenarios: healthcare (patient data with HITL), financial services (wire transfers), DevOps (production deployments)
+- Standards alignment: OWASP, NIST IR 8596, IETF WIMSE, SPIFFE, CSA, OAuth RFC 8693
+- HTML version: polished single-page design with interactive cards, visual diagrams, print stylesheet
+- DOCX version: professional formatting with title page, TOC, branded tables, C-suite ready
+
+### Added — Documentation Enhancement & HITL Guide (Session 42 cont.)
+
+**Enhanced mermaid diagrams across all docs (45 diagrams):**
+- All mermaid blocks across 13 documentation files upgraded with professional styling
+- Added `classDef` color-coded classes, emoji indicators, `rect` phase backgrounds, styled subgraphs
+- Consistent color palette: green (success), blue (security/info), orange (operations), red (errors), purple (admin), yellow (decisions)
+- Files enhanced: `architecture.md` (6 diagrams), `concepts.md` (9 diagrams), `getting-started-user.md` (1), `getting-started-developer.md` (3), `getting-started-operator.md` (2), `troubleshooting.md` (1), plus 6 example files (23 diagrams)
+
+**New HITL Guide (`docs/hitl-guide.md`):**
+- Comprehensive standalone Human-in-the-Loop approval guide for all audiences (developers, operators, security reviewers, business stakeholders)
+- Plain-English explanation with real-world analogies (bank wire transfers, hospital medication approval)
+- 3 production scenarios: healthcare (patient data deletion), financial services (wire transfers >$10K), DevOps (production deployments)
+- Configuration reference, security properties (scope-locked, app-locked, single-use, time-bound, cryptographic proof)
+- API quick reference with request/response examples
+- Troubleshooting section with 6 common issues
+- Complete Python implementation walkthrough
+- 5 enhanced mermaid diagrams with full styling
+
+**README.md updated:**
+- Added HITL Approval Guide to documentation index under Guides section
+
+### Added — Documentation & Diagram Overhaul (Session 42)
+
+**Professional SVG diagrams (replacing basic mermaid):**
+- `docs/diagrams/architecture-overview.svg` — Full system architecture with all services, actors, and data flows. Color-coded by domain (identity=teal, authorization=blue, audit=amber, revocation=red).
+- `docs/diagrams/token-lifecycle.svg` — Complete token lifecycle from operator setup through agent registration, renewal, delegation, and expiry. Horizontal swimlane layout with phase-colored backgrounds.
+- `docs/diagrams/security-topology.svg` — Three-zone trust boundary diagram (Operator → App → Agent) showing credential scope narrowing and security properties at each boundary.
+- `docs/diagrams/hitl-approval-flow.svg` — Sequence diagram of the HITL approval workflow showing all 5 actors, the approval gate, and audit trail linkage.
+
+**OpenAPI spec updated to v3.1.0:**
+- Added 4 missing HITL approval endpoints: `GET /v1/app/approvals`, `GET /v1/app/approvals/{id}`, `POST /v1/app/approvals/{id}/approve`, `POST /v1/app/approvals/{id}/deny`
+- Added `POST /v1/app/launch-tokens` developer-facing endpoint with HITL gate documentation
+- Added 6 new schemas: `ApprovalRequest`, `ListApprovalsResponse`, `ApproveRequest`, `ApproveResponse`, `DenyRequest`, `DenyResponse`
+- Added `hitl_scopes` field to `RegisterAppRequest` and `AppResponse` schemas
+- Added `original_principal` field to `TknClaims` schema
+- Added `approval_token` field to `CreateLaunchTokenRequest` schema
+- Added HITL-specific audit event types and error codes
+- New `Approvals` tag for HITL endpoints
+
+**README.md updated:**
+- Replaced mermaid diagram with professional SVG architecture diagram
+- Added HITL section with approval flow diagram and 8-step workflow explanation
+- Added 5 HITL endpoints and `POST /v1/app/launch-tokens` to API table
+- Added Approval Service to component table
+- Added `AA_HITL_APPROVAL_TTL` to configuration table
+- Updated release status to reflect Phase 1C-beta completion
+- Updated integration patterns reference (6 → 7 patterns)
+
+**Docs updated with SVG diagram references and config gaps filled:**
+- `docs/architecture.md` — Replaced mermaid system overview with `architecture-overview.svg`, added links to all 4 SVG diagrams
+- `docs/concepts.md` — Added `hitl-approval-flow.svg` to HITL Authorization section
+- `docs/integration-patterns.md` — Added `hitl-approval-flow.svg` to Pattern 7 HITL section
+- `docs/api.md` — Added visual reference callout linking architecture, token lifecycle, and security topology diagrams
+- `docs/getting-started-developer.md` — Added `hitl-approval-flow.svg` to HITL Approval Flow section
+- `docs/getting-started-operator.md` — Added `AA_AUDIENCE` and `AA_HITL_APPROVAL_TTL` to broker configuration table
+
+**Godoc improvements:**
+- Added package and function documentation to `cmd/aactl/client.go`
+- Added field-level comments to handler request/response structs
+- Improved documentation on `internal/approval/` package exports
+- Added godoc to `cmd/aactl/apps.go` command functions
+
+### Added — Phase 1C-beta: Human-in-the-Loop (HITL) Approval
+
+See `docs/concepts.md` HITL section and `docs/integration-patterns.md` Pattern 7 for background.
+
+**New endpoints (all require `app:launch-tokens:*` scope):**
+- `GET /v1/app/approvals` — list pending/resolved HITL approval requests (filter by status, limit)
+- `GET /v1/app/approvals/{id}` — get single approval request
+- `POST /v1/app/approvals/{id}/approve` — submit human approval with `principal` identity
+- `POST /v1/app/approvals/{id}/deny` — submit denial with optional `reason`
+
+**Changed: `POST /v1/app/launch-tokens`:**
+- Returns `403 hitl_approval_required` (JSON body with `approval_id`, `expires_at`) when `allowed_scope` overlaps the app's `hitl_scopes` and no `approval_token` supplied
+- New `approval_token` request field: one-time-use broker-signed JWT from approve endpoint; 300s TTL; scope-locked + app-locked
+- Admin JWT callers bypass HITL gate unconditionally
+
+**New config:** `AA_HITL_APPROVAL_TTL` (approval request TTL in seconds, default 300)
+
+**New audit events:** `hitl_approval_required`, `hitl_approved`, `hitl_denied`, `hitl_expired`
+
+**New packages:** `internal/approval` — `ApprovalSvc` (8 methods) + `ApprovalHdl` (4 HTTP handlers), 35 tests
+
+**Store changes:**
+- `approval_requests` SQLite table with FK to apps, JSON scope, RFC3339 timestamps, consumed flag
+- `LaunchTokenRecord.OriginalPrincipal` — human identity flows approval → launch token → agent JWT `original_principal` claim
+
+**Background goroutine:** prunes expired pending approvals every 30s, emits `hitl_expired` audit events
+
+**Documentation updated:** api.md, concepts.md, getting-started-developer.md (Python HITL example), getting-started-operator.md (hitl_scopes config), common-tasks.md (HITL task), integration-patterns.md (Pattern 7), architecture.md (route table)
+
+
+
+### Added — Fix: App Launch Tokens Endpoint
+
+- `POST /v1/app/launch-tokens` — developer-facing endpoint for creating launch tokens. Requires `app:launch-tokens:*` scope. Same handler as admin endpoint but under the correct namespace.
+
+### Changed — Fix: App Launch Tokens Endpoint
+
+- `POST /v1/admin/launch-tokens` — now requires `admin:launch-tokens:*` scope only. App JWTs (`app:launch-tokens:*`) are no longer accepted. Developers should use `POST /v1/app/launch-tokens`.
+
+### Fixed — Fix: App Launch Tokens Endpoint
+
+- `POST /v1/app/auth` response documentation corrected to show actual JWT scopes (`app:launch-tokens:*`, `app:agents:*`, `app:audit:read`) instead of the app's data scope ceiling.
+- `docs/integration-patterns.md` — replaced all references to non-existent endpoints (`/v1/apps/{client_id}/launch-tokens`, `/v1/apps/{client_id}/token`).
+- `docs/getting-started-*.md` — all developer examples now use `/v1/app/launch-tokens`.
+- `docs/examples/customer-support.md` — fixed non-existent endpoint paths and incorrect registration flow.
+
+### Added — Phase 1C-alpha: JWT Claims + Token Hygiene
+
+- `app_id`, `app_name`, `original_principal` claims in agent JWTs (Stories 6, 9, 11)
+- `original_principal` propagates unchanged through delegation chain
+- Token predecessor revocation on renewal (Story 17, resolves TD-008)
+- JTI blocklist pruning — background goroutine removes expired entries (Story 18, resolves TD-009)
+- Agent record expiry — agents marked expired when token TTL elapses (Story 19)
+- Validate endpoint returns new claims automatically via `omitempty` struct tags (Story 12)
 ### Added — Phase 1B: App-Scoped Launch Tokens
 
 **Summary:** Developers can now create launch tokens using their app credentials instead of

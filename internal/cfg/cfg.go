@@ -24,9 +24,17 @@
 package cfg
 
 import (
+	"fmt"
 	"os"
 	"strconv"
+	"strings"
+
+	"golang.org/x/crypto/bcrypt"
 )
+
+// AdminBcryptCost is the bcrypt cost factor used for hashing admin secrets.
+// Cost 12 ≈ 250ms per hash on modern hardware — good balance of security and latency.
+const AdminBcryptCost = 12
 
 // Cfg holds the complete broker configuration derived from environment
 // variables. Use [Load] to create an instance with defaults applied.
@@ -44,13 +52,19 @@ type Cfg struct {
 	TLSCert     string // AA_TLS_CERT: path to TLS certificate PEM file
 	TLSKey      string // AA_TLS_KEY: path to TLS private key PEM file
 	TLSClientCA string // AA_TLS_CLIENT_CA: path to client CA PEM file (mtls only)
-	Audience    string // AA_AUDIENCE: expected token audience (default "agentauth", empty = skip)
+	Audience        string // AA_AUDIENCE: expected token audience (default "agentauth", empty = skip)
+	Mode            string // MODE: development|production (default "development")
+	AdminSecretHash string // bcrypt hash of admin secret (derived at load time)
+	ConfigPath      string // resolved config file path (empty if none found)
 }
 
 // Load reads AA_* environment variables and returns a Cfg with defaults
-// applied for any missing values. It never returns an error; invalid
-// numeric values silently fall back to their defaults.
-func Load() Cfg {
+// applied for any missing values. Returns an error if the admin secret
+// cannot be hashed. Invalid numeric values silently fall back to their defaults.
+func Load() (Cfg, error) {
+	// Read config file defaults first.
+	cfgMode, cfgSecret, cfgPath := loadConfigFile()
+
 	c := Cfg{
 		Port:        envOr("AA_PORT", "8080"),
 		LogLevel:    envOr("AA_LOG_LEVEL", "verbose"),
@@ -65,6 +79,8 @@ func Load() Cfg {
 		TLSCert:     os.Getenv("AA_TLS_CERT"),
 		TLSKey:      os.Getenv("AA_TLS_KEY"),
 		TLSClientCA: os.Getenv("AA_TLS_CLIENT_CA"),
+		ConfigPath:  cfgPath,
+		Mode:        "development",
 	}
 	// AA_AUDIENCE: LookupEnv distinguishes unset (→ default "agentauth")
 	// from explicitly empty (→ skip validation).
@@ -73,7 +89,43 @@ func Load() Cfg {
 	} else {
 		c.Audience = "agentauth"
 	}
-	return c
+
+	// Config file values are defaults; env vars override.
+	if c.AdminSecret == "" && cfgSecret != "" {
+		c.AdminSecret = cfgSecret
+	}
+	if cfgMode != "" {
+		c.Mode = cfgMode
+	}
+
+	// Derive bcrypt hash for comparison.
+	if c.AdminSecret != "" {
+		if isBcryptHash(c.AdminSecret) {
+			c.AdminSecretHash = c.AdminSecret
+		} else {
+			hash, err := bcrypt.GenerateFromPassword([]byte(c.AdminSecret), AdminBcryptCost)
+			if err != nil {
+				return Cfg{}, fmt.Errorf("cfg: hash admin secret: %w", err)
+			}
+			c.AdminSecretHash = string(hash)
+		}
+		// Wipe plaintext from struct field. Note: Go strings are immutable —
+		// the original bytes may linger in heap until GC. This is a known
+		// limitation of Go's memory model. Using []byte would reduce the
+		// window but bcrypt internally copies to string. Accepted risk.
+		c.AdminSecret = ""
+	}
+
+	return c, nil
+}
+
+// isBcryptHash returns true if the value is a well-formed bcrypt hash.
+// A valid bcrypt hash is exactly 60 characters: $2a$XX$ + 53 chars.
+func isBcryptHash(s string) bool {
+	if len(s) != 60 {
+		return false
+	}
+	return strings.HasPrefix(s, "$2a$") || strings.HasPrefix(s, "$2b$") || strings.HasPrefix(s, "$2y$")
 }
 
 func envOr(key, fallback string) string {

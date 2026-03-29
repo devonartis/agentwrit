@@ -24,9 +24,20 @@ import (
 	"github.com/divineartis/agentauth/internal/revoke"
 	"github.com/divineartis/agentauth/internal/store"
 	"github.com/divineartis/agentauth/internal/token"
+	"golang.org/x/crypto/bcrypt"
 )
 
 const testAdminSecret = "integration-test-secret-32bytes!"
+
+var testAdminSecretHash string
+
+func init() {
+	hash, err := bcrypt.GenerateFromPassword([]byte(testAdminSecret), bcrypt.DefaultCost)
+	if err != nil {
+		panic("failed to hash test secret: " + err.Error())
+	}
+	testAdminSecretHash = string(hash)
+}
 
 // testBroker sets up a full HTTP mux identical to cmd/broker/main.go,
 // including RequestIDMiddleware wrapping.
@@ -58,7 +69,7 @@ func newTestBroker(t *testing.T) *testBroker {
 	revSvc := revoke.NewRevSvc(nil)
 	idSvc := identity.NewIdSvc(sqlStore, tknSvc, c.TrustDomain, auditLog, "")
 	delegSvc := deleg.NewDelegSvc(tknSvc, sqlStore, auditLog, priv)
-	adminSvc := admin.NewAdminSvc(c.AdminSecret, tknSvc, sqlStore, auditLog, "")
+	adminSvc := admin.NewAdminSvc(testAdminSecretHash, tknSvc, sqlStore, auditLog, "")
 
 	valMw := authz.NewValMw(tknSvc, revSvc, auditLog, "")
 
