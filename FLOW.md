@@ -101,10 +101,18 @@ Contamination: CLEAN
 Conflicts resolved: cfg.go (HITL fields dropped, P1 fields added), admin_hdl_test.go (HITL tests dropped), CHANGELOG.md, docs/api.md
 Key change: cfg.Load() now returns (Cfg, error) — all callers updated
 
-### Current Step: B3 cherry-pick (SEC-L1)
+### B3 Status: READY FOR MERGE REVIEW (2026-03-29)
 
-1. Start B3: cherry-pick 5 commits (`632b224`, `6fa0198`, `574d3b9`, `cd09a34`, `5489679`)
-2. Run gates, copy `agentauth/tests/fix-sec-l1/`, run acceptance tests
+Branch: `fix/sec-l1`
+5 commits, 17 files changed
+Gates G1-G6: ALL PASS (G7 skipped — no B3-specific tests)
+Acceptance tests: 12/12 PASS (C5 OIDC skipped — not in core)
+Contamination: CLEAN
+Conflicts resolved: .gitignore (merged entries), configfile_test.go (added weak secret test), cmd/broker/main.go (added background goroutines + bind address, dropped HITL pruner + OIDC log)
+Key changes: bind address defaults 127.0.0.1 (VPS), docker-compose.yml overrides to 0.0.0.0 (container), weak secret denylist, HTTP timeouts, TLS 1.2 minimum
+Waiting on Cowork merge review
+
+### Current Step: B3 merge review → B4 cherry-pick
 3. Tracker: `.plans/tracker.jsonl`
 
 **Guides:**
