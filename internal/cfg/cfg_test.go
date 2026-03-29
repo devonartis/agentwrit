@@ -82,6 +82,23 @@ func TestLoad_AppTokenTTLCustom(t *testing.T) {
 	}
 }
 
+func TestLoad_SigningKeyPathDefault(t *testing.T) {
+	os.Unsetenv("AA_SIGNING_KEY_PATH")
+	c := Load()
+	if c.SigningKeyPath != "./signing.key" {
+		t.Fatalf("expected default ./signing.key, got %q", c.SigningKeyPath)
+	}
+}
+
+func TestLoad_SigningKeyPathCustom(t *testing.T) {
+	os.Setenv("AA_SIGNING_KEY_PATH", "/data/signing.key")
+	defer os.Unsetenv("AA_SIGNING_KEY_PATH")
+	c := Load()
+	if c.SigningKeyPath != "/data/signing.key" {
+		t.Fatalf("expected /data/signing.key, got %q", c.SigningKeyPath)
+	}
+}
+
 func TestLoad_TLSFields(t *testing.T) {
 	os.Setenv("AA_TLS_CERT", "/etc/certs/cert.pem")
 	os.Setenv("AA_TLS_KEY", "/etc/certs/key.pem")

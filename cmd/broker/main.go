@@ -2,7 +2,8 @@
 //
 // It wires all internal services together, registers routes on an
 // [http.ServeMux], and listens on the port configured by AA_PORT (default
-// 8080). A fresh Ed25519 signing key pair is generated on every startup.
+// 8080). The Ed25519 signing key is loaded from disk (or generated on
+// first startup) via AA_SIGNING_KEY_PATH.
 //
 // Transport security is controlled by AA_TLS_MODE (default "none"):
 //
@@ -33,13 +34,12 @@
 package main
 
 import (
-	"crypto/ed25519"
-	"crypto/rand"
 	"fmt"
 	"net/http"
 	"os"
 
 	"github.com/divineartis/agentauth/internal/admin"
+	"github.com/divineartis/agentauth/internal/keystore"
 	"github.com/divineartis/agentauth/internal/app"
 	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/authz"
@@ -67,12 +67,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Generate broker signing key pair
-	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	// Load or generate persistent signing key
+	pubKey, privKey, err := keystore.LoadOrGenerate(c.SigningKeyPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "FATAL: generate signing key: %v\n", err)
+		fmt.Fprintf(os.Stderr, "FATAL: signing key: %v\n", err)
 		os.Exit(1)
 	}
+	obs.Ok("BROKER", "main", "signing key loaded", "path="+c.SigningKeyPath)
 
 	// Initialize SQLite
 	sqlStore := store.NewSqlStore()
@@ -82,6 +83,11 @@ func main() {
 		os.Exit(1)
 	}
 	obs.Ok("BROKER", "main", "database initialized", "path="+c.DBPath)
+	defer func() {
+		if sqlStore.HasDB() {
+			sqlStore.Close()
+		}
+	}()
 
 	// Load existing audit events from SQLite to rebuild hash chain
 	existingEvents, err := sqlStore.LoadAllAuditEvents()
@@ -186,7 +192,12 @@ func main() {
 	obs.Ok("BROKER", "main", "starting broker", "addr="+addr, "version="+version)
 	fmt.Printf("AgentAuth broker v%s listening on %s\n", version, addr)
 
-	if err := serve(c, addr, rootHandler); err != nil {
+	if err := serve(c, addr, rootHandler, func() {
+		if err := sqlStore.Close(); err != nil {
+			obs.Warn("BROKER", "shutdown", "database close error", "error="+err.Error())
+		}
+		obs.Ok("BROKER", "shutdown", "database closed")
+	}); err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
 		os.Exit(1)
 	}

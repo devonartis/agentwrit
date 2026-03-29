@@ -11,6 +11,7 @@ services:
       - AA_SEED_TOKENS=${AA_SEED_TOKENS:-false}
       - AA_LOG_LEVEL=${AA_LOG_LEVEL:-standard}
       - AA_DB_PATH=${AA_DB_PATH:-/data/agentauth.db}
+      - AA_SIGNING_KEY_PATH=${AA_SIGNING_KEY_PATH:-/data/signing.key}
       - AA_TLS_MODE=${AA_TLS_MODE:-none}
       - AA_TLS_CERT=${AA_TLS_CERT:-}
       - AA_TLS_KEY=${AA_TLS_KEY:-}
