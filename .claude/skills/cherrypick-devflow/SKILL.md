@@ -54,21 +54,23 @@ Document every conflict resolution: which file, what was kept, what was dropped.
 
 ### 3. Verify
 
-Three checks, all mandatory:
+Run the automated test script. This is the single gate — it covers compile, unit tests,
+contamination, Docker build/start, smoke test, and batch-specific checks:
 
-**Build + test:**
 ```bash
-go build ./...
-go test ./...
+./scripts/test_batch.sh B<N> --all
 ```
 
-**Contamination check:**
-```bash
-grep -ri "hitl\|approval\|oidc\|federation\|issuer\|cloud\|thumbprint\|jwk\|sidecar" internal/ cmd/ --include="*.go"
-```
-Must return nothing. Hard stop if it doesn't.
+The script runs gates G1–G7, prints structured PASS/FAIL per gate, and appends evidence
+to `.plans/cherry-pick/TESTING.md` automatically.
 
-**Spot-check:** Run the batch-specific test from the Cherry-Pick Guide. Each batch has a different thing to verify (keystore loads, aactl init works, etc).
+**Modes available:**
+- `--go-only` — G1-G3 only (compile, unit tests, contamination). Use when Docker is not available.
+- `--docker` — G4-G6 only (Docker build, start, smoke test). Use when Go gates already passed.
+- `--smoke` — G6 only (broker must already be running).
+- `--all` — G1-G7 (default, recommended for merge verification).
+
+**Hard stop if any gate FAILs.** Fix the issue, re-run, and do not proceed until all gates are green.
 
 ### 4. Review
 
