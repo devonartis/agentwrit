@@ -50,6 +50,8 @@ B0 removed all sidecar Go code and infrastructure but did NOT rewrite the user-f
 | TD-S03 | `scripts/live_test_docker.sh` — sidecar Docker test flows (`docker compose ... build --no-cache broker sidecar`) | High | `scripts/live_test_docker.sh` | **Decision needed:** delete (test_batch.sh replaces it) or rewrite for broker-only. Hardcodes sidecar in build+up commands. |
 | TD-S04 | Raw `docker compose` vs stack scripts — inconsistent Docker lifecycle | Medium | `scripts/test_batch.sh`, `scripts/live_test_docker.sh` | Standard: use `stack_up.sh` / `stack_down.sh` for Docker lifecycle. Raw `docker compose` only for `docker compose build` (no stack script for build-only). See cfg.go for env var flow. |
 | TD-S05 | G6 smoke test payloads don't match current API contract | Medium | `scripts/test_batch.sh` | Launch token (missing `agent_name`), register, validate, renew curls need correct field names and required fields. 3/7 pass (health, admin auth, audit). Unit tests (G2) cover endpoint behavior. Fix after B0 merge. |
+| TD-S06 | Rate limiting on admin auth endpoint (bcrypt brute force) | Medium | `internal/admin/admin_hdl.go` | Source: B2 security review finding I-5. Bcrypt is slow by design but without rate limiting an attacker can still attempt brute force. Add token bucket or sliding window rate limiter to POST /v1/admin/auth. Phase: B3 (SEC-L1) or later. |
+| TD-S07 | Post-migration documentation refresh | Low | `docs/`, `README.md`, `MEMORY.md` | Source: B2 review. Docs reference old AA_ADMIN_SECRET direct flow, no mention of aactl init or config files. Update all docs/diagrams/README after B6 to reflect new architecture. Phase: Post-B6. |
 
 ---
 
