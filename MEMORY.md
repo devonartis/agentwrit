@@ -51,7 +51,7 @@ Use the `cherrypick-devflow` skill to run the migration. After migration is comp
 | B1: P0 | Persistent signing key, graceful shutdown | `9c1d51d` `f96549f` `6d0d77d` `cec8b34` `0fef76b` `e823bea` | pending |
 | B2: P1 | Config file parser, bcrypt admin auth, aactl init | `313aa41` `869a8f7` `58cbce2` `4978ecd` `866cc78` `3dfada7` `ebc4884` `1c5f293` | pending |
 | B3: SEC-L1 | Bind address, TLS enforcement, timeouts, weak secret denylist | `632b224` `6fa0198` `574d3b9` `cd09a34` `5489679` | pending |
-| B4: SEC-L2a | Token alg/kid validation, MaxTTL, revocation hardening | `8e63989` `0526c46` `c24e442` `67aeda7` `b78edb8` `ecb4c86` `078a674` `8366fa9` | pending |
+| B4: SEC-L2a | Token alg/kid validation, MaxTTL, revocation hardening | `8e63989` `0526c46` `c24e442` `67aeda7` `b78edb8` `ecb4c86` `078a674` `8366fa9` | **done** — 13/13 PASS |
 | B5: SEC-L2b | Security headers, MaxBytesBody, error sanitization | `daf2995` `e592acc` `2857b3a` `247727c` `c5da6c4` | pending |
 | B6: SEC-A1 + Gates | TTL bypass fix, gates regression | `9422e7c` `e395a15` | pending |
 
@@ -105,4 +105,5 @@ When both Cowork and Claude Code are active, read `COWORK_SESSION.md` for shared
 - B3 conflicts: cmd/broker/main.go had HITL approval pruner goroutine and OIDC issuer log — both dropped. Background goroutines for JTI pruning and agent expiry kept.
 - B3: Weak secret denylist rejects "change-me-in-production" at startup. HTTP timeouts: Read 15s, ReadHeader 5s, Write 30s, Idle 120s. TLS 1.2 minimum with AEAD-only ciphers.
 - B3: C5 (OIDC) story skipped — agentauth-core has no OIDC endpoints. 12/12 other stories PASS.
-- Next batch: B4 (SEC-L2a) — 8 commits. NONE has acceptance tests — must write before merge. Check `.plans/tracker.jsonl`.
+- B4 (SEC-L2a): S4/S5 initially FAILED because `TknSvc.revoker` was nil at runtime — `main.go` never called `SetRevoker()`. Unit tests passed because mocks inject the revoker. Classic mock/integration gap. Fixed by adding one line to main.go + `RevokeByJTI()` adapter on RevSvc. Also sanitized error info leakage in renewal handler (H1).
+- Next batch: B5 (SEC-L2b) — 5 commits. Has acceptance tests from `agentauth/tests/fix-sec-l2b/`.

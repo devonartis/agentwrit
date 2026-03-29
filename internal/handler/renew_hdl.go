@@ -50,7 +50,8 @@ func (h *RenewHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				fmt.Sprintf("token renewal failed for agent=%s: %s", claims.Sub, err.Error()),
 			audit.WithOutcome("denied"))
 		}
-		problemdetails.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "token renewal failed: "+err.Error(), r.URL.Path)
+		obs.Warn("RENEW", "hdl", "token renewal failed", "err="+err.Error())
+		problemdetails.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "token renewal failed", r.URL.Path)
 		return
 	}
 

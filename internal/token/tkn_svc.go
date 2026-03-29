@@ -153,7 +153,8 @@ func (s *TknSvc) Issue(req IssueReq) (*IssueResp, error) {
 // Verify parses a compact JWT string, verifies the Ed25519 signature, and
 // validates the claims (issuer, subject, JTI, expiry, nbf). On success it
 // returns the decoded [TknClaims]. On failure it returns one of
-// [ErrInvalidToken], [ErrSignatureInvalid], or a claims validation error.
+// [ErrInvalidToken], [ErrSignatureInvalid], [ErrTokenRevoked], or a claims
+// validation error (e.g. [ErrNoExpiry], [ErrTokenExpired]).
 func (s *TknSvc) Verify(tokenStr string) (*TknClaims, error) {
 	parts := strings.SplitN(tokenStr, ".", 3)
 	if len(parts) != 3 {
@@ -221,6 +222,9 @@ func (s *TknSvc) Renew(tokenStr string) (*IssueResp, error) {
 	}
 
 	// Mandatory predecessor revocation — renewal fails if revocation fails (M5).
+	// Predecessor is revoked BEFORE issuing the new token so the old JTI is
+	// invalidated even if issuance subsequently fails. This ensures revoked
+	// tokens cannot be reused. The caller can safely retry on issuance failure.
 	if s.revoker != nil {
 		if err := s.revoker.RevokeByJTI(claims.Jti); err != nil {
 			return nil, fmt.Errorf("revoke predecessor: %w", err)

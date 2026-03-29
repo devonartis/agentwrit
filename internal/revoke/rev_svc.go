@@ -130,6 +130,14 @@ func (s *RevSvc) Revoke(level, target string) (int, error) {
 	return 1, nil
 }
 
+// RevokeByJTI revokes a single token by its JTI. This implements
+// [token.Revoker] so RevSvc can be wired into TknSvc for revocation
+// checks inside Verify() and Renew().
+func (s *RevSvc) RevokeByJTI(jti string) error {
+	_, err := s.Revoke("token", jti)
+	return err
+}
+
 // LoadFromEntries populates the in-memory revocation maps from a slice
 // of level/target pairs. Called at broker startup after loading from SQLite.
 func (s *RevSvc) LoadFromEntries(entries []struct{ Level, Target string }) {
