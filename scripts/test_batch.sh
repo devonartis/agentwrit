@@ -150,9 +150,13 @@ run_g3() {
 
   local found=0
 
-  # Check for add-on keywords in Go code
+  # Check for add-on keywords in Go code.
+  # NOTE: "thumbprint" and "jwk" are NOT contamination — they're standard
+  # crypto terms used in RFC 7638 JWK Thumbprint (kid computation) which
+  # is part of SEC-L2a token hardening. Only check for feature-level
+  # contamination: HITL, approval workflows, OIDC discovery, federation.
   local hits
-  hits=$(grep -rni "hitl\|approval\|oidc\|federation\|thumbprint\|jwk" \
+  hits=$(grep -rni "hitl\|approval\|oidc\|federation" \
     internal/ cmd/ --include="*.go" 2>/dev/null || true)
   if [[ -n "$hits" ]]; then
     echo "  CONTAMINATION FOUND (add-on keywords):"
