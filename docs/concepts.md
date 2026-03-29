@@ -21,7 +21,6 @@ Traditional identity and access management (IAM) systems -- OAuth, AWS IAM, serv
 - **Long-lived services** with persistent identities
 - **Deterministic workloads** with predictable behavior
 - **Permissions defined at deploy time**, not at task time
-- **Human-in-the-loop oversight** for sensitive operations
 - **Services that never need to verify each other's** identity directly
 
 AI agents break every one of these assumptions:
