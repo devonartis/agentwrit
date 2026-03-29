@@ -10,6 +10,9 @@ import (
 	"github.com/divineartis/agentauth/internal/audit"
 )
 
+// Keep errors import for upcoming cherry-pick tests (agent expiry sentinel checks).
+var _ = errors.New
+
 // --- Nonce lifecycle ---
 
 func TestCreateNonce_Returns64HexChars(t *testing.T) {

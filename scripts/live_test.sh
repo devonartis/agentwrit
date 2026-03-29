@@ -17,12 +17,12 @@ set -euo pipefail
 #   ./scripts/live_test.sh --docker               # docker compose mode
 # Env:
 #   AA_LIVE_BASE_URL   (default: http://127.0.0.1:8080)
-#   AA_ADMIN_SECRET    (default: live-test-secret-32bytes-long!!)
+#   AA_ADMIN_SECRET    (default: live-test-secret-32bytes-long-ok)
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BASE_URL="${AA_LIVE_BASE_URL:-http://127.0.0.1:8080}"
-ADMIN_SECRET="${AA_ADMIN_SECRET:-live-test-secret-32bytes-long!!}"
+ADMIN_SECRET="${AA_ADMIN_SECRET:-live-test-secret-32bytes-long-ok}"
 
 build_smoketest() {
   local bin="$1"

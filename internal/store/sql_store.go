@@ -90,6 +90,8 @@ type AgentRecord struct {
 	Scope []string
 	RegisteredAt time.Time
 	LastSeen     time.Time
+	ExpiresAt    time.Time
+	Status       string
 	// AppID is inherited from the launch token used during registration.
 	// Empty for agents registered via admin-created launch tokens.
 	AppID string

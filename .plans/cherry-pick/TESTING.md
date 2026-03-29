@@ -274,3 +274,48 @@ This doc is designed to be turned into a `/test-migration` slash command. The co
 5. Report pass/fail summary
 
 The gate commands are all shell one-liners or short scripts — they translate directly to skill steps.
+
+| 2026-03-29 | B0 | G1:Compile | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G2:UnitTests | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G3:Contamination | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G7:BatchSpecific(B0) | PASS | branch=fix/sidecar-removal |
+
+| 2026-03-29 | B0 | G1:Compile | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G2:UnitTests | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G3:Contamination | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G4:DockerBuild | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G5:DockerStart | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G6:SmokeTest | FAIL | 6 of 7 checks failed |
+| 2026-03-29 | B0 | G7:BatchSpecific(B0) | PASS | branch=fix/sidecar-removal |
+
+| 2026-03-29 | B0 | G1:Compile | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G2:UnitTests | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G3:Contamination | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G4:DockerBuild | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G5:DockerStart | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G6:SmokeTest | FAIL | 6 of 7 checks failed |
+| 2026-03-29 | B0 | G7:BatchSpecific(B0) | PASS | branch=fix/sidecar-removal |
+
+| 2026-03-29 | B0 | G1:Compile | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G2:UnitTests | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G3:Contamination | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G4:DockerBuild | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G5:DockerStart | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G6:SmokeTest | FAIL | 6 of 7 checks failed |
+| 2026-03-29 | B0 | G7:BatchSpecific(B0) | PASS | branch=fix/sidecar-removal |
+
+| 2026-03-29 | B0 | G1:Compile | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G2:UnitTests | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G3:Contamination | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G4:DockerBuild | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G5:DockerStart | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G6:SmokeTest | FAIL | 6 of 7 checks failed |
+| 2026-03-29 | B0 | G7:BatchSpecific(B0) | PASS | branch=fix/sidecar-removal |
+
+| 2026-03-29 | B0 | G1:Compile | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G2:UnitTests | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G3:Contamination | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G4:DockerBuild | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G5:DockerStart | PASS | branch=fix/sidecar-removal |
+| 2026-03-29 | B0 | G6:SmokeTest | FAIL | 4 of 7 checks failed |
+| 2026-03-29 | B0 | G7:BatchSpecific(B0) | PASS | branch=fix/sidecar-removal |

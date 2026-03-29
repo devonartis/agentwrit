@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_FILE="$PROJECT_ROOT/docker-compose.yml"
 PROJECT_NAME="agentauth-live-${RANDOM}"
-ADMIN_SECRET="live-test-secret-32bytes-long!!"
+ADMIN_SECRET="live-test-secret-32bytes-long-ok"
 
 pick_free_port() {
   local candidate
