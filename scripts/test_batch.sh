@@ -455,12 +455,12 @@ run_g7() {
         b1_fail=$((b1_fail+1)); echo "    FAIL: no signing key path config"
       fi
 
-      # B1-2: Check for graceful shutdown
+      # B1-2: Check for graceful shutdown (may be in main.go or serve.go)
       echo "  [B1-2] Graceful shutdown signal handling..."
-      if grep -q "signal.Notify\|os.Signal\|syscall.SIGTERM" cmd/broker/main.go 2>/dev/null; then
+      if grep -rq "signal.Notify\|os.Signal\|syscall.SIGTERM" cmd/broker/ 2>/dev/null; then
         b1_pass=$((b1_pass+1))
       else
-        b1_fail=$((b1_fail+1)); echo "    FAIL: no signal handling in main"
+        b1_fail=$((b1_fail+1)); echo "    FAIL: no signal handling in cmd/broker/"
       fi
 
       echo "  Batch-specific: $b1_pass/2 passed"
