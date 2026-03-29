@@ -101,4 +101,8 @@ When both Cowork and Claude Code are active, read `COWORK_SESSION.md` for shared
 - Security review fix commits reference finding IDs (C-1, I-3, etc.) in commit messages — keep this pattern for traceability.
 - Tech debt added: TD-S06 (rate limiting on admin auth), TD-S07 (post-migration doc refresh).
 - Docker image name is `agentauth-core-broker` (not `agentauth-broker`). Container mode tests must use the correct image name.
-- Next batch: B3 (SEC-L1) — 5 commits. Check `.plans/tracker.jsonl` for details.
+- B3 (SEC-L1): Bind address now defaults to 127.0.0.1 (was 0.0.0.0). docker-compose.yml must set `AA_BIND_ADDRESS=0.0.0.0` for container mode — containers binding loopback are unreachable via Docker port mapping.
+- B3 conflicts: cmd/broker/main.go had HITL approval pruner goroutine and OIDC issuer log — both dropped. Background goroutines for JTI pruning and agent expiry kept.
+- B3: Weak secret denylist rejects "change-me-in-production" at startup. HTTP timeouts: Read 15s, ReadHeader 5s, Write 30s, Idle 120s. TLS 1.2 minimum with AEAD-only ciphers.
+- B3: C5 (OIDC) story skipped — agentauth-core has no OIDC endpoints. 12/12 other stories PASS.
+- Next batch: B4 (SEC-L2a) — 8 commits. NONE has acceptance tests — must write before merge. Check `.plans/tracker.jsonl`.

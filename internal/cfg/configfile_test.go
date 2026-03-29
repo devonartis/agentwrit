@@ -271,6 +271,26 @@ func TestLoadConfigFileAt_RejectsInsecurePermissions(t *testing.T) {
 	}
 }
 
+func TestLoad_RejectsKnownWeakAdminSecret(t *testing.T) {
+	weak := []string{"change-me-in-production", ""}
+	for _, secret := range weak {
+		t.Run("rejects_"+secret, func(t *testing.T) {
+			t.Setenv("AA_ADMIN_SECRET", secret)
+			// Ensure no config file provides a secret (block all fallback paths).
+			t.Setenv("AA_CONFIG_PATH", "/nonexistent")
+			t.Setenv("HOME", t.TempDir())
+
+			_, err := Load()
+			if err == nil {
+				t.Fatalf("expected error for weak secret %q, got nil", secret)
+			}
+			if !strings.Contains(err.Error(), "known-weak") {
+				t.Errorf("expected 'known-weak' in error, got: %v", err)
+			}
+		})
+	}
+}
+
 func TestIsBcryptHash_ValidHashes(t *testing.T) {
 	valid := []string{
 		"$2a$12$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ01234",

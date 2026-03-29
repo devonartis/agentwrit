@@ -26,6 +26,7 @@ package cfg
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -40,6 +41,7 @@ const AdminBcryptCost = 12
 // variables. Use [Load] to create an instance with defaults applied.
 type Cfg struct {
 	Port        string // AA_PORT (default "8080")
+	BindAddress string // AA_BIND_ADDRESS (default "127.0.0.1")
 	LogLevel    string // AA_LOG_LEVEL (default "verbose")
 	TrustDomain string // AA_TRUST_DOMAIN (default "agentauth.local")
 	DefaultTTL  int    // AA_DEFAULT_TTL (default 300 seconds)
@@ -67,6 +69,7 @@ func Load() (Cfg, error) {
 
 	c := Cfg{
 		Port:        envOr("AA_PORT", "8080"),
+		BindAddress: envOr("AA_BIND_ADDRESS", "127.0.0.1"),
 		LogLevel:    envOr("AA_LOG_LEVEL", "verbose"),
 		TrustDomain: envOr("AA_TRUST_DOMAIN", "agentauth.local"),
 		DefaultTTL:  envIntOr("AA_DEFAULT_TTL", 300),
@@ -96,6 +99,12 @@ func Load() (Cfg, error) {
 	}
 	if cfgMode != "" {
 		c.Mode = cfgMode
+	}
+
+	// Reject known-weak admin secrets at startup (H5).
+	denylist := []string{"change-me-in-production", ""}
+	if slices.Contains(denylist, c.AdminSecret) {
+		return Cfg{}, fmt.Errorf("admin secret is a known-weak default; run 'aactl init' to generate a secure config, or set a strong AA_ADMIN_SECRET")
 	}
 
 	// Derive bcrypt hash for comparison.
