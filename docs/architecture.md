@@ -505,15 +505,9 @@ flowchart LR
 
 5. **Constant-time secret comparison.** Admin authentication uses `subtle.ConstantTimeCompare` to prevent timing attacks on `AA_ADMIN_SECRET`.
 
-6. **Sidecar anti-spoof.** The `sidecar_id` field in token exchange is always derived from the authenticated caller token's `sid` claim. Client-supplied values are ignored.
+6. **Apps as first-class entities.** Developer applications are registered with the broker via `aactl` and authenticate directly using client credentials (`POST /v1/app/auth`). Each app has its own scope ceiling and configurable JWT TTL (bounded by broker-wide min/max).
 
 7. **Mutual auth not HTTP-exposed.** `MutAuthHdl` in `internal/mutauth` provides a 3-step mutual authentication handshake, but it is not registered on any HTTP mux. It exists as a Go API only, tested in unit tests, intended for future HTTP exposure.
-
-8. **Circuit breaker pattern.** The sidecar implements a sliding-window circuit breaker with three states (Closed -> Open -> Probing) for broker connectivity. Failure rate threshold and window duration are configurable via `AA_SIDECAR_CB_*` env vars.
-
-9. **Token caching for failsafe fallback.** The sidecar caches the last-issued token per agent. When the circuit breaker is open and the broker is unreachable, cached tokens are served with an `X-AgentAuth-Cached: true` response header.
-
-10. **BYOK support.** The sidecar supports "Bring Your Own Key" registration where developers provide their own Ed25519 key pairs through `POST /v1/register`, instead of relying on sidecar-managed keys.
 
 ---
 

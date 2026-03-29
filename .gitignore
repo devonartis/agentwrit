@@ -8,6 +8,7 @@
 CLAUDE.md
 AGENTS.md
 .claude/
+!.claude/skills/
 .active_module
 
 # Internal QA reports
@@ -20,9 +21,8 @@ __pycache__/
 *.egg-info/
 .worktrees/
 
-# Compiled binaries (rebuild via: go build ./cmd/aactl, go build ./cmd/sidecar)
+# Compiled binaries (rebuild via: go build ./cmd/aactl, go build ./cmd/broker)
 /aactl
-/sidecar
 
 # Database files
 *.db

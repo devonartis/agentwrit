@@ -38,7 +38,6 @@ var (
 	ErrTokenExpired  = errors.New("launch token expired")
 	ErrTokenConsumed = errors.New("launch token already consumed")
 	ErrAgentNotFound   = errors.New("agent not found")
-	ErrCeilingNotFound = errors.New("sidecar ceiling not found")
 	ErrAppNotFound     = errors.New("app not found")
 )
 
@@ -91,19 +90,15 @@ type AgentRecord struct {
 	Scope []string
 	RegisteredAt time.Time
 	LastSeen     time.Time
+	ExpiresAt    time.Time
+	Status       string
 	// AppID is inherited from the launch token used during registration.
 	// Empty for agents registered via admin-created launch tokens.
 	AppID string
 }
 
-// SidecarRecord stores the persistent state of an activated sidecar.
-type SidecarRecord struct {
-	ID        string
-	Ceiling   []string
-	Status    string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-}
+// ErrAgentExpired is returned when an operation is attempted on an expired agent.
+var ErrAgentExpired = errors.New("agent has expired")
 
 type nonceRecord struct {
 	value     string
@@ -120,7 +115,6 @@ type SqlStore struct {
 	launchTokens   map[string]*LaunchTokenRecord
 	agents         map[string]*AgentRecord
 	jtiConsumption map[string]time.Time
-	ceilings       map[string][]string // sidecar ID → scope ceiling
 	db             *sql.DB
 }
 
@@ -131,7 +125,6 @@ func NewSqlStore() *SqlStore {
 		launchTokens:   make(map[string]*LaunchTokenRecord),
 		agents:         make(map[string]*AgentRecord),
 		jtiConsumption: make(map[string]time.Time),
-		ceilings:       make(map[string][]string),
 	}
 }
 
@@ -279,29 +272,38 @@ func (s *SqlStore) ConsumeActivationToken(jti string, exp int64) error {
 	return nil
 }
 
-// SaveCeiling persists a scope ceiling for the given sidecar ID,
-// overwriting any existing ceiling.
-func (s *SqlStore) SaveCeiling(sidecarID string, ceiling []string) error {
+// ExpireAgents marks active agents as expired when their ExpiresAt time
+// has passed. Returns the number of agents expired.
+func (s *SqlStore) ExpireAgents() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	cp := make([]string, len(ceiling))
-	copy(cp, ceiling)
-	s.ceilings[sidecarID] = cp
-	return nil
+
+	now := time.Now()
+	expired := 0
+	for _, rec := range s.agents {
+		if rec.Status == "active" && !rec.ExpiresAt.IsZero() && rec.ExpiresAt.Before(now) {
+			rec.Status = "expired"
+			expired++
+		}
+	}
+	return expired
 }
 
-// GetCeiling retrieves the stored scope ceiling for the given sidecar ID.
-// Returns [ErrCeilingNotFound] if no ceiling has been stored.
-func (s *SqlStore) GetCeiling(sidecarID string) ([]string, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	c, ok := s.ceilings[sidecarID]
-	if !ok {
-		return nil, ErrCeilingNotFound
+// PruneExpiredJTIs removes JTI consumption entries whose associated token
+// has already expired. Returns the number of entries removed.
+func (s *SqlStore) PruneExpiredJTIs() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+	pruned := 0
+	for jti, exp := range s.jtiConsumption {
+		if exp.Before(now) {
+			delete(s.jtiConsumption, jti)
+			pruned++
+		}
 	}
-	cp := make([]string, len(c))
-	copy(cp, c)
-	return cp, nil
+	return pruned
 }
 
 // ---------------------------------------------------------------------------
@@ -341,19 +343,9 @@ CREATE TABLE IF NOT EXISTS revocations (
 );
 `
 
-const createSidecarsTable = `
-CREATE TABLE IF NOT EXISTS sidecars (
-	id         TEXT PRIMARY KEY,
-	ceiling    TEXT NOT NULL,
-	status     TEXT NOT NULL DEFAULT 'active',
-	created_at TEXT NOT NULL,
-	updated_at TEXT NOT NULL
-);
-`
-
-// InitDB opens the SQLite database at path and creates the audit_events,
-// sidecars, and revocations tables if they do not already exist. It must be
-// called before any persistence methods are used.
+// InitDB opens the SQLite database at path and creates all required tables
+// (audit_events, revocations, apps) if they do not already exist. It must
+// be called before any persistence methods are used.
 func (s *SqlStore) InitDB(path string) error {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -366,12 +358,6 @@ func (s *SqlStore) InitDB(path string) error {
 		obs.Fail("store", "sqlite", "failed to create audit table", "error="+err.Error())
 		obs.DBErrorsTotal.WithLabelValues("create_table").Inc()
 		return fmt.Errorf("create audit table: %w", err)
-	}
-	if _, err = db.Exec(createSidecarsTable); err != nil {
-		db.Close()
-		obs.Fail("store", "sqlite", "failed to create sidecars table", "error="+err.Error())
-		obs.DBErrorsTotal.WithLabelValues("create_table").Inc()
-		return fmt.Errorf("create sidecars table: %w", err)
 	}
 	if _, err = db.Exec(createRevocationsTable); err != nil {
 		db.Close()
@@ -629,194 +615,6 @@ func (s *SqlStore) QueryAuditEvents(filters audit.QueryFilters) ([]audit.AuditEv
 		return nil, 0, fmt.Errorf("iterate audit query: %w", err)
 	}
 	return events, total, nil
-}
-
-// SaveSidecar persists a sidecar record to the SQLite sidecars table using
-// an INSERT with ON CONFLICT upsert. The ceiling is stored as a JSON array.
-func (s *SqlStore) SaveSidecar(id string, ceiling []string) error {
-	if s.db == nil {
-		return errors.New("database not initialized: call InitDB first")
-	}
-
-	ceilingJSON, err := json.Marshal(ceiling)
-	if err != nil {
-		obs.Fail("store", "sqlite", "failed to marshal ceiling", "id="+id, "error="+err.Error())
-		obs.DBErrorsTotal.WithLabelValues("marshal_ceiling").Inc()
-		return fmt.Errorf("marshal ceiling for sidecar %s: %w", id, err)
-	}
-
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-
-	const q = `INSERT INTO sidecars (id, ceiling, status, created_at, updated_at)
-		VALUES (?, ?, 'active', ?, ?)
-		ON CONFLICT(id) DO UPDATE SET ceiling=excluded.ceiling, updated_at=excluded.updated_at`
-
-	if _, err := s.db.Exec(q, id, string(ceilingJSON), now, now); err != nil {
-		obs.Fail("store", "sqlite", "failed to save sidecar", "id="+id, "error="+err.Error())
-		obs.DBErrorsTotal.WithLabelValues("save_sidecar").Inc()
-		return fmt.Errorf("save sidecar %s: %w", id, err)
-	}
-	obs.Ok("store", "sqlite", "sidecar saved", "id="+id)
-	return nil
-}
-
-// ListSidecars returns all sidecar records ordered by created_at ascending.
-func (s *SqlStore) ListSidecars() ([]SidecarRecord, error) {
-	if s.db == nil {
-		return nil, errors.New("database not initialized: call InitDB first")
-	}
-
-	const q = `SELECT id, ceiling, status, created_at, updated_at
-		FROM sidecars ORDER BY created_at ASC`
-
-	rows, err := s.db.Query(q)
-	if err != nil {
-		obs.Fail("store", "sqlite", "failed to list sidecars", "error="+err.Error())
-		obs.DBErrorsTotal.WithLabelValues("list_sidecars").Inc()
-		return nil, fmt.Errorf("list sidecars: %w", err)
-	}
-	defer rows.Close()
-
-	var sidecars []SidecarRecord
-	for rows.Next() {
-		var rec SidecarRecord
-		var ceilingStr, createdStr, updatedStr string
-		if err := rows.Scan(&rec.ID, &ceilingStr, &rec.Status, &createdStr, &updatedStr); err != nil {
-			obs.Fail("store", "sqlite", "failed to scan sidecar row", "error="+err.Error())
-			obs.DBErrorsTotal.WithLabelValues("scan_sidecar").Inc()
-			return nil, fmt.Errorf("scan sidecar: %w", err)
-		}
-		if err := json.Unmarshal([]byte(ceilingStr), &rec.Ceiling); err != nil {
-			obs.Fail("store", "sqlite", "failed to unmarshal ceiling", "id="+rec.ID, "error="+err.Error())
-			obs.DBErrorsTotal.WithLabelValues("unmarshal_ceiling").Inc()
-			return nil, fmt.Errorf("unmarshal ceiling for sidecar %s: %w", rec.ID, err)
-		}
-		ca, err := time.Parse(time.RFC3339Nano, createdStr)
-		if err != nil {
-			return nil, fmt.Errorf("parse created_at %q: %w", createdStr, err)
-		}
-		ua, err := time.Parse(time.RFC3339Nano, updatedStr)
-		if err != nil {
-			return nil, fmt.Errorf("parse updated_at %q: %w", updatedStr, err)
-		}
-		rec.CreatedAt = ca
-		rec.UpdatedAt = ua
-		sidecars = append(sidecars, rec)
-	}
-	if err := rows.Err(); err != nil {
-		obs.Fail("store", "sqlite", "row iteration error on sidecars", "error="+err.Error())
-		obs.DBErrorsTotal.WithLabelValues("iterate_sidecars").Inc()
-		return nil, fmt.Errorf("iterate sidecars: %w", err)
-	}
-	obs.Ok("store", "sqlite", "sidecars listed", fmt.Sprintf("count=%d", len(sidecars)))
-	return sidecars, nil
-}
-
-// UpdateSidecarCeiling updates the scope ceiling for an existing sidecar.
-// Returns [ErrCeilingNotFound] if no sidecar with the given id exists.
-func (s *SqlStore) UpdateSidecarCeiling(id string, ceiling []string) error {
-	if s.db == nil {
-		return errors.New("database not initialized: call InitDB first")
-	}
-
-	ceilingJSON, err := json.Marshal(ceiling)
-	if err != nil {
-		obs.Fail("store", "sqlite", "failed to marshal ceiling", "id="+id, "error="+err.Error())
-		obs.DBErrorsTotal.WithLabelValues("marshal_ceiling").Inc()
-		return fmt.Errorf("marshal ceiling for sidecar %s: %w", id, err)
-	}
-
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-
-	const q = `UPDATE sidecars SET ceiling = ?, updated_at = ? WHERE id = ?`
-	res, err := s.db.Exec(q, string(ceilingJSON), now, id)
-	if err != nil {
-		obs.Fail("store", "sqlite", "failed to update sidecar ceiling", "id="+id, "error="+err.Error())
-		obs.DBErrorsTotal.WithLabelValues("update_sidecar_ceiling").Inc()
-		return fmt.Errorf("update sidecar ceiling %s: %w", id, err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		obs.Fail("store", "sqlite", "failed to get rows affected", "id="+id, "error="+err.Error())
-		obs.DBErrorsTotal.WithLabelValues("update_sidecar_ceiling").Inc()
-		return fmt.Errorf("rows affected for sidecar %s: %w", id, err)
-	}
-	if n == 0 {
-		return ErrCeilingNotFound
-	}
-	obs.Ok("store", "sqlite", "sidecar ceiling updated", "id="+id)
-	return nil
-}
-
-// UpdateSidecarStatus updates the status for an existing sidecar.
-// Returns [ErrCeilingNotFound] if no sidecar with the given id exists.
-func (s *SqlStore) UpdateSidecarStatus(id string, status string) error {
-	if s.db == nil {
-		return errors.New("database not initialized: call InitDB first")
-	}
-
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-
-	const q = `UPDATE sidecars SET status = ?, updated_at = ? WHERE id = ?`
-	res, err := s.db.Exec(q, status, now, id)
-	if err != nil {
-		obs.Fail("store", "sqlite", "failed to update sidecar status", "id="+id, "error="+err.Error())
-		obs.DBErrorsTotal.WithLabelValues("update_sidecar_status").Inc()
-		return fmt.Errorf("update sidecar status %s: %w", id, err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		obs.Fail("store", "sqlite", "failed to get rows affected", "id="+id, "error="+err.Error())
-		obs.DBErrorsTotal.WithLabelValues("update_sidecar_status").Inc()
-		return fmt.Errorf("rows affected for sidecar %s: %w", id, err)
-	}
-	if n == 0 {
-		return ErrCeilingNotFound
-	}
-	obs.Ok("store", "sqlite", "sidecar status updated", "id="+id, "status="+status)
-	return nil
-}
-
-// LoadAllSidecars returns active sidecars as a map of ID→ceiling for
-// populating the in-memory ceiling map at startup.
-func (s *SqlStore) LoadAllSidecars() (map[string][]string, error) {
-	if s.db == nil {
-		return nil, errors.New("database not initialized: call InitDB first")
-	}
-
-	const q = `SELECT id, ceiling FROM sidecars WHERE status = 'active'`
-
-	rows, err := s.db.Query(q)
-	if err != nil {
-		obs.Fail("store", "sqlite", "failed to load all sidecars", "error="+err.Error())
-		obs.DBErrorsTotal.WithLabelValues("load_all_sidecars").Inc()
-		return nil, fmt.Errorf("load all sidecars: %w", err)
-	}
-	defer rows.Close()
-
-	ceilings := make(map[string][]string)
-	for rows.Next() {
-		var id, ceilingStr string
-		if err := rows.Scan(&id, &ceilingStr); err != nil {
-			obs.Fail("store", "sqlite", "failed to scan sidecar row", "error="+err.Error())
-			obs.DBErrorsTotal.WithLabelValues("scan_sidecar").Inc()
-			return nil, fmt.Errorf("scan sidecar: %w", err)
-		}
-		var ceiling []string
-		if err := json.Unmarshal([]byte(ceilingStr), &ceiling); err != nil {
-			obs.Fail("store", "sqlite", "failed to unmarshal ceiling", "id="+id, "error="+err.Error())
-			obs.DBErrorsTotal.WithLabelValues("unmarshal_ceiling").Inc()
-			return nil, fmt.Errorf("unmarshal ceiling for sidecar %s: %w", id, err)
-		}
-		ceilings[id] = ceiling
-	}
-	if err := rows.Err(); err != nil {
-		obs.Fail("store", "sqlite", "row iteration error on load all sidecars", "error="+err.Error())
-		obs.DBErrorsTotal.WithLabelValues("iterate_load_sidecars").Inc()
-		return nil, fmt.Errorf("iterate load all sidecars: %w", err)
-	}
-	obs.Ok("store", "sqlite", "active sidecars loaded", fmt.Sprintf("count=%d", len(ceilings)))
-	return ceilings, nil
 }
 
 // ---------------------------------------------------------------------------

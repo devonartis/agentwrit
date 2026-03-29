@@ -1,4 +1,4 @@
-# mTLS overlay — mutual TLS (broker requires client cert, sidecar presents one).
+# mTLS overlay — mutual TLS (broker requires client cert).
 # Usage: docker compose -f docker-compose.yml -f docker-compose.mtls.yml up -d
 # Requires certs in /tmp/agentauth-certs (run scripts/gen_test_certs.sh first).
 services:
@@ -11,13 +11,4 @@ services:
     volumes:
       - /tmp/agentauth-certs:/certs:ro
     healthcheck:
-      test: ["CMD", "curl", "-sf", "--cacert", "/certs/ca.pem", "--cert", "/certs/sidecar.pem", "--key", "/certs/sidecar-key.pem", "https://localhost:8080/v1/health"]
-
-  sidecar:
-    environment:
-      - AA_BROKER_URL=https://broker:8080
-      - AA_SIDECAR_CA_CERT=/certs/ca.pem
-      - AA_SIDECAR_TLS_CERT=/certs/sidecar.pem
-      - AA_SIDECAR_TLS_KEY=/certs/sidecar-key.pem
-    volumes:
-      - /tmp/agentauth-certs:/certs:ro
+      test: ["CMD", "curl", "-sf", "--cacert", "/certs/ca.pem", "--cert", "/certs/client.pem", "--key", "/certs/client-key.pem", "https://localhost:8080/v1/health"]

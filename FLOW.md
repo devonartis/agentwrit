@@ -29,17 +29,40 @@ cd agentauth-core
 git checkout -B main 2c5194e
 ```
 
-### Current Step: Cleanup + Cherry-Pick Migration
+### Decision: GitFlow branching for migration work
 
-**Next actions (in order):**
-1. Run cleanup — delete 168 internal-only files (Step 2 in Cherry-Pick Guide)
-2. Add legacy remote — `git remote add legacy /Users/divineartis/proj/agentauth`
-3. Cherry-pick Batch 1 (P0) through Batch 6 (SEC-A1 + Gates)
-4. Update Go module path
-5. Final verification
+All cherry-pick work happens on `fix/*` branches off `develop`. Merged to `develop` after verification, then `develop` merged to `main` periodically.
+
+### Action: Set up GitFlow (2026-03-29)
+
+```
+git branch -D develop  # old branch from agentauth-internal clone
+git checkout -b develop  # new develop from main HEAD
+git checkout -b fix/sidecar-removal
+```
+
+### Action: B0 — Sidecar removal cherry-pick (2026-03-29)
+
+Cherry-picked `34bb887` and `909a777` from agentauth repo onto `fix/sidecar-removal`.
+
+- `34bb887`: 25 files changed, -2220 lines. Removed token exchange handler, sidecar admin endpoints, sidecar store CRUD, SidecarID from claims/requests, sidecar metrics, sidecar audit events, sidecar Docker/compose/script config.
+- `909a777`: 3 files changed. Renamed test fixtures, removed sidecar doc references.
+- Conflicts resolved in: tkn_svc.go, renew_hdl.go, sql_store.go (3 regions), admin_hdl_test.go, docs/architecture.md, MEMORY.md
+- Contamination check: PASS (zero sidecar/hitl/oidc/approval references in Go code)
+- Evidence: `.plans/cherry-pick/B0-analysis.md`
+
+### Current Step: B0 Verification + Merge
+
+**Pending (must run on local machine — sandbox has no Go):**
+1. `cd /Users/divineartis/proj/agentauth-core && git checkout fix/sidecar-removal`
+2. `go build ./...` — must compile clean
+3. `go test ./...` — must pass all tests
+4. If pass: `git checkout develop && git merge --no-ff fix/sidecar-removal`
+5. Then invoke `cherrypick-devflow` for B1 (P0)
 
 **Guides:**
 - Cherry-Pick Guide: `agentauth/.plans/modularization/Cherry-Pick-Guide.md`
 - Feature Inventory: `agentauth/.plans/modularization/Cowork-Feature-Inventory.md`
 - Repo Map: `agentauth/.plans/modularization/Repo-Directory-Map.md`
+- Migration Audit: `.plans/cherry-pick/MIGRATION-AUDIT.md`
 - Skill: `cherrypick-devflow`

@@ -93,8 +93,6 @@ func main() {
 	obs.Ok("BROKER", "main", "audit events loaded", fmt.Sprintf("count=%d", len(existingEvents)))
 	obs.AuditEventsLoaded.Set(float64(len(existingEvents)))
 
-	// Sidecar ceiling loading removed in Phase 0 — no sidecar routes on broker.
-
 	// Load existing revocations from SQLite
 	revEntries, err := sqlStore.LoadAllRevocations()
 	if err != nil {
@@ -138,11 +136,10 @@ func main() {
 	challengeHdl := handler.NewChallengeHdl(sqlStore)
 	regHdl := handler.NewRegHdl(idSvc)
 	valHdl := handler.NewValHdl(tknSvc, revSvc)
-	renewHdl := handler.NewRenewHdl(tknSvc, auditLog, sqlStore)
+	renewHdl := handler.NewRenewHdl(tknSvc, auditLog)
 	revokeHdl := handler.NewRevokeHdl(revSvc, auditLog)
 	releaseHdl := handler.NewReleaseHdl(revSvc, auditLog)
 	delegHdl := handler.NewDelegHdl(delegSvc)
-	// tokenExchangeHdl removed in Phase 0 — sidecar token exchange returns Phase 2
 	auditHdl := handler.NewAuditHdl(auditLog)
 	healthHdl := handler.NewHealthHdl(version, auditLog, sqlStore)
 	metricsHdl := handler.NewMetricsHdl()
@@ -165,7 +162,6 @@ func main() {
 
 	// Authenticated endpoints (Bearer token)
 	mux.Handle("POST /v1/token/renew", problemdetails.MaxBytesBody(valMw.Wrap(renewHdl)))
-	// POST /v1/token/exchange removed in Phase 0 (sidecar route, returns Phase 2)
 	mux.Handle("POST /v1/delegate", problemdetails.MaxBytesBody(valMw.Wrap(delegHdl)))
 	mux.Handle("POST /v1/token/release", problemdetails.MaxBytesBody(valMw.Wrap(releaseHdl)))
 

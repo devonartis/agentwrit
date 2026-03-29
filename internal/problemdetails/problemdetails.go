@@ -25,7 +25,7 @@ import (
 // ProblemDetail represents an RFC 7807 "application/problem+json" error
 // response. The Type field uses the AgentAuth URN namespace
 // "urn:agentauth:error:{errType}". It includes extensions for diagnostics
-// and sidecar support: ErrorCode, RequestID, and an optional Hint.
+// and diagnostics: ErrorCode, RequestID, and an optional Hint.
 type ProblemDetail struct {
 	Type      string `json:"type"`
 	Title     string `json:"title"`

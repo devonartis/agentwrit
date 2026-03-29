@@ -319,7 +319,7 @@ func TestSidClaim(t *testing.T) {
 	pub, priv := testKeyPair(t)
 	svc := NewTknSvc(priv, pub, testCfg())
 
-	testSid := "sidecar-123"
+	testSid := "session-123"
 	resp, err := svc.Issue(IssueReq{
 		Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
 		Scope: []string{"read:Customers:*"},
@@ -365,7 +365,7 @@ func TestRenew_PreservesSid(t *testing.T) {
 	pub, priv := testKeyPair(t)
 	svc := NewTknSvc(priv, pub, testCfg())
 
-	const testSid = "sidecar-renew-001"
+	const testSid = "session-renew-001"
 	resp1, err := svc.Issue(IssueReq{
 		Sub:    "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
 		Scope:  []string{"read:Customers:*"},
