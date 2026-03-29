@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — B4 (SEC-L2a): Token Hardening
+
+- `AA_MAX_TTL` configuration: maximum token lifetime ceiling (default 86400s, set to 0 to disable)
+- JWT algorithm validation: broker rejects tokens with alg != EdDSA (prevents CVE-2015-9235 algorithm confusion)
+- JWT key ID validation: broker rejects tokens with mismatched kid (prevents cross-broker replay)
+- Revocation check in Verify(): defense-in-depth — every code path that validates a token also checks revocation
+- Transactional renewal: predecessor token revoked BEFORE issuing new token; renewal fails if revocation fails
+- Startup warning when DefaultTTL > MaxTTL (silent clamping detection)
+- Empty kid backward compatibility: tokens issued before B4 (without kid) are still accepted
+- Error sanitization: renewal handler returns generic error to client, logs full details internally
+
 ### Added — P1: Admin Secret (Bcrypt + `aactl init`)
 
 - `aactl init` command for secure admin secret generation (`--mode=dev|prod`, `--force`, `--config-path`)
