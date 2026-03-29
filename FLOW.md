@@ -90,10 +90,21 @@ Acceptance test availability by batch:
 
 `.plans/tracker.jsonl` tracks all batches, gates, and acceptance test stories. Status updates go here. FLOW.md and tracker must stay consistent.
 
-### Current Step: B1 merge → B2 cherry-pick
+### B2 Status: MERGED (2026-03-29)
 
-1. Merge `fix/p0-persistent-key` → `develop`
-2. Start B2 (P1): cherry-pick 8 commits, run gates, copy `agentauth/tests/p1-admin-secret/`, run acceptance tests
+Branch: `fix/p1-admin-secret` → develop
+10 commits (8 cherry-picks + 2 fixes), 35 files changed
+Gates G1-G7: ALL PASS (15 packages)
+Acceptance tests: 9/9 PASS (S1-S9), 3 security reviews done
+Security findings: 8/10 addressed on branch. I-4 (logging) and I-5 (rate limiting) deferred as TD-S06/TD-S07
+Contamination: CLEAN
+Conflicts resolved: cfg.go (HITL fields dropped, P1 fields added), admin_hdl_test.go (HITL tests dropped), CHANGELOG.md, docs/api.md
+Key change: cfg.Load() now returns (Cfg, error) — all callers updated
+
+### Current Step: B3 cherry-pick (SEC-L1)
+
+1. Start B3: cherry-pick 5 commits (`632b224`, `6fa0198`, `574d3b9`, `cd09a34`, `5489679`)
+2. Run gates, copy `agentauth/tests/fix-sec-l1/`, run acceptance tests
 3. Tracker: `.plans/tracker.jsonl`
 
 **Guides:**

@@ -94,3 +94,11 @@ When both Cowork and Claude Code are active, read `COWORK_SESSION.md` for shared
 - Cherry-pick brings stale files from agentauth (flow.md, .vscode/, .plans/production-gap-analysis.md) — always unstage and discard these before committing.
 - G6 smoke test failed with 401 because `test_batch.sh` used a different secret than `docker-compose.yml`'s default. Root cause: `docker-compose.yml` has `AA_ADMIN_SECRET=${AA_ADMIN_SECRET:-change-me-in-production}` — if the export doesn't reach the container, it gets the wrong secret. Fix: export `AA_ADMIN_SECRET` at script level BEFORE any Docker commands.
 - `live_test_docker.sh` still references sidecar (`broker sidecar` in compose commands) — tracked as TD-S03. Needs decision: delete or rewrite.
+- B2 (P1): cfg.Load() now returns (Cfg, error) — breaking API change, all callers updated. Admin auth uses bcrypt.CompareHashAndPassword, not subtle.ConstantTimeCompare.
+- B2 conflicts: cfg.go had HITL fields (HITLApprovalTTL) — dropped. admin_hdl_test.go had HITL gate tests (~300 lines) — dropped entirely. CHANGELOG.md and docs/api.md had sidecar sections — dropped.
+- Config file security: symlink rejection (os.Lstat + ModeSymlink), permission checks (rejects looser than 0600), O_EXCL atomic creation. All from security review fix commits.
+- `~/.agentauth/config` on the host machine causes cfg tests to fail — they pick it up as a fallback. Fix: set `HOME` to `t.TempDir()` in tests, or delete the file. Tracked by test isolation fixes.
+- Security review fix commits reference finding IDs (C-1, I-3, etc.) in commit messages — keep this pattern for traceability.
+- Tech debt added: TD-S06 (rate limiting on admin auth), TD-S07 (post-migration doc refresh).
+- Docker image name is `agentauth-core-broker` (not `agentauth-broker`). Container mode tests must use the correct image name.
+- Next batch: B3 (SEC-L1) — 5 commits. Check `.plans/tracker.jsonl` for details.
