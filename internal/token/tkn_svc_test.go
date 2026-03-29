@@ -3,13 +3,40 @@ package token
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/divineartis/agentauth/internal/cfg"
 )
+
+// mockRevoker implements Revoker for testing.
+type mockRevoker struct {
+	revokeErr error
+	revoked   map[string]bool
+}
+
+func (m *mockRevoker) RevokeByJTI(jti string) error {
+	if m.revoked == nil {
+		m.revoked = make(map[string]bool)
+	}
+	if m.revokeErr != nil {
+		return m.revokeErr
+	}
+	m.revoked[jti] = true
+	return nil
+}
+
+func (m *mockRevoker) IsRevoked(claims *TknClaims) bool {
+	if m.revoked == nil {
+		return false
+	}
+	return m.revoked[claims.Jti]
+}
 
 func testKeyPair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 	t.Helper()
@@ -391,8 +418,8 @@ func TestRenew_RevokesPredecessor(t *testing.T) {
 	if len(mock.revoked) != 1 {
 		t.Fatalf("expected 1 revocation call, got %d", len(mock.revoked))
 	}
-	if mock.revoked[0] != resp1.Claims.Jti {
-		t.Errorf("revoked JTI = %q, want %q", mock.revoked[0], resp1.Claims.Jti)
+	if !mock.revoked[resp1.Claims.Jti] {
+		t.Errorf("expected predecessor JTI %q to be revoked", resp1.Claims.Jti)
 	}
 }
 
@@ -409,7 +436,7 @@ func TestRenew_RevokeFailureBlocksRenewal(t *testing.T) {
 		t.Fatalf("Issue: %v", err)
 	}
 
-	mock := &mockRevoker{err: errors.New("revocation storage down")}
+	mock := &mockRevoker{revokeErr: errors.New("revocation storage down")}
 	svc.SetRevoker(mock)
 
 	_, err = svc.Renew(resp1.AccessToken)
@@ -492,56 +519,8 @@ func TestKidStableAcrossInstances(t *testing.T) {
 	}
 }
 
-func TestIssClaimMatchesConfig(t *testing.T) {
-	pub, priv := testKeyPair(t)
-	c := testCfg()
-	c.IssuerURL = "https://broker.example.com"
-	svc := NewTknSvc(priv, pub, c)
-
-	resp, err := svc.Issue(IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
-		Scope: []string{"read:Customers:*"},
-	})
-	if err != nil {
-		t.Fatalf("Issue: %v", err)
-	}
-
-	claims, err := svc.Verify(resp.AccessToken)
-	if err != nil {
-		t.Fatalf("Verify: %v", err)
-	}
-
-	if claims.Iss != "https://broker.example.com" {
-		t.Errorf("iss = %q, want %q", claims.Iss, "https://broker.example.com")
-	}
-}
-
-func TestVerifyRejectsWrongIssuer(t *testing.T) {
-	pub, priv := testKeyPair(t)
-
-	// Issue with one issuer
-	c1 := testCfg()
-	c1.IssuerURL = "https://broker-a.example.com"
-	svc1 := NewTknSvc(priv, pub, c1)
-
-	resp, err := svc1.Issue(IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
-		Scope: []string{"read:Customers:*"},
-	})
-	if err != nil {
-		t.Fatalf("Issue: %v", err)
-	}
-
-	// Verify with different issuer expectation (same key, different config)
-	c2 := testCfg()
-	c2.IssuerURL = "https://broker-b.example.com"
-	svc2 := NewTknSvc(priv, pub, c2)
-
-	_, err = svc2.Verify(resp.AccessToken)
-	if err != ErrInvalidIssuer {
-		t.Errorf("expected ErrInvalidIssuer, got %v", err)
-	}
-}
+// TestIssClaimMatchesConfig and TestVerifyRejectsWrongIssuer removed —
+// IssuerURL is an OIDC feature not present in agentauth-core.
 
 func TestRenew_PreservesSid(t *testing.T) {
 	pub, priv := testKeyPair(t)
@@ -732,7 +711,12 @@ func TestVerify_RejectsRevokedToken(t *testing.T) {
 		t.Fatalf("Issue: %v", err)
 	}
 
-	mock := &mockRevoker{isRevoked: true}
+	// Verify the token first to get its JTI, then mark it as revoked
+	claims, err := svc.Verify(resp.AccessToken)
+	if err != nil {
+		t.Fatalf("first Verify should pass: %v", err)
+	}
+	mock := &mockRevoker{revoked: map[string]bool{claims.Jti: true}}
 	svc.SetRevoker(mock)
 
 	_, err = svc.Verify(resp.AccessToken)
@@ -742,13 +726,9 @@ func TestVerify_RejectsRevokedToken(t *testing.T) {
 }
 
 func TestVerify_RejectsZeroExpiry(t *testing.T) {
-	pub, priv := testKeyPair(t)
-	svc := NewTknSvc(priv, pub, testCfg())
-	_ = svc
-
 	now := time.Now().Unix()
 	claims := &TknClaims{
-		Iss:   testCfg().IssuerURL,
+		Iss:   "agentauth",
 		Sub:   "spiffe://test.local/agent/test/task/abc",
 		Jti:   "test-jti-zero-exp",
 		Iat:   now,
@@ -756,7 +736,7 @@ func TestVerify_RejectsZeroExpiry(t *testing.T) {
 		Exp:   0,
 		Scope: []string{"read:data:*"},
 	}
-	err := claims.Validate(testCfg().IssuerURL)
+	err := claims.Validate()
 	if !errors.Is(err, ErrNoExpiry) {
 		t.Errorf("Validate(exp=0) = %v, want ErrNoExpiry", err)
 	}

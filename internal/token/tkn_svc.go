@@ -75,6 +75,9 @@ type TknSvc struct {
 	revoker    Revoker
 }
 
+// Kid returns the computed RFC 7638 JWK Thumbprint used as the JWT kid header.
+func (s *TknSvc) Kid() string { return s.kid }
+
 // SetRevoker injects a Revoker implementation (typically RevSvc) after
 // construction. Called at broker bootstrap to break the circular dependency
 // between TknSvc and RevSvc.
