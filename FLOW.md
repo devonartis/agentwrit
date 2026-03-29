@@ -51,14 +51,12 @@ Cherry-picked `34bb887` and `909a777` from agentauth repo onto `fix/sidecar-remo
 - Contamination check: PASS (zero sidecar/hitl/oidc/approval references in Go code)
 - Evidence: `.plans/cherry-pick/B0-analysis.md`
 
-### Current Step: B0 Verification + Merge
+### B0 Status: MERGED (2026-03-29)
 
-**Pending (must run on local machine — sandbox has no Go):**
-1. `cd /Users/divineartis/proj/agentauth-core && git checkout fix/sidecar-removal`
-2. `go build ./...` — must compile clean
-3. `go test ./...` — must pass all tests
-4. If pass: `git checkout develop && git merge --no-ff fix/sidecar-removal`
-5. Then invoke `cherrypick-devflow` for B1 (P0)
+B0 merged to develop. G1-G7 all PASS. G6 smoke at 3/7 (TD-S05 for remaining stale payloads).
+Next: B1 cherry-pick.
+
+### Current Step: B1 Cherry-Pick
 
 **Guides:**
 - Cherry-Pick Guide: `agentauth/.plans/modularization/Cherry-Pick-Guide.md`
