@@ -36,7 +36,6 @@ type TknClaims struct {
 	Iat        int64         `json:"iat"`
 	Jti        string        `json:"jti"`
 	Sid        string        `json:"sid,omitempty"`
-	SidecarID  string        `json:"sidecar_id,omitempty"`
 	Scope      []string      `json:"scope"`
 	TaskId     string        `json:"task_id,omitempty"`
 	OrchId     string        `json:"orch_id,omitempty"`

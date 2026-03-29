@@ -41,7 +41,6 @@ This builds all packages in the project. To build specific binaries:
 
 ```bash
 go build -o bin/broker ./cmd/broker
-go build -o bin/sidecar ./cmd/sidecar
 ```
 
 ## Testing
@@ -101,11 +100,10 @@ These scripts check for:
 agentauth/
 ├── cmd/
 │   ├── broker/          # Authorization broker server
-│   ├── sidecar/         # Token sidecar service
-│   ├── aactl/           # Operator CLI (admin auth, sidecars, revocation, audit)
+│   ├── aactl/           # Operator CLI (admin auth, revocation, audit)
 │   └── smoketest/       # End-to-end smoke test runner
 ├── internal/
-│   ├── admin/           # Admin authentication, launch tokens, sidecar activation
+│   ├── admin/           # Admin authentication and launch tokens
 │   ├── audit/           # Hash-chain tamper-evident audit trail
 │   ├── authz/           # Bearer token validation and scope enforcement middleware
 │   ├── deleg/           # Scope-attenuated delegation with chain verification
@@ -115,7 +113,7 @@ agentauth/
 │   ├── obs/             # Structured logging and Prometheus metrics
 │   ├── problemdetails/  # RFC 7807 error responses
 │   ├── revoke/          # 4-level revocation (token, agent, task, chain)
-│   ├── store/           # SQLite-backed persistence (audit, revocations, sidecars)
+│   ├── store/           # SQLite-backed persistence (audit, revocations, apps)
 │   └── token/           # EdDSA JWT issuance, verification, and renewal
 ├── docs/                # Documentation
 ├── scripts/             # Build, test, and deployment scripts

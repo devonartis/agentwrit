@@ -276,10 +276,6 @@ func TestHandleCreateLaunchToken_EmptyScope(t *testing.T) {
 	}
 }
 
-// Sidecar route tests removed in Phase 0 (2026-03-04). Handler methods
-// remain in source for Phase 2; route tests will return when routes are
-// re-wired with app-scoped activation tokens.
-
 // --- App scope ceiling enforcement on POST /v1/admin/launch-tokens ---
 
 // newAppTestMux builds a mux with a SQLite-backed store so that app records

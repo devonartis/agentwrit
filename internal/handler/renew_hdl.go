@@ -4,13 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/divineartis/agentauth/internal/audit"
 	"github.com/divineartis/agentauth/internal/authz"
 	"github.com/divineartis/agentauth/internal/obs"
 	"github.com/divineartis/agentauth/internal/problemdetails"
-	"github.com/divineartis/agentauth/internal/store"
 	"github.com/divineartis/agentauth/internal/token"
 )
 
@@ -19,21 +17,20 @@ import (
 // token with fresh timestamps. Must be wrapped with [authz.ValMw].
 type RenewHdl struct {
 	tknSvc   *token.TknSvc
-	store    *store.SqlStore
 	auditLog *audit.AuditLog
 }
 
 // NewRenewHdl creates a new token renewal handler. The auditLog parameter
-// may be nil to disable audit recording. The st parameter may be nil if
-// scope ceiling lookup is not needed.
-func NewRenewHdl(tknSvc *token.TknSvc, auditLog *audit.AuditLog, st *store.SqlStore) *RenewHdl {
-	return &RenewHdl{tknSvc: tknSvc, auditLog: auditLog, store: st}
+// may be nil to disable audit recording.
+func NewRenewHdl(tknSvc *token.TknSvc, auditLog *audit.AuditLog) *RenewHdl {
+	return &RenewHdl{tknSvc: tknSvc, auditLog: auditLog}
 }
 
 type renewResp struct {
-	AccessToken  string   `json:"access_token"`
-	ExpiresIn    int      `json:"expires_in"`
-	ScopeCeiling []string `json:"scope_ceiling,omitempty"`
+	// AccessToken is the newly issued JWT with refreshed timestamps.
+	AccessToken string `json:"access_token"`
+	// ExpiresIn is the token lifetime in seconds.
+	ExpiresIn int `json:"expires_in"`
 }
 
 func (h *RenewHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -66,20 +63,6 @@ func (h *RenewHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rr := renewResp{
 		AccessToken: resp.AccessToken,
 		ExpiresIn:   resp.ExpiresIn,
-	}
-
-	// If this is a sidecar token, look up its scope ceiling.
-	if h.store != nil && claims != nil && claims.Sid != "" {
-		ceiling, err := h.store.GetCeiling(claims.Sid)
-		if err == nil {
-			rr.ScopeCeiling = ceiling
-		}
-	} else if h.store != nil && claims != nil && strings.HasPrefix(claims.Sub, "sidecar:") {
-		sidecarID := strings.TrimPrefix(claims.Sub, "sidecar:")
-		ceiling, err := h.store.GetCeiling(sidecarID)
-		if err == nil {
-			rr.ScopeCeiling = ceiling
-		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

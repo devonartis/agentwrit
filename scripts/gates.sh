@@ -100,9 +100,6 @@ if [[ "$MODE" == "module" ]]; then
     if [[ -x "$SCRIPT_DIR/live_test_docker.sh" ]]; then
       run_gate "live tests (broker docker)" "$SCRIPT_DIR/live_test_docker.sh"
     fi
-    if [[ -x "$SCRIPT_DIR/live_test_sidecar.sh" ]]; then
-      run_gate "live tests (sidecar docker)" "$SCRIPT_DIR/live_test_sidecar.sh"
-    fi
   else
     skip_gate "live tests (docker)" "Docker daemon not running — skipping Docker E2E gates"
   fi
