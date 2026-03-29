@@ -355,3 +355,17 @@ The gate commands are all shell one-liners or short scripts — they translate d
 | 2026-03-29 | B2 | G5:DockerStart | PASS | branch=fix/p1-admin-secret |
 | 2026-03-29 | B2 | G6:SmokeTest | PASS | branch=fix/p1-admin-secret |
 | 2026-03-29 | B2 | G7:BatchSpecific(B2) | PASS | branch=fix/p1-admin-secret |
+
+| 2026-03-29 | B3 | G1:Compile | PASS | branch=fix/sec-l1 |
+| 2026-03-29 | B3 | G2:UnitTests | PASS | branch=fix/sec-l1 |
+| 2026-03-29 | B3 | G3:Contamination | PASS | branch=fix/sec-l1 |
+| 2026-03-29 | B3 | G4:DockerBuild | PASS | branch=fix/sec-l1 |
+| 2026-03-29 | B3 | G5:DockerStart | FAIL | health check failed after 15s |
+| 2026-03-29 | B3 | G6:SmokeTest | FAIL | broker not reachable at http://127.0.0.1:8080 (did G5 run?) |
+
+| 2026-03-29 | B3 | G1:Compile | PASS | branch=fix/sec-l1 |
+| 2026-03-29 | B3 | G2:UnitTests | PASS | branch=fix/sec-l1 |
+| 2026-03-29 | B3 | G3:Contamination | PASS | branch=fix/sec-l1 |
+| 2026-03-29 | B3 | G4:DockerBuild | PASS | branch=fix/sec-l1 |
+| 2026-03-29 | B3 | G5:DockerStart | PASS | branch=fix/sec-l1 |
+| 2026-03-29 | B3 | G6:SmokeTest | PASS | branch=fix/sec-l1 |
