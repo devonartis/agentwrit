@@ -1,0 +1,29 @@
+{"id":"migration","type":"epic","name":"Cherry-Pick Migration from agentauth → agentauth-core","status":"in_progress"}
+{"id":"b0","type":"phase","name":"B0: Sidecar Removal","status":"done","branch":"fix/sidecar-removal","commits":["34bb887","909a777"],"acceptance_tests":"agentauth-internal/tests/phase-0/ (ran in internal, not re-run in core)"}
+{"id":"b0-g1","type":"task","name":"G1 Compile","status":"done","phase":"b0"}
+{"id":"b0-g2","type":"task","name":"G2 Unit Tests","status":"done","phase":"b0"}
+{"id":"b0-g3","type":"task","name":"G3 Contamination Check","status":"done","phase":"b0"}
+{"id":"b0-g4","type":"task","name":"G4 Docker Build","status":"done","phase":"b0"}
+{"id":"b0-g5","type":"task","name":"G5 Docker Start + Health","status":"done","phase":"b0"}
+{"id":"b0-g6","type":"task","name":"G6 Smoke Test (3/7 — TD-S05)","status":"done","phase":"b0"}
+{"id":"b0-g7","type":"task","name":"G7 B0-Specific Checks","status":"done","phase":"b0"}
+{"id":"b1","type":"phase","name":"B1 (P0): Persistent Signing Key + Graceful Shutdown","status":"done","branch":"fix/p0-persistent-key","commits":["9c1d51d","f96549f","6d0d77d","cec8b34","0fef76b","e823bea"],"acceptance_tests":"tests/p0-production-foundations/ — 7 stories, all PASS","source_tests":"agentauth/tests/p0-production-foundations/"}
+{"id":"b1-g1","type":"task","name":"G1 Compile","status":"done","phase":"b1"}
+{"id":"b1-g2","type":"task","name":"G2 Unit Tests","status":"done","phase":"b1"}
+{"id":"b1-g3","type":"task","name":"G3 Contamination Check","status":"done","phase":"b1"}
+{"id":"b1-g4","type":"task","name":"G4 Docker Build","status":"done","phase":"b1"}
+{"id":"b1-g5","type":"task","name":"G5 Docker Start + Health","status":"done","phase":"b1"}
+{"id":"b1-g6","type":"task","name":"G6 Smoke Test (3/7 threshold)","status":"done","phase":"b1"}
+{"id":"b1-g7","type":"task","name":"G7 B1-Specific Checks","status":"done","phase":"b1"}
+{"id":"b1-k1","type":"story","name":"P0-K1: Key File 0600 Permissions","status":"done","phase":"b1"}
+{"id":"b1-k2","type":"story","name":"P0-K2: Token Survives Restart","status":"done","phase":"b1"}
+{"id":"b1-k3","type":"story","name":"P0-K3: Configurable Key Path","status":"done","phase":"b1"}
+{"id":"b1-k4","type":"story","name":"P0-K4: Token Renewal After Restart","status":"done","phase":"b1"}
+{"id":"b1-k5","type":"story","name":"P0-K5: Corrupt Key Fails Fast","status":"done","phase":"b1"}
+{"id":"b1-s1","type":"story","name":"P0-S1: Graceful Shutdown on SIGTERM","status":"done","phase":"b1"}
+{"id":"b1-s2","type":"story","name":"P0-S2: SQLite Closed on Shutdown","status":"done","phase":"b1"}
+{"id":"b2","type":"phase","name":"B2 (P1): Config File Parser + Bcrypt Admin Auth + aactl init","status":"pending","commits":["313aa41","869a8f7","58cbce2","4978ecd","866cc78","3dfada7","ebc4884","1c5f293"],"acceptance_tests":"agentauth/tests/p1-admin-secret/ — 9 stories + 3 security reviews","source_tests":"agentauth/tests/p1-admin-secret/"}
+{"id":"b3","type":"phase","name":"B3 (SEC-L1): Bind Address + TLS + Timeouts + Weak Secret Denylist","status":"pending","commits":["632b224","6fa0198","574d3b9","cd09a34","5489679"],"acceptance_tests":"agentauth/tests/fix-sec-l1/ — has evidence","source_tests":"agentauth/tests/fix-sec-l1/"}
+{"id":"b4","type":"phase","name":"B4 (SEC-L2a): Token Alg/kid Validation + MaxTTL + Revocation Hardening","status":"pending","commits":["8e63989","0526c46","c24e442","67aeda7","b78edb8","ecb4c86","078a674","8366fa9"],"acceptance_tests":"NONE — need to write before merge"}
+{"id":"b5","type":"phase","name":"B5 (SEC-L2b): Security Headers + MaxBytesBody + Error Sanitization","status":"pending","commits":["daf2995","e592acc","2857b3a","247727c","c5da6c4"],"acceptance_tests":"agentauth/tests/fix-sec-l2b/ — has evidence","source_tests":"agentauth/tests/fix-sec-l2b/"}
+{"id":"b6","type":"phase","name":"B6 (SEC-A1 + Gates): TTL Bypass Fix + Gates Regression","status":"pending","commits":["9422e7c","e395a15"],"acceptance_tests":"NONE — need to write before merge"}

@@ -56,7 +56,45 @@ Cherry-picked `34bb887` and `909a777` from agentauth repo onto `fix/sidecar-remo
 B0 merged to develop. G1-G7 all PASS. G6 smoke at 3/7 (TD-S05 for remaining stale payloads).
 Next: B1 cherry-pick.
 
-### Current Step: B1 Cherry-Pick
+### Action: B1 — P0 cherry-pick (2026-03-29)
+
+Cherry-picked 6 commits from agentauth onto `fix/p0-persistent-key`. Zero conflicts.
+Commits: `9c1d51d`, `f96549f`, `6d0d77d`, `cec8b34`, `0fef76b`, `e823bea`
+- New package: `internal/keystore/` (persistent Ed25519 key management)
+- Graceful shutdown with signal handling in `cmd/broker/serve.go`
+- Docker volume for key persistence in `docker-compose.yml`
+
+### B1 Status: ACCEPTANCE TESTS PASS — ready to merge (2026-03-29)
+
+Gates: G1-G7 all PASS. G6 smoke at 3/7 (threshold 3, TD-S05).
+Acceptance tests: 7/7 PASS (K1-K5, S1-S2) from `agentauth/tests/p0-production-foundations/`.
+Evidence: `tests/p0-production-foundations/evidence/`
+
+### Decision: Acceptance tests required before merge (2026-03-29)
+
+Every batch must run its acceptance tests from the agentauth repo before merging. The process:
+1. Cherry-pick commits onto fix/ branch
+2. Run gate checks (G1-G7) via `test_batch.sh`
+3. Copy acceptance tests from `agentauth/tests/<feature>/` to `agentauth-core/tests/<feature>/`
+4. Run each story against Docker per `tests/LIVE-TEST-TEMPLATE.md`
+5. All stories must PASS before merge to develop
+
+Acceptance test availability by batch:
+- B2 (P1): `agentauth/tests/p1-admin-secret/` — 9 stories + 3 security reviews
+- B3 (SEC-L1): `agentauth/tests/fix-sec-l1/` — has evidence
+- B4 (SEC-L2a): NONE — must write before merge
+- B5 (SEC-L2b): `agentauth/tests/fix-sec-l2b/` — has evidence
+- B6 (SEC-A1): NONE — must write before merge
+
+### Decision: tracker.jsonl created for migration (2026-03-29)
+
+`.plans/tracker.jsonl` tracks all batches, gates, and acceptance test stories. Status updates go here. FLOW.md and tracker must stay consistent.
+
+### Current Step: B1 merge → B2 cherry-pick
+
+1. Merge `fix/p0-persistent-key` → `develop`
+2. Start B2 (P1): cherry-pick 8 commits, run gates, copy `agentauth/tests/p1-admin-secret/`, run acceptance tests
+3. Tracker: `.plans/tracker.jsonl`
 
 **Guides:**
 - Cherry-Pick Guide: `agentauth/.plans/modularization/Cherry-Pick-Guide.md`
