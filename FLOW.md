@@ -101,15 +101,14 @@ Contamination: CLEAN
 Conflicts resolved: cfg.go (HITL fields dropped, P1 fields added), admin_hdl_test.go (HITL tests dropped), CHANGELOG.md, docs/api.md
 Key change: cfg.Load() now returns (Cfg, error) — all callers updated
 
-### B3 Status: READY FOR MERGE REVIEW (2026-03-29)
+### B3 Status: MERGED (2026-03-29)
 
-Branch: `fix/sec-l1`
-5 commits, 17 files changed
+Branch: `fix/sec-l1` → develop
+5 cherry-picks + 4 fix commits, 28 files changed
 Gates G1-G6: ALL PASS (G7 skipped — no B3-specific tests)
 Acceptance tests: 12/12 PASS (C5 OIDC skipped — not in core)
 Contamination: CLEAN
-Conflicts resolved: .gitignore (merged entries), configfile_test.go (added weak secret test), cmd/broker/main.go (added background goroutines + bind address, dropped HITL pruner + OIDC log)
-Key changes: bind address defaults 127.0.0.1 (VPS), docker-compose.yml overrides to 0.0.0.0 (container), weak secret denylist, HTTP timeouts, TLS 1.2 minimum
+Tech debt TD-S08 through TD-S15 added for doc drift (two CRITICAL: wrong API field names + rejected secret in examples)
 Waiting on Cowork merge review
 
 ### Current Step: B3 merge review → B4 cherry-pick
