@@ -7,6 +7,10 @@ services:
       - "${AA_HOST_PORT:-8080}:8080"
     environment:
       - AA_PORT=8080
+      # Container must bind 0.0.0.0 for Docker port forwarding to work.
+      # The secure default (127.0.0.1) is for VPS mode only — Docker's
+      # network isolation handles security instead.
+      - AA_BIND_ADDRESS=${AA_BIND_ADDRESS:-0.0.0.0}
       # Admin secret: use aactl init + config file mount, or set AA_ADMIN_SECRET in .env
       - AA_ADMIN_SECRET=${AA_ADMIN_SECRET:-}
       - AA_SEED_TOKENS=${AA_SEED_TOKENS:-false}
