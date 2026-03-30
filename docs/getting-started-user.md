@@ -120,9 +120,9 @@ The broker will log to stdout. You should see a "broker started" message.
 
 AgentAuth provides a single registration flow to get tokens. Here's how it works:
 
-This hand-sketched SVG mirrors the same flow as the Mermaid diagram below. The SVG gives readers a faster visual orientation, while the Mermaid source stays easy to maintain as the broker evolves.
+This hand-sketched diagram mirrors the same flow as the Mermaid diagram below. The embedded PNG gives readers a faster visual orientation, while the Mermaid source stays easy to maintain as the broker evolves.
 
-![Hand-sketched registration overview](diagrams/getting-started-auth-flow-sketch.svg)
+![Hand-sketched registration overview](diagrams/getting-started-auth-flow-sketch.png)
 
 ```mermaid
 flowchart LR
