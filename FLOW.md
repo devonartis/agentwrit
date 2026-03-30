@@ -202,6 +202,14 @@ Questions to resolve:
 
 **Deferred because:** Priority is reviewing all code comments across `internal/` to match the new standard, then updating external documentation to deep-dive on scopes and the role model (TD-012, TD-014). The repo strategy decision comes after the codebase is properly documented.
 
-### Decision: Next work is code comments audit + role model docs (2026-03-30)
+### Decision: Next work sequence (2026-03-30)
 
-Before any post-migration cleanup or new features, go through ALL code in `internal/` and update comments to the new standard (`.claude/rules/golang.md`): who calls it, why, boundaries. Then write `docs/roles.md` (TD-012) with the Admin/App/Agent role model, scopes, and production flow. This is the foundation everything else builds on. Use `devflow` for this work.
+Three phases, in order:
+
+1. **Code comments audit** (TD-014) — Go through ALL code in `internal/` and `cmd/` and update comments to the new standard (`.claude/rules/golang.md`): who calls it, why it exists, boundaries, design history. This is the foundation — you can't write correct docs without understanding the code's intent.
+
+2. **Public documentation update** — After the comments reveal the full picture of roles, scopes, and boundaries, update all public-facing docs (`docs/`) to be compliant with what we found. Write `docs/roles.md` (TD-012) with the Admin/App/Agent role model, scopes, and production flow. Verify every doc against the code comments — not the other way around. Answer the design questions that come up (like TD-013: should admin create agents?).
+
+3. **Repo strategy** — Once the codebase is properly documented and the role model is clear, come back to the three-repo question (archive, rename, extract enterprise modules). The documentation work may surface more design decisions that affect the repo strategy.
+
+Use `devflow` for this work.
