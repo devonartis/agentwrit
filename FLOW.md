@@ -180,6 +180,28 @@ Was at `.plans/TECH-DEBT.md`. Tech debt is a first-class artifact, not a plannin
 
 New step between Pick and Verify. If a cherry-pick changes existing behavior, write regression unit tests before running gates — so the new tests are included in G2. Also added code comments requirements to Pick step and verification to Docs step.
 
-### B6 Status: ACCEPTANCE TESTS PASS — pending code review and merge
+### B6 Status: MERGED (2026-03-30)
 
-**Next:** Code review (running), then merge to develop. Then post-migration cleanup (Go module path update, final verification, remote swap). See Cherry-Pick Guide "Post-Migration" section.
+Branch: `fix/sec-a1` → develop
+4 commits (2 cherry-picks + 1 docs/tests/comments + 1 merge), 24 files changed
+Gates G1-G6: ALL PASS
+Acceptance tests: 4/4 PASS (S1 admin TTL, S2 app TTL, S3 scope boundary, R1 lifecycle)
+Code review: 2 findings fixed (unused var, missing S3 in story index)
+Contamination: CLEAN
+Tech debt: TD-011 through TD-014 added
+
+### Decision: Post-migration repo strategy — DEFERRED (2026-03-30)
+
+Three repos exist: `agentauth-internal` (golden history, 412 commits), `agentauth` (enterprise modules: OIDC, HITL, cloud, federation + migration plans), `agentauth-core` (open-source core, B0-B6 merged).
+
+Questions to resolve:
+1. `agentauth-core` needs to become `divineartis/agentauth` on GitHub — current `agentauth` must be renamed/archived first
+2. Does enterprise module code stay in one archived repo or get extracted into separate module repos (per open-core model)?
+3. Does `agentauth-internal` stay on devonartis or move to divineartis?
+4. Migration artifacts (`.plans/modularization/`, cherry-pick guides, feature inventory) — archive or keep?
+
+**Deferred because:** Priority is reviewing all code comments across `internal/` to match the new standard, then updating external documentation to deep-dive on scopes and the role model (TD-012, TD-014). The repo strategy decision comes after the codebase is properly documented.
+
+### Decision: Next work is code comments audit + role model docs (2026-03-30)
+
+Before any post-migration cleanup or new features, go through ALL code in `internal/` and update comments to the new standard (`.claude/rules/golang.md`): who calls it, why, boundaries. Then write `docs/roles.md` (TD-012) with the Admin/App/Agent role model, scopes, and production flow. This is the foundation everything else builds on. Use `devflow` for this work.
