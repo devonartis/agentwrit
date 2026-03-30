@@ -136,4 +136,7 @@ Each cherry-pick batch has acceptance tests in `tests/<batch-name>/`:
 - B5: `curl -sI -X POST` returns empty headers for POST endpoints — use `curl -s -D - -o /dev/null` instead to dump headers on POST requests.
 - jcodemunch indexes code symbols only — not markdown docs. Use context-mode for doc analysis.
 - `settings.json` (project, committed) vs `settings.local.json` (personal, gitignored). Broad tool permissions go in project-level.
-- Next: B5 ready to merge. Then B6 (SEC-A1 + Gates) — 2 commits, last batch.
+- Post-merge doc verification caught 2 critical inaccuracies: middleware ordering was backwards in architecture.md (19 route rows + prose), MaxBytesBody attributed to wrong source file in implementation-map.md. Fixed. Always verify docs against actual code after sub-agent updates.
+- `cherrypick-devflow` skill updated: added Step 4 (Application Docs) and Step 5 (Acceptance Tests). Skill now has `references/acceptance-examples.md` with real bash examples showing how to create story evidence files.
+- Skills use `references/` directory for companion docs that get loaded on demand. Keeps SKILL.md lean (<500 lines) while providing examples and detailed guidance.
+- Next: B6 (SEC-A1 + Gates) — 2 commits, last batch. Then post-migration cleanup.
