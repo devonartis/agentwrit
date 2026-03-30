@@ -394,6 +394,51 @@ Scope attenuation rules at each delegation hop:
 
 ---
 
+### Component 8: Operational Observability
+
+**Problem:** How do you know the credential system is healthy? Agents come and go in seconds. If the broker is silently dropping registrations, issuing tokens with wrong scopes, or experiencing latency spikes, no one notices until agents start failing in production. Traditional application monitoring (CPU, memory, disk) doesn't tell you whether the security system is working correctly.
+
+**Solution:** The broker exposes structured metrics, health checks, and error contracts that make security-relevant operational state visible to monitoring systems. Every request produces a structured log entry. Every denial, every revocation, every scope violation is counted and labeled. Health checks report not just "up/down" but whether the database is connected and how many audit events have been recorded.
+
+**What AgentAuth implements:**
+
+- `internal/obs/obs.go` provides structured logging (`Ok`, `Warn`, `Fail`, `Trace`) and 12 Prometheus metrics:
+  - `agentauth_tokens_issued_total` (by scope) — are tokens being issued?
+  - `agentauth_tokens_revoked_total` (by level) — is revocation working?
+  - `agentauth_registrations_total` (by status) — are agents registering successfully?
+  - `agentauth_admin_auth_total` (by status) — are admin logins working?
+  - `agentauth_request_duration_seconds` (by endpoint) — latency per endpoint
+  - `agentauth_active_agents` — current registered agent count
+  - `agentauth_clock_skew_total` — clock drift events
+  - `agentauth_audit_events_total` — total audit trail size
+  - `agentauth_audit_write_duration_seconds` — audit write latency
+  - `agentauth_db_errors_total` — database error count
+  - `agentauth_launch_tokens_created_total` — launch tokens created
+  - `agentauth_audit_events_loaded` — events loaded from SQLite on startup
+- `GET /v1/health` returns `{"status":"ok","version":"2.0.0","uptime":N,"db_connected":true,"audit_events_count":N}`
+- `GET /v1/metrics` exposes all Prometheus metrics for scraping
+- `internal/problemdetails/problemdetails.go` provides RFC 7807 `application/problem+json` error responses with request IDs on every error, enabling correlation between client errors and broker logs
+- Every HTTP request is logged with method, path, status code, latency, and request ID via `handler.LoggingMiddleware`
+
+---
+
+## Pattern Component → Code Reference
+
+All 8 components of the [Ephemeral Agent Credentialing v1.3](https://github.com/devonartis/AI-Security-Blueprints/blob/main/patterns/ephemeral-agent-credentialing/versions/v1.3.md) pattern are implemented:
+
+| # | Pattern Component | Go Packages | Key Endpoints |
+|---|---|---|---|
+| 1 | Ephemeral Identity Issuance | `identity`, `handler`, `store` | `GET /v1/challenge`, `POST /v1/register` |
+| 2 | Short-Lived Task-Scoped Tokens | `token`, `cfg` | `POST /v1/token/renew`, `POST /v1/token/validate` |
+| 3 | Zero-Trust Enforcement | `authz`, `token` | Every authenticated endpoint (ValMw middleware) |
+| 4 | Automatic Expiration & Revocation | `revoke`, `token`, `handler` | `POST /v1/revoke`, `POST /v1/token/release` |
+| 5 | Immutable Audit Logging | `audit`, `store` | `GET /v1/audit/events` |
+| 6 | Agent-to-Agent Mutual Auth | `mutauth` | Go API only (not HTTP-exposed) |
+| 7 | Delegation Chain Verification | `deleg`, `token` | `POST /v1/delegate` |
+| 8 | Operational Observability | `obs`, `handler`, `problemdetails` | `GET /v1/health`, `GET /v1/metrics` |
+
+---
+
 ## Threat Model Summary
 
 Understanding what AgentAuth defends against -- and what it does not -- is essential for proper deployment.
