@@ -315,17 +315,280 @@ events = requests.get(f"{BROKER}/v1/audit/events",
 
 ---
 
+## Scenario 4: Fintech — AI-Powered Payment Fraud Detection
+
+A fintech company processes thousands of payment transactions per minute. AI agents analyze transactions in real time, flag suspicious activity, and in some cases freeze accounts. The stakes are high — a compromised agent with broad access could approve fraudulent transactions or freeze legitimate accounts.
+
+### The Agents
+
+| Agent | Job | Scope | Risk If Compromised |
+|-------|-----|-------|-------------------|
+| Transaction Analyzer | Read transaction stream, score risk | `read:transactions:stream` | Could leak transaction data |
+| Fraud Flagger | Flag suspicious transactions for review | `write:flags:fraud`, `read:transactions:stream` | Could flag legitimate transactions |
+| Account Freezer | Freeze accounts with confirmed fraud | `write:accounts:freeze` | Could freeze innocent accounts |
+| Audit Reporter | Generate compliance reports | `read:audit:*`, `read:flags:fraud` | Could leak internal fraud patterns |
+
+### Why AgentAuth Matters Here
+
+Without AgentAuth, a typical fintech setup uses a shared API key for all agents:
+
+```
+# THE DANGEROUS PATH — shared credential
+PAYMENT_API_KEY=sk_live_abc123...  # All agents share this
+# Any compromised agent can: read ALL transactions, freeze ANY account,
+# flag ANY transaction, read ALL audit data
+# Blast radius: TOTAL
+```
+
+With AgentAuth, each agent gets exactly what it needs, for exactly as long as it needs it:
+
+```python
+import base64, binascii, requests
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+BROKER = "https://broker.payments.internal:8080"
+
+class FraudDetectionPipeline:
+    """Process a batch of transactions through the fraud detection pipeline."""
+
+    def __init__(self, client_id, client_secret):
+        self.broker = BROKER
+        self.client_id = client_id
+        self.client_secret = client_secret
+
+    def process_batch(self, batch_id):
+        # ━━━ Component 2: App gets a short-lived token (1800s) ━━━
+        app_token = self._app_auth()
+
+        # ━━━ Component 1: Each agent gets a unique identity ━━━
+        # SPIFFE IDs encode the batch context:
+        # spiffe://payments.internal/agent/fraud-pipeline/batch-7291/analyzer-x9f2
+
+        analyzer = self._spawn_agent(app_token,
+            name="tx-analyzer",
+            scope=["read:transactions:stream"],
+            task_id=f"batch-{batch_id}",
+            ttl=120,  # 2 minutes — enough to scan the batch
+        )
+
+        flagger = self._spawn_agent(app_token,
+            name="fraud-flagger",
+            scope=["write:flags:fraud", "read:transactions:stream"],
+            task_id=f"batch-{batch_id}",
+            ttl=120,
+        )
+
+        # ━━━ Component 3: Zero-Trust — every call validated ━━━
+        # Analyzer reads transactions
+        suspicious = self._analyze(analyzer, batch_id)
+
+        # Flagger flags suspicious ones
+        # Even though flagger has read:transactions:stream, it CANNOT
+        # freeze accounts — it doesn't have write:accounts:freeze
+        flagged = self._flag_suspicious(flagger, suspicious)
+
+        # Only spawn the freezer if there are confirmed fraud cases
+        if flagged:
+            freezer = self._spawn_agent(app_token,
+                name="account-freezer",
+                scope=["write:accounts:freeze"],
+                task_id=f"batch-{batch_id}",
+                ttl=60,  # 1 minute — freeze is fast
+            )
+            self._freeze_accounts(freezer, flagged)
+
+            # ━━━ Component 4: Freezer releases immediately ━━━
+            # The account-freeze agent should not persist longer than needed
+            requests.post(f"{self.broker}/v1/token/release",
+                headers={"Authorization": f"Bearer {freezer}"})
+
+        # ━━━ Component 4: All agents release on completion ━━━
+        for token in [analyzer, flagger]:
+            requests.post(f"{self.broker}/v1/token/release",
+                headers={"Authorization": f"Bearer {token}"})
+
+        # ━━━ Component 5: Audit trail for compliance ━━━
+        # Regulators can query: "which agent froze account X, when, and why?"
+        # GET /v1/audit/events?task_id=batch-7291&event_type=resource_accessed
+
+    def _app_auth(self):
+        resp = requests.post(f"{self.broker}/v1/app/auth", json={
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+        })
+        return resp.json()["access_token"]
+
+    def _spawn_agent(self, app_token, name, scope, task_id, ttl=300):
+        # App creates launch token via the app route (Component 2)
+        lt = requests.post(f"{self.broker}/v1/app/launch-tokens",
+            headers={"Authorization": f"Bearer {app_token}"},
+            json={
+                "agent_name": name,
+                "allowed_scope": scope,
+                "max_ttl": ttl,
+                "ttl": 30,
+                "single_use": True,
+            })
+        launch_token = lt.json()["launch_token"]
+
+        # Agent registers with Ed25519 challenge-response (Component 1)
+        private_key = Ed25519PrivateKey.generate()
+        pub_b64 = base64.b64encode(
+            private_key.public_key().public_bytes_raw()
+        ).decode()
+        nonce = requests.get(f"{self.broker}/v1/challenge").json()["nonce"]
+        sig_b64 = base64.b64encode(
+            private_key.sign(binascii.unhexlify(nonce))
+        ).decode()
+
+        reg = requests.post(f"{self.broker}/v1/register", json={
+            "launch_token": launch_token,
+            "nonce": nonce,
+            "public_key": pub_b64,
+            "signature": sig_b64,
+            "orch_id": "fraud-pipeline",
+            "task_id": task_id,
+            "requested_scope": scope,
+        })
+        return reg.json()["access_token"]
+```
+
+**What the regulator sees in the audit trail:**
+
+```bash
+# "Show me everything that happened in batch 7291"
+curl -s "https://broker.payments.internal:8080/v1/audit/events?task_id=batch-7291" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" | python3 -m json.tool
+
+# Returns (hash-chained, tamper-evident):
+# evt-001: agent_registered  | tx-analyzer     | batch-7291 | success
+# evt-002: token_issued      | tx-analyzer     | batch-7291 | success | ttl=120
+# evt-003: agent_registered  | fraud-flagger   | batch-7291 | success
+# evt-004: token_issued      | fraud-flagger   | batch-7291 | success | ttl=120
+# evt-005: agent_registered  | account-freezer | batch-7291 | success
+# evt-006: token_issued      | account-freezer | batch-7291 | success | ttl=60
+# evt-007: token_released    | account-freezer | batch-7291 | success  ← freezer done first
+# evt-008: token_released    | tx-analyzer     | batch-7291 | success
+# evt-009: token_released    | fraud-flagger   | batch-7291 | success
+```
+
+### The Security Story in One Table
+
+| Without AgentAuth | With AgentAuth |
+|-------------------|---------------|
+| Shared API key across all agents | Each agent has unique SPIFFE identity |
+| Key lives forever until manually rotated | Tokens expire in 60-120 seconds |
+| Compromised agent can freeze any account | Account freezer can ONLY freeze, and only for 60 seconds |
+| No audit trail of which agent did what | Hash-chained audit with task_id, agent_id, timestamps |
+| Revoking the shared key kills ALL agents | Revoke one agent, one task, or one chain — granular |
+| Blast radius: total | Blast radius: one agent's scope for its remaining TTL |
+
+---
+
+## Scenario 5: Bank — Multi-Branch Agent Coordination with Delegation
+
+A bank operates AI agents across multiple branches. A central compliance agent oversees regional agents. Regional agents delegate to local branch agents. The delegation chain provides cryptographic proof of who authorized what.
+
+### The Delegation Hierarchy
+
+```
+Central Compliance Agent (HQ)
+  scope: read:compliance:*, write:reports:*
+  │
+  ├── Regional Agent (Northeast)
+  │   scope: read:compliance:northeast, write:reports:northeast
+  │   │
+  │   ├── Branch Agent (Boston)
+  │   │   scope: read:compliance:northeast:boston
+  │   │
+  │   └── Branch Agent (NYC)
+  │       scope: read:compliance:northeast:nyc
+  │
+  └── Regional Agent (Southeast)
+      scope: read:compliance:southeast, write:reports:southeast
+```
+
+### How Delegation Chains Work
+
+```python
+# ━━━ Step 1: Central agent registered by operator ━━━
+# Central has broad scope: read:compliance:*, write:reports:*
+
+# ━━━ Step 2: Central delegates to Regional (Component 7) ━━━
+northeast = requests.post(f"{BROKER}/v1/delegate",
+    headers={"Authorization": f"Bearer {central_token}"},
+    json={
+        "delegate_to": regional_northeast_id,
+        "scope": ["read:compliance:northeast", "write:reports:northeast"],
+        # Narrowed from read:compliance:* to read:compliance:northeast
+        "ttl": 600,
+    })
+northeast_token = northeast.json()["access_token"]
+northeast_chain = northeast.json()["delegation_chain"]
+# Chain: [{"agent": central_id, "scope": [...], "signature": "..."}]
+
+# ━━━ Step 3: Regional delegates to Branch (Component 7) ━━━
+boston = requests.post(f"{BROKER}/v1/delegate",
+    headers={"Authorization": f"Bearer {northeast_token}"},
+    json={
+        "delegate_to": branch_boston_id,
+        "scope": ["read:compliance:northeast:boston"],
+        # Further narrowed from read:compliance:northeast
+        "ttl": 300,
+    })
+boston_token = boston.json()["access_token"]
+boston_chain = boston.json()["delegation_chain"]
+# Chain: [
+#   {"agent": central_id, "scope": [...], "signature": "..."},
+#   {"agent": regional_ne_id, "scope": [...], "signature": "..."}
+# ]
+
+# ━━━ The Boston agent can ONLY read Boston compliance data ━━━
+# It cannot read NYC data, cannot read Southeast data, cannot write reports
+# Each delegation narrowed the scope. The chain proves the authorization lineage.
+
+# ━━━ Component 4: If central is compromised, revoke the chain ━━━
+requests.post(f"{BROKER}/v1/revoke",
+    headers={"Authorization": f"Bearer {admin_token}"},
+    json={
+        "level": "chain",
+        "target": central_agent_id,
+    })
+# This revokes: central, northeast, southeast, boston, nyc — ALL agents
+# in the delegation tree. One API call. Immediate effect.
+
+# ━━━ Component 5: Audit proves the authorization path ━━━
+# Auditor can trace: Boston agent → authorized by Northeast → authorized by Central
+# Each step has a cryptographic signature in the delegation_chain JWT claim
+# The chain_hash (SHA-256) prevents tampering with the chain
+```
+
+### What Each Component Delivers for the Bank
+
+| Component | Bank Value |
+|-----------|-----------|
+| 1. Ephemeral Identity | Every branch agent has a unique SPIFFE ID: `spiffe://bank.internal/agent/compliance/q4-audit/boston-abc` |
+| 2. Short-Lived Tokens | Branch tokens: 300s. Regional: 600s. If a branch laptop is stolen, tokens expire in minutes. |
+| 3. Zero-Trust | Boston agent cannot read NYC compliance data. Period. The broker enforces this on every request. |
+| 4. Revocation | Revoke one branch, one region, or the entire tree. Granular incident response. |
+| 5. Audit Trail | Regulator asks "who authorized the Boston agent to access compliance data?" — the chain proves Central → Northeast → Boston with signatures. |
+| 6. Mutual Auth | Branch agents can verify each other's identity before sharing data in a mesh topology. |
+| 7. Delegation | Scope narrows at every level. Central: `read:compliance:*` → Regional: `read:compliance:northeast` → Branch: `read:compliance:northeast:boston`. Attenuation is enforced — no scope expansion possible. |
+| 8. Observability | `agentauth_active_agents` shows real-time agent count. Alerts fire if delegation depth exceeds threshold. |
+
+---
+
 ## Component Coverage Across Scenarios
 
-| Component | Scenario 1 (Finance) | Scenario 2 (DevOps) | Scenario 3 (Healthcare) |
-|-----------|---------------------|--------------------|-----------------------|
-| 1. Ephemeral Identity | 3 agents with unique SPIFFE IDs | 1 registered + 2 delegated | 1 agent per consultation |
-| 2. Short-Lived Tokens | 300s agent, 30s launch, 1800s app | 120s delegated, 300s orchestrator | 300s with renewal |
-| 3. Zero-Trust | Reader can't write, Writer can't read credit | Config reader can't deploy | Agent can only read one patient |
-| 4. Expiration & Revocation | Token release on completion | Chain-level emergency revocation | Agent + task-level revocation |
-| 5. Audit Trail | 9+ events per pipeline run | Delegation + revocation events | Compliance-ready with task_id |
-| 6. Mutual Auth | — | — | — |
-| 7. Delegation | — | Scope narrowing to workers | — |
-| 8. Observability | Metrics per scope label | Revocation metrics + alerts | SLA monitoring via histograms |
+| Component | Scenario 1 (Loans) | Scenario 2 (DevOps) | Scenario 3 (Healthcare) | Scenario 4 (Fintech) | Scenario 5 (Bank) |
+|-----------|-------------------|--------------------|-----------------------|---------------------|-------------------|
+| 1. Ephemeral Identity | 3 agents, unique SPIFFE IDs | 1 registered + 2 delegated | 1 per consultation | 3-4 per batch | Hierarchical IDs |
+| 2. Short-Lived Tokens | 300s agent, 30s launch | 120s delegated | 300s with renewal | 60-120s per agent | 300-600s tiered |
+| 3. Zero-Trust | Reader can't write | Config reader can't deploy | Patient-specific scope | Freezer can't read | Branch can't read other branches |
+| 4. Revocation | Token release | Chain-level emergency | Agent + task-level | Immediate release | Chain revokes entire tree |
+| 5. Audit Trail | 9+ events/pipeline | Delegation + revocation | Compliance with task_id | Regulator-ready trail | Authorization lineage proof |
+| 6. Mutual Auth | — | — | — | — | Branch-to-branch verification |
+| 7. Delegation | — | Scope narrowing | — | — | 3-level: central→regional→branch |
+| 8. Observability | Metrics per scope | Revocation alerts | SLA monitoring | Batch completion metrics | Agent count + depth alerts |
 
-Component 6 (Mutual Auth) is implemented as a Go API but not used in these HTTP-based scenarios. It applies when agents need to verify each other's identity directly — for example, two agents in a mesh network that need to exchange data without going through the broker.
+Component 6 (Mutual Auth) is implemented as a Go API and applies when agents need to verify each other's identity directly — for example, bank branch agents in a mesh topology exchanging compliance data (Scenario 5).
