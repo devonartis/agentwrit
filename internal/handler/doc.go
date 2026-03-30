@@ -16,10 +16,11 @@
 //   - RegHdl:            POST /v1/register
 //   - ValHdl:            POST /v1/token/validate
 //   - RenewHdl:          POST /v1/token/renew
-//   - TokenExchangeHdl:  POST /v1/token/exchange
+//   - ReleaseHdl:        POST /v1/token/release
 //   - DelegHdl:          POST /v1/delegate
 //   - RevokeHdl:         POST /v1/revoke
 //   - AuditHdl:          GET  /v1/audit/events
 //   - HealthHdl:         GET  /v1/health
+//   - MetricsHdl:        GET  /v1/metrics
 //   - HandshakeHdl:      Mutual auth (Go API only, not HTTP-exposed)
 package handler
