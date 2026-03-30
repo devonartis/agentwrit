@@ -86,8 +86,8 @@ export AACTL_ADMIN_SECRET=my-secure-admin-secret-here
 aactl app register [--name NAME] [--scopes SCOPES]
 aactl app list
 aactl app get <app-id>
-aactl app update <app-id> [--scopes SCOPES]
-aactl app remove <app-id>
+aactl app update --id <app-id> [--scopes SCOPES] [--token-ttl N]
+aactl app remove --id <app-id>
 
 # Revocation
 aactl revoke --level token  --target <jti>

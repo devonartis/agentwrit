@@ -1315,7 +1315,7 @@ AgentAuth provides four revocation levels, each with a different blast radius. U
 
 **Using aactl (recommended):**
 
-> **Note:** aactl is available for demo and development use. Production auth will be added in a future release.
+> **Note:** aactl authenticates using `AACTL_ADMIN_SECRET` against the broker's admin auth endpoint. Set `AACTL_BROKER_URL` and `AACTL_ADMIN_SECRET` before use.
 
 ```bash
 # Token-level: revoke a single token by JTI
@@ -1554,7 +1554,7 @@ The audit trail is an append-only, hash-chained log of every significant operati
 
 **Using aactl (recommended):**
 
-> **Note:** aactl is available for demo and development use. Production auth will be added in a future release.
+> **Note:** aactl authenticates using `AACTL_ADMIN_SECRET` against the broker's admin auth endpoint. Set `AACTL_BROKER_URL` and `AACTL_ADMIN_SECRET` before use.
 
 ```bash
 # All events (table output)
