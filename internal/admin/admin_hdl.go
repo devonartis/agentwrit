@@ -18,10 +18,11 @@ import (
 
 const hdlCmp = "AdminHdl"
 
-// AdminHdl is the HTTP handler for admin endpoints. It registers
-// POST /v1/admin/auth (rate-limited, unauthenticated) and
-// POST /v1/admin/launch-tokens (requires admin:launch-tokens:* scope
-// via [authz.ValMw]).
+// AdminHdl is the HTTP handler for admin and app endpoints. It registers
+// POST /v1/admin/auth (rate-limited, unauthenticated),
+// POST /v1/admin/launch-tokens (requires admin:launch-tokens:* scope), and
+// POST /v1/app/launch-tokens (requires app:launch-tokens:* scope).
+// Both launch-token endpoints share the same handler.
 type AdminHdl struct {
 	adminSvc    *AdminSvc
 	valMw       *authz.ValMw
@@ -55,8 +56,10 @@ func (h *AdminHdl) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /v1/admin/auth",
 		h.rateLimiter.Wrap(http.HandlerFunc(h.handleAuth)))
 	mux.Handle("POST /v1/admin/launch-tokens",
-		h.valMw.Wrap(h.valMw.RequireAnyScope(
-			[]string{"admin:launch-tokens:*", "app:launch-tokens:*"},
+		h.valMw.Wrap(h.valMw.RequireScope("admin:launch-tokens:*",
+			http.HandlerFunc(h.handleCreateLaunchToken))))
+	mux.Handle("POST /v1/app/launch-tokens",
+		h.valMw.Wrap(h.valMw.RequireScope("app:launch-tokens:*",
 			http.HandlerFunc(h.handleCreateLaunchToken))))
 }
 

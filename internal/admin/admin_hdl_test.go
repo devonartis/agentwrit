@@ -276,7 +276,7 @@ func TestHandleCreateLaunchToken_EmptyScope(t *testing.T) {
 	}
 }
 
-// --- App scope ceiling enforcement on POST /v1/admin/launch-tokens ---
+// --- App scope ceiling enforcement on POST /v1/app/launch-tokens ---
 
 // newAppTestMux builds a mux with a SQLite-backed store so that app records
 // can be persisted and looked up by the handler during ceiling enforcement.
@@ -343,7 +343,7 @@ func TestCreateLaunchToken_AppCallerWithinCeiling(t *testing.T) {
 		AllowedScope: []string{"read:weather:current"},
 		TTL:          30,
 	})
-	req := httptest.NewRequest(http.MethodPost, "/v1/admin/launch-tokens", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/v1/app/launch-tokens", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+appToken)
 	rec := httptest.NewRecorder()
@@ -371,7 +371,7 @@ func TestCreateLaunchToken_AppCallerExceedsCeiling(t *testing.T) {
 		AllowedScope: []string{"write:data:all"},
 		TTL:          30,
 	})
-	req := httptest.NewRequest(http.MethodPost, "/v1/admin/launch-tokens", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/v1/app/launch-tokens", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+appToken)
 	rec := httptest.NewRecorder()
@@ -398,7 +398,7 @@ func TestCreateLaunchToken_AppCallerTokenCarriesAppID(t *testing.T) {
 		AllowedScope: []string{"read:weather:current"},
 		TTL:          30,
 	})
-	req := httptest.NewRequest(http.MethodPost, "/v1/admin/launch-tokens", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/v1/app/launch-tokens", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+appToken)
 	rec := httptest.NewRecorder()
@@ -502,7 +502,7 @@ func TestCreateLaunchToken_AppCallerAuditOnCeilingExceeded(t *testing.T) {
 		AllowedScope: []string{"write:data:all"},
 		TTL:          30,
 	})
-	req := httptest.NewRequest(http.MethodPost, "/v1/admin/launch-tokens", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/v1/app/launch-tokens", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+appToken)
 	rec := httptest.NewRecorder()
