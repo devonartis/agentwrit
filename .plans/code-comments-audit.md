@@ -62,29 +62,29 @@
 
 | # | File | Symbols | Status |
 |---|------|---------|--------|
-| 28 | `internal/store/sql_store.go` | 37 | pending |
-| 29 | `internal/deleg/deleg_svc.go` | 8 | pending |
-| 30 | `internal/identity/id_svc.go` | 9 | pending |
-| 31 | `internal/identity/spiffe.go` | 2 | pending |
-| 32 | `internal/cfg/cfg.go` | 5 | pending |
-| 33 | `internal/cfg/configfile.go` | 4 | pending |
+| 28 | `internal/store/sql_store.go` | 37 | done — package doc + SqlStore + AppRecord updated for dual storage model |
+| 29 | `internal/deleg/deleg_svc.go` | 8 | done — already excellent (attenuation, chain, depth limits) |
+| 30 | `internal/identity/id_svc.go` | 9 | done — already excellent (10-step registration flow) |
+| 31 | `internal/identity/spiffe.go` | 2 | done — already clear |
+| 32 | `internal/cfg/cfg.go` | 5 | done — already excellent (env vars, bcrypt, security notes) |
+| 33 | `internal/cfg/configfile.go` | 4 | done — already clear (symlink rejection, permission checks) |
 
 ## Chunk 5: Low Priority
 
 | # | File | Symbols | Status |
 |---|------|---------|--------|
-| 34 | `internal/keystore/keystore.go` | 3 | pending |
-| 35 | `internal/mutauth/mut_auth_hdl.go` | 8 | pending |
-| 36 | `internal/mutauth/discovery.go` | 6 | pending |
-| 37 | `internal/mutauth/heartbeat.go` | 8 | pending |
-| 38 | `internal/obs/obs.go` | 9 | pending |
-| 39 | `internal/problemdetails/problemdetails.go` | 8 | pending |
-| 40 | `cmd/aactl/apps.go` | 1 | pending |
-| 41 | `cmd/aactl/audit.go` | 1 | pending |
-| 42 | `cmd/aactl/client.go` | 9 | pending |
-| 43 | `cmd/aactl/init_cmd.go` | 3 | pending |
-| 44 | `cmd/aactl/main.go` | 1 | pending |
-| 45 | `cmd/aactl/output.go` | 2 | pending |
-| 46 | `cmd/aactl/revoke.go` | 1 | pending |
-| 47 | `cmd/aactl/root.go` | 2 | pending |
-| 48 | `cmd/aactl/token.go` | 1 | pending |
+| 34 | `internal/keystore/keystore.go` | 3 | done — already clear (PEM, O_EXCL, 0600 permissions) |
+| 35 | `internal/mutauth/mut_auth_hdl.go` | 8 | done — already excellent (3-step handshake protocol) |
+| 36 | `internal/mutauth/discovery.go` | 6 | done — already clear (binding, identity consistency) |
+| 37 | `internal/mutauth/heartbeat.go` | 8 | done — already clear (liveness, auto-revocation) |
+| 38 | `internal/obs/obs.go` | 9 | done — already excellent (logging levels, metrics reference) |
+| 39 | `internal/problemdetails/problemdetails.go` | 8 | done — already clear (RFC 7807, MaxBytesBody, RequestID) |
+| 40 | `cmd/aactl/apps.go` | 1 | done — already clear (cobra docs per command) |
+| 41 | `cmd/aactl/audit.go` | 1 | done — already clear |
+| 42 | `cmd/aactl/client.go` | 9 | done — already clear (auth flow, doPostWithToken purpose) |
+| 43 | `cmd/aactl/init_cmd.go` | 3 | done — already clear (dev vs prod mode) |
+| 44 | `cmd/aactl/main.go` | 1 | done — already clear |
+| 45 | `cmd/aactl/output.go` | 2 | done — already clear |
+| 46 | `cmd/aactl/revoke.go` | 1 | done — already clear |
+| 47 | `cmd/aactl/root.go` | 2 | done — already clear |
+| 48 | `cmd/aactl/token.go` | 1 | done — already clear (self-revocation, idempotency) |
