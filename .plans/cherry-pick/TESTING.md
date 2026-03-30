@@ -369,3 +369,17 @@ The gate commands are all shell one-liners or short scripts — they translate d
 | 2026-03-29 | B3 | G4:DockerBuild | PASS | branch=fix/sec-l1 |
 | 2026-03-29 | B3 | G5:DockerStart | PASS | branch=fix/sec-l1 |
 | 2026-03-29 | B3 | G6:SmokeTest | PASS | branch=fix/sec-l1 |
+
+| 2026-03-29 | B4 | G1:Compile | PASS | branch=fix/sec-l2a |
+| 2026-03-29 | B4 | G2:UnitTests | PASS | branch=fix/sec-l2a |
+| 2026-03-29 | B4 | G3:Contamination | FAIL | add-on code detected in Go sources |
+| 2026-03-29 | B4 | G4:DockerBuild | PASS | branch=fix/sec-l2a |
+| 2026-03-29 | B4 | G5:DockerStart | PASS | branch=fix/sec-l2a |
+| 2026-03-29 | B4 | G6:SmokeTest | PASS | branch=fix/sec-l2a |
+
+| 2026-03-29 | B4 | G1:Compile | PASS | branch=fix/sec-l2a |
+| 2026-03-29 | B4 | G2:UnitTests | PASS | branch=fix/sec-l2a |
+| 2026-03-29 | B4 | G3:Contamination | PASS | branch=fix/sec-l2a |
+| 2026-03-29 | B4 | G4:DockerBuild | PASS | branch=fix/sec-l2a |
+| 2026-03-29 | B4 | G5:DockerStart | PASS | branch=fix/sec-l2a |
+| 2026-03-29 | B4 | G6:SmokeTest | PASS | branch=fix/sec-l2a |
