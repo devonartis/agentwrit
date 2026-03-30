@@ -1337,12 +1337,14 @@ flowchart TB
     end
 
     subgraph operator["Operator Actions"]
+        direction TB
         Auth["1. Authenticate with AA_ADMIN_SECRET"]
         Assess["2. Assess blast radius"]
         Decide{"3. Choose revocation level"}
     end
 
     subgraph revocation["Revocation Levels"]
+        direction LR
         TokenRev["Token Level<br/>Single token by JTI"]
         AgentRev["Agent Level<br/>All tokens for SPIFFE ID"]
         TaskRev["Task Level<br/>All tokens for task_id"]
@@ -1350,6 +1352,7 @@ flowchart TB
     end
 
     subgraph broker["Broker Action"]
+        direction TB
         UpdateRevList["Update revocation list"]
         LogEvent["Log revocation event"]
         Notify["Notify all resource servers"]
@@ -1377,10 +1380,18 @@ flowchart TB
     LogEvent --> Notify
     Notify --> Invalid
 
-    style TokenRev fill:#e8f5e9
-    style AgentRev fill:#fff3e0
-    style TaskRev fill:#fce4ec
-    style ChainRev fill:#f3e5f5
+    style E fill:#ffebee,stroke:#ef5350,color:#b71c1c
+    style Auth fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
+    style Assess fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
+    style Decide fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
+    style TokenRev fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
+    style AgentRev fill:#fff3e0,stroke:#ffb74d,color:#e65100
+    style TaskRev fill:#fce4ec,stroke:#f06292,color:#880e4f
+    style ChainRev fill:#f3e5f5,stroke:#ba68c8,color:#4a148c
+    style UpdateRevList fill:#e0f7fa,stroke:#26c6da,color:#006064
+    style LogEvent fill:#e0f7fa,stroke:#26c6da,color:#006064
+    style Notify fill:#e0f7fa,stroke:#26c6da,color:#006064
+    style Invalid fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
 ```
 
 ### Python Code Example

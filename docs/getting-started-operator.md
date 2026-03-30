@@ -44,6 +44,14 @@ flowchart LR
     Dev["Developer App"] -- "http://localhost:8080" --> B
     Op["Operator"] -- "http://localhost:8080" --> B
     Prom["Prometheus"] -- "/v1/metrics" --> B
+
+    classDef broker fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
+    classDef client fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
+    classDef obs fill:#f3e5f5,stroke:#ba68c8,color:#4a148c
+
+    class B broker
+    class Dev,Op client
+    class Prom obs
 ```
 
 The `docker-compose.yml` defines the broker service on a bridge network (`agentauth-net`). The image uses a multi-stage Alpine build (golang:1.24 builder, alpine:3.18 runtime).

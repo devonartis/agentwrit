@@ -120,17 +120,41 @@ The broker will log to stdout. You should see a "broker started" message.
 
 AgentAuth provides a single registration flow to get tokens. Here's how it works:
 
-```mermaid
-flowchart TD
-    A["Agent needs a token"] --> B["Follow the registration flow"]
-    B --> B1["1. Authenticate as admin"]
-    B1 --> B2["2. Create launch token"]
-    B2 --> B3["3. Get nonce challenge"]
-    B3 --> B4["4. Sign nonce & register"]
-    B4 --> B5["5. Exchange for JWT"]
-    B5 --> C["✓ Token ready to use"]
+This hand-sketched SVG mirrors the same flow as the Mermaid diagram below. The SVG gives readers a faster visual orientation, while the Mermaid source stays easy to maintain as the broker evolves.
 
-    style B fill:#e1f5ff
+![Hand-sketched registration overview](diagrams/getting-started-auth-flow-sketch.svg)
+
+```mermaid
+flowchart LR
+    Need["Agent needs a token"]
+
+    subgraph Operator["Operator bootstrap"]
+        direction TB
+        O1["1. Authenticate as admin"]
+        O2["2. Create launch token"]
+        O1 --> O2
+    end
+
+    subgraph Developer["Developer registration"]
+        direction TB
+        D1["3. Get nonce challenge"]
+        D2["4. Sign nonce"]
+        D3["5. Register with broker"]
+        D4["6. Use JWT"]
+        D1 --> D2 --> D3 --> D4
+    end
+
+    Need --> O1
+    O2 -->|"hand launch token to agent"| D1
+    D4 --> Ready["✓ Token ready to use"]
+
+    classDef operator fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
+    classDef developer fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
+    classDef outcome fill:#fff3e0,stroke:#ffb74d,color:#e65100
+
+    class O1,O2 operator
+    class D1,D2,D3,D4 developer
+    class Need,Ready outcome
 ```
 
 The registration flow gives you full control over your keys. You manually perform cryptographic operations and send multiple requests. This design provides explicit transparency into every step of the identity and authorization process.

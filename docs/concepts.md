@@ -248,10 +248,14 @@ flowchart TB
     L3 --> B3
     L4 --> B4
 
-    style L1 fill:#e8f5e9
-    style L2 fill:#fff3e0
-    style L3 fill:#fce4ec
-    style L4 fill:#f3e5f5
+    style L1 fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
+    style B1 fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
+    style L2 fill:#fff3e0,stroke:#ffb74d,color:#e65100
+    style B2 fill:#fff3e0,stroke:#ffb74d,color:#e65100
+    style L3 fill:#fce4ec,stroke:#f06292,color:#880e4f
+    style B3 fill:#fce4ec,stroke:#f06292,color:#880e4f
+    style L4 fill:#f3e5f5,stroke:#ba68c8,color:#4a148c
+    style B4 fill:#f3e5f5,stroke:#ba68c8,color:#4a148c
 ```
 
 | Level | When to Use | Target |
@@ -442,11 +446,24 @@ flowchart TB
         AuditTrail["Audit Trail<br/>Trusted to record accurately<br/>Designed to prevent tampering"]
     end
 
-    Broker -->|"issues credentials to"| Orch
-    Broker -->|"issues credentials to"| agents
+    Broker -->|"issues admin / app / agent credentials to"| Orch
+    Broker -->|"issues agent credentials to"| AgentA
+    Broker -->|"issues agent credentials to"| AgentB
     Broker -->|"publishes signing key to"| RS
-    agents -->|"present tokens to"| RS
-    Broker & Orch & agents & RS -->|"all actions recorded in"| AuditTrail
+    AgentA -->|"presents tokens to"| RS
+    AgentB -->|"presents tokens to"| RS
+    Broker -->|"records events in"| AuditTrail
+    Orch -->|"records activity in"| AuditTrail
+    AgentA -->|"records activity in"| AuditTrail
+    AgentB -->|"records activity in"| AuditTrail
+    RS -->|"records access decisions in"| AuditTrail
+
+    style Broker fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
+    style Orch fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
+    style AgentA fill:#fff3e0,stroke:#ffb74d,color:#e65100
+    style AgentB fill:#fff3e0,stroke:#ffb74d,color:#e65100
+    style RS fill:#fce4ec,stroke:#f06292,color:#880e4f
+    style AuditTrail fill:#f3e5f5,stroke:#ba68c8,color:#4a148c
 ```
 
 ---

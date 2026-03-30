@@ -35,6 +35,14 @@ flowchart TB
     AACTL -- "admin API calls" --> BROKER
     AGENT -- "Bearer token" --> RS
     DEV -- "Bearer token" --> RS
+
+    classDef external fill:#fff3e0,stroke:#ffb74d,color:#e65100
+    classDef control fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
+    classDef resource fill:#fce4ec,stroke:#f06292,color:#880e4f
+
+    class DEV,AGENT,ADMIN external
+    class BROKER,AACTL control
+    class RS resource
 ```
 
 **Broker** (`cmd/broker`) -- The central authority. Loads or generates a persistent Ed25519 signing key (`internal/keystore`), issues EdDSA-signed JWTs, validates challenge-response registrations, manages scope attenuation, delegation, revocation, and maintains a hash-chained audit trail. All endpoints use `application/json` with RFC 7807 error responses.
@@ -205,11 +213,11 @@ flowchart TD
     STORE["store"]
     AUDIT["audit"]
 
-    classDef foundation fill:#e8f5e9
-    classDef security fill:#e3f2fd
-    classDef domain fill:#fff3e0
-    classDef transport fill:#fce4ec
-    classDef protocol fill:#f3e5f5
+    classDef foundation fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
+    classDef security fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
+    classDef domain fill:#fff3e0,stroke:#ffb74d,color:#e65100
+    classDef transport fill:#fce4ec,stroke:#f06292,color:#880e4f
+    classDef protocol fill:#f3e5f5,stroke:#ba68c8,color:#4a148c
 
     class CFG,OBS,STORE,KEYSTORE foundation
     class TOKEN,IDENTITY,AUTHZ security

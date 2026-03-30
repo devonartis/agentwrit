@@ -77,6 +77,18 @@ flowchart TD
 
     S500 --> G1["Broker error"]
     G1 --> G1F["Fix: Check broker logs,<br/>restart if needed"]
+
+    classDef question fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
+    classDef status fill:#fff3e0,stroke:#ffb74d,color:#e65100
+    classDef error fill:#ffebee,stroke:#ef5350,color:#b71c1c
+    classDef fix fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
+    classDef rate fill:#f3e5f5,stroke:#ba68c8,color:#4a148c
+
+    class Start,A1,A2,A3,A4,F1 question
+    class S400,S401,S403,S500 status
+    class S429,R1 rate
+    class B1,A1R,A1N,A1A,A2LT,A2NC,A2SIG,A2KEY,A3EXP,A3REV,A3CLAMP,A4CREDS,A4WEAK,F1SV,F1IS,F1REV,G1 error
+    class B1F,A2LTF,A2NCF,A2SIGF,A2KEYF,A3EXPF,A3REVF,A3CLAMPF,A4CREDSF,A4WEAKF,F1SVF,F1ISF,F1REVF,R1F,G1F fix
 ```
 
 ---
