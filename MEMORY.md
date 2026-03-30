@@ -82,6 +82,7 @@ When both Cowork and Claude Code are active, read `COWORK_SESSION.md` for shared
 - **Live tests require Docker** — `./scripts/stack_up.sh` first. No Docker = not a live test.
 - **No HITL in core** — zero tolerance. `grep -ri "hitl\|approval" internal/ cmd/` must return nothing.
 - **Cherry-pick one batch at a time** — build + test after each batch before proceeding.
+- **Docs update WITH every code change** — if code changes behavior, the docs update goes in the same commit or the same branch. No "fix docs later." B0-B4 proved that deferred doc updates cause massive drift. The doc files to check: `docs/api.md`, `docs/architecture.md`, `docs/concepts.md`, `docs/implementation-map.md`, `docs/scenarios.md`, `docs/api/openapi.yaml`.
 - **Use `cherrypick-devflow` skill** for migration. Use `devflow` for new features after migration.
 
 ## Lessons Learned (from internal development)
