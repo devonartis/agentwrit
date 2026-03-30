@@ -20,15 +20,13 @@ flowchart TD
     Start --> S401
     Start --> S403
     Start --> S429
-    Start --> S502
-    Start --> S503
+    Start --> S500
 
     S400["400 Bad Request"]
     S401["401 Unauthorized"]
     S403["403 Forbidden"]
     S429["429 Too Many Requests"]
-    S502["502 Bad Gateway"]
-    S503["503 Service Unavailable"]
+    S500["500 Internal Error"]
 
     S400 --> B1["Missing or malformed<br/>request fields"]
     B1 --> B1F["Fix: Check JSON body<br/>for required fields"]
@@ -49,38 +47,55 @@ flowchart TD
     A2SIG --> A2SIGF["Fix: Sign bytes.fromhex(nonce)<br/>not nonce text"]
     A2KEY --> A2KEYF["Fix: Use Encoding.Raw,<br/>PublicFormat.Raw"]
 
-    A1N --> A3["Token expired"]
-    A3 --> A3F["Fix: Renew at 80% TTL<br/>or re-acquire"]
+    A1N --> A3{"Error detail?"}
+    A3 --> A3EXP["token expired"]
+    A3 --> A3REV["token revoked"]
+    A3 --> A3CLAMP["token TTL exceeded<br/>MaxTTL ceiling"]
 
-    A1A --> A4["Invalid credentials"]
-    A4 --> A4F["Fix: Check<br/>AA_ADMIN_SECRET"]
+    A3EXP --> A3EXPF["Fix: Renew at 80% TTL<br/>or re-acquire"]
+    A3REV --> A3REVF["Fix: Re-acquire fresh<br/>token via /v1/register"]
+    A3CLAMP --> A3CLAMPF["Fix: Check AA_MAX_TTL,<br/>request shorter TTL"]
+
+    A1A --> A4{"Error detail?"}
+    A4 --> A4CREDS["invalid credentials"]
+    A4 --> A4WEAK["admin secret<br/>rejected (weak)"]
+
+    A4CREDS --> A4CREDSF["Fix: Check<br/>AA_ADMIN_SECRET"]
+    A4WEAK --> A4WEAKF["Fix: Use aactl init<br/>to set strong secret"]
 
     S403 --> F1{"Error code?"}
     F1 --> F1SV["scope_violation"]
     F1 --> F1IS["insufficient_scope"]
     F1 --> F1REV["token revoked"]
-    F1 --> F1SC["scope ceiling<br/>exceeded (sidecar)"]
 
     F1SV --> F1SVF["Fix: Request narrower<br/>scope within ceiling"]
     F1IS --> F1ISF["Fix: Token does not have<br/>required scope"]
-    F1REV --> F1REVF["Fix: Re-acquire<br/>token from sidecar"]
-    F1SC --> F1SCF["Fix: Request scope<br/>within sidecar ceiling"]
+    F1REV --> F1REVF["Fix: Re-acquire<br/>fresh token"]
 
     S429 --> R1["Rate limited"]
     R1 --> R1F["Fix: Wait Retry-After<br/>seconds, use backoff"]
 
-    S502 --> G1["Sidecar cannot<br/>reach broker"]
-    G1 --> G1F["Fix: Check broker<br/>health, retry"]
+    S500 --> G1["Broker error"]
+    G1 --> G1F["Fix: Check broker logs,<br/>restart if needed"]
 
-    S503 --> G2["Circuit breaker open,<br/>no cached token"]
-    G2 --> G2F["Fix: Check broker,<br/>wait for auto-recovery"]
+    classDef question fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
+    classDef status fill:#fff3e0,stroke:#ffb74d,color:#e65100
+    classDef error fill:#ffebee,stroke:#ef5350,color:#b71c1c
+    classDef fix fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
+    classDef rate fill:#f3e5f5,stroke:#ba68c8,color:#4a148c
+
+    class Start,A1,A2,A3,A4,F1 question
+    class S400,S401,S403,S500 status
+    class S429,R1 rate
+    class B1,A1R,A1N,A1A,A2LT,A2NC,A2SIG,A2KEY,A3EXP,A3REV,A3CLAMP,A4CREDS,A4WEAK,F1SV,F1IS,F1REV,G1 error
+    class B1F,A2LTF,A2NCF,A2SIGF,A2KEYF,A3EXPF,A3REVF,A3CLAMPF,A4CREDSF,A4WEAKF,F1SVF,F1ISF,F1REVF,R1F,G1F fix
 ```
 
 ---
 
 ## Developer Errors
 
-> **Persona:** Developer integrating an AI agent. You interact with the sidecar or broker through Python/TypeScript.
+> **Persona:** Developer integrating an AI agent. You interact with the broker directly through Python/TypeScript or via your orchestration platform's credential service.
 
 ### 401 at /v1/register: "nonce signature verification failed"
 
@@ -130,7 +145,22 @@ pub_b64 = base64.b64encode(pub_raw).decode()
 - The launch token was already consumed (it is single-use by default).
 - The launch token string was copied incorrectly.
 
-**Fix:** Request a new launch token from your operator. If you are using the sidecar (recommended), this is handled automatically -- the sidecar creates launch tokens on your behalf.
+**Fix:** Request a new launch token from your operator via the admin API:
+
+```bash
+# Operator authenticates
+ADMIN_TOKEN=$(curl -s -X POST http://localhost:8080/v1/admin/auth \
+  -H "Content-Type: application/json" \
+  -d '{"secret":"'"$AA_ADMIN_SECRET"'"}' | jq -r '.access_token')
+
+# Operator creates a launch token for your agent
+LAUNCH_TOKEN=$(curl -s -X POST http://localhost:8080/v1/admin/launch-tokens \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"agent_name":"my-agent","allowed_scope":["read:data:*"],"max_ttl":300,"ttl":30}' | jq -r '.launch_token')
+
+# Agent receives the launch token and uses it to register
+```
 
 ---
 
@@ -142,19 +172,21 @@ pub_b64 = base64.b64encode(pub_raw).decode()
 
 ```python
 # Get nonce and register in one sequence -- no delay between them
-challenge = requests.get(f"{SIDECAR}/v1/challenge")
+challenge = requests.get(f"{BROKER}/v1/challenge")
 nonce_hex = challenge.json()["nonce"]
 
 nonce_bytes = bytes.fromhex(nonce_hex)
 signature = private_key.sign(nonce_bytes)
 sig_b64 = base64.b64encode(signature).decode()
 
-reg = requests.post(f"{SIDECAR}/v1/register", json={
-    "agent_name": "my-agent",
+reg = requests.post(f"{BROKER}/v1/register", json={
+    "launch_token": launch_token,
+    "orch_id": "orch-001",
     "task_id": "task-001",
     "public_key": pub_b64,
     "signature": sig_b64,
     "nonce": nonce_hex,
+    "requested_scope": ["read:data:*"],
 })
 ```
 
@@ -191,18 +223,30 @@ If you need broader permissions, ask your operator to create a launch token with
 - **Task-level:** All tokens for your task were revoked.
 - **Chain-level:** The delegation chain root was revoked (if your token was delegated).
 
-**Fix:** You cannot unrevoke a token. Re-acquire a fresh token from the sidecar:
+**Fix:** You cannot unrevoke a token. Re-acquire a fresh token by re-registering:
 
 ```python
-data = requests.post(f"{SIDECAR}/v1/token", json={
-    "agent_name": "my-agent",
+# Get a fresh nonce and launch token from your operator
+challenge = requests.get(f"{BROKER}/v1/challenge")
+nonce_hex = challenge.json()["nonce"]
+
+nonce_bytes = bytes.fromhex(nonce_hex)
+signature = private_key.sign(nonce_bytes)
+sig_b64 = base64.b64encode(signature).decode()
+
+reg = requests.post(f"{BROKER}/v1/register", json={
+    "launch_token": new_launch_token,
+    "orch_id": "orch-001",
     "task_id": "task-001",
-    "scope": ["read:data:*"],
-}).json()
-new_token = data["access_token"]
+    "public_key": pub_b64,
+    "signature": sig_b64,
+    "nonce": nonce_hex,
+    "requested_scope": ["read:data:*"],
+})
+new_token = reg.json()["access_token"]
 ```
 
-If the agent itself was revoked, you may need to re-register (the sidecar handles this automatically for new `agent_name`/`task_id` combinations).
+If the task or agent lineage was revoked, get a fresh launch token and choose the appropriate `orch_id` / `task_id` values for the new run.
 
 ---
 
@@ -220,7 +264,7 @@ claims = resp.json().get("claims", {})
 print(f"Your scope: {claims.get('scope')}")
 ```
 
-If you need a different scope, request a new token with the correct scope from the sidecar.
+If you need a different scope, request a new token with the correct scope via registration or delegation.
 
 ---
 
@@ -240,22 +284,7 @@ time.sleep(renewal_time)
 # Renew here, before the token expires at 300s
 ```
 
-If the token is already expired, re-acquire a fresh one from the sidecar via `POST /v1/token`.
-
----
-
-### 403 at sidecar /v1/token: "requested scope exceeds sidecar ceiling"
-
-**Cause:** The scope you requested exceeds the sidecar's configured `AA_SIDECAR_SCOPE_CEILING`. The sidecar enforces its own scope ceiling before forwarding to the broker.
-
-**Fix:** Request a scope within the sidecar's ceiling. Check what scopes are available:
-
-```python
-health = requests.get(f"{SIDECAR}/v1/health").json()
-print(f"Scope ceiling: {health['scope_ceiling']}")
-```
-
-If you need scopes outside the ceiling, ask your operator to adjust the sidecar's `AA_SIDECAR_SCOPE_CEILING` configuration.
+If the token is already expired, re-acquire a fresh one via registration.
 
 ---
 
@@ -310,7 +339,7 @@ All broker error responses use the [RFC 7807](https://www.rfc-editor.org/rfc/rfc
 Every response (success and error) includes a `request_id` in the JSON body and an `X-Request-ID` header. When reporting issues to your operator, include the `request_id` -- it correlates directly to the broker's server-side logs.
 
 ```python
-resp = requests.post(f"{SIDECAR}/v1/register", json={...})
+resp = requests.post(f"{BROKER}/v1/register", json={...})
 if not resp.ok:
     error = resp.json()
     request_id = error.get("request_id", resp.headers.get("X-Request-ID"))
@@ -318,26 +347,13 @@ if not resp.ok:
     print(f"Request ID for operator: {request_id}")
 ```
 
-### Sidecar Error Format
-
-The sidecar uses a simpler error format (not RFC 7807):
-
-```json
-{
-  "error": "Forbidden",
-  "detail": "requested scope exceeds sidecar ceiling"
-}
-```
-
-The sidecar does not include `type`, `error_code`, or `hint` fields. The `error` field contains the HTTP status text and `detail` describes the problem.
-
 ---
 
 ## Operator Errors
 
 > **Target persona:** Platform Operator
 >
-> These entries cover infrastructure and deployment errors that operators encounter when managing the broker and sidecar.
+> These entries cover infrastructure and deployment errors that operators encounter when managing the broker.
 
 ---
 
@@ -374,35 +390,8 @@ AA_ADMIN_SECRET=your-strong-random-secret
 
 ---
 
-### Sidecar Exits on Startup: Missing Required Env Vars
 
-**Symptom:**
-
-The sidecar logs one of these messages and exits with code 1:
-
-```
-[AA:SIDECAR:FAIL] ... | MAIN | AA_ADMIN_SECRET must be set
-```
-
-```
-[AA:SIDECAR:FAIL] ... | MAIN | AA_SIDECAR_SCOPE_CEILING must be set
-```
-
-**Cause:** The sidecar requires both `AA_ADMIN_SECRET` (must match the broker's value) and `AA_SIDECAR_SCOPE_CEILING` (comma-separated scope list). Neither has a default.
-
-**Fix:**
-
-```bash
-export AA_ADMIN_SECRET="same-as-broker-secret"
-export AA_SIDECAR_SCOPE_CEILING="read:data:*,write:data:*"
-go run ./cmd/sidecar
-```
-
-For Docker Compose, ensure both are set in the `sidecar` service's `environment` block.
-
----
-
-### 401 at /v1/admin/auth: Invalid Credentials
+### 401 at /v1/admin/auth: Invalid Credentials or Weak Secret
 
 **Symptom:**
 
@@ -414,26 +403,56 @@ For Docker Compose, ensure both are set in the `sidecar` service's `environment`
 }
 ```
 
-**Cause:** The `client_secret` in the request body does not match the broker's `AA_ADMIN_SECRET` value. The broker uses constant-time comparison to prevent timing attacks.
+Or:
+
+```json
+{
+  "type": "urn:agentauth:error:unauthorized",
+  "status": 401,
+  "detail": "admin secret does not meet security requirements"
+}
+```
+
+**Cause:** Either:
+1. The `secret` in the request body does not match the broker's `AA_ADMIN_SECRET` value. The broker uses bcrypt comparison to prevent timing attacks.
+2. The admin secret is weak (less than 16 characters or in the denylist in `internal/cfg/cfg.go`).
 
 **Fix:**
 
-1. Verify the `AA_ADMIN_SECRET` environment variable is set on the broker:
+1. If the secret is weak, use `aactl init` to generate a strong secret with bcrypt hashing:
+
+```bash
+aactl init --mode dev
+# or
+aactl init --mode prod --config-path /path/to/config.yaml
+```
+
+This creates a configuration file with a bcrypt-hashed admin secret. Set `AA_CONFIG_PATH` to point to this file:
+
+```bash
+export AA_CONFIG_PATH="/path/to/config"
+unset AA_ADMIN_SECRET  # Must be UNSET (not empty) to fall through to config file
+go run ./cmd/broker
+```
+
+> **Warning:** Do not set `AA_ADMIN_SECRET=""` — an empty string is on the denylist and will cause the broker to exit. Leave the variable **unset** to let the config file provide the secret.
+
+2. If the secret is correct but doesn't match, verify the `AA_ADMIN_SECRET` environment variable is set on the broker:
 
 ```bash
 # Check if it's set (don't print the actual value)
 env | grep AA_ADMIN_SECRET | wc -l
 ```
 
-2. Ensure the `client_secret` in your curl command matches exactly:
+3. Ensure the `client_secret` in your curl command matches exactly:
 
 ```bash
 curl -s -X POST http://localhost:8080/v1/admin/auth \
   -H "Content-Type: application/json" \
-  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}"
+  -d "{\"secret\": \"$AA_ADMIN_SECRET\"}"
 ```
 
-3. If using Docker Compose, check that the `AA_ADMIN_SECRET` in docker-compose.yml or your `.env` file matches what the sidecar and your admin scripts expect.
+4. If using Docker Compose, check that the `AA_ADMIN_SECRET` in docker-compose.yml or your `.env` file matches what your admin scripts expect.
 
 ---
 
@@ -451,7 +470,7 @@ curl -s -X POST http://localhost:8080/v1/admin/auth \
 
 Response includes header: `Retry-After: 1`
 
-**Cause:** More than 5 requests per second (burst 10) to `POST /v1/admin/auth` from the same IP address. The same rate limit applies to `POST /v1/sidecar/activate`.
+**Cause:** More than 5 requests per second (burst 10) to `POST /v1/admin/auth` from the same IP address.
 
 **Fix:**
 
@@ -465,7 +484,7 @@ for i in 1 2 4 8; do
   RESULT=$(curl -s -w "%{http_code}" -o /tmp/auth_resp.json \
     -X POST http://localhost:8080/v1/admin/auth \
     -H "Content-Type: application/json" \
-    -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}")
+    -d "{\"secret\": \"$AA_ADMIN_SECRET\"}")
   [ "$RESULT" = "200" ] && break
   sleep "$i"
 done
@@ -473,114 +492,124 @@ done
 
 ---
 
-### Sidecar Health: broker_connected=false
+### Broker Token TTL Clamped: "token TTL exceeds MaxTTL ceiling"
 
 **Symptom:**
 
-```bash
-curl -s http://localhost:8081/v1/health
-```
-
-Returns:
+When registering an agent with a long TTL or requesting token renewal:
 
 ```json
 {
-  "status": "degraded",
-  "broker_connected": false,
-  "healthy": false
+  "type": "urn:agentauth:error:invalid_ttl",
+  "status": 400,
+  "detail": "token TTL exceeds MaxTTL ceiling"
 }
 ```
 
-Or during initial startup:
+Or token is issued but with a shorter `expires_in` than requested.
 
-```json
-{
-  "status": "bootstrapping",
-  "healthy": false
-}
-```
-
-**Cause:** The sidecar cannot reach the broker. Possible reasons:
-- Broker is not running.
-- `AA_BROKER_URL` points to the wrong address.
-- In Docker, the sidecar should use `http://broker:8080` (the service name), not `http://localhost:8080`.
-- Network connectivity issue between containers (wrong Docker network).
-- `AA_ADMIN_SECRET` mismatch between broker and sidecar (bootstrap fails at admin auth step).
+**Cause:** The broker is configured with a `AA_MAX_TTL` ceiling (default 86400 seconds = 24 hours). Any token TTL exceeding this ceiling is clamped to the maximum.
 
 **Fix:**
 
-1. Check broker health:
+1. **If you want longer-lived tokens, increase the ceiling:**
 
 ```bash
-curl http://localhost:8080/v1/health
+export AA_MAX_TTL=604800  # 7 days
+go run ./cmd/broker
 ```
 
-2. If using Docker Compose, verify the sidecar's environment has `AA_BROKER_URL=http://broker:8080`.
-
-3. Verify both services are on the same Docker network:
+2. **If you want to disable the ceiling entirely:**
 
 ```bash
-docker network inspect agentauth-net
+export AA_MAX_TTL=0  # 0 disables the ceiling
+go run ./cmd/broker
 ```
 
-4. Check that `AA_ADMIN_SECRET` is identical for both broker and sidecar.
+3. **If you want shorter-lived tokens (recommended for security), request a TTL within the ceiling:**
 
-5. The sidecar retries bootstrap with exponential backoff (1 second to 60 second cap). Once the broker becomes reachable, the sidecar will bootstrap automatically.
+```python
+reg = requests.post(f"{BROKER}/v1/register", json={
+    ...
+    "requested_ttl": 300,  # 5 minutes, well within any ceiling
+    ...
+})
+```
+
+4. **For Docker Compose, add the env var to the broker service:**
+
+```yaml
+broker:
+  environment:
+    - AA_MAX_TTL=604800
+```
 
 ---
 
-### Circuit Breaker: X-AgentAuth-Cached Header
+### Broker Config File Issues: aactl init
 
 **Symptom:**
 
-Token responses from the sidecar include the header `X-AgentAuth-Cached: true` and may have a shorter `expires_in` than expected.
+Broker fails to start with one of these errors:
 
-Or, if no cached token is available:
-
-```json
-{
-  "error": "Service Unavailable",
-  "detail": "broker unavailable and no cached token"
-}
+```
+FATAL: config file not found at path: /etc/agentauth/config.yaml
 ```
 
-**Cause:** The sidecar's circuit breaker has tripped open because the broker failure rate exceeded the threshold (default: 50% of requests failing within a 30-second window, with at least 5 requests). The sidecar serves cached tokens as a failsafe when the circuit is open.
+```
+FATAL: failed to read config file: permission denied
+```
 
-**Circuit breaker states:**
-- **Closed** (0): Normal operation, requests pass to broker.
-- **Open** (1): Broker requests blocked, cached tokens served.
-- **Probing** (2): Single health probe sent to check broker recovery.
+```
+FATAL: admin secret rejected: does not meet security requirements
+```
+
+**Cause:** The broker is configured to use a config file via `AA_CONFIG_PATH`, but:
+1. The file does not exist at the specified path.
+2. The file is unreadable (permission issue).
+3. The config file contains a weak admin secret.
 
 **Fix:**
 
-1. Check broker health:
+1. **Generate a config file using aactl init:**
 
 ```bash
-curl http://localhost:8080/v1/health
+# Development mode (shorter TTLs, simpler config)
+aactl init --mode dev
+
+# Production mode (longer TTLs, bcrypt-hashed admin secret, config file)
+aactl init --mode prod --config-path /etc/agentauth/config.yaml
 ```
 
-2. Monitor the circuit breaker state via Prometheus:
+2. **For development, use environment variables instead of a config file:**
 
+```bash
+export AA_ADMIN_SECRET="test-secret-at-least-16-chars"
+export AA_DEFAULT_TTL=300
+export AA_MAX_TTL=3600
+go run ./cmd/broker
 ```
-agentauth_sidecar_circuit_state  # 0=closed, 1=open, 2=probing
-agentauth_sidecar_circuit_trips_total  # total trips
-agentauth_sidecar_cached_tokens_served_total  # cached tokens served
+
+3. **Ensure the config file is readable by the broker process:**
+
+```bash
+ls -la /etc/agentauth/config.yaml
+# Should have read permissions for the broker user
 ```
 
-3. The circuit breaker auto-recovers. The sidecar sends health probes to the broker every `AA_SIDECAR_CB_PROBE_INTERVAL` seconds (default 5) when the circuit is open. When a probe succeeds, the circuit transitions to probing, then closes on the next successful request.
+4. **To use the config file with the broker:**
 
-4. To tune circuit breaker sensitivity:
+```bash
+export AA_CONFIG_PATH=/etc/agentauth/config.yaml
+# Leave AA_ADMIN_SECRET unset or it will override the config file
+go run ./cmd/broker
+```
 
-| Variable | Default | Effect of increasing |
-|----------|---------|---------------------|
-| `AA_SIDECAR_CB_WINDOW` | 30s | Longer evaluation window, slower to trip |
-| `AA_SIDECAR_CB_THRESHOLD` | 0.5 | Higher failure rate required to trip |
-| `AA_SIDECAR_CB_MIN_REQUESTS` | 5 | More requests needed before tripping |
-| `AA_SIDECAR_CB_PROBE_INTERVAL` | 5s | Slower recovery probing |
+5. **Env vars override config file values.** If both `AA_CONFIG_PATH` and individual env vars are set, env vars take precedence.
 
 ---
 
-### Fresh Keys on Restart: All Tokens Invalidated
+### Broker Restart: All Tokens Invalidated
 
 **Symptom:**
 
@@ -594,23 +623,19 @@ After restarting the broker, all previously issued tokens fail validation:
 }
 ```
 
-Sidecars enter bootstrap retry after a broker restart.
-
-**Cause:** The broker generates a fresh Ed25519 signing key pair on every startup. This is by design -- there is no persistent key material. All tokens signed with the old key become invalid immediately.
+**Cause:** The broker normally persists its Ed25519 signing key at `AA_SIGNING_KEY_PATH` and reloads it on restart. Tokens only start failing after a restart if the key file is missing, the path points to ephemeral storage, or the broker starts with a different key path.
 
 **Fix:**
 
-This is expected behavior. After a broker restart:
+This is not expected in a stable deployment. After a restart that changes the signing key:
 
-1. **Sidecars recover automatically.** The sidecar detects the broker restart (its own token fails renewal), enters the bootstrap retry loop, and re-activates with new credentials.
+1. **Agents must re-register.** Any agent holding a token from before the key change will get 401 errors and must go through the registration flow again.
 
-2. **Agents must re-register.** Any agent holding a token from before the restart will get 401 errors and must go through the registration flow again (via sidecar or directly).
+2. **Verify `AA_SIGNING_KEY_PATH`.** Make sure it points to persistent storage and that the key file survives restarts.
 
-3. **Plan restarts during low-traffic windows** if possible, to minimize disruption.
+3. **Preserve the key file.** Do not delete or rotate the signing key unless you intentionally want all existing tokens to become invalid.
 
-4. **In production**, consider running the broker behind a process manager that restarts it automatically but infrequently. Do not restart the broker as part of routine operations.
-
-5. **Audit events survive restarts** when `AA_DB_PATH` is configured. The broker reloads all audit events from SQLite on startup and rebuilds the in-memory hash chain. Verify with `curl http://localhost:8080/v1/health` — the `audit_events_count` field should reflect previously recorded events.
+4. **Audit events survive restarts** when `AA_DB_PATH` is configured. The broker reloads all audit events from SQLite on startup and rebuilds the in-memory hash chain. Verify with `curl http://localhost:8080/v1/health` — the `audit_events_count` field should reflect previously recorded events.
 
 ---
 
@@ -632,123 +657,83 @@ This is expected behavior. After a broker restart:
 
 ---
 
-### Sidecar UDS Socket Permission Issues
+### TLS/mTLS Configuration for Broker
 
 **Symptom:**
 
-```
-[AA:SIDECAR:FAIL] ... | LISTEN | socket permission denied
-```
-
-Or when connecting to the socket:
-
-```
-Permission denied: /var/run/agentauth/myapp.sock
-```
-
-**Cause:** The UDS socket file (`AA_SOCKET_PATH`) has incorrect permissions, or the agent process lacks read-write access. The sidecar creates the socket with `0660` permissions (owner + group read/write) by default.
-
-**Fix:**
-
-1. **Check socket file permissions:**
-
-```bash
-ls -la /var/run/agentauth/myapp.sock
-# Should show -rw-rw---- (0660) permissions
-```
-
-2. **Ensure the agent process is in the same group as the sidecar process**, or run both as the same user.
-
-3. **Check the parent directory is accessible:**
-
-```bash
-ls -la /var/run/agentauth/
-# Directory should be readable and writable
-```
-
-4. **Clean up stale sockets** from previous crashes:
-
-```bash
-rm -f /var/run/agentauth/myapp.sock
-# Restart the sidecar
-```
-
-5. **The sidecar cleans up stale sockets automatically on startup**, but if it crashes unexpectedly, manual cleanup may be needed.
-
----
-
-### TLS/mTLS Certificate Issues
-
-**Symptom:**
-
-Sidecar logs:
-
-```
-[AA:SIDECAR:WARN] ... | BOOTSTRAP | TLS handshake failed, retrying
-```
-
-Or token requests fail with 502:
+Agents fail to connect with TLS errors:
 
 ```json
 {
-  "error": "Bad Gateway",
+  "type": "urn:agentauth:error:unauthorized",
+  "status": 401,
   "detail": "TLS certificate verification failed"
 }
 ```
 
+Or:
+
+```
+tls: failed to verify certificate: x509: certificate signed by unknown authority
+```
+
 **Cause:** TLS certificate configuration is incorrect or certificates are invalid. Common issues:
-- `AA_SIDECAR_CA_CERT` path does not exist or is unreadable
-- CA certificate does not match the broker's certificate
-- Broker's certificate CN/SAN does not match `AA_BROKER_URL` hostname
-- Client certificate (`AA_SIDECAR_TLS_CERT`) or key (`AA_SIDECAR_TLS_KEY`) is missing or malformed
+- Client does not trust the broker's CA certificate
+- Broker's certificate CN/SAN does not match the hostname
 - Certificate has expired
+- Broker is configured for TLS but clients are connecting via HTTP
 
 **Fix:**
 
-1. **Verify CA certificate exists and is readable:**
+1. **Check broker TLS configuration:**
 
 ```bash
-ls -la /path/to/ca.crt
-openssl x509 -in /path/to/ca.crt -text -noout
+# Verify AA_TLS_MODE is set correctly
+echo "TLS Mode: $AA_TLS_MODE"  # Should be "none", "tls", or "mtls"
 ```
 
-2. **Verify the broker's certificate matches the CA:**
+2. **If using TLS, verify the broker certificate exists:**
 
 ```bash
-openssl s_client -connect localhost:8080 -CAfile /path/to/ca.crt
-# Should show "Verify return code: 0 (ok)"
+ls -la $AA_TLS_CERT $AA_TLS_KEY
+openssl x509 -in $AA_TLS_CERT -text -noout
 ```
 
-3. **If using mTLS, verify client certificate and key exist:**
+3. **For mTLS, verify client CA is available:**
 
 ```bash
-ls -la /path/to/sidecar.crt /path/to/sidecar.key
+ls -la $AA_TLS_CLIENT_CA
+openssl x509 -in $AA_TLS_CLIENT_CA -text -noout
 ```
 
-4. **Check certificate validity dates:**
+4. **When connecting as a client, provide the CA certificate:**
 
-```bash
-openssl x509 -in /path/to/sidecar.crt -noout -dates
+```python
+import requests
+
+# For TLS
+response = requests.get(
+    "https://broker:8080/v1/health",
+    verify="/path/to/ca.crt"  # Broker's CA certificate
+)
+
+# For mTLS
+response = requests.get(
+    "https://broker:8080/v1/health",
+    verify="/path/to/ca.crt",
+    cert=("/path/to/client.crt", "/path/to/client.key")
+)
 ```
 
-5. **Ensure the broker's certificate CN or SAN includes the hostname used in `AA_BROKER_URL`:**
-
-```bash
-# If AA_BROKER_URL=https://broker:8080, the cert should have CN=broker or SAN=broker
-openssl x509 -in /path/to/broker.crt -noout -text | grep -A2 "Subject Alternative Name"
-```
-
-6. **In Docker Compose, mount certificates correctly:**
+5. **In Docker Compose, mount certificates into the broker container:**
 
 ```yaml
-sidecar:
+broker:
   environment:
-    - AA_BROKER_URL=https://broker:8080
-    - AA_SIDECAR_CA_CERT=/certs/ca.crt
-    - AA_SIDECAR_TLS_CERT=/certs/sidecar.crt
-    - AA_SIDECAR_TLS_KEY=/certs/sidecar.key
+    - AA_TLS_MODE=tls
+    - AA_TLS_CERT=/certs/broker.crt
+    - AA_TLS_KEY=/certs/broker.key
+    - AA_TLS_CLIENT_CA=/certs/ca.crt  # For mTLS
   volumes:
     - /etc/agentauth/certs:/certs:ro
 ```
-
-7. **The sidecar will retry bootstrap with exponential backoff** if TLS verification fails. Once certificates are corrected, it will succeed automatically.

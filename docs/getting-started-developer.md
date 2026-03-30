@@ -1,58 +1,84 @@
 # Getting Started: Developer
 
-> **Document Version:** 2.1 | **Last Updated:** February 2026 | **Status:** Current
+> **Document Version:** 3.0 | **Last Updated:** March 2026 | **Status:** Current
 >
-> **Audience:** Developer building an AI agent in Python or TypeScript.
+> **Audience:** Developer building an AI agent in Python, TypeScript, or Go.
 >
-> **Prerequisite:** Your operator has deployed a sidecar and given you its URL and scope ceiling. If you are the operator, see [Getting Started: Operator](getting-started-operator.md).
+> **Prerequisite:** Your operator has deployed the broker and given you its URL and your allowed scopes. If you are the operator, see [Getting Started: Operator](getting-started-operator.md).
 >
 > **Next steps:** [Common Tasks](common-tasks.md) | [API Reference](api.md) | [Troubleshooting](troubleshooting.md)
 
-## How It Works: The Provisioning Flow
+## How It Works: The Registration Flow
 
 Before you write any code, here is what already happened:
 
-1. **Your operator deployed a sidecar** -- a lightweight service that sits between your agent and the AgentAuth broker. The sidecar is configured with `AA_ADMIN_SECRET` and a **scope ceiling** (the maximum permissions any agent can request through it).
-2. **You received a sidecar URL and your allowed scopes** -- the operator told you: "Here is the sidecar URL. You can request any of these scopes."
-3. **You call `POST /v1/token`** -- the sidecar handles everything else: admin auth, launch token creation, Ed25519 key generation, challenge-response registration, and token exchange. You get back a scoped JWT.
+1. **Your operator deployed a broker** -- the security service that issues identity tokens
+2. **You received the broker URL and a launch token** -- the operator gave you: "Here is the broker URL. Use this launch token to register your agent."
+3. **You follow the registration flow** -- you generate keys, get a nonce, sign it, register with the broker, and exchange for a scoped JWT.
 
-Think of it like AWS IAM:
-- **Operator** creates an IAM role with a permission boundary = deploys sidecar with scope ceiling
-- **Developer** assumes the role and gets temporary STS credentials = calls `POST /v1/token`
-- **Developer** never sees root credentials = `AA_ADMIN_SECRET` stays on the sidecar
-
-> **You never deal with launch tokens, admin secrets, or broker URLs.** The sidecar manages all of that transparently.
+The registration flow gives you full control over your keys. You manage the cryptographic operations explicitly:
+- **Operator** creates a launch token with allowed scopes
+- **Developer** uses the launch token to register and get tokens
+- **Developer** holds their own Ed25519 keys
 
 ## What You Need
 
-- Sidecar URL from your operator (e.g., `https://sidecar.internal.company.com`)
+- Broker URL from your operator (e.g., `https://broker.internal.company.com`)
+- A launch token from your operator
 - Your allowed scopes from your operator (e.g., `read:data:*`, `write:data:*`)
-- Python 3.8+ with `requests` installed (`uv pip install requests`)
+- One of:
+  - Python 3.8+ with `requests` and `cryptography`
+  - Go 1.24+ with the standard library
 
-You do not need an admin secret. You do not need to deploy anything. The sidecar handles all cryptographic operations and broker communication for you.
+There is no AgentAuth SDK yet. Today, Go integrations should call the broker's HTTP API directly and perform the Ed25519 registration flow themselves.
+
+You will manage your own Ed25519 keys and follow the registration flow.
 
 ---
 
-## The Simple Path: Sidecar-Managed Keys
+## Agent Registration and Token Exchange
 
-This is the recommended path. One HTTP call gets you a scoped, short-lived token.
+Follow these steps to register your agent and get tokens.
 
 ### Complete Working Example
 
 ```python
+import base64
 import os
 import requests
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-SIDECAR = os.environ.get("AGENTAUTH_SIDECAR_URL", "https://sidecar.internal.company.com")
+BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal.company.com")
+LAUNCH_TOKEN = os.environ.get("AGENTAUTH_LAUNCH_TOKEN")
 
-# Request a scoped token -- one call, no crypto needed
-resp = requests.post(f"{SIDECAR}/v1/token", json={
-    "agent_name": "my-agent",
+# 1. Generate Ed25519 keypair
+private_key = Ed25519PrivateKey.generate()
+pub_raw = private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+pub_b64 = base64.b64encode(pub_raw).decode()
+
+# 2. Get challenge nonce
+challenge = requests.get(f"{BROKER}/v1/challenge")
+challenge.raise_for_status()
+nonce_hex = challenge.json()["nonce"]
+
+# 3. Sign nonce bytes (hex-decode first)
+nonce_bytes = bytes.fromhex(nonce_hex)
+signature = private_key.sign(nonce_bytes)
+sig_b64 = base64.b64encode(signature).decode()
+
+# 4. Register with broker
+reg = requests.post(f"{BROKER}/v1/register", json={
+    "launch_token": LAUNCH_TOKEN,
+    "orch_id": "orch-001",
     "task_id": "task-001",
-    "scope": ["read:data:*"],
+    "public_key": pub_b64,
+    "signature": sig_b64,
+    "nonce": nonce_hex,
+    "requested_scope": ["read:data:*"],
 })
-resp.raise_for_status()
-data = resp.json()
+reg.raise_for_status()
+data = reg.json()
 
 token = data["access_token"]
 agent_id = data["agent_id"]
@@ -60,38 +86,129 @@ expires_in = data["expires_in"]
 
 print(f"Token acquired for {agent_id}, expires in {expires_in}s")
 
-# Use the token in downstream requests
+# 5. Use the token in downstream requests
 headers = {"Authorization": f"Bearer {token}"}
 # resource_resp = requests.get("https://your-api/resource", headers=headers)
 ```
 
-That is 15 lines. The sidecar generates Ed25519 keys, performs the challenge-response handshake with the broker, and returns a signed JWT -- all behind that single POST.
+### Go Working Example
+
+```go
+package main
+
+import (
+	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+)
+
+type challengeResp struct {
+	Nonce     string `json:"nonce"`
+	ExpiresIn int    `json:"expires_in"`
+}
+
+type registerResp struct {
+	AccessToken string `json:"access_token"`
+	AgentID     string `json:"agent_id"`
+	ExpiresIn   int    `json:"expires_in"`
+}
+
+func main() {
+	broker := os.Getenv("AGENTAUTH_BROKER_URL")
+	if broker == "" {
+		broker = "https://broker.internal.company.com"
+	}
+	launchToken := os.Getenv("AGENTAUTH_LAUNCH_TOKEN")
+	if launchToken == "" {
+		panic("AGENTAUTH_LAUNCH_TOKEN is required")
+	}
+
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	pubB64 := base64.StdEncoding.EncodeToString(pub)
+
+	challengeRes, err := http.Get(broker + "/v1/challenge")
+	if err != nil {
+		panic(err)
+	}
+	defer challengeRes.Body.Close()
+
+	if challengeRes.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(challengeRes.Body)
+		panic(fmt.Sprintf("challenge failed: HTTP %d: %s", challengeRes.StatusCode, string(body)))
+	}
+
+	var challenge challengeResp
+	if err := json.NewDecoder(challengeRes.Body).Decode(&challenge); err != nil {
+		panic(err)
+	}
+
+	nonceBytes, err := hex.DecodeString(challenge.Nonce)
+	if err != nil {
+		panic(err)
+	}
+	sigB64 := base64.StdEncoding.EncodeToString(ed25519.Sign(priv, nonceBytes))
+
+	payload := map[string]any{
+		"launch_token":    launchToken,
+		"nonce":           challenge.Nonce,
+		"public_key":      pubB64,
+		"signature":       sigB64,
+		"orch_id":         "orch-001",
+		"task_id":         "task-001",
+		"requested_scope": []string{"read:data:*"},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		panic(err)
+	}
+
+	regRes, err := http.Post(broker+"/v1/register", "application/json", bytes.NewReader(body))
+	if err != nil {
+		panic(err)
+	}
+	defer regRes.Body.Close()
+
+	if regRes.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(regRes.Body)
+		panic(fmt.Sprintf("register failed: HTTP %d: %s", regRes.StatusCode, string(body)))
+	}
+
+	var reg registerResp
+	if err := json.NewDecoder(regRes.Body).Decode(&reg); err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Token acquired for %s, expires in %ds\n", reg.AgentID, reg.ExpiresIn)
+	fmt.Printf("Bearer token: %s\n", reg.AccessToken)
+}
+```
 
 ### What Just Happened
 
 ```mermaid
 sequenceDiagram
     participant App as Your App
-    participant SC as Sidecar
     participant B as Broker
 
-    App->>SC: POST /v1/token<br/>{"agent_name", "scope", "task_id"}
-    Note over SC: Check scope against ceiling
-    SC->>B: POST /v1/admin/auth
-    B-->>SC: admin token
-    SC->>B: POST /v1/admin/launch-tokens
-    B-->>SC: launch token
-    SC->>B: GET /v1/challenge
-    B-->>SC: nonce (hex)
-    Note over SC: Generate Ed25519 keypair<br/>Sign nonce bytes
-    SC->>B: POST /v1/register
-    B-->>SC: agent_id + internal token
-    SC->>B: POST /v1/token/exchange
-    B-->>SC: scoped JWT
-    SC-->>App: {"access_token", "expires_in",<br/>"scope", "agent_id"}
+    App->>App: Generate Ed25519 keypair
+    App->>B: GET /v1/challenge
+    B-->>App: nonce (hex, 30s TTL)
+    App->>App: Sign bytes.fromhex(nonce)
+    App->>B: POST /v1/register<br/>{"launch_token", "nonce", "public_key", "signature", "orch_id", "task_id", "requested_scope"}
+    B-->>App: {"access_token", "agent_id", "expires_in"}
 ```
 
-You never interact with the broker directly. The sidecar caches agent registrations, so subsequent token requests for the same `agent_name`/`task_id` skip re-registration.
+You interact directly with the broker. The launch token authorizes registration, and the signed nonce proves you hold the private key.
 
 ---
 
@@ -102,20 +219,14 @@ Attach the token to every request that requires authentication:
 ```python
 import requests
 
+BROKER = "https://broker.internal.company.com"
 token = "<your access_token from above>"
 
+# Use the token in your requests
 headers = {"Authorization": f"Bearer {token}"}
 response = requests.get("https://your-api.example.com/data", headers=headers)
-```
 
-Resource servers can verify your token against the broker:
-
-```python
-import os
-import requests
-
-BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://agentauth.internal.company.com")
-
+# Optionally validate the token against the broker
 resp = requests.post(f"{BROKER}/v1/token/validate", json={"token": token})
 result = resp.json()
 
@@ -273,7 +384,7 @@ When your agent completes its task, call the release endpoint to signal completi
 ```python
 import requests
 
-BROKER = "http://localhost:8080"
+BROKER = "https://broker.internal.company.com"
 
 def release_token(broker, token):
     """Signal token release when task completes."""
@@ -293,42 +404,54 @@ release_token(BROKER, your_token)
 
 Response: 204 No Content (or 401 if token is invalid/expired).
 
----
+### Token Release in Go
 
-## Token Renewal
+```go
+func releaseToken(brokerURL, token string) error {
+	req, err := http.NewRequest(http.MethodPost, brokerURL+"/v1/token/release", nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("release failed: HTTP %d: %s", resp.StatusCode, string(body))
+}
+```
+
+### Token Renewal
 
 Tokens are short-lived (default 5 minutes). Renew before expiry to avoid interruption.
-
-### Renewal Pattern (80% TTL)
 
 ```python
 import os
 import requests
 import time
 
-SIDECAR = os.environ.get("AGENTAUTH_SIDECAR_URL", "https://sidecar.internal.company.com")
+BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal.company.com")
 
-def get_token(sidecar, agent_name, task_id, scope):
-    resp = requests.post(f"{sidecar}/v1/token", json={
-        "agent_name": agent_name,
-        "task_id": task_id,
-        "scope": scope,
-    })
-    resp.raise_for_status()
-    return resp.json()
-
-def renew_token(sidecar, token):
+def renew_token(broker, token):
+    """Renew a token before it expires."""
     resp = requests.post(
-        f"{sidecar}/v1/token/renew",
+        f"{broker}/v1/token/renew",
         headers={"Authorization": f"Bearer {token}"},
     )
     resp.raise_for_status()
     return resp.json()
 
-# Initial token acquisition
-data = get_token(SIDECAR, "my-agent", "task-001", ["read:data:*"])
-token = data["access_token"]
-ttl = data["expires_in"]
+# After initial registration (see Agent Registration section above)
+token = "<your access_token>"
+ttl = 300  # seconds
 
 while True:
     # Do work with the token
@@ -338,17 +461,16 @@ while True:
     time.sleep(ttl * 0.8)
 
     try:
-        data = renew_token(SIDECAR, token)
+        data = renew_token(BROKER, token)
         token = data["access_token"]
         ttl = data["expires_in"]
         print(f"Renewed, new TTL: {ttl}s")
     except requests.HTTPError as e:
         if e.response.status_code in (401, 403):
-            # Token expired or revoked -- re-bootstrap
-            print("Token invalid, re-acquiring...")
-            data = get_token(SIDECAR, "my-agent", "task-001", ["read:data:*"])
-            token = data["access_token"]
-            ttl = data["expires_in"]
+            # Token expired or revoked -- re-register
+            print("Token invalid, re-registering...")
+            # Go back to the Agent Registration section to get a fresh token
+            break
         else:
             raise
 ```
@@ -356,130 +478,82 @@ while True:
 ```mermaid
 sequenceDiagram
     participant App as Your App
-    participant SC as Sidecar
-
-    App->>SC: POST /v1/token
-    SC-->>App: token (TTL=300s)
-    Note over App: Work for 240s (80% of 300)
-    App->>SC: POST /v1/token/renew<br/>Authorization: Bearer <token>
-    SC-->>App: new token (TTL=300s)
-    Note over App: Work for 240s
-    App->>SC: POST /v1/token/renew
-    SC-->>App: new token (TTL=300s)
-```
-
-If renewal fails with 401 or 403, your token was either expired or revoked. Re-acquire a fresh token from the sidecar.
-
----
-
-## The BYOK Path: Bring Your Own Keys
-
-If you need to control your own Ed25519 keys (for audit, compliance, or multi-sidecar scenarios), use the BYOK flow. You generate keys, sign a challenge nonce, and register through the sidecar.
-
-### Complete BYOK Example
-
-```python
-import base64
-import os
-import requests
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-
-SIDECAR = os.environ.get("AGENTAUTH_SIDECAR_URL", "https://sidecar.internal.company.com")
-
-# 1. Generate Ed25519 keypair
-private_key = Ed25519PrivateKey.generate()
-pub_raw = private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
-pub_b64 = base64.b64encode(pub_raw).decode()
-
-# 2. Get a challenge nonce from the sidecar
-challenge = requests.get(f"{SIDECAR}/v1/challenge")
-challenge.raise_for_status()
-nonce_hex = challenge.json()["nonce"]
-
-# 3. Sign the nonce BYTES (hex-decode first!)
-nonce_bytes = bytes.fromhex(nonce_hex)
-signature = private_key.sign(nonce_bytes)
-sig_b64 = base64.b64encode(signature).decode()
-
-# 4. Register with the sidecar
-reg = requests.post(f"{SIDECAR}/v1/register", json={
-    "agent_name": "byok-agent",
-    "task_id": "task-002",
-    "public_key": pub_b64,
-    "signature": sig_b64,
-    "nonce": nonce_hex,
-})
-reg.raise_for_status()
-agent_id = reg.json()["agent_id"]
-print(f"Registered as {agent_id}")
-
-# 5. Now get tokens via the normal sidecar path
-token_resp = requests.post(f"{SIDECAR}/v1/token", json={
-    "agent_name": "byok-agent",
-    "task_id": "task-002",
-    "scope": ["read:data:*"],
-})
-token_resp.raise_for_status()
-token = token_resp.json()["access_token"]
-print(f"Token: {token[:40]}...")
-```
-
-```mermaid
-sequenceDiagram
-    participant App as Your App
-    participant SC as Sidecar
     participant B as Broker
 
-    App->>App: Generate Ed25519 keypair
-    App->>SC: GET /v1/challenge
-    SC->>B: GET /v1/challenge
-    B-->>SC: nonce (hex, 30s TTL)
-    SC-->>App: nonce
-    App->>App: Sign bytes.fromhex(nonce)
-    App->>SC: POST /v1/register<br/>{"public_key", "signature", "nonce"}
-    SC->>B: POST /v1/register
-    B-->>SC: agent_id
-    SC-->>App: {"agent_id": "spiffe://..."}
-    App->>SC: POST /v1/token
-    SC-->>App: {"access_token", "expires_in"}
+    App->>B: POST /v1/register<br/>(initial registration)
+    B-->>App: token (TTL=300s)
+    Note over App: Work for 240s (80% of 300)
+    App->>B: POST /v1/token/renew<br/>Authorization: Bearer <token>
+    B-->>App: new token (TTL=300s)
+    Note over App: Work for 240s
+    App->>B: POST /v1/token/renew
+    B-->>App: new token (TTL=300s)
 ```
 
-After BYOK registration, you get tokens through the same `POST /v1/token` endpoint as the simple path.
+If renewal fails with 401 or 403, your token was either expired or revoked. Re-register to get a fresh token.
+
+### Token Renewal in Go
+
+```go
+type renewResp struct {
+	AccessToken string `json:"access_token"`
+	ExpiresIn   int    `json:"expires_in"`
+}
+
+func renewToken(brokerURL, token string) (*renewResp, error) {
+	req, err := http.NewRequest(http.MethodPost, brokerURL+"/v1/token/renew", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("renewal failed: HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var out renewResp
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func renewalLoop(brokerURL, token string, ttl int) error {
+	currentToken := token
+	currentTTL := ttl
+
+	for {
+		time.Sleep(time.Duration(float64(currentTTL) * 0.8 * float64(time.Second)))
+
+		renewed, err := renewToken(brokerURL, currentToken)
+		if err != nil {
+			return err
+		}
+
+		currentToken = renewed.AccessToken
+		currentTTL = renewed.ExpiresIn
+	}
+}
+```
 
 ---
 
 ## TypeScript Examples
 
-### Get a Token via Sidecar
-
-```typescript
-const SIDECAR = process.env.AGENTAUTH_SIDECAR_URL || "https://sidecar.internal.company.com";
-
-const resp = await fetch(`${SIDECAR}/v1/token`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    agent_name: "my-agent",
-    task_id: "task-001",
-    scope: ["read:data:*"],
-  }),
-});
-
-if (!resp.ok) throw new Error(`Token request failed: ${resp.status}`);
-const data = await resp.json();
-
-const token = data.access_token;
-const agentId = data.agent_id;
-console.log(`Token for ${agentId}, expires in ${data.expires_in}s`);
-```
-
-### BYOK Registration with tweetnacl
+### Agent Registration with tweetnacl
 
 ```typescript
 import nacl from "tweetnacl";
 
-const SIDECAR = process.env.AGENTAUTH_SIDECAR_URL || "https://sidecar.internal.company.com";
+const BROKER = process.env.AGENTAUTH_BROKER_URL || "https://broker.internal.company.com";
+const LAUNCH_TOKEN = process.env.AGENTAUTH_LAUNCH_TOKEN || "";
 
 function b64(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("base64");
@@ -498,7 +572,7 @@ const kp = nacl.sign.keyPair();
 const pubB64 = b64(kp.publicKey);
 
 // 2. Get challenge nonce
-const challengeResp = await fetch(`${SIDECAR}/v1/challenge`);
+const challengeResp = await fetch(`${BROKER}/v1/challenge`);
 if (!challengeResp.ok) throw new Error("Challenge failed");
 const { nonce } = await challengeResp.json();
 
@@ -507,30 +581,32 @@ const nonceBytes = hexToBytes(nonce);
 const sig = nacl.sign.detached(nonceBytes, kp.secretKey);
 const sigB64 = b64(sig);
 
-// 4. Register
-const regResp = await fetch(`${SIDECAR}/v1/register`, {
+// 4. Register with broker
+const regResp = await fetch(`${BROKER}/v1/register`, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
-    agent_name: "byok-agent",
-    task_id: "task-002",
+    launch_token: LAUNCH_TOKEN,
+    orch_id: "orch-001",
+    task_id: "task-001",
     public_key: pubB64,
     signature: sigB64,
     nonce: nonce,
+    requested_scope: ["read:data:*"],
   }),
 });
 if (!regResp.ok) throw new Error("Registration failed");
-const { agent_id } = await regResp.json();
-console.log(`Registered as ${agent_id}`);
+const { access_token, agent_id, expires_in } = await regResp.json();
+console.log(`Registered as ${agent_id}, token expires in ${expires_in}s`);
 ```
 
 ### Token Renewal
 
 ```typescript
-const SIDECAR = process.env.AGENTAUTH_SIDECAR_URL || "https://sidecar.internal.company.com";
+const BROKER = process.env.AGENTAUTH_BROKER_URL || "https://broker.internal.company.com";
 
-async function renewToken(sidecar: string, token: string) {
-  const resp = await fetch(`${sidecar}/v1/token/renew`, {
+async function renewToken(broker: string, token: string) {
+  const resp = await fetch(`${broker}/v1/token/renew`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -544,12 +620,12 @@ let ttl = 300;
 
 const renewalLoop = setInterval(async () => {
   try {
-    const data = await renewToken(SIDECAR, currentToken);
+    const data = await renewToken(BROKER, currentToken);
     currentToken = data.access_token;
     ttl = data.expires_in;
   } catch {
     clearInterval(renewalLoop);
-    // Re-bootstrap by requesting a new token
+    // Re-register to get a fresh token
   }
 }, ttl * 0.8 * 1000);
 ```
@@ -583,18 +659,22 @@ pub_der = key.public_key().public_bytes(Encoding.DER, PublicFormat.SubjectPublic
 pub_raw = key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
 ```
 
-### 3. Requesting scope broader than the sidecar ceiling
+### 3. Requesting scope broader than allowed
 
-If your operator configured the sidecar with `AA_SIDECAR_SCOPE_CEILING=read:data:*`, requesting `write:data:*` returns 403. Check with your operator about your allowed scopes.
+If your launch token specifies `allowed_scope: ["read:data:*"]` and you request `write:data:*`, the broker returns 403. Check with your operator about your allowed scopes.
 
 ```python
-# This will fail if the sidecar ceiling is ["read:data:*"]
-resp = requests.post(f"{SIDECAR}/v1/token", json={
-    "agent_name": "my-agent",
-    "task_id": "t1",
-    "scope": ["write:data:*"],  # not covered by ceiling
+# This will fail if your launch token only allows ["read:data:*"]
+reg = requests.post(f"{BROKER}/v1/register", json={
+    "launch_token": LAUNCH_TOKEN,
+    "orch_id": "orch-001",
+    "task_id": "task-001",
+    "public_key": pub_b64,
+    "signature": sig_b64,
+    "nonce": nonce_hex,
+    "requested_scope": ["write:data:*"],  # not in launch token
 })
-# HTTP 403: "requested scope exceeds sidecar ceiling"
+# HTTP 403: "requested scope exceeds launch token policy"
 ```
 
 ### 4. Reusing a nonce
@@ -605,17 +685,17 @@ Each nonce is single-use and expires after 30 seconds. Always get a fresh nonce 
 
 ## TLS Connections
 
-If your operator has enabled TLS or mTLS on the broker or sidecar, use `https://` URLs. For mTLS deployments, your operator will provide you with a client certificate and key — pass them on every request:
+If your operator has enabled TLS or mTLS on the broker, use `https://` URLs. For mTLS deployments, your operator will provide you with a client certificate and key — pass them on every request:
 
 ```python
 import requests
 
 # mTLS: operator provides cert and key
 session = requests.Session()
-session.verify = "/path/to/ca.crt"        # CA to verify broker/sidecar identity
+session.verify = "/path/to/ca.crt"        # CA to verify broker identity
 session.cert = ("/path/to/client.crt", "/path/to/client.key")  # your client cert
 
-resp = session.post(f"{SIDECAR}/v1/token", json={...})
+resp = session.post(f"{BROKER}/v1/challenge")
 ```
 
 For TLS (one-way), you only need `verify`:

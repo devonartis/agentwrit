@@ -1,6 +1,6 @@
 # Getting Started: Operator
 
-> **Document Version:** 2.1 | **Last Updated:** February 2026 | **Status:** Current
+> **Document Version:** 3.0 | **Last Updated:** March 2026 | **Status:** Current
 >
 > **Audience:** Platform Operator responsible for deploying and managing AgentAuth infrastructure.
 >
@@ -8,13 +8,13 @@
 >
 > **Next steps:** [Common Tasks: Operator](common-tasks.md#operator-tasks) | [Troubleshooting](troubleshooting.md#operator-errors) | [Architecture](architecture.md)
 
-This guide walks you through deploying the AgentAuth broker, configuring it, creating launch tokens for developers, deploying sidecars, and monitoring the system.
+This guide walks you through deploying the AgentAuth broker, configuring it, creating launch tokens for developers, and monitoring the system.
 
 ---
 
 ## Quick Start (Docker Compose)
 
-Get a broker and sidecar running in four commands:
+Get a broker running in three commands:
 
 ```bash
 # 1. Set the admin secret (required -- broker exits without it)
@@ -26,10 +26,6 @@ export AA_ADMIN_SECRET="$(openssl rand -hex 32)"
 # 3. Verify the broker is healthy
 curl http://localhost:8080/v1/health
 # {"status":"ok","version":"2.0.0","uptime":5,"db_connected":true,"audit_events_count":0}
-
-# 4. Verify the sidecar is healthy
-curl http://localhost:8081/v1/health
-# {"status":"ok","broker_connected":true,"healthy":true,"sidecar_id":"a2b25ecc...",...}
 ```
 
 To tear down the stack:
@@ -44,24 +40,27 @@ To tear down the stack:
 flowchart LR
     subgraph "Docker: agentauth-net (bridge)"
         B["Broker<br/>:8080"]
-        S["Sidecar<br/>:8081"]
     end
-    S -- "http://broker:8080" --> B
-    Dev["Developer App"] -- "http://localhost:8081" --> S
+    Dev["Developer App"] -- "http://localhost:8080" --> B
     Op["Operator"] -- "http://localhost:8080" --> B
     Prom["Prometheus"] -- "/v1/metrics" --> B
-    Prom -- "/v1/metrics" --> S
+
+    classDef broker fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
+    classDef client fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
+    classDef obs fill:#f3e5f5,stroke:#ba68c8,color:#4a148c
+
+    class B broker
+    class Dev,Op client
+    class Prom obs
 ```
 
-The `docker-compose.yml` defines two services on a shared bridge network (`agentauth-net`). The sidecar depends on the broker's health check passing before it starts. Both images use multi-stage Alpine builds (golang:1.24 builder, alpine:3.18 runtime).
+The `docker-compose.yml` defines the broker service on a bridge network (`agentauth-net`). The image uses a multi-stage Alpine build (golang:1.24 builder, alpine:3.18 runtime).
 
 ---
 
 ## Operator CLI (aactl)
 
-`aactl` is the operator command-line tool for AgentAuth. It reads broker connection details from environment variables and handles authentication automatically — no manual curl or JWT required.
-
-> **Note:** aactl is available for demo and development use. Production auth will be added in a future release.
+`aactl` is the operator command-line tool for AgentAuth. It reads broker connection details from environment variables and handles authentication automatically.
 
 ### Install / build
 
@@ -69,21 +68,34 @@ The `docker-compose.yml` defines two services on a shared bridge network (`agent
 go build -o aactl ./cmd/aactl/
 ```
 
+### Initialize
+
+Use `aactl init` to set up configuration. This creates a config file with broker URL and secret:
+
+```bash
+# Dev mode (creates ~/.agentauth/config)
+aactl init --mode dev --force
+
+# Prod mode with custom path
+aactl init --mode prod --config-path /etc/agentauth/config
+```
+
 ### Configure
 
 ```bash
 export AACTL_BROKER_URL=http://localhost:8080
-export AACTL_ADMIN_SECRET=change-me-in-production
+export AACTL_ADMIN_SECRET=my-secure-admin-secret-here
 ```
 
 ### Quick reference
 
 ```bash
-# Sidecars
-aactl sidecars list                                                    # List all sidecars (table)
-aactl sidecars list --json                                             # Raw JSON
-aactl sidecars ceiling get <sidecar-id>                                # Get scope ceiling
-aactl sidecars ceiling set <sidecar-id> --scopes read:data:*,write:data:*  # Set scope ceiling
+# App management
+aactl app register [--name NAME] [--scopes SCOPES]
+aactl app list
+aactl app get <app-id>
+aactl app update --id <app-id> [--scopes SCOPES] [--token-ttl N]
+aactl app remove --id <app-id>
 
 # Revocation
 aactl revoke --level token  --target <jti>
@@ -99,7 +111,7 @@ aactl audit events
 aactl audit events --event-type token_revoked
 aactl audit events --agent-id spiffe://...
 aactl audit events --outcome success
-aactl audit events --since 2026-02-19T00:00:00Z --limit 50
+aactl audit events --since 2026-03-29T00:00:00Z --limit 50
 aactl audit events --json
 ```
 
@@ -107,7 +119,7 @@ aactl audit events --json
 
 ## Broker Configuration
 
-All broker configuration is via environment variables prefixed `AA_`. There are no CLI flags or config files.
+All broker configuration is via environment variables prefixed `AA_`. Configuration can also be loaded from a config file generated by `aactl init` (see [Operator CLI](#operator-cli-aactl) above). Environment variables always override config file values.
 
 | Variable | Type | Default | Required | Description |
 |----------|------|---------|----------|-------------|
@@ -116,6 +128,11 @@ All broker configuration is via environment variables prefixed `AA_`. There are 
 | `AA_LOG_LEVEL` | string | `"verbose"` | No | Log verbosity: `quiet`, `standard`, `verbose`, `trace`. Note: `verbose` currently emits the same output as `standard`. |
 | `AA_TRUST_DOMAIN` | string | `"agentauth.local"` | No | SPIFFE trust domain used in agent identity URIs (e.g., `spiffe://agentauth.local/agent/...`). |
 | `AA_DEFAULT_TTL` | int | `300` | No | Default token TTL in seconds (5 minutes). |
+| `AA_MAX_TTL` | int | `86400` | No | Maximum token TTL ceiling in seconds (24 hours). Tokens requesting longer TTL are clamped to this value. Set to `0` to disable the ceiling entirely. |
+| `AA_BIND_ADDRESS` | string | `"127.0.0.1"` | No | Bind address for the HTTP listener. Use `"0.0.0.0"` for Docker or to accept external connections. |
+| `AA_SIGNING_KEY_PATH` | string | `"./signing.key"` | No | Path to Ed25519 private key for token signing. If the file does not exist, a fresh key is generated and saved to this path on startup. |
+| `AA_AUDIENCE` | string | `"agentauth"` | No | Expected `aud` claim in JWTs. Set to empty string to skip audience validation. |
+| `AA_APP_TOKEN_TTL` | int | `1800` | No | TTL for app JWTs in seconds (30 minutes). Controls how long app-authenticated tokens last. |
 | `AA_SEED_TOKENS` | bool | `false` | No | Print seed launch and admin tokens to stdout on startup. **Development only** -- never enable in production. |
 | `AA_DB_PATH` | string | `"./agentauth.db"` | No | Path to the SQLite database file for audit event persistence. The broker creates the file and table on first startup. Set to `""` to disable persistence (memory-only mode). See [Audit Persistence](#audit-persistence-aa_db_path) below. |
 | `AA_TLS_MODE` | string | `"none"` | No | Transport security mode: `none` (plain HTTP), `tls` (one-way TLS), `mtls` (mutual TLS). See [TLS/mTLS Configuration](#tlsmtls-configuration) below. |
@@ -127,7 +144,7 @@ All broker configuration is via environment variables prefixed `AA_`. There are 
 
 - **`AA_ADMIN_SECRET`** is the root of trust for the entire system. Anyone who knows this value can create launch tokens, revoke credentials, and read the audit trail. Treat it like a root password.
 - **`AA_SEED_TOKENS`** bypasses the normal bootstrap flow by printing tokens to stdout. This is for local development and testing only.
-- The broker generates a **fresh Ed25519 signing key pair on every startup**. This means all previously issued tokens become invalid after a broker restart. This is by design -- there is no persistent key material to protect.
+- The broker **persists its Ed25519 signing key** to disk at `AA_SIGNING_KEY_PATH` (default `./signing.key`). A new key is generated only on first startup. Tokens remain valid across restarts. To rotate the key, delete the file and restart — all previously issued tokens become invalid. Protect the key file as you would any private key.
 
 ---
 
@@ -205,44 +222,6 @@ export AA_TLS_KEY=/certs/broker.key
 ./scripts/stack_up.sh
 ```
 
-### Sidecar TLS client
-
-When TLS is enabled on the broker, the sidecar must be configured to connect over HTTPS. Set `AA_BROKER_URL` to `https://...` and provide the CA cert so the sidecar can verify the broker's identity.
-
-**One-way TLS** (sidecar trusts broker):
-
-```bash
-# Sidecar env vars
-AA_BROKER_URL=https://broker:8080
-AA_SIDECAR_CA_CERT=/certs/ca.crt
-```
-
-**Mutual TLS** (sidecar also presents its own cert):
-
-```bash
-# Sidecar env vars
-AA_BROKER_URL=https://broker:8080
-AA_SIDECAR_CA_CERT=/certs/ca.crt
-AA_SIDECAR_TLS_CERT=/certs/sidecar.crt
-AA_SIDECAR_TLS_KEY=/certs/sidecar.key
-```
-
-Docker Compose overlay for mTLS (`docker-compose.mtls.yml`):
-
-```yaml
-services:
-  sidecar:
-    environment:
-      - AA_BROKER_URL=https://broker:8080
-      - AA_SIDECAR_CA_CERT=/certs/ca.crt
-      - AA_SIDECAR_TLS_CERT=/certs/sidecar.crt
-      - AA_SIDECAR_TLS_KEY=/certs/sidecar.key
-    volumes:
-      - /etc/agentauth/certs:/certs:ro
-```
-
-The sidecar enforces TLS 1.3 minimum. If the CA cert is invalid or missing, the sidecar falls back to plain HTTP and logs a warning — the health check will fail and bootstrap will retry.
-
 ### Generating a self-signed cert for testing
 
 ```bash
@@ -259,168 +238,9 @@ openssl req -x509 -newkey rsa:2048 \
 
 ---
 
-## Sidecar Configuration
-
-The sidecar is a developer-facing proxy that auto-bootstraps with the broker. It handles Ed25519 key generation, challenge-response registration, and token renewal transparently.
-
-| Variable | Type | Default | Required | Description |
-|----------|------|---------|----------|-------------|
-| `AA_ADMIN_SECRET` | string | *(none)* | **Yes** | Must match the broker's `AA_ADMIN_SECRET`. The sidecar exits on startup if unset. |
-| `AA_SIDECAR_SCOPE_CEILING` | string | *(none)* | **Yes** | Comma-separated list of maximum scopes this sidecar can issue (e.g., `"read:data:*,write:data:*"`). The sidecar exits on startup if unset. |
-| `AA_BROKER_URL` | string | `"http://localhost:8080"` | No | Broker base URL. In Docker Compose, set to `http://broker:8080` (the Docker service name). |
-| `AA_SIDECAR_PORT` | string | `"8081"` | No | Sidecar HTTP listen port. |
-| `AA_SIDECAR_LOG_LEVEL` | string | `"standard"` | No | Sidecar log level: `quiet`, `standard`, `verbose`, `trace`. |
-| `AA_SIDECAR_RENEWAL_BUFFER` | float | `0.8` | No | Fraction of TTL at which the sidecar renews its own bearer token. Valid range: 0.5 to 0.95. At 0.8 with a 900s TTL, renewal happens at 720s. |
-| `AA_SIDECAR_CB_WINDOW` | int | `30` | No | Circuit breaker sliding window duration in seconds. |
-| `AA_SIDECAR_CB_THRESHOLD` | float | `0.5` | No | Failure rate (0.0--1.0) within the window that trips the circuit breaker. |
-| `AA_SIDECAR_CB_PROBE_INTERVAL` | int | `5` | No | Seconds between health probes when the circuit is open. |
-| `AA_SIDECAR_CB_MIN_REQUESTS` | int | `5` | No | Minimum requests in the sliding window before the circuit breaker can trip. Prevents tripping on low traffic. |
-| `AA_SIDECAR_CA_CERT` | string | *(none)* | If TLS | Path to the CA certificate PEM file for verifying the broker's TLS certificate. When set, the sidecar connects to the broker over HTTPS. Also set `AA_BROKER_URL` to `https://...`. |
-| `AA_SIDECAR_TLS_CERT` | string | *(none)* | If mTLS | Path to the sidecar's client certificate PEM file. Required when the broker uses `AA_TLS_MODE=mtls`. |
-| `AA_SIDECAR_TLS_KEY` | string | *(none)* | If mTLS | Path to the sidecar's client private key PEM file. Required when the broker uses `AA_TLS_MODE=mtls`. |
-| `AA_SOCKET_PATH` | string | *(none)* | No | Unix domain socket path. When set, the sidecar listens on UDS instead of TCP. The socket file is created on startup (permissions `0660`) and removed on shutdown. Unset = TCP mode on `AA_SIDECAR_PORT`. |
-
-### Unix domain socket (UDS) mode
-
-By default, the sidecar listens on a TCP port (`AA_SIDECAR_PORT`). In production with multiple sidecars per host, TCP creates port sprawl and exposes agent-to-sidecar traffic on the network. Setting `AA_SOCKET_PATH` switches the sidecar to a Unix domain socket — no port allocation, no network exposure, and filesystem permissions control access.
-
-```bash
-# Sidecar listens on UDS instead of TCP
-export AA_SOCKET_PATH=/var/run/agentauth/myapp.sock
-```
-
-Agents connect via the socket path instead of `http://localhost:8081`:
-
-```bash
-curl --unix-socket /var/run/agentauth/myapp.sock http://localhost/v1/health
-```
-
-**Multiple sidecars on one host** — each gets a unique socket path:
-
-```bash
-# Sidecar for app1
-AA_SOCKET_PATH=/var/run/agentauth/app1.sock
-
-# Sidecar for app2
-AA_SOCKET_PATH=/var/run/agentauth/app2.sock
-```
-
-The socket is created with `0660` permissions (owner + group read/write). Stale socket files from a previous crash are cleaned up automatically on startup.
-
-When `AA_SOCKET_PATH` is unset, the sidecar falls back to TCP and logs a `WARN` message: "listening on TCP — consider AA_SOCKET_PATH for production deployments."
-
-### Scope ceiling design
-
-The scope ceiling is the most important sidecar configuration decision. It defines the maximum permissions any agent token issued through this sidecar can have. Developers can request scopes within this ceiling but never exceed it.
-
-Design principles:
-
-1. **One sidecar per trust boundary.** Deploy separate sidecars for teams or services that need different scope ceilings.
-2. **Least privilege.** Set the ceiling to the narrowest set of scopes the developers behind this sidecar actually need.
-3. **Use wildcards carefully.** `read:data:*` allows reading any data resource. `read:data:users` restricts to a specific resource.
-
-Scope format: `action:resource:identifier` (e.g., `read:data:*`, `write:config:app1`).
-
----
-
-## Runtime Ceiling Management
-
-`AA_SIDECAR_SCOPE_CEILING` is the **bootstrap seed only**. It sets the initial ceiling when the sidecar first activates, but the ceiling can be updated at runtime without restarting the sidecar or editing environment variables.
-
-> **Note:** aactl is available for demo and development use. Production auth will be added in a future release.
-
-### Updating the ceiling with aactl
-
-```bash
-# List sidecars to find the sidecar ID
-aactl sidecars list
-
-# Get the current ceiling
-aactl sidecars ceiling get <sidecar-id>
-
-# Update the ceiling
-aactl sidecars ceiling set <sidecar-id> --scopes read:data:*
-```
-
-### Using the API directly
-
-Use the admin API to change a sidecar's scope ceiling while it is running:
-
-```bash
-# Step 1: Get an admin token
-ADMIN_TOKEN=$(curl -s -X POST http://localhost:8080/v1/admin/auth \
-  -H "Content-Type: application/json" \
-  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
-
-# Step 2: Discover the sidecar ID from the sidecar health endpoint
-SIDECAR_ID=$(curl -s http://localhost:8081/v1/health \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['sidecar_id'])")
-
-# Step 3: Update the ceiling
-curl -s -X PUT "http://localhost:8080/v1/admin/sidecars/$SIDECAR_ID/ceiling" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -d '{
-    "scope_ceiling": ["read:data:*"]
-  }'
-```
-
-Response (200 OK):
-
-```json
-{
-  "sidecar_id": "sc-abc123",
-  "scope_ceiling": ["read:data:*"],
-  "updated_at": "2026-02-18T10:00:00Z"
-}
-```
-
-### When changes take effect
-
-The sidecar picks up ceiling changes on its **next renewal cycle**. Because the sidecar renews its broker bearer token at 80% of TTL (default: 900s TTL, renewal at 720s), ceiling changes propagate within **4 to 12 minutes** depending on where the sidecar is in its renewal cycle.
-
-There is no need to restart the sidecar. After the next renewal, any new `POST /v1/token` requests are evaluated against the updated ceiling. Agents that request scopes outside the new ceiling receive a 403 at the sidecar.
-
-### Emergency narrowing
-
-If you need to immediately revoke access, set a narrower ceiling and separately revoke affected tokens:
-
-```bash
-# Narrow the ceiling immediately
-curl -s -X PUT "http://localhost:8080/v1/admin/sidecars/$SIDECAR_ID/ceiling" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -d '{"scope_ceiling": ["read:data:users"]}'
-
-# Revoke all tokens for any agent whose scopes exceeded the new ceiling
-curl -s -X POST http://localhost:8080/v1/revoke \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -d '{"level": "agent", "target": "spiffe://agentauth.local/agent/orch/task/instance"}'
-```
-
-When the broker processes a ceiling update that narrows the allowed scopes, it automatically revokes any currently active tokens whose scope exceeds the new ceiling. The revocation is immediate -- those tokens will be rejected on the next validation even before the sidecar renews.
-
-### Auditing ceiling changes
-
-Every ceiling update is recorded as a `scope_ceiling_updated` audit event that includes the old ceiling, the new ceiling, and the timestamp. Query the audit trail to see the full history:
-
-```bash
-# Using aactl
-aactl audit events --event-type scope_ceiling_updated
-
-# Using the API directly
-curl -s "http://localhost:8080/v1/audit/events?event_type=scope_ceiling_updated" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  | python3 -m json.tool
-```
-
----
-
 ## Audit Persistence (AA_DB_PATH)
 
-The broker persists audit events, revocations, and sidecar registrations to SQLite. To configure the database path:
+The broker persists audit events and revocations to SQLite. To configure the database path:
 
 | Variable | Type | Default | Required | Description |
 |----------|------|---------|----------|-------------|
@@ -448,23 +268,22 @@ volumes:
 
 On startup, the broker loads all existing audit events from SQLite to rebuild the hash chain in memory. The number of events loaded is logged and exposed as the `agentauth_audit_events_loaded` Prometheus gauge.
 
-**Note:** The broker still generates a fresh Ed25519 signing key pair on every startup. Audit events persist, but previously issued tokens remain invalid after a restart. If you need tokens to survive restarts, that requires a separate key persistence mechanism (not currently supported).
+**Note:** The broker persists its Ed25519 signing key to `AA_SIGNING_KEY_PATH`. Both audit events and signing keys survive restarts, so previously issued tokens remain valid. To force key rotation, delete the signing key file and restart.
 
 ---
 
 ## The Bootstrap Flow
 
-Before any agent can get a token, the operator must complete the bootstrap chain: authenticate as admin, create a launch token (or activate a sidecar), and hand credentials to the agent or sidecar.
+Before any agent can get a token, the operator must complete the bootstrap chain: authenticate as admin, create a launch token, and hand it to the agent.
 
 ```mermaid
 sequenceDiagram
     participant Op as Operator
     participant B as Broker
-    participant S as Sidecar
     participant A as Agent
 
     Note over Op,B: Step 1: Admin Authentication
-    Op->>B: POST /v1/admin/auth<br/>{client_id, client_secret}
+    Op->>B: POST /v1/admin/auth<br/>{secret}
     B-->>Op: {access_token} (TTL 300s)
 
     Note over Op,B: Step 2: Create Launch Token
@@ -472,13 +291,13 @@ sequenceDiagram
     B-->>Op: {launch_token, policy}
 
     Note over Op,A: Step 3: Distribute
-    Op->>A: Hand launch_token to agent<br/>(or configure sidecar)
+    Op->>A: Hand launch_token to agent
 
     Note over A,B: Step 4: Agent Registers
     A->>B: GET /v1/challenge
     B-->>A: {nonce}
-    A->>B: POST /v1/register<br/>{launch_token, signed_nonce, public_key}
-    B-->>A: {agent_id, access_token}
+    A->>B: POST /v1/register<br/>{launch_token, nonce, public_key,<br/>signature, orch_id, task_id, requested_scope}
+    B-->>A: {agent_id, access_token, expires_in}
 ```
 
 ### Step 1: Authenticate as Admin
@@ -486,7 +305,7 @@ sequenceDiagram
 ```bash
 ADMIN_TOKEN=$(curl -s -X POST http://localhost:8080/v1/admin/auth \
   -H "Content-Type: application/json" \
-  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
+  -d "{\"secret\": \"$AA_ADMIN_SECRET\"}" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 ```
 
@@ -526,39 +345,11 @@ Launch token fields:
 
 | Field | Description |
 |-------|-------------|
-| `agent_name` | Descriptive name for the agent (used in SPIFFE ID generation). |
+| `agent_name` | Descriptive label stored with the launch token for operator context and auditability. |
 | `allowed_scope` | Maximum scopes the agent can request during registration. |
 | `max_ttl` | Maximum token TTL (seconds) the agent can request. Default: 300. |
 | `single_use` | If `true`, the launch token is consumed after one successful registration. If `false`, it can be reused until it expires. |
 | `ttl` | Lifetime of the launch token itself (seconds). Default: 30. |
-
-### Step 3: Create a Sidecar Activation
-
-If you are deploying a sidecar instead of handing launch tokens directly to developers:
-
-```bash
-curl -s -X POST http://localhost:8080/v1/admin/sidecar-activations \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -d '{
-    "allowed_scopes": ["read:data:*", "write:data:*"],
-    "ttl": 600
-  }'
-```
-
-Response (201 Created):
-
-```json
-{
-  "activation_token": "eyJhbGciOiJFZERTQSIs...",
-  "expires_at": "2026-02-15T12:10:00Z",
-  "scope": "sidecar:activate:read:data:* sidecar:activate:write:data:*"
-}
-```
-
-The sidecar uses this activation token in a single-use exchange at `POST /v1/sidecar/activate` to obtain its own bearer token.
-
----
 
 ## Token Release (Task Completion Signal)
 
@@ -585,86 +376,6 @@ This endpoint records the token release in the audit trail and marks the token a
 
 ---
 
-## Deploying a Sidecar for Developers
-
-In production, sidecars auto-bootstrap -- you configure them via environment variables, and they handle the rest. The sequence below shows what happens automatically on sidecar startup:
-
-```mermaid
-sequenceDiagram
-    participant S as Sidecar
-    participant B as Broker
-
-    Note over S: Start HTTP server<br/>(health + metrics only)
-
-    loop Bootstrap retry (1s → 60s backoff)
-        S->>B: GET /v1/health
-        B-->>S: {status: ok}
-    end
-
-    S->>B: POST /v1/admin/auth<br/>{client_id, client_secret}
-    B-->>S: {access_token} (admin JWT)
-
-    S->>B: POST /v1/admin/sidecar-activations<br/>Bearer: admin_token
-    B-->>S: {activation_token}
-
-    S->>B: POST /v1/sidecar/activate<br/>{sidecar_activation_token}
-    B-->>S: {access_token, sidecar_id} (TTL 900s)
-
-    Note over S: Register /v1/token, /v1/token/renew,<br/>/v1/challenge, /v1/register routes
-
-    Note over S: Start renewal goroutine<br/>(renew at 80% TTL)
-
-    Note over S: Start circuit breaker<br/>health probe goroutine
-```
-
-### Docker Compose configuration
-
-The `docker-compose.yml` in the repository already configures a sidecar. To customize:
-
-```yaml
-sidecar:
-  build:
-    context: .
-    target: sidecar
-  ports:
-    - "${AA_SIDECAR_HOST_PORT:-8081}:8081"
-  environment:
-    - AA_BROKER_URL=http://broker:8080
-    - AA_ADMIN_SECRET=${AA_ADMIN_SECRET}
-    - AA_SIDECAR_SCOPE_CEILING=read:data:*,write:data:*
-    - AA_SIDECAR_PORT=8081
-  depends_on:
-    broker:
-      condition: service_healthy
-  networks:
-    - agentauth-net
-```
-
-### Verify sidecar health
-
-```bash
-curl -s http://localhost:8081/v1/health | python3 -m json.tool
-```
-
-A healthy sidecar returns:
-
-```json
-{
-  "status": "ok",
-  "broker_connected": true,
-  "healthy": true,
-  "scope_ceiling": ["read:data:*", "write:data:*"],
-  "agents_registered": 0,
-  "last_renewal": "2026-02-15T12:01:00Z",
-  "uptime_seconds": 120.5
-}
-```
-
-Key fields to check:
-- `broker_connected`: `true` means the sidecar has a valid bearer token for broker communication.
-- `healthy`: `true` means the sidecar is fully operational.
-- `status`: `"ok"` (healthy), `"degraded"` (broker connection lost), or `"bootstrapping"` (startup in progress).
-
 ---
 
 ## Monitoring
@@ -673,10 +384,8 @@ Key fields to check:
 
 | Endpoint | Port | Description |
 |----------|------|-------------|
-| `GET /v1/health` (broker) | 8080 | Returns `{"status":"ok","version":"2.0.0","uptime":N}`. Used by Docker health checks and load balancers. |
-| `GET /v1/health` (sidecar) | 8081 | Returns status, broker connectivity, scope ceiling, agent count, last renewal time, and uptime. |
+| `GET /v1/health` (broker) | 8080 | Returns `{"status":"ok","version":"2.0.0","uptime":N,"db_connected":true,"audit_events_count":N}`. Used by Docker health checks and load balancers. |
 | `GET /v1/metrics` (broker) | 8080 | Prometheus metrics exposition endpoint. |
-| `GET /v1/metrics` (sidecar) | 8081 | Prometheus metrics exposition endpoint. |
 
 ### Broker Prometheus Metrics
 
@@ -691,27 +400,11 @@ Key fields to check:
 | `agentauth_request_duration_seconds` | histogram | `endpoint` | HTTP request latency by endpoint. |
 | `agentauth_clock_skew_total` | counter | -- | Clock skew events detected during token validation. |
 
-### Sidecar Prometheus Metrics
-
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `agentauth_sidecar_bootstrap_total` | counter | `status` | Bootstrap attempts (`success`, `failure`). |
-| `agentauth_sidecar_renewals_total` | counter | `status` | Sidecar bearer token renewal attempts. |
-| `agentauth_sidecar_token_exchanges_total` | counter | `status` | Agent token exchanges via broker. |
-| `agentauth_sidecar_scope_denials_total` | counter | -- | Requests denied by scope ceiling enforcement. |
-| `agentauth_sidecar_agents_registered` | gauge | -- | Agents currently in sidecar memory. |
-| `agentauth_sidecar_request_duration_seconds` | histogram | `endpoint` | Sidecar HTTP request latency. |
-| `agentauth_sidecar_circuit_state` | gauge | -- | Circuit breaker state: 0 = closed, 1 = open, 2 = probing. |
-| `agentauth_sidecar_circuit_trips_total` | counter | -- | Number of times the circuit breaker has tripped open. |
-| `agentauth_sidecar_cached_tokens_served_total` | counter | -- | Tokens served from cache during open circuit. |
 
 ### Key metrics to alert on
 
 - `agentauth_admin_auth_total{status="failure"}` -- repeated failures may indicate a brute-force attempt or misconfigured secret.
-- `agentauth_sidecar_circuit_state > 0` -- sidecar has lost broker connectivity.
-- `agentauth_sidecar_circuit_trips_total` increasing -- broker reliability issue.
 - `agentauth_tokens_revoked_total` spike -- potential security incident in progress.
-- `agentauth_sidecar_bootstrap_total{status="failure"}` increasing -- sidecar unable to bootstrap (check `AA_ADMIN_SECRET` and `AA_BROKER_URL`).
 
 ### Log Format
 
@@ -725,7 +418,7 @@ Example:
 
 ```
 [AA:BROKER:OK] 2026-02-15T12:00:00Z | main | starting broker | addr=:8080, version=2.0.0
-[AA:SIDECAR:WARN] 2026-02-15T12:00:05Z | BOOTSTRAP | failed, retrying | attempt=1, retry_in=1s
+[AA:BROKER:WARN] 2026-02-15T12:00:05Z | CFG | AA_DEFAULT_TTL exceeds AA_MAX_TTL | default_ttl=600 max_ttl=300
 ```
 
 - `FAIL` level logs go to stderr; all others go to stdout.

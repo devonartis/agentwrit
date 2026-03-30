@@ -8,8 +8,8 @@
 |----------|-------|
 | **Target Audience** | Absolute beginners; first-time users of AgentAuth |
 | **Persona** | Platform user or system administrator getting their first agent token |
-| **Document Version** | 2.0 |
-| **Last Updated** | 2026-02-19 |
+| **Document Version** | 3.0 |
+| **Last Updated** | 2026-03-29 |
 | **Prerequisites** | Docker, curl, and basic CLI familiarity |
 | **Estimated Time** | 15-20 minutes |
 | **Next Steps** | [Getting Started: Developer](getting-started-developer.md), [Getting Started: Operator](getting-started-operator.md), [Concepts](concepts.md) |
@@ -28,9 +28,9 @@ AgentAuth serves three different personas. Which one are you?
 
 | If you are... | Read this | Why |
 |---------------|-----------|----|
-| **Building or integrating an AI agent** in Python, TypeScript, Go, or another language | [Getting Started: Developer](getting-started-developer.md) | Developers focus on requesting tokens and using them in agent code. The sidecar handles all the crypto. |
-| **Deploying and operating AgentAuth** in production (setting up brokers, sidecars, configuring scopes) | [Getting Started: Operator](getting-started-operator.md) | Operators manage the full deployment: broker security, sidecar configuration, launch token creation, and monitoring. |
-| **Just trying AgentAuth locally** to understand how it works end-to-end | **This guide** | You'll run a local setup with Docker Compose, then manually walk through both the simple path (Sidecar) and the complex path (Direct Broker) to see how they work. |
+| **Building or integrating an AI agent** in Python, TypeScript, Go, or another language | [Getting Started: Developer](getting-started-developer.md) | Developers focus on requesting tokens and using them in agent code. |
+| **Deploying and operating AgentAuth** in production (setting up brokers, configuring scopes) | [Getting Started: Operator](getting-started-operator.md) | Operators manage the full deployment: broker security, launch token creation, and monitoring. |
+| **Just trying AgentAuth locally** to understand how it works end-to-end | **This guide** | You'll run a local setup with Docker Compose, then walk through the agent registration flow to see how it works. |
 
 ---
 
@@ -67,25 +67,24 @@ If any of these are missing, install them:
 
 ### Option A: Docker Compose (Recommended)
 
-Docker Compose is the easiest way to get started. It launches both the broker and sidecar in two commands.
+Docker Compose is the easiest way to get started. It launches the broker in two commands.
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/divineartis/agentauth.git
-cd agentauth
+git clone https://github.com/divineartis/agentauth-core.git
+cd agentauth-core
 
 # 2. Set the admin secret (required -- broker exits without it)
-export AA_ADMIN_SECRET="my-secret-key-change-in-production"
+export AA_ADMIN_SECRET="$(openssl rand -hex 32)"
 
 # 3. Start the stack
 ./scripts/stack_up.sh
 ```
 
-This starts two services:
-- **Broker** on port 8080 (the core security service)
-- **Sidecar** on port 8081 (the developer-friendly proxy)
+This starts the core service:
+- **Broker** on port 8080 (the security service)
 
-#### Verify both are running
+#### Verify it is running
 
 ```bash
 curl http://localhost:8080/v1/health
@@ -93,24 +92,7 @@ curl http://localhost:8080/v1/health
 
 Expected response:
 ```json
-{"status": "ok", "version": "2.0.0", "uptime": 5}
-```
-
-```bash
-curl http://localhost:8081/v1/health
-```
-
-Expected response:
-```json
-{
-  "status": "ok",
-  "broker_connected": true,
-  "healthy": true,
-  "scope_ceiling": ["read:data:*", "write:data:*"],
-  "agents_registered": 0,
-  "last_renewal": "2026-02-15T12:01:00Z",
-  "uptime_seconds": 120.5
-}
+{"status":"ok","version":"2.0.0","uptime":5,"db_connected":true,"audit_events_count":0}
 ```
 
 ### Option B: Local Go Build
@@ -119,128 +101,71 @@ If you prefer to build and run locally without Docker:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/divineartis/agentauth.git
-cd agentauth
+git clone https://github.com/divineartis/agentauth-core.git
+cd agentauth-core
 
 # 2. Build the Go binaries
 go build ./...
 
-# 3. Start the broker (in terminal 1)
-export AA_ADMIN_SECRET="my-secret-key-change-in-production"
+# 3. Start the broker
+export AA_ADMIN_SECRET="$(openssl rand -hex 32)"
 go run ./cmd/broker
 ```
 
-In a second terminal, start the sidecar:
-
-```bash
-export AA_ADMIN_SECRET="my-secret-key-change-in-production"
-export AA_SIDECAR_SCOPE_CEILING="read:data:*,write:data:*"
-go run ./cmd/sidecar
-```
-
-Both services will log to stdout. You should see "broker started" and "sidecar bootstrapped" messages.
+The broker will log to stdout. You should see a "broker started" message.
 
 ---
 
-## Architecture Overview: Two Paths
+## Architecture Overview
 
-AgentAuth supports two approaches to getting tokens. Here's how they differ:
+AgentAuth provides a single registration flow to get tokens. Here's how it works:
+
+This hand-sketched diagram mirrors the same flow as the Mermaid diagram below. The embedded PNG gives readers a faster visual orientation, while the Mermaid source stays easy to maintain as the broker evolves.
+
+![Hand-sketched registration overview](diagrams/getting-started-auth-flow-sketch.png)
 
 ```mermaid
-flowchart TD
-    A["Agent needs a token"] --> B{"Which path?"}
-    B -->|"Recommended: Simple"| C["🔹 Sidecar Path"]
-    B -->|"Advanced: Full Control"| D["🔹 Direct Broker Path"]
+flowchart LR
+    Need["Agent needs a token"]
 
-    C --> C1["POST /v1/token<br/>to sidecar"]
-    C1 --> C2["Sidecar handles:<br/>- Key generation<br/>- Challenge-response<br/>- Token exchange"]
-    C2 --> C3["Agent gets token<br/>One HTTP call"]
+    subgraph Operator["Operator bootstrap"]
+        direction TB
+        O1["1. Authenticate as admin"]
+        O2["2. Create launch token"]
+        O1 --> O2
+    end
 
-    D --> D1["Manual steps:<br/>1. Get nonce<br/>2. Generate keys<br/>3. Sign nonce<br/>4. Register agent"]
-    D1 --> D2["Full control over<br/>key management"]
-    D2 --> D3["Agent gets token<br/>~5 HTTP calls"]
+    subgraph Developer["Developer registration"]
+        direction TB
+        D1["3. Get nonce challenge"]
+        D2["4. Sign nonce"]
+        D3["5. Register with broker"]
+        D4["6. Use JWT"]
+        D1 --> D2 --> D3 --> D4
+    end
 
-    C3 --> E["✓ Ready to use"]
-    D3 --> E["✓ Ready to use"]
+    Need --> O1
+    O2 -->|"hand launch token to agent"| D1
+    D4 --> Ready["✓ Token ready to use"]
 
-    style C fill:#e1f5ff
-    style D fill:#fff3e0
+    classDef operator fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
+    classDef developer fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
+    classDef outcome fill:#fff3e0,stroke:#ffb74d,color:#e65100
+
+    class O1,O2 operator
+    class D1,D2,D3,D4 developer
+    class Need,Ready outcome
 ```
 
-**Path 1 (Sidecar):** The sidecar does all the work. You send one HTTP request and get back a token. **This is the recommended path for most users.**
-
-**Path 2 (Direct Broker):** You manually perform cryptographic operations and send multiple requests. This gives you full control over your keys but requires more steps. **Use this only if you need to control your own Ed25519 key pair.**
-
-For this guide, you'll walk through both paths so you understand what's happening under the hood.
+The registration flow gives you full control over your keys. You manually perform cryptographic operations and send multiple requests. This design provides explicit transparency into every step of the identity and authorization process.
 
 ---
 
-## Quick Start: Get a Token in 5 Steps (or 1 Step!)
-
-This section demonstrates both paths. Follow **Path 1 (Sidecar)** if you're new to AgentAuth. Follow **Path 2 (Direct Broker)** if you want to see the underlying mechanics.
-
----
-
-## Path 1: Sidecar (Recommended, Simplified)
-
-The sidecar handles all cryptography and registration automatically. One POST request is all you need.
-
-### Step 1: Make a Single HTTP Request
-
-```bash
-curl -s -X POST http://localhost:8081/v1/token \
-  -H "Content-Type: application/json" \
-  -d '{
-    "agent_name": "my-agent",
-    "task_id": "task-001",
-    "scope": ["read:data:*"],
-    "ttl": 300
-  }'
-```
-
-### Step 2: You're Done!
-
-Response:
-```json
-{
-  "access_token": "eyJhbGciOiJFZERTQSIs...",
-  "expires_in": 300,
-  "scope": ["read:data:*"],
-  "agent_id": "spiffe://agentauth.local/agent/my-agent/task-001/c9d0e1f2a3b4c5d6"
-}
-```
-
-Save the token for later use:
-```bash
-AGENT_TOKEN="eyJhbGciOiJFZERTQSIs..."
-```
-
-### What Just Happened
-
-The sidecar performed six operations behind the scenes:
-
-1. **Validated your request** -- checked that `read:data:*` is within the scope ceiling
-2. **Authenticated with the broker** -- sent the admin secret and obtained an admin token
-3. **Created a launch token** -- asked the broker to create a temporary registration credential
-4. **Generated an Ed25519 key pair** -- created a cryptographic identity for your agent
-5. **Completed the challenge-response handshake** -- signed a nonce and registered with the broker
-6. **Exchanged for a scoped JWT** -- received a short-lived access token
-
-All of this happened in a single HTTP request. The sidecar abstracts away the complexity.
-
-### What's Next (from Path 1)
-
-- Use the token in downstream requests (see [Common Tasks](common-tasks.md))
-- Renew the token before it expires (see [Concepts](concepts.md) for details)
-- Learn about scope matching (see [Getting Started: Developer](getting-started-developer.md))
-
----
-
-## Path 2: Direct Broker (Advanced, Full Control)
+## Quick Start: Get a Token in 6 Steps
 
 If you want to see the underlying mechanics and control your own Ed25519 keys, follow this path. It takes more steps, but every operation is explicit and transparent.
 
-### Step 1: Authenticate as Admin
+### Step 1: Admin Authentication
 
 First, obtain an admin token using the shared admin secret:
 
@@ -248,8 +173,7 @@ First, obtain an admin token using the shared admin secret:
 curl -s -X POST http://localhost:8080/v1/admin/auth \
   -H "Content-Type: application/json" \
   -d '{
-    "client_id": "admin",
-    "client_secret": "my-secret-key-change-in-production"
+    "secret": "my-secret-key-change-in-production"
   }'
 ```
 
@@ -266,13 +190,13 @@ Save the admin token:
 ```bash
 ADMIN_TOKEN=$(curl -s -X POST http://localhost:8080/v1/admin/auth \
   -H "Content-Type: application/json" \
-  -d '{"client_id": "admin", "client_secret": "my-secret-key-change-in-production"}' \
+  -d '{"secret": "my-secret-key-change-in-production"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
 echo "Admin token saved: $ADMIN_TOKEN"
 ```
 
-### Step 2: Create a Launch Token
+### Step 2: Launch Token Creation
 
 A launch token is a one-time credential that authorizes your agent to register with the broker. It includes the scopes the agent is allowed to request.
 
@@ -308,7 +232,7 @@ LAUNCH_TOKEN="a1b2c3d4e5f6...paste-your-value-here"
 
 **Important:** This launch token expires in 30 seconds. Complete the next steps before it expires.
 
-### Step 3: Get a Challenge Nonce
+### Step 3: Nonce Challenge
 
 The broker issues a random nonce (challenge) that your agent must sign. This proves your agent holds its private key.
 
@@ -331,7 +255,7 @@ NONCE="7f3a9c1b4d2e8f0a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8"
 
 **Important:** This nonce also expires in 30 seconds. Keep moving!
 
-### Step 4: Generate Keys and Sign the Nonce
+### Step 4: Key Generation and Proof of Identity
 
 Generate an Ed25519 key pair and sign the nonce bytes with your private key. This is the "proof of identity" step.
 
@@ -379,7 +303,7 @@ PUBLIC_KEY="<base64-encoded-public-key>"
 SIGNATURE="<base64-encoded-signature>"
 ```
 
-### Step 5: Register the Agent
+### Step 5: Agent Registration
 
 Now register your agent with the broker. You're submitting:
 - The launch token (authorizes registration)
@@ -410,7 +334,7 @@ Response:
 }
 ```
 
-### Step 6: Use Your Token
+### Step 6: Token Usage
 
 The `access_token` is your agent's credential. Use it in the `Authorization` header for authenticated requests:
 
@@ -454,7 +378,7 @@ If you're building an agent in Python, TypeScript, Go, or another language:
 
 ### For Operators
 If you're deploying AgentAuth in production:
-- **[Getting Started: Operator](getting-started-operator.md)** -- Deploy brokers and sidecars, manage scopes, configure persistence
+- **[Getting Started: Operator](getting-started-operator.md)** -- Deploy the broker, manage scopes, configure persistence
 - **[Architecture](architecture.md)** -- Understand the internals and security design
 
 ### For Everyone
@@ -486,13 +410,11 @@ When you're done experimenting, clean up the Docker containers:
 ./scripts/stack_down.sh
 ```
 
-This removes the broker and sidecar containers and their volumes.
+This removes the broker container and its volumes.
 
 ---
 
 ## Common Mistakes
-
-### Direct Broker Path
 
 1. **Signing the hex string instead of bytes** -- The nonce is a 64-character hex string, but you must hex-decode it to 32 bytes before signing.
    ```python
@@ -514,11 +436,7 @@ This removes the broker and sidecar containers and their volumes.
 
 3. **Expired nonce or launch token** -- Both expire in 30 seconds. If you get a "nonce not found" or "launch token invalid" error, get a fresh one and retry immediately.
 
-### Sidecar Path
-
-1. **Requesting scope broader than the ceiling** -- If your sidecar is configured with `AA_SIDECAR_SCOPE_CEILING=read:data:*` and you request `write:data:*`, the sidecar returns 403. Check with your operator about allowed scopes.
-
-2. **Wrong sidecar URL** -- Verify the sidecar is running on the correct host and port (default `http://localhost:8081`).
+4. **Wrong admin secret** -- Verify the `AA_ADMIN_SECRET` matches what you set when starting the broker.
 
 ---
 
@@ -562,6 +480,6 @@ For more detailed error messages and solutions, see [Troubleshooting](troublesho
 This guide covers the essential mechanics. For production deployments and advanced patterns:
 
 - **[Concepts](concepts.md)** -- The full security model, SPIFFE trust domain, audit chain
-- **[Getting Started: Operator](getting-started-operator.md)** -- Production deployment, sidecar scope ceilings, certificate management
+- **[Getting Started: Operator](getting-started-operator.md)** -- Production deployment, TLS configuration, certificate management
 - **[Architecture](architecture.md)** -- Internal design, crypto details, token refresh mechanics
 - **[API Reference](api.md)** -- All endpoints, parameters, error codes

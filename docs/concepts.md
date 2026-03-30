@@ -183,7 +183,7 @@ stateDiagram-v2
 - JWTs signed with EdDSA (Ed25519), containing claims: `sub` (SPIFFE ID), `scope`, `task_id`, `orch_id`, `delegation_chain`, `chain_hash`, `jti`, `exp`, `iat`
 - Scope format: `action:resource:identifier` with wildcard `*` support in the identifier position
 - Default TTL of 300 seconds (5 minutes), configurable via `AA_DEFAULT_TTL`
-- Scope attenuation enforced at registration, delegation, and token exchange
+- Scope attenuation enforced at registration, delegation, and app-authenticated launch token creation
 - Token renewal via `POST /v1/token/renew` issues fresh timestamps while preserving identity and scope
 - Token release via `POST /v1/token/release` signals task completion (optional but recommended for audit clarity)
 
@@ -248,10 +248,14 @@ flowchart TB
     L3 --> B3
     L4 --> B4
 
-    style L1 fill:#e8f5e9
-    style L2 fill:#fff3e0
-    style L3 fill:#fce4ec
-    style L4 fill:#f3e5f5
+    style L1 fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
+    style B1 fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
+    style L2 fill:#fff3e0,stroke:#ffb74d,color:#e65100
+    style B2 fill:#fff3e0,stroke:#ffb74d,color:#e65100
+    style L3 fill:#fce4ec,stroke:#f06292,color:#880e4f
+    style B3 fill:#fce4ec,stroke:#f06292,color:#880e4f
+    style L4 fill:#f3e5f5,stroke:#ba68c8,color:#4a148c
+    style B4 fill:#f3e5f5,stroke:#ba68c8,color:#4a148c
 ```
 
 | Level | When to Use | Target |
@@ -296,8 +300,8 @@ Each hash is computed over: `prev_hash | event_id | timestamp | event_type | age
 **What AgentAuth implements:**
 - `AuditLog` provides append-only storage with automatic hash chaining using SHA-256
 - Audit events persist to SQLite (configured via `AA_DB_PATH`); if no database path is set, events are stored in memory only
-- 17 event types covering the full lifecycle: `admin_auth`, `agent_registered`, `token_issued`, `token_revoked`, `token_renewed`, `delegation_created`, `token_released`, and more
-- Structured audit fields include: `resource` (resource being accessed), `outcome` (success/failure/completed), `deleg_depth` (delegation chain depth), `deleg_chain_hash` (chain integrity hash), `bytes_transferred` (data size)
+- 25 event types covering the full lifecycle: `admin_auth`, `admin_auth_failed`, `launch_token_issued`, `launch_token_denied`, `agent_registered`, `registration_policy_violation`, `token_issued`, `token_revoked`, `token_renewed`, `token_released`, `token_renewal_failed`, `delegation_created`, `resource_accessed`, `token_auth_failed`, `token_revoked_access`, `scope_violation`, `scope_ceiling_exceeded`, `delegation_attenuation_violation`, `scopes_ceiling_updated`, `app_registered`, `app_authenticated`, `app_auth_failed`, `app_updated`, `app_deregistered`, `app_rate_limited`
+- Structured audit fields include: `resource` (resource being accessed), `outcome` (`success` or `denied`), `deleg_depth` (delegation chain depth), `deleg_chain_hash` (chain integrity hash), `bytes_transferred` (data size)
 - PII sanitization automatically redacts values associated with `secret`, `password`, `token_value`, and `private_key`
 - `GET /v1/audit/events` supports filtering by `agent_id`, `task_id`, `event_type`, `outcome`, `since`, `until`, with pagination via `limit` and `offset`
 - Every event includes the hash chain fields, enabling verification of trail integrity
@@ -340,11 +344,12 @@ sequenceDiagram
 ```
 
 **What AgentAuth implements:**
-- `MutAuthHdl` provides the 3-step handshake as a Go API (`InitiateHandshake`, `RespondToHandshake`, `CompleteHandshake`)
-- `DiscoveryRegistry` maps agent IDs to network endpoints, enabling agents to find each other
-- `HeartbeatMgr` tracks agent liveness with configurable intervals (default 30s) and auto-revokes agents that miss 3 consecutive heartbeats
+- Agents register directly with the broker via `POST /v1/register`, receiving a unique SPIFFE ID and JWT token
 - Anti-spoofing checks verify that declared agent identity matches the token's `sub` claim at every step
-- Note: Mutual auth is currently a Go API only, not exposed as HTTP endpoints
+- Agents exchange tokens with each other via application-layer protocols (HTTP, gRPC, etc.), presenting their broker-issued JWT
+- Token validation is performed by the receiving agent via `POST /v1/token/validate` to confirm authenticity
+- The broker's public key is published via `/v1/health` for agents to verify token signatures
+- Note: Agent-to-agent mutual auth relies on standard JWT verification and the broker's published public key
 
 ---
 
@@ -386,6 +391,51 @@ Scope attenuation rules at each delegation hop:
 - Chain hash is SHA-256 of the JSON-serialized delegation chain, embedded in the `chain_hash` JWT claim
 - Chain-level revocation (`POST /v1/revoke` with `level: "chain"`) invalidates all tokens in a delegation tree
 - Default delegation token TTL is 60 seconds
+
+---
+
+### Component 8: Operational Observability
+
+**Problem:** How do you know the credential system is healthy? Agents come and go in seconds. If the broker is silently dropping registrations, issuing tokens with wrong scopes, or experiencing latency spikes, no one notices until agents start failing in production. Traditional application monitoring (CPU, memory, disk) doesn't tell you whether the security system is working correctly.
+
+**Solution:** The broker exposes structured metrics, health checks, and error contracts that make security-relevant operational state visible to monitoring systems. Every request produces a structured log entry. Every denial, every revocation, every scope violation is counted and labeled. Health checks report not just "up/down" but whether the database is connected and how many audit events have been recorded.
+
+**What AgentAuth implements:**
+
+- `internal/obs/obs.go` provides structured logging (`Ok`, `Warn`, `Fail`, `Trace`) and 12 Prometheus metrics:
+  - `agentauth_tokens_issued_total` (by scope) — are tokens being issued?
+  - `agentauth_tokens_revoked_total` (by level) — is revocation working?
+  - `agentauth_registrations_total` (by status) — are agents registering successfully?
+  - `agentauth_admin_auth_total` (by status) — are admin logins working?
+  - `agentauth_request_duration_seconds` (by endpoint) — latency per endpoint
+  - `agentauth_active_agents` — current registered agent count
+  - `agentauth_clock_skew_total` — clock drift events
+  - `agentauth_audit_events_total` — total audit trail size
+  - `agentauth_audit_write_duration_seconds` — audit write latency
+  - `agentauth_db_errors_total` — database error count
+  - `agentauth_launch_tokens_created_total` — launch tokens created
+  - `agentauth_audit_events_loaded` — events loaded from SQLite on startup
+- `GET /v1/health` returns `{"status":"ok","version":"2.0.0","uptime":N,"db_connected":true,"audit_events_count":N}`
+- `GET /v1/metrics` exposes all Prometheus metrics for scraping
+- `internal/problemdetails/problemdetails.go` provides RFC 7807 `application/problem+json` error responses with request IDs on every error, enabling correlation between client errors and broker logs
+- Every HTTP request is logged with method, path, status code, latency, and request ID via `handler.LoggingMiddleware`
+
+---
+
+## Pattern Component → Code Reference
+
+All 8 components of the [Ephemeral Agent Credentialing v1.3](https://github.com/devonartis/AI-Security-Blueprints/blob/main/patterns/ephemeral-agent-credentialing/versions/v1.3.md) pattern are implemented:
+
+| # | Pattern Component | Go Packages | Key Endpoints |
+|---|---|---|---|
+| 1 | Ephemeral Identity Issuance | `identity`, `handler`, `store` | `GET /v1/challenge`, `POST /v1/register` |
+| 2 | Short-Lived Task-Scoped Tokens | `token`, `cfg` | `POST /v1/token/renew`, `POST /v1/token/validate` |
+| 3 | Zero-Trust Enforcement | `authz`, `token` | Every authenticated endpoint (ValMw middleware) |
+| 4 | Automatic Expiration & Revocation | `revoke`, `token`, `handler` | `POST /v1/revoke`, `POST /v1/token/release` |
+| 5 | Immutable Audit Logging | `audit`, `store` | `GET /v1/audit/events` |
+| 6 | Agent-to-Agent Mutual Auth | `mutauth` | Go API only (not HTTP-exposed) |
+| 7 | Delegation Chain Verification | `deleg`, `token` | `POST /v1/delegate` |
+| 8 | Operational Observability | `obs`, `handler`, `problemdetails` | `GET /v1/health`, `GET /v1/metrics` |
 
 ---
 
@@ -441,11 +491,24 @@ flowchart TB
         AuditTrail["Audit Trail<br/>Trusted to record accurately<br/>Designed to prevent tampering"]
     end
 
-    Broker -->|"issues credentials to"| Orch
-    Broker -->|"issues credentials to"| agents
+    Broker -->|"issues admin / app / agent credentials to"| Orch
+    Broker -->|"issues agent credentials to"| AgentA
+    Broker -->|"issues agent credentials to"| AgentB
     Broker -->|"publishes signing key to"| RS
-    agents -->|"present tokens to"| RS
-    Broker & Orch & agents & RS -->|"all actions recorded in"| AuditTrail
+    AgentA -->|"presents tokens to"| RS
+    AgentB -->|"presents tokens to"| RS
+    Broker -->|"records events in"| AuditTrail
+    Orch -->|"records activity in"| AuditTrail
+    AgentA -->|"records activity in"| AuditTrail
+    AgentB -->|"records activity in"| AuditTrail
+    RS -->|"records access decisions in"| AuditTrail
+
+    style Broker fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
+    style Orch fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
+    style AgentA fill:#fff3e0,stroke:#ffb74d,color:#e65100
+    style AgentB fill:#fff3e0,stroke:#ffb74d,color:#e65100
+    style RS fill:#fce4ec,stroke:#f06292,color:#880e4f
+    style AuditTrail fill:#f3e5f5,stroke:#ba68c8,color:#4a148c
 ```
 
 ---
@@ -489,7 +552,7 @@ sequenceDiagram
     participant Broker
     participant Agent
 
-    Admin->>Broker: POST /v1/admin/auth<br/>{ client_id, client_secret }
+    Admin->>Broker: POST /v1/admin/auth<br/>{ secret }
     Broker-->>Admin: { access_token: "admin-jwt" }
 
     Admin->>Broker: POST /v1/admin/launch-tokens<br/>{ agent_name, allowed_scope,<br/>max_ttl: 300, single_use: true, ttl: 30 }
@@ -502,21 +565,21 @@ sequenceDiagram
     Agent->>Broker: GET /v1/challenge
     Broker-->>Agent: { nonce }
 
-    Agent->>Broker: POST /v1/register<br/>{ launch_token, nonce, public_key,<br/>signature, orch_id, task_id, scope }
+    Agent->>Broker: POST /v1/register<br/>{ launch_token, nonce, public_key,<br/>signature, orch_id, task_id, requested_scope }
     Note over Broker: Launch token consumed.<br/>Cannot be reused.
     Broker-->>Agent: { agent_id, access_token, expires_in }
 
     Note over Agent: Agent now has an ephemeral<br/>identity and scoped token.<br/>No long-lived secret needed.
 ```
 
+The diagram above shows the **operator bootstrap path** (`POST /v1/admin/launch-tokens`). In production, **apps create launch tokens for their own agents** via `POST /v1/app/launch-tokens` — the operator only registers the app once. See the [API Reference](api.md#end-to-end-authentication-flows) for both paths.
+
 The launch token has several properties that limit risk:
 
 - **Short TTL** (default 30 seconds) -- the window for theft is tiny
 - **Single-use** -- even if intercepted, it can only be used once
-- **Scope ceiling** -- the launch token limits what scope the agent can request
+- **Scope ceiling** -- the launch token limits what scope the agent can request. On the app route, the broker also enforces the app's registered scope ceiling.
 - **Operator-controlled** -- launch tokens are created on demand, not pre-provisioned
-
-For sidecar deployments, the bootstrap is even more controlled: the sidecar uses a sidecar activation token (also single-use) to establish its own identity, then handles all agent registration transparently.
 
 ---
 
@@ -548,4 +611,4 @@ The core lesson: agents should never hold long-lived secrets in their environmen
 ## Next Steps
 
 - **Developers:** Read [Getting Started: Developer](getting-started-developer.md) to integrate an agent with AgentAuth in 15 lines of Python
-- **Operators:** Read [Getting Started: Operator](getting-started-operator.md) to deploy the broker, configure sidecars, and create launch tokens
+- **Operators:** Read [Getting Started: Operator](getting-started-operator.md) to deploy the broker, configure apps, and create launch tokens

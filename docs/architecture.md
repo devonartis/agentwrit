@@ -1,6 +1,6 @@
 # Architecture
 
-> **Document Version:** 2.0 | **Last Updated:** February 2026 | **Status:** Current
+> **Document Version:** 3.0 | **Last Updated:** March 2026 | **Status:** Current
 >
 > **Audience:** Contributors, security reviewers, and operators who want to understand how AgentAuth works internally.
 >
@@ -17,7 +17,7 @@ AgentAuth sits between AI agents and the resources they need to access, providin
 ```mermaid
 flowchart TB
     subgraph External Actors
-        DEV["Developer App"]
+        DEV["Developer App / Agent"]
         AGENT["AI Agent / Orchestrator"]
         ADMIN["Operator / Admin"]
         RS["Resource Servers"]
@@ -25,25 +25,31 @@ flowchart TB
 
     subgraph AgentAuth["AgentAuth System Boundary"]
         BROKER["Broker\ncmd/broker\nPort 8080"]
-        SIDECAR["Sidecar\ncmd/sidecar\nPort 8081"]
         AACTL["aactl\ncmd/aactl\nOperator CLI"]
     end
 
-    DEV -- "POST /v1/token\n(simplified API)" --> SIDECAR
-    SIDECAR -- "challenge, register,\nexchange, renew" --> BROKER
+    DEV -- "challenge-response\nregistration" --> BROKER
     AGENT -- "challenge-response\nregistration" --> BROKER
     ADMIN -- "admin auth,\nlaunch tokens,\nrevocation" --> BROKER
-    ADMIN -- "sidecars, revoke,\naudit" --> AACTL
+    ADMIN -- "app management,\nrevoke, audit" --> AACTL
     AACTL -- "admin API calls" --> BROKER
     AGENT -- "Bearer token" --> RS
     DEV -- "Bearer token" --> RS
+
+    classDef external fill:#fff3e0,stroke:#ffb74d,color:#e65100
+    classDef control fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
+    classDef resource fill:#fce4ec,stroke:#f06292,color:#880e4f
+
+    class DEV,AGENT,ADMIN external
+    class BROKER,AACTL control
+    class RS resource
 ```
 
-**Broker** (`cmd/broker`) -- The central authority. Generates Ed25519 key pairs on startup, issues EdDSA-signed JWTs, validates challenge-response registrations, manages scope attenuation, delegation, revocation, and maintains a hash-chained audit trail. All endpoints use `application/json` with RFC 7807 error responses.
+**Broker** (`cmd/broker`) -- The central authority. Loads or generates a persistent Ed25519 signing key (`internal/keystore`), issues EdDSA-signed JWTs, validates challenge-response registrations, manages scope attenuation, delegation, revocation, and maintains a hash-chained audit trail. All endpoints use `application/json` with RFC 7807 error responses.
 
-**Sidecar** (`cmd/sidecar`) -- A developer-facing proxy. Bootstraps itself with the broker using admin auth and a single-use activation token, then exposes a simplified API. Developers call `POST /v1/token` with an agent name and scope; the sidecar handles key generation, challenge-response registration, and token exchange transparently. Includes circuit breaker resilience and cached token fallback.
+**App Service** (`internal/app`) -- Manages application registrations and app-level authentication. Operators register apps with `aactl app register`, which generates a client_id and client_secret. Apps authenticate with `POST /v1/app/auth` using those credentials to get scoped tokens.
 
-**aactl** (`cmd/aactl`) -- The operator CLI. Reads `AACTL_BROKER_URL` and `AACTL_ADMIN_SECRET` from environment variables and auto-authenticates. Provides table and JSON output for sidecar management, token revocation, and audit trail queries. Intended for operators who prefer a CLI over hand-crafting curl + JWT.
+**aactl** (`cmd/aactl`) -- The operator CLI. Reads `AACTL_BROKER_URL` and `AACTL_ADMIN_SECRET` from environment variables and auto-authenticates. Provides table and JSON output for app management, token revocation, and audit trail queries. Intended for operators who prefer a CLI over hand-crafting curl + JWT.
 
 ---
 
@@ -59,6 +65,7 @@ flowchart TB
             CFG["cfg\nEnv var config"]
             OBS["obs\nStructured logging\nPrometheus metrics"]
             STORE["store\nSqlStore\nSQLite + In-memory"]
+            KEYSTORE["keystore\nEd25519 key persistence\nPKCS8 PEM"]
         end
 
         subgraph Security["Security Layer"]
@@ -68,7 +75,8 @@ flowchart TB
         end
 
         subgraph Domain["Domain Layer"]
-            ADMIN_PKG["admin\nAdminSvc + AdminHdl\nLaunch tokens\nSidecar activation"]
+            ADMIN_PKG["admin\nAdminSvc + AdminHdl\nLaunch tokens\nAdmin auth"]
+            APP_PKG["app\nAppSvc + AppHdl\nApp registration\nApp auth"]
             DELEG["deleg\nDelegSvc\nScope-attenuated\ndelegation"]
             REVOKE["revoke\nRevSvc\n4-level revocation"]
             AUDIT["audit\nAuditLog\nHash-chained trail"]
@@ -84,19 +92,6 @@ flowchart TB
         end
     end
 
-    subgraph Sidecar["Sidecar (cmd/sidecar)"]
-        MAIN_S["main.go\nBootstrap loop\nRoute wiring"]
-        SC_HANDLER["handler.go\ntokenHandler\nrenewHandler"]
-        SC_BOOT["bootstrap.go\nsidecarState\nwaitForBroker"]
-        SC_CLIENT["broker_client.go\nHTTP calls to broker"]
-        SC_REG["registry.go\nIn-memory agent store\nToken caching"]
-        SC_RENEW["renewal.go\nBackground renewal"]
-        SC_CB["circuitbreaker.go\nSliding-window CB"]
-        SC_PROBE["probe.go\nHealth probe"]
-        SC_BYREG["register_handler.go\nBYOK registration"]
-    end
-
-    SIDECAR -- "HTTP" --> Broker
 ```
 
 ---
@@ -108,36 +103,25 @@ agentauth/
 |-- cmd/
 |   |-- broker/
 |   |   +-- main.go              # Service wiring, route registration, startup
-|   |-- sidecar/
-|   |   |-- main.go              # Bootstrap loop, route registration, shutdown
-|   |   |-- config.go            # Environment variable parsing
-|   |   |-- handler.go           # tokenHandler, renewHandler, healthHandler
-|   |   |-- listener.go           # UDS/TCP listener abstraction
-|   |   |-- bootstrap.go         # sidecarState, bootstrap(), waitForBroker()
-|   |   |-- broker_client.go     # HTTP client for all broker interactions
-|   |   |-- registry.go          # In-memory agent store with per-agent locking
-|   |   |-- renewal.go           # Background token renewal goroutine
-|   |   |-- register_handler.go  # BYOK challenge proxy and registration
-|   |   |-- circuitbreaker.go    # Sliding-window circuit breaker
-|   |   |-- probe.go             # Background health probe for circuit recovery
-|   |   +-- metrics.go           # 9 Prometheus metrics
 |   |-- aactl/                   # Operator CLI (aactl binary)
 |   |   |-- main.go              # Cobra root command, env var config
 |   |   |-- client.go            # HTTP client with auto-auth
-|   |   |-- sidecars.go          # sidecars list / ceiling get / ceiling set
+|   |   |-- apps.go              # app register / list
 |   |   |-- revoke.go            # revoke --level --target
 |   |   |-- audit.go             # audit events with filters
 |   |   |-- token.go              # token release command
 |   |   +-- output.go            # Table and JSON output helpers
 |   +-- smoketest/               # Container smoke test binary
 |-- internal/
-|   |-- admin/                   # Admin auth, launch tokens, sidecar activation
+|   |-- admin/                   # Admin auth, launch tokens
+|   |-- app/                     # App registration, app auth
 |   |-- audit/                   # Hash-chained audit trail
 |   |-- authz/                   # Bearer middleware, scope checking, rate limiter
 |   |-- cfg/                     # Broker configuration from AA_* env vars
 |   |-- deleg/                   # Scope-attenuated delegation with chain signing
 |   |-- handler/                 # HTTP handlers for all broker endpoints
 |   |-- identity/                # Challenge-response registration, SPIFFE IDs
+|   |-- keystore/                # Ed25519 signing key persistence (PKCS8 PEM)
 |   |-- mutauth/                 # Mutual authentication (Go API only)
 |   |-- obs/                     # Structured logging and Prometheus metrics
 |   |-- problemdetails/          # RFC 7807 errors, request ID, body limits
@@ -146,8 +130,8 @@ agentauth/
 |   +-- token/                   # EdDSA JWT issuance, verification, renewal
 |-- scripts/                     # Gate checks, Docker helpers, E2E test scripts
 |-- docs/                        # Documentation
-|-- docker-compose.yml           # Broker + Sidecar on bridge network
-+-- Dockerfile                   # Multi-stage build (builder, broker, sidecar)
+|-- docker-compose.yml           # Broker on bridge network
++-- Dockerfile                   # Multi-stage build (builder, broker)
 ```
 
 ---
@@ -159,17 +143,17 @@ flowchart TD
     MAIN_B["cmd/broker/main.go"] --> CFG
     MAIN_B --> OBS
     MAIN_B --> STORE
+    MAIN_B --> KEYSTORE
     MAIN_B --> TOKEN
     MAIN_B --> IDENTITY
     MAIN_B --> AUTHZ
     MAIN_B --> ADMIN
+    MAIN_B --> APP
     MAIN_B --> DELEG
     MAIN_B --> REVOKE
     MAIN_B --> AUDIT
     MAIN_B --> HANDLER
     MAIN_B --> PD
-
-    MAIN_S["cmd/sidecar/main.go"] --> OBS
 
     HANDLER["handler"] --> IDENTITY
     HANDLER --> TOKEN
@@ -205,10 +189,19 @@ flowchart TD
     DELEG --> AUDIT
     DELEG --> OBS
 
+    APP["app"] --> STORE
+    APP --> TOKEN
+    APP --> AUDIT
+    APP --> AUTHZ
+    APP --> OBS
+
     REVOKE["revoke"] --> TOKEN
+    REVOKE --> OBS
 
     TOKEN["token"] --> CFG
     TOKEN --> OBS
+
+    KEYSTORE["keystore"]
 
     MUTAUTH["mutauth"] --> TOKEN
     MUTAUTH --> STORE
@@ -220,15 +213,15 @@ flowchart TD
     STORE["store"]
     AUDIT["audit"]
 
-    classDef foundation fill:#e8f5e9
-    classDef security fill:#e3f2fd
-    classDef domain fill:#fff3e0
-    classDef transport fill:#fce4ec
-    classDef protocol fill:#f3e5f5
+    classDef foundation fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
+    classDef security fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
+    classDef domain fill:#fff3e0,stroke:#ffb74d,color:#e65100
+    classDef transport fill:#fce4ec,stroke:#f06292,color:#880e4f
+    classDef protocol fill:#f3e5f5,stroke:#ba68c8,color:#4a148c
 
-    class CFG,OBS,STORE foundation
+    class CFG,OBS,STORE,KEYSTORE foundation
     class TOKEN,IDENTITY,AUTHZ security
-    class ADMIN,DELEG,REVOKE,AUDIT domain
+    class ADMIN,APP,DELEG,REVOKE,AUDIT domain
     class HANDLER,PD transport
     class MUTAUTH protocol
 ```
@@ -243,10 +236,14 @@ The 7-component Ephemeral Agent Credentialing pattern maps directly to Go packag
 
 | Pattern Component | Go Packages | Key Types | Key Functions |
 |---|---|---|---|
+| **Foundation** | | | |
+| Store | `store` | `SqlStore`, `LaunchTokenRecord`, `AgentRecord`, `AppRecord`, `RevocationEntry` | `CreateNonce()`, `SaveAgent()`, `SaveApp()`, `SaveRevocation()`, `LoadAllAuditEvents()`, `LoadAllRevocations()` |
+| Keystore | `keystore` | — | `LoadOrGenerate()` — persistent Ed25519 key management (PKCS8 PEM, 0600 permissions) |
+| **Pattern Components** | | | |
 | 1. Ephemeral Identity Issuance | `identity`, `store`, `handler` | `IdSvc`, `RegHdl`, `ChallengeHdl`, `SqlStore` | `IdSvc.Register()`, `NewSpiffeId()` |
-| 2. Short-Lived Task-Scoped Tokens | `token`, `authz` | `TknSvc`, `TknClaims`, `IssueReq` | `TknSvc.Issue()`, `TknSvc.Renew()` |
-| 3. Zero-Trust Enforcement | `authz`, `handler` | `ValMw`, `RateLimiter` | `ValMw.Wrap()`, `ValMw.RequireScope()`, `ScopeIsSubset()` |
-| 4. Automatic Expiration & Revocation | `revoke`, `handler` | `RevSvc`, `RevokeHdl`, `ReleaseHdl` | `RevSvc.Revoke()`, `RevSvc.IsRevoked()`, `RevSvc.LoadFromEntries()` |
+| 2. Short-Lived Task-Scoped Tokens | `token`, `authz` | `TknSvc`, `TknClaims`, `IssueReq`, `Revoker` | `TknSvc.Issue()`, `TknSvc.Verify()`, `TknSvc.Renew()`, `TknSvc.SetRevoker()` |
+| 3. Zero-Trust Enforcement | `authz`, `handler` | `ValMw`, `RateLimiter` | `ValMw.Wrap()`, `ValMw.RequireScope()`, `ValMw.RequireAnyScope()`, `ScopeIsSubset()` |
+| 4. Automatic Expiration & Revocation | `revoke`, `token`, `handler` | `RevSvc`, `Revoker`, `RevokeHdl`, `ReleaseHdl` | `RevSvc.Revoke()`, `RevSvc.RevokeByJTI()`, `RevSvc.IsRevoked()`, `RevSvc.LoadFromEntries()` |
 | 5. Immutable Audit Logging | `audit`, `handler` | `AuditLog`, `AuditEvent`, `AuditHdl`, `RecordOption` | `AuditLog.Record()`, `AuditLog.Query()`, `WithOutcome()`, `WithResource()` |
 | 6. Agent-to-Agent Mutual Auth | `mutauth` | `MutAuthHdl`, `DiscoveryRegistry`, `HeartbeatMgr` | `InitiateHandshake()`, `RespondToHandshake()`, `CompleteHandshake()` |
 | 7. Delegation Chain Verification | `deleg`, `handler` | `DelegSvc`, `DelegHdl`, `DelegRecord` | `DelegSvc.Delegate()` |
@@ -314,7 +311,7 @@ sequenceDiagram
 
     Note over A: Sign hex-decoded nonce bytes<br/>with Ed25519 private key
 
-    A->>RH: POST /v1/register {launch_token, nonce,<br/>public_key, signature, orch_id, task_id, scope}
+    A->>RH: POST /v1/register {launch_token, nonce,<br/>public_key, signature, orch_id, task_id, requested_scope}
     RH->>ID: Register(req)
 
     ID->>ID: 1. Validate required fields
@@ -333,81 +330,6 @@ sequenceDiagram
 
     ID-->>RH: RegisterResp
     RH-->>A: {"agent_id": "spiffe://...",<br/>"access_token": "eyJ...", "expires_in": 300}
-```
-
-### Sidecar Bootstrap Flow
-
-The sidecar bootstraps with exponential backoff (1s to 60s cap):
-
-```mermaid
-sequenceDiagram
-    participant SC as Sidecar
-    participant HTTP as HTTP Server
-    participant BR as Broker
-
-    Note over SC: Start HTTP server immediately<br/>(health + metrics only)
-    SC->>HTTP: ListenAndServe(:8081)
-
-    Note over SC: Bootstrap loop begins
-
-    loop Until success (backoff 1s->60s)
-        SC->>BR: GET /v1/health
-        BR-->>SC: {"status": "ok"}
-
-        SC->>BR: POST /v1/admin/auth<br/>{"client_id", "client_secret"}
-        BR-->>SC: {"access_token": "admin-jwt"}
-
-        SC->>BR: POST /v1/admin/sidecar-activations<br/>{"allowed_scopes": [...]}
-        BR-->>SC: {"activation_token": "jwt"}
-
-        SC->>BR: POST /v1/sidecar/activate<br/>{"sidecar_activation_token": "jwt"}
-        BR-->>SC: {"access_token": "sidecar-bearer",<br/>"sidecar_id": "..."}
-    end
-
-    Note over SC: Bootstrap succeeded
-
-    SC->>HTTP: Register routes:<br/>/v1/token, /v1/token/renew,<br/>/v1/challenge, /v1/register
-
-    SC->>SC: Start renewal goroutine<br/>(renew at 80% TTL)
-    SC->>SC: Start health probe goroutine<br/>(circuit breaker recovery)
-
-    Note over SC: Ready to serve agents
-```
-
-### Token Exchange Flow
-
-When a developer requests a token via the sidecar:
-
-```mermaid
-sequenceDiagram
-    participant D as Developer App
-    participant SC as Sidecar
-    participant REG as Agent Registry
-    participant BR as Broker
-
-    D->>SC: POST /v1/token<br/>{"agent_name", "scope", "task_id"}
-    SC->>SC: scopeIsSubset(requested, ceiling)
-
-    SC->>REG: Lookup agent by name+task
-    alt Agent not registered
-        SC->>BR: POST /v1/admin/auth
-        BR-->>SC: admin JWT
-        SC->>BR: POST /v1/admin/launch-tokens<br/>{agent_name, scope ceiling}
-        BR-->>SC: {launch_token}
-        SC->>SC: Generate Ed25519 key pair
-        SC->>BR: GET /v1/challenge
-        BR-->>SC: {nonce}
-        SC->>SC: Sign nonce with private key
-        SC->>BR: POST /v1/register<br/>{launch_token, nonce, pub_key, sig, ...}
-        BR-->>SC: {agent_id, access_token}
-        SC->>REG: Store agent (keys, SPIFFE ID)
-    end
-
-    SC->>BR: POST /v1/token/exchange<br/>Bearer: sidecar-token<br/>{"agent_id", "scope", "ttl"}
-    BR-->>SC: {"access_token", "expires_in"}
-
-    SC->>REG: Cache token for failsafe
-    SC-->>D: {"access_token", "expires_in",<br/>"scope", "agent_id"}
 ```
 
 ### Delegation Flow
@@ -461,11 +383,13 @@ flowchart LR
 
     MUX --> PUB["Public Handlers\n(health, challenge,\nmetrics, validate)"]
 
-    MUX --> MB1["MaxBytesBody"] --> AUTH_ONLY["ValMw.Wrap"] --> AUTH_H["Auth Handlers\n(renew, delegate)"]
+    MUX --> MB1["MaxBytesBody"] --> AUTH_ONLY["ValMw.Wrap"] --> AUTH_H["Auth Handlers\n(renew, delegate,\nrelease)"]
 
-    MUX --> MB2["MaxBytesBody"] --> SCOPE_W["ValMw.Wrap"] --> SCOPE_C["ValMw\n.RequireScope"] --> ADMIN_H["Scoped Handlers\n(exchange, revoke,\nlaunch-tokens,\nsidecar-activations)"]
+    MUX --> AUDIT_W["ValMw.Wrap"] --> AUDIT_C["ValMw\n.RequireScope"] --> AUDIT_H["Audit Handler\n(audit/events)"]
 
-    MUX --> RL["RateLimiter\n.Wrap"] --> RL_H["Rate-Limited\n(admin/auth,\nsidecar/activate)"]
+    MUX --> MB2["MaxBytesBody"] --> SCOPE_W["ValMw.Wrap"] --> SCOPE_C["ValMw\n.RequireScope /\n.RequireAnyScope"] --> ADMIN_H["Scoped POST Handlers\n(revoke, launch-tokens,\nadmin/apps)"]
+
+    MUX --> RL["RateLimiter\n.Wrap"] --> RL_H["Rate-Limited\n(admin/auth,\napp/auth)"]
 
     MUX --> MB3["MaxBytesBody"] --> REG_H["Register\n(launch token\nin body)"]
 ```
@@ -481,29 +405,31 @@ flowchart LR
 | `POST /v1/register` | RequestID -> Logging -> MaxBytesBody -> Handler |
 | `POST /v1/token/renew` | RequestID -> Logging -> MaxBytesBody -> ValMw -> Handler |
 | `POST /v1/delegate` | RequestID -> Logging -> MaxBytesBody -> ValMw -> Handler |
-| `POST /v1/token/exchange` | RequestID -> Logging -> MaxBytesBody -> ValMw -> ValMw.RequireScope(`sidecar:manage:*`) -> Handler |
+| `POST /v1/token/release` | RequestID -> Logging -> MaxBytesBody -> ValMw -> Handler |
 | `POST /v1/revoke` | RequestID -> Logging -> MaxBytesBody -> ValMw -> ValMw.RequireScope(`admin:revoke:*`) -> Handler |
 | `GET /v1/audit/events` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:audit:*`) -> Handler |
 | `POST /v1/admin/auth` | RequestID -> Logging -> RateLimiter(5/s, burst 10) -> Handler |
 | `POST /v1/admin/launch-tokens` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
-| `POST /v1/admin/sidecar-activations` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
-| `POST /v1/sidecar/activate` | RequestID -> Logging -> RateLimiter(5/s, burst 10) -> Handler |
-| `POST /v1/token/release` | RequestID -> Logging -> MaxBytesBody -> ValMw -> Handler |
-| `GET /v1/admin/sidecars` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
-
+| `POST /v1/app/launch-tokens` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`app:launch-tokens:*`) -> Handler |
+| `POST /v1/admin/apps` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
+| `GET /v1/admin/apps` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
+| `GET /v1/admin/apps/{id}` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
+| `PUT /v1/admin/apps/{id}` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
+| `DELETE /v1/admin/apps/{id}` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
+| `POST /v1/app/auth` | RequestID -> Logging -> RateLimiter(10/min per client_id, burst 3) -> Handler |
 ---
 
 ## Key Design Decisions
 
-1. **Hybrid persistence.** Critical state (audit events, revocations, sidecar registrations) is persisted to SQLite via write-through from in-memory structures. Transient state (nonces, agent records, launch tokens) lives in memory behind `sync.RWMutex` and is cleared on restart. This design ensures the audit trail and revocation list survive broker restarts while keeping the hot path fast.
+1. **Hybrid persistence.** Critical state (audit events, revocations, app registrations) is persisted to SQLite via write-through from in-memory structures. Transient state (nonces, agent records, launch tokens) lives in memory behind `sync.RWMutex` and is cleared on restart. This design ensures the audit trail and revocation list survive broker restarts while keeping the hot path fast.
 
-2. **Fresh Ed25519 keys every startup.** The broker generates a new signing key pair on each start via `crypto/rand`. All previously issued tokens become unverifiable. This is intentional -- long-lived tokens are an anti-pattern for ephemeral credentialing.
+2. **Persistent Ed25519 signing key.** On first startup, the broker generates an Ed25519 key pair via `crypto/rand` and writes it to `AA_SIGNING_KEY_PATH` (default `./signing.key`) in PKCS8 PEM format with `0600` permissions. On subsequent startups, the existing key is loaded from disk. Tokens remain valid across restarts as long as the key file persists. Delete the key file to force key rotation (all previously issued tokens become unverifiable). See `internal/keystore` for implementation.
 
-3. **Scope attenuation is one-way.** Scopes can only narrow, never expand. Enforced at registration (requested vs. launch token ceiling), delegation (delegated vs. delegator scope), and token exchange (requested vs. sidecar ceiling entries).
+3. **Scope attenuation is one-way.** Scopes can only narrow, never expand. Enforced at registration (requested scope vs. launch token ceiling), delegation (delegated vs. delegator scope), and app-authenticated launch-token creation (requested `allowed_scope` vs. app ceiling).
 
 4. **Scope check before launch token consumption.** At registration, `ScopeIsSubset` is called before `ConsumeLaunchToken`. A scope violation returns an error without wasting a single-use token.
 
-5. **Constant-time secret comparison.** Admin authentication uses `subtle.ConstantTimeCompare` to prevent timing attacks on `AA_ADMIN_SECRET`.
+5. **Bcrypt secret comparison.** Admin authentication uses `bcrypt.CompareHashAndPassword` (cost 12) to prevent timing attacks on `AA_ADMIN_SECRET`. The plaintext secret is bcrypt-hashed at startup in `cfg.Load()` and the hash is stored in `Cfg.AdminSecretHash`. The plaintext is wiped from memory after hashing.
 
 6. **Apps as first-class entities.** Developer applications are registered with the broker via `aactl` and authenticate directly using client credentials (`POST /v1/app/auth`). Each app has its own scope ceiling and configurable JWT TTL (bounded by broker-wide min/max).
 
@@ -517,13 +443,13 @@ These are explicit trust boundaries and limitations of the current implementatio
 
 - **X-Forwarded-For trusted unconditionally.** The `clientIP()` function in `internal/authz/rate_mw.go` trusts the first entry in `X-Forwarded-For` without validation. In production, the broker must sit behind a trusted reverse proxy that sets this header correctly. Without a trusted proxy, rate limiting can be bypassed via header spoofing.
 
-- **Persistent and transient state split.** Audit events, revocations, and sidecar registrations are persisted to SQLite and reloaded on startup. Nonces, agent records, and launch tokens are transient (memory only). All previously issued tokens become unverifiable after restart (new signing keys). The split is intentional — audit and revocation are security-critical; nonces and agent records are ephemeral by design.
+- **Persistent and transient state split.** Audit events, revocations, and app registrations are persisted to SQLite and reloaded on startup. Nonces, agent records, and launch tokens are transient (memory only). All previously issued tokens become unverifiable after restart (new signing keys). The split is intentional — audit and revocation are security-critical; nonces and agent records are ephemeral by design.
 
 - **Single broker instance.** There is no replication, consensus, or shared state mechanism. The broker is a single process. Running multiple instances would result in split-brain token verification (each instance has its own signing key).
 
 - **Nonce window is 30 seconds.** Nonces expire after 30 seconds. Agents must complete the challenge-response flow within this window. Clock skew between agent and broker can cause failures.
 
-- **Admin secret is the root of trust.** `AA_ADMIN_SECRET` is the single shared secret that bootstraps the entire system. If compromised, an attacker can issue arbitrary launch tokens and sidecar activations.
+- **Admin secret is the root of trust.** `AA_ADMIN_SECRET` is the single shared secret that bootstraps the entire system. If compromised, an attacker can issue arbitrary launch tokens and app credentials.
 
 ---
 
@@ -538,4 +464,4 @@ These are explicit trust boundaries and limitations of the current implementatio
 | Go stdlib `crypto/ed25519` | -- | Token signing and nonce signature verification |
 | Go stdlib `crypto/sha256` | -- | Audit hash chain, delegation chain hash |
 | Go stdlib `net/http` | -- | HTTP server (Go 1.22+ method routing) |
-| Go stdlib `crypto/subtle` | -- | Constant-time admin secret comparison |
+| `golang.org/x/crypto/bcrypt` | v0.48.0 | Admin secret hash verification |

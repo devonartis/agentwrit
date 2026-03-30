@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 440" role="img" aria-labelledby="title desc">
+  <title id="title">AgentAuth registration flow sketch</title>
+  <desc id="desc">Hand-drawn overview showing operator bootstrap, developer registration, and token-ready outcome.</desc>
+  <defs>
+    <style>
+      .paper { fill: #fcfaf4; }
+      .group-title { font-family: "Virgil", "Comic Sans MS", "Segoe UI", sans-serif; font-size: 22px; font-weight: 700; fill: #203040; }
+      .box-text { font-family: "Virgil", "Comic Sans MS", "Segoe UI", sans-serif; font-size: 20px; font-weight: 600; fill: #203040; text-anchor: middle; dominant-baseline: middle; }
+      .small-text { font-family: "Virgil", "Comic Sans MS", "Segoe UI", sans-serif; font-size: 18px; font-weight: 600; fill: #3b4a59; text-anchor: middle; }
+      .note-text { font-family: "Virgil", "Comic Sans MS", "Segoe UI", sans-serif; font-size: 16px; fill: #51606f; }
+      .outline { fill: none; stroke: #24323f; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+      .operator-fill { fill: #e4f1ff; }
+      .developer-fill { fill: #e8f6e2; }
+      .outcome-fill { fill: #fff1c9; }
+      .arrow { fill: none; stroke: #334350; stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
+      .arrow-label { font-family: "Virgil", "Comic Sans MS", "Segoe UI", sans-serif; font-size: 16px; fill: #445363; }
+    </style>
+    <marker id="arrowhead" markerWidth="14" markerHeight="10" refX="11" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L12,5 L0,10" fill="#334350"/>
+    </marker>
+  </defs>
+
+  <rect class="paper" x="0" y="0" width="1200" height="440" rx="24"/>
+
+  <text x="38" y="38" class="group-title">AgentAuth registration overview</text>
+  <text x="38" y="66" class="note-text">Hand-sketched companion to the Mermaid source-of-truth below.</text>
+
+  <g transform="rotate(-1.2 110 210)">
+    <rect x="26" y="166" width="170" height="86" rx="18" class="outcome-fill"/>
+    <path class="outline" d="M32 172 Q38 166 46 171 L184 171 Q191 174 189 183 L189 240 Q188 248 180 247 L43 247 Q34 248 32 239 Z"/>
+    <path class="outline" d="M29 176 Q39 169 47 173 L181 173 Q188 176 186 184 L186 237 Q183 244 176 244 L46 244 Q37 245 35 236 Z" opacity="0.75"/>
+    <text x="111" y="209" class="box-text">Need a token</text>
+  </g>
+
+  <g transform="rotate(-0.8 370 214)">
+    <rect x="236" y="54" width="276" height="314" rx="24" class="operator-fill"/>
+    <path class="outline" d="M245 64 Q258 51 271 59 L491 59 Q505 58 502 75 L502 346 Q503 360 488 358 L263 358 Q247 360 246 344 Z"/>
+    <path class="outline" d="M241 68 Q254 57 268 63 L489 63 Q500 64 497 79 L497 341 Q497 353 485 352 L265 352 Q250 354 249 339 Z" opacity="0.7"/>
+    <text x="374" y="92" class="group-title">Operator bootstrap</text>
+
+    <g transform="rotate(-0.6 374 160)">
+      <rect x="278" y="126" width="190" height="70" rx="16" class="outcome-fill"/>
+      <path class="outline" d="M285 132 Q294 126 302 130 L459 130 Q468 131 465 140 L465 184 Q464 192 455 191 L301 191 Q291 191 289 183 Z"/>
+      <text x="373" y="161" class="box-text">1. Admin auth</text>
+    </g>
+
+    <g transform="rotate(0.9 374 266)">
+      <rect x="278" y="232" width="190" height="70" rx="16" class="outcome-fill"/>
+      <path class="outline" d="M286 238 Q294 231 304 236 L458 236 Q467 237 465 245 L465 290 Q463 299 455 297 L303 297 Q293 299 290 289 Z"/>
+      <text x="373" y="267" class="box-text">2. Launch token</text>
+    </g>
+  </g>
+
+  <g transform="rotate(0.9 744 214)">
+    <rect x="538" y="54" width="422" height="314" rx="24" class="developer-fill"/>
+    <path class="outline" d="M549 61 Q560 52 574 58 L942 58 Q955 58 952 74 L952 346 Q951 361 937 358 L566 358 Q551 360 551 344 Z"/>
+    <path class="outline" d="M545 66 Q557 57 571 63 L939 63 Q949 65 947 79 L947 341 Q945 353 935 352 L568 352 Q556 353 554 338 Z" opacity="0.7"/>
+    <text x="748" y="92" class="group-title">Developer registration</text>
+
+    <g transform="rotate(-0.8 748 138)">
+      <rect x="618" y="112" width="260" height="54" rx="14" class="operator-fill"/>
+      <path class="outline" d="M626 118 Q635 111 644 115 L868 115 Q879 116 876 125 L876 153 Q873 162 864 161 L645 161 Q635 161 632 153 Z"/>
+      <text x="748" y="140" class="box-text">3. Get challenge nonce</text>
+    </g>
+
+    <g transform="rotate(0.5 748 200)">
+      <rect x="618" y="174" width="260" height="54" rx="14" class="outcome-fill"/>
+      <path class="outline" d="M626 180 Q635 173 645 177 L868 177 Q879 178 876 188 L876 216 Q875 224 865 223 L645 223 Q636 224 632 215 Z"/>
+      <text x="748" y="202" class="box-text">4. Sign nonce</text>
+    </g>
+
+    <g transform="rotate(-0.4 748 262)">
+      <rect x="618" y="236" width="260" height="54" rx="14" class="operator-fill"/>
+      <path class="outline" d="M626 242 Q635 235 644 239 L868 239 Q879 240 876 249 L876 278 Q875 286 865 285 L645 285 Q636 286 632 277 Z"/>
+      <text x="748" y="264" class="box-text">5. Register with broker</text>
+    </g>
+
+    <g transform="rotate(0.7 748 324)">
+      <rect x="618" y="298" width="260" height="54" rx="14" class="outcome-fill"/>
+      <path class="outline" d="M626 304 Q635 297 644 301 L868 301 Q879 302 876 311 L876 340 Q873 348 864 347 L645 347 Q636 348 632 339 Z"/>
+      <text x="748" y="326" class="box-text">6. Use JWT</text>
+    </g>
+  </g>
+
+  <g transform="rotate(1 1080 210)">
+    <rect x="983" y="166" width="184" height="88" rx="18" class="outcome-fill"/>
+    <path class="outline" d="M990 172 Q999 165 1008 169 L1155 169 Q1165 171 1162 180 L1162 241 Q1161 249 1152 248 L1006 248 Q998 248 994 240 Z"/>
+    <path class="outline" d="M987 176 Q997 169 1007 173 L1152 173 Q1162 174 1159 183 L1159 238 Q1158 246 1149 245 L1008 245 Q999 246 996 237 Z" opacity="0.7"/>
+    <text x="1075" y="201" class="box-text">Token ready</text>
+    <text x="1075" y="225" class="small-text">Bearer flow can start</text>
+  </g>
+
+  <path class="arrow" d="M196 209 C216 209 226 209 240 209" marker-end="url(#arrowhead)"/>
+  <path class="arrow" d="M374 196 C374 210 374 219 374 231" marker-end="url(#arrowhead)"/>
+  <path class="arrow" d="M469 267 C514 267 556 150 617 140" marker-end="url(#arrowhead)"/>
+  <path class="arrow" d="M748 166 C748 177 748 183 748 190" marker-end="url(#arrowhead)"/>
+  <path class="arrow" d="M748 228 C748 239 748 245 748 252" marker-end="url(#arrowhead)"/>
+  <path class="arrow" d="M748 290 C748 301 748 307 748 314" marker-end="url(#arrowhead)"/>
+  <path class="arrow" d="M878 325 C940 325 968 240 984 214" marker-end="url(#arrowhead)"/>
+
+  <text x="561" y="180" class="arrow-label">launch token</text>
+  <text x="926" y="274" class="arrow-label">JWT issued</text>
+</svg>

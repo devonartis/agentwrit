@@ -22,24 +22,25 @@ B0 removed all sidecar Go code and infrastructure but did NOT rewrite the user-f
 
 | ID | What | Severity | Files Affected | Notes |
 |----|------|----------|----------------|-------|
-| TD-D01 | `docs/sidecar-deployment.md` — entire file is about sidecar deployment | High | `docs/sidecar-deployment.md` | DELETE or rewrite as broker-only deployment |
-| TD-D02 | `docs/getting-started-user.md` — sidecar path, port 8081, `go run ./cmd/sidecar`, `docker-compose.uds.yml` | High | `docs/getting-started-user.md` | Rewrite: remove sidecar path, update Docker instructions, keep direct broker path |
-| TD-D03 | `docs/getting-started-developer.md` — sidecar SDK integration, token exchange flow | High | `docs/getting-started-developer.md` | Rewrite: developer flow is now direct broker registration |
-| TD-D04 | `docs/getting-started-operator.md` — sidecar configuration, env vars, deployment topology | High | `docs/getting-started-operator.md` | Rewrite: operator manages broker only |
-| TD-D05 | `docs/architecture.md` — sidecar in architecture diagrams, `docker-compose.uds.yml`, token exchange | Medium | `docs/architecture.md` | Partially cleaned in B0 (items 8-10 removed). Still has sidecar in overview sections |
-| TD-D06 | `docs/api.md` — token exchange endpoint documentation | Medium | `docs/api.md` | Remove token exchange endpoint, verify remaining endpoints |
-| TD-D07 | `docs/api/openapi.yaml` — token exchange route in OpenAPI spec | Medium | `docs/api/openapi.yaml` | Remove `/v1/token/exchange` path and related schemas |
-| TD-D08 | `docs/concepts.md` — sidecar in conceptual model | Medium | `docs/concepts.md` | Update agent registration model (no sidecar) |
-| TD-D09 | `docs/troubleshooting.md` — sidecar troubleshooting section, UDS refs | Medium | `docs/troubleshooting.md` | Remove sidecar troubleshooting, update for broker-only |
-| TD-D10 | `docs/common-tasks.md` — sidecar operations tasks | Low | `docs/common-tasks.md` | Update for broker-only operations |
-| TD-D11 | `docs/integration-patterns.md` — sidecar integration pattern | Low | `docs/integration-patterns.md` | Rewrite patterns for direct broker integration |
-| TD-D12 | `docs/examples/*.md` — 4 example docs reference sidecar flows | Low | `docs/examples/customer-support.md`, `data-pipeline.md`, `devops-automation.md`, `code-generation.md` | Update examples to broker-direct flow |
-| TD-D13 | `docs/examples/README.md` — sidecar in examples overview | Low | `docs/examples/README.md` | Update overview |
-| TD-D14 | `docs/aactl-reference.md` — sidecar aactl commands if any | Low | `docs/aactl-reference.md` | Verify and remove sidecar CLI refs |
-| TD-D15 | `docs/RECOMMENDATIONS.md` — sidecar recommendations | Low | `docs/RECOMMENDATIONS.md` | Update recommendations |
-| TD-D16 | `README.md` — sidecar in project overview | Medium | `README.md` | Update for open-core, broker-only |
-| TD-D17 | `CHANGELOG.md` — historical sidecar entries (leave as-is, they're history) | None | `CHANGELOG.md` | No action needed — historical record |
-| TD-D18 | `KNOWN-ISSUES.md` — sidecar-related known issues | Low | `KNOWN-ISSUES.md` | Remove sidecar issues, add any new core-only issues |
+| TD-D01 | `docs/sidecar-deployment.md` — entire file is about sidecar deployment | High | `docs/sidecar-deployment.md` | RESOLVED — fix/docs-overhaul branch (March 2026 documentation overhaul) |
+| TD-D02 | `docs/getting-started-user.md` — sidecar path, port 8081, `go run ./cmd/sidecar`, `docker-compose.uds.yml` | High | `docs/getting-started-user.md` | RESOLVED — fix/docs-overhaul branch (March 2026 documentation overhaul) |
+| TD-D03 | `docs/getting-started-developer.md` — sidecar SDK integration, token exchange flow | High | `docs/getting-started-developer.md` | RESOLVED — fix/docs-overhaul branch (March 2026 documentation overhaul) |
+| TD-D04 | `docs/getting-started-operator.md` — sidecar configuration, env vars, deployment topology | High | `docs/getting-started-operator.md` | RESOLVED — fix/docs-overhaul branch (March 2026 documentation overhaul) |
+| TD-D05 | `docs/architecture.md` — sidecar in architecture diagrams, `docker-compose.uds.yml`, token exchange | Medium | `docs/architecture.md` | RESOLVED — fix/docs-overhaul branch (March 2026 documentation overhaul) |
+| TD-D06 | `docs/api.md` — token exchange endpoint documentation | Medium | `docs/api.md` | RESOLVED — fix/docs-overhaul branch (March 2026 documentation overhaul) |
+| TD-D07 | `docs/api/openapi.yaml` — token exchange route in OpenAPI spec | Medium | `docs/api/openapi.yaml` | RESOLVED — fix/docs-overhaul branch (March 2026 documentation overhaul) |
+| TD-D08 | `docs/concepts.md` — sidecar in conceptual model | Medium | `docs/concepts.md` | RESOLVED — fix/docs-overhaul branch (March 2026 documentation overhaul) |
+| TD-D09 | `docs/troubleshooting.md` — sidecar troubleshooting section, UDS refs | Medium | `docs/troubleshooting.md` | RESOLVED — fix/docs-overhaul branch (March 2026 documentation overhaul) |
+| TD-D10 | `docs/common-tasks.md` — sidecar operations tasks | Low | `docs/common-tasks.md` | RESOLVED — fix/docs-overhaul branch (March 2026 documentation overhaul) |
+| TD-D11 | `docs/integration-patterns.md` — sidecar integration pattern | Low | `docs/integration-patterns.md` | RESOLVED — fix/docs-overhaul branch (March 2026 documentation overhaul) |
+| TD-D12 | `docs/examples/*.md` — 4 example docs reference sidecar flows | Low | `docs/examples/customer-support.md`, `data-pipeline.md`, `devops-automation.md`, `code-generation.md` | RESOLVED — fix/docs-overhaul branch (March 2026 documentation overhaul) |
+| TD-D13 | `docs/examples/README.md` — sidecar in examples overview | Low | `docs/examples/README.md` | RESOLVED — fix/docs-overhaul branch (March 2026 documentation overhaul) |
+| TD-D14 | `docs/aactl-reference.md` — sidecar aactl commands if any | Low | `docs/aactl-reference.md` | RESOLVED — fix/docs-overhaul branch (March 2026 documentation overhaul) |
+| TD-D15 | `docs/RECOMMENDATIONS.md` — sidecar recommendations | Low | `docs/RECOMMENDATIONS.md` | RESOLVED — fix/docs-overhaul branch (March 2026 documentation overhaul) |
+| TD-D16 | `README.md` — sidecar in project overview | Medium | `README.md` | RESOLVED — fix/docs-overhaul branch (March 2026 documentation overhaul) |
+| TD-D17 | `CHANGELOG.md` — historical sidecar entries (leave as-is, they're history) | None | `CHANGELOG.md` | RESOLVED — fix/docs-overhaul branch (March 2026 documentation overhaul) |
+| TD-D18 | `KNOWN-ISSUES.md` — sidecar-related known issues | Low | `KNOWN-ISSUES.md` | RESOLVED — fix/docs-overhaul branch (March 2026 documentation overhaul) |
+| TD-D19 | Post-docs-overhaul sidecar grep verification | Low | All tracked files | New entry post-merge: run final grep for remaining sidecar/UDS/token-exchange references to catch any stragglers missed during overhaul |
 
 ## New — Script Drift (B0 Sidecar Removal)
 

@@ -1,6 +1,6 @@
 # aactl CLI Reference
 
-> **Document Version:** 1.0 | **Last Updated:** February 2026 | **Status:** Current
+> **Document Version:** 3.0 | **Last Updated:** March 2026 | **Status:** Current
 >
 > **Audience:** Operators and administrators managing the AgentAuth broker.
 >
@@ -12,7 +12,7 @@
 
 ## Overview
 
-**aactl** is the operator CLI for the AgentAuth broker. It provides full control over token lifecycle, revocation, sidecar management, and audit trail inspection via a set of commands backed by the broker's admin API.
+**aactl** is the operator CLI for the AgentAuth broker. It provides full control over token lifecycle, revocation, app management, and audit trail inspection via a set of commands backed by the broker's admin API.
 
 aactl uses the Cobra command framework and outputs formatted tables by default, with optional JSON output for scripting.
 
@@ -62,7 +62,7 @@ aactl audit events --json
 ### Authentication Flow
 
 1. aactl reads `AACTL_ADMIN_SECRET` from the environment
-2. On first command invocation, it sends a POST to `/v1/admin/auth` with `{"client_id": "admin", "client_secret": "..."}`
+2. On first command invocation, it sends a POST to `/v1/admin/auth` with `{"secret": "..."}`
 3. The broker returns a short-lived JWT (`access_token`)
 4. aactl caches the token for the session and uses Bearer auth for all subsequent requests
 5. Token is automatically refreshed if it expires during command execution (transparent to the user)
@@ -86,7 +86,7 @@ All commands support the following global flag:
 
 Example:
 ```bash
-aactl --json sidecars list
+aactl --json audit events
 ```
 
 ---
@@ -341,211 +341,406 @@ aactl revoke --level agent --target "spiffe://example.com/agent/crawler" --json
 
 ---
 
-### sidecars list
+### app register
 
 **Synopsis:**
 ```
-aactl sidecars list
+aactl app register --name <name> --scopes <scope1>,<scope2>,... [--token-ttl N]
 ```
 
 **Description:**
 
-List all registered sidecars. Shows sidecar ID, current scope ceiling, status, and creation timestamp.
+Register a new app and receive generated credentials (client_id and client_secret). The app can then authenticate via the `/v1/app/auth` endpoint to obtain access tokens for agents.
 
-**Flags:**
-
-None specific to this command. Supports global `--json` flag.
-
-**Output (Table):**
-
-| Column | Description |
-|--------|-------------|
-| ID | Sidecar instance identifier (usually hostname or pod name) |
-| SCOPES | Comma-separated scope ceiling (max scopes this sidecar can grant) |
-| STATUS | Operational status: `active`, `inactive`, `draining` |
-| CREATED | RFC3339 timestamp when sidecar registered itself |
-
-**Output (JSON):**
-
-```json
-{
-  "sidecars": [
-    {
-      "sidecar_id": "sidecar-prod-1",
-      "scope_ceiling": ["admin:read", "admin:write"],
-      "status": "active",
-      "created_at": "2026-02-20T08:15:00Z",
-      "updated_at": "2026-02-27T15:32:10Z"
-    },
-    {
-      "sidecar_id": "sidecar-staging-1",
-      "scope_ceiling": ["read"],
-      "status": "active",
-      "created_at": "2026-02-15T10:00:00Z",
-      "updated_at": "2026-02-27T14:20:30Z"
-    }
-  ],
-  "total": 2
-}
-```
-
-**Examples:**
-
-List all sidecars:
-```bash
-aactl sidecars list
-```
-
-Get sidecar inventory as JSON for automation:
-```bash
-aactl sidecars list --json | jq '.sidecars | length'
-```
-
-Find all sidecars with admin scopes:
-```bash
-aactl sidecars list --json | jq '.sidecars[] | select(.scope_ceiling | contains(["admin:read"]))'
-```
-
-**API Endpoint:**
-
-`GET /v1/admin/sidecars`
-
----
-
-### sidecars ceiling get
-
-**Synopsis:**
-```
-aactl sidecars ceiling get <sidecar-id>
-```
-
-**Description:**
-
-Retrieve the current scope ceiling for a specific sidecar. The scope ceiling is the maximum set of scopes that sidecar is allowed to grant to agents.
-
-**Arguments:**
-
-| Argument | Description |
-|----------|-------------|
-| `sidecar-id` | Sidecar instance identifier (required, positional) |
-
-**Flags:**
-
-None specific to this command. Supports global `--json` flag.
-
-**Output (Table):**
-
-| Column | Description |
-|--------|-------------|
-| SIDECAR ID | The sidecar identifier |
-| SCOPE CEILING | Space-separated scope ceiling |
-
-**Output (JSON):**
-
-```json
-{
-  "sidecar_id": "sidecar-prod-1",
-  "scope_ceiling": ["admin:read", "admin:write", "read"]
-}
-```
-
-**Examples:**
-
-Get ceiling for a sidecar:
-```bash
-aactl sidecars ceiling get sidecar-prod-1
-```
-
-Get ceiling as JSON and extract just the scopes:
-```bash
-aactl sidecars ceiling get sidecar-prod-1 --json | jq '.scope_ceiling'
-```
-
-**API Endpoint:**
-
-`GET /v1/admin/sidecars/{sidecar-id}/ceiling`
-
----
-
-### sidecars ceiling set
-
-**Synopsis:**
-```
-aactl sidecars ceiling set <sidecar-id> --scopes <scope1>,<scope2>,...
-```
-
-**Description:**
-
-Update the scope ceiling for a sidecar. This narrows or widens the maximum scope set that sidecar can grant.
-
-When narrowing the ceiling (removing scopes), any agent tokens that exceed the new ceiling are automatically revoked. The response reports how many tokens were revoked and whether the ceiling was narrowed.
-
-**Arguments:**
-
-| Argument | Description |
-|----------|-------------|
-| `sidecar-id` | Sidecar instance identifier (required, positional) |
+The scope ceiling defines the maximum set of scopes that app's agents can request. The client_secret is shown only once and cannot be retrieved later — save it immediately.
 
 **Flags:**
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--scopes` | string | (required) | Comma-separated scope ceiling. Example: `admin:read,admin:write,read` |
+| `--name` | string | (required) | Human-readable app name for identification |
+| `--scopes` | string | (required) | Comma-separated scope ceiling (e.g., `admin:read,admin:write,read`) |
+| `--token-ttl` | int | (global AA_APP_TOKEN_TTL) | App JWT TTL in seconds (overrides global default) |
 
 **Output (Table):**
 
 | Column | Description |
 |--------|-------------|
-| OLD CEILING | Previous scope ceiling (comma-separated) |
-| NEW CEILING | Updated scope ceiling (comma-separated) |
-| NARROWED | true if any scopes were removed |
-| REVOKED | true if any tokens were revoked due to narrowing |
-| REVOKED COUNT | Number of tokens revoked |
+| APP_ID | Unique app identifier |
+| CLIENT_ID | Client identifier for app authentication |
+| CLIENT_SECRET | Secret credential (shown once only) |
+| SCOPES | Scope ceiling |
+| TOKEN_TTL | App JWT TTL in seconds |
 
 **Output (JSON):**
 
 ```json
 {
-  "old_ceiling": ["admin:read", "admin:write", "read"],
-  "new_ceiling": ["read"],
-  "narrowed": true,
-  "revoked": true,
-  "revoked_count": 5
+  "app_id": "app-12345",
+  "client_id": "app_crawler",
+  "client_secret": "secret_abc123def456...",
+  "scopes": ["admin:read", "read"],
+  "token_ttl": 1800
 }
 ```
 
 **Examples:**
 
-Widen ceiling to grant additional scopes:
+Register an app with read-only scopes:
 ```bash
-aactl sidecars ceiling set sidecar-prod-1 --scopes admin:read,admin:write,read,write
+aactl app register --name "crawler" --scopes read
 ```
 
-Narrow ceiling (will revoke excess tokens):
+Register an app with admin scopes and custom TTL:
 ```bash
-aactl sidecars ceiling set sidecar-prod-1 --scopes read
+aactl app register --name "admin-tool" --scopes "admin:read,admin:write,read" --token-ttl 3600
 ```
 
-Tighten staging sidecar from admin to read-only:
+Get the result as JSON:
 ```bash
-aactl sidecars ceiling set sidecar-staging-1 --scopes read
-```
-
-Check the result in JSON:
-```bash
-aactl sidecars ceiling set sidecar-prod-1 --scopes admin:read,read --json
+aactl app register --name "webhook" --scopes "write" --json
 ```
 
 **API Endpoint:**
 
-`PUT /v1/admin/sidecars/{sidecar-id}/ceiling`
+`POST /v1/admin/apps`
 
 **Request Body:**
 
 ```json
 {
-  "scope_ceiling": ["admin:read", "admin:write", "read"]
+  "name": "crawler",
+  "scopes": ["admin:read", "read"],
+  "token_ttl": 1800
 }
+```
+
+---
+
+### app list
+
+**Synopsis:**
+```
+aactl app list
+```
+
+**Description:**
+
+List all registered apps. Shows app name, ID, client ID, scope ceiling, TTL, status, and creation time.
+
+**Flags:**
+
+None specific to this command. Supports global `--json` flag.
+
+**Output (Table):**
+
+| Column | Description |
+|--------|-------------|
+| NAME | App name |
+| APP_ID | Unique app identifier |
+| CLIENT_ID | Client identifier |
+| STATUS | Operational status (active, inactive) |
+| SCOPES | Scope ceiling (comma-separated) |
+| TOKEN_TTL | App JWT TTL in seconds |
+| CREATED | RFC3339 timestamp of registration |
+
+**Output (JSON):**
+
+```json
+{
+  "apps": [
+    {
+      "app_id": "app-12345",
+      "name": "crawler",
+      "client_id": "app_crawler",
+      "scopes": ["admin:read", "read"],
+      "token_ttl": 1800,
+      "status": "active",
+      "created_at": "2026-02-20T08:15:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+**Examples:**
+
+List all apps:
+```bash
+aactl app list
+```
+
+Count registered apps:
+```bash
+aactl app list --json | jq '.total'
+```
+
+**API Endpoint:**
+
+`GET /v1/admin/apps`
+
+---
+
+### app get
+
+**Synopsis:**
+```
+aactl app get <app-id>
+```
+
+**Description:**
+
+Retrieve full details of a specific registered app, including scope ceiling, TTL, status, and timestamps.
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `app-id` | App identifier (required, positional) |
+
+**Flags:**
+
+None specific to this command. Supports global `--json` flag.
+
+**Output (Table):**
+
+| Column | Description |
+|--------|-------------|
+| APP_ID | App identifier |
+| NAME | App name |
+| CLIENT_ID | Client identifier |
+| STATUS | Operational status |
+| SCOPES | Scope ceiling (comma-separated) |
+| TOKEN_TTL | App JWT TTL in seconds |
+| CREATED | Creation timestamp |
+| UPDATED | Last update timestamp |
+
+**Output (JSON):**
+
+```json
+{
+  "app_id": "app-12345",
+  "name": "crawler",
+  "client_id": "app_crawler",
+  "scopes": ["admin:read", "read"],
+  "token_ttl": 1800,
+  "status": "active",
+  "created_at": "2026-02-20T08:15:00Z",
+  "updated_at": "2026-02-27T15:32:10Z"
+}
+```
+
+**Examples:**
+
+Get app details:
+```bash
+aactl app get app-12345
+```
+
+**API Endpoint:**
+
+`GET /v1/admin/apps/{app-id}`
+
+---
+
+### app update
+
+**Synopsis:**
+```
+aactl app update --id <app-id> [--scopes <scope1>,<scope2>,...] [--token-ttl N]
+```
+
+**Description:**
+
+Update an app's scope ceiling and/or token TTL. At least one of `--scopes` or `--token-ttl` is required.
+
+If scopes are narrowed (removed), any tokens that exceed the new ceiling are not automatically revoked — they remain valid until expiration. Use `aactl revoke` separately if immediate revocation is needed.
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--id` | string | (required) | App ID to update |
+| `--scopes` | string | (empty) | New comma-separated scope ceiling |
+| `--token-ttl` | int | (none) | New app JWT TTL in seconds |
+
+**Output (Table):**
+
+| Column | Description |
+|--------|-------------|
+| APP_ID | App identifier |
+| SCOPES | Updated scope ceiling |
+| TOKEN_TTL | Updated TTL in seconds |
+| UPDATED_AT | Update timestamp |
+
+**Output (JSON):**
+
+```json
+{
+  "app_id": "app-12345",
+  "scopes": ["read"],
+  "token_ttl": 3600,
+  "updated_at": "2026-02-27T15:32:10Z"
+}
+```
+
+**Examples:**
+
+Widen scope ceiling:
+```bash
+aactl app update --id app-12345 --scopes "admin:read,admin:write,read"
+```
+
+Update TTL only:
+```bash
+aactl app update --id app-12345 --token-ttl 7200
+```
+
+Narrow both scopes and TTL:
+```bash
+aactl app update --id app-12345 --scopes "read" --token-ttl 1800
+```
+
+**API Endpoint:**
+
+`PUT /v1/admin/apps/{app-id}`
+
+**Request Body:**
+
+```json
+{
+  "scopes": ["read"],
+  "token_ttl": 3600
+}
+```
+
+---
+
+### app remove
+
+**Synopsis:**
+```
+aactl app remove --id <app-id>
+```
+
+**Description:**
+
+Deregister an app (soft delete). The app record is retained for audit purposes, but credentials are revoked and the app can no longer authenticate.
+
+Existing agent tokens issued by this app remain valid until expiration; use `aactl revoke` if immediate token revocation is needed.
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--id` | string | (required) | App ID to deregister |
+
+**Output (Table):**
+
+| Column | Description |
+|--------|-------------|
+| APP_ID | App identifier |
+| STATUS | Status after deregistration (deregistered) |
+| DEREGISTERED_AT | Deregistration timestamp |
+
+**Output (JSON):**
+
+```json
+{
+  "app_id": "app-12345",
+  "status": "deregistered",
+  "deregistered_at": "2026-02-27T15:32:10Z"
+}
+```
+
+**Examples:**
+
+Deregister an app:
+```bash
+aactl app remove --id app-12345
+```
+
+**API Endpoint:**
+
+`DELETE /v1/admin/apps/{app-id}`
+
+---
+
+### init
+
+**Synopsis:**
+```
+aactl init [--mode {dev|prod}] [--config-path PATH] [--force]
+```
+
+**Description:**
+
+Initialize AgentAuth by generating a cryptographically secure admin secret and writing a configuration file.
+
+In **dev mode**, the plaintext secret is stored in the config file for easy retrieval during development. In **prod mode**, only the bcrypt hash is stored — the plaintext is shown once on stdout and never saved to disk.
+
+Use the generated secret to set `AACTL_ADMIN_SECRET` for subsequent aactl commands.
+
+**Flags:**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--mode` | string | dev | Initialization mode: `dev` (plaintext stored) or `prod` (bcrypt hash only) |
+| `--config-path` | string | (default) | Explicit path to write config file (default: `~/.agentauth/config`) |
+| `--force` | bool | false | Overwrite existing config file without confirmation |
+
+**Output:**
+
+```
+Config written to: /home/user/.agentauth/config
+
+Admin secret: dGVzdC1zZWNyZXQtdmFsdWUtYmFzZTY0LWVuY29kZWQtdGV4dA...
+
+Dev mode: secret is also stored in the config file.
+```
+
+Or in prod mode:
+
+```
+Config written to: /etc/agentauth/config
+
+Admin secret: dGVzdC1zZWNyZXQtdmFsdWUtYmFzZTY0LWVuY29kZWQtdGV4dA...
+
+WARNING: Save this secret now. It will not be shown again.
+Store it in your secrets manager (Vault, AWS Secrets Manager, etc.).
+```
+
+**Examples:**
+
+Initialize in dev mode (default):
+```bash
+aactl init
+```
+
+Initialize in prod mode with explicit path:
+```bash
+aactl init --mode prod --config-path /etc/agentauth/config
+```
+
+Reinitialize with force:
+```bash
+aactl init --force
+```
+
+**Output File Format:**
+
+The config file is YAML containing the admin secret (plaintext in dev, bcrypt hash in prod):
+
+```yaml
+mode: development
+admin_secret: dGVzdC1zZWNyZXQtdmFsdWU=
+```
+
+or in prod:
+
+```yaml
+mode: production
+admin_secret: $2a$12$...bcrypt.hash.here...
 ```
 
 ---
@@ -578,45 +773,6 @@ aactl sidecars ceiling set sidecar-prod-1 --scopes admin:read,read --json
 
 4. **(Optional) Check if the agent can still authenticate:**
    Attempt to use the agent. It should receive a 403 Unauthorized on the next request.
-
-### Scope Tightening: Audit, Get Ceiling, Set, and Monitor
-
-**Scenario:** A sidecar's scope ceiling is too broad. Tighten it and monitor the impact.
-
-**Steps:**
-
-1. **List all sidecars to identify targets:**
-   ```bash
-   aactl sidecars list
-   ```
-
-2. **Check the current ceiling for a specific sidecar:**
-   ```bash
-   aactl sidecars ceiling get sidecar-prod-1
-   ```
-
-3. **Review what scopes are actually in use (from audit trail):**
-   ```bash
-   aactl audit events --event-type scope_assigned --limit 50
-   ```
-   Or check application logs for scope usage patterns.
-
-4. **Tighten the ceiling:**
-   ```bash
-   aactl sidecars ceiling set sidecar-prod-1 --scopes read,write
-   ```
-   This removes `admin:read` and `admin:write`, revoking any tokens with those scopes.
-
-5. **Verify the new ceiling:**
-   ```bash
-   aactl sidecars ceiling get sidecar-prod-1
-   ```
-
-6. **Monitor for denied requests in audit trail:**
-   ```bash
-   aactl audit events --outcome denied --since 2026-02-27T14:00:00Z
-   ```
-   If denied events spike, the ceiling may have been set too tight; consider adding scopes back.
 
 ### Token Lifecycle Monitoring
 
@@ -823,17 +979,6 @@ aactl audit events --json | jq -r '.events[] | [.id, .timestamp, .event_type, .a
 
 ## Advanced Usage
 
-### Scripting
-
-Loop through sidecars and tighten all staging sidecars:
-
-```bash
-aactl sidecars list --json | jq -r '.sidecars[] | select(.sidecar_id | startswith("staging")) | .sidecar_id' | while read sidecar_id; do
-  echo "Tightening $sidecar_id..."
-  aactl sidecars ceiling set "$sidecar_id" --scopes read
-done
-```
-
 ### Integration with Monitoring
 
 Export recent denied events to a monitoring system:
@@ -880,16 +1025,6 @@ done
 - Verify agents are reading the revocation list (not caching tokens locally).
 - Confirm the broker is running and connected to the revocation backend (Redis, SQLite, etc.).
 
-### Sidecar Ceiling Set Fails
-
-**Problem:** `aactl sidecars ceiling set` returns HTTP 400 or 404.
-
-**Solutions:**
-- Verify the sidecar ID: `aactl sidecars list`
-- Check scope names are valid (e.g., no typos, correct case).
-- Ensure scopes are comma-separated with no spaces: `--scopes read,write` (not `read, write`).
-- Check broker logs for validation errors.
-
 ---
 
 ## Related Documentation
@@ -898,8 +1033,7 @@ done
 - **[Getting Started: Operator](getting-started-operator.md)** — Initial broker setup and aactl configuration.
 - **[Common Tasks](common-tasks.md)** — Step-by-step guides for operations.
 - **[API Reference](api.md)** — Full HTTP API specification (what aactl uses under the hood).
-- **[Troubleshooting](troubleshooting.md)** — Resolve broker and sidecar issues.
-- **[Sidecar Deployment](sidecar-deployment.md)** — Deploy and manage sidecars.
+- **[Troubleshooting](troubleshooting.md)** — Resolve broker issues.
 
 ---
 
@@ -927,7 +1061,7 @@ A: See the broker deployment documentation. Once rotated, update `AACTL_ADMIN_SE
 
 **Q: Can aactl run without the broker's admin secret?**
 
-A: No. Admin operations (audit, revoke, sidecar management) require authentication. Agent operations like `aactl token release` require the agent's own token, not the admin secret.
+A: No. Admin operations (audit, revoke, app management) require authentication. Agent operations like `aactl token release` require the agent's own token, not the admin secret.
 
 **Q: How do I automate daily audit exports?**
 

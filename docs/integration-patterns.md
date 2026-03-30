@@ -16,11 +16,11 @@
 
 1. [Introduction](#introduction)
 2. [Pattern 1: Multi-Agent Pipeline](#pattern-1-multi-agent-pipeline)
-3. [Pattern 2: Sidecar-Per-Microservice](#pattern-2-sidecar-per-microservice)
+3. [Pattern 2: Multi-Service Authorization](#pattern-2-multi-service-authorization)
 4. [Pattern 3: Token Release as Task Completion Signal](#pattern-3-token-release-as-task-completion-signal)
 5. [Pattern 4: Delegation Chain with Scope Narrowing](#pattern-4-delegation-chain-with-scope-narrowing)
 6. [Pattern 5: Emergency Revocation Cascade](#pattern-5-emergency-revocation-cascade)
-7. [Pattern 6: BYOK (Bring Your Own Key) Registration](#pattern-6-byok-bring-your-own-key-registration)
+7. [Pattern 6: App-Managed Agent Registration](#pattern-6-app-managed-agent-registration)
 8. [Security Checklist](#security-checklist)
 9. [Common Pitfalls](#common-pitfalls)
 
@@ -31,11 +31,11 @@
 This guide covers six proven patterns for integrating AgentAuth into AI agent systems. Each pattern solves a specific architectural challenge:
 
 - **Multi-Agent Pipeline:** Sequential agents with scope attenuation at each step
-- **Sidecar-Per-Microservice:** Isolated credential boundaries across service domains
+- **Multi-Service Authorization:** Different services with independent auth boundaries
 - **Token Release:** Explicit task completion signaling and audit clarity
 - **Delegation Chain:** Hierarchical scope narrowing in deep agent hierarchies
 - **Emergency Revocation:** Incident response and containment strategies
-- **BYOK Registration:** Agent-managed key material for advanced use cases
+- **App-Managed Agent Registration:** Orchestration apps managing agent credentials
 
 Every pattern demonstrates the **security contrast**: what goes wrong without AgentAuth (the dangerous path) versus the safe, auditable approach with AgentAuth.
 
@@ -46,9 +46,8 @@ uv pip install requests cryptography
 ```
 
 All examples assume environment variables:
-- `AGENTAUTH_SIDECAR_URL`: Where agents call `POST /v1/token` (e.g., `https://sidecar.internal:8081`)
-- `AGENTAUTH_BROKER_URL`: Where operators manage credentials (e.g., `https://broker.internal:8080`)
-- `AA_ADMIN_SECRET`: Operator admin credential (for BYOK and revocation examples only)
+- `AGENTAUTH_BROKER_URL`: Broker endpoint (e.g., `https://broker.internal:8080`)
+- `AA_ADMIN_SECRET`: Operator admin credential (for app registration and emergency examples)
 
 ---
 
@@ -75,30 +74,30 @@ Use this pattern when:
 ```mermaid
 sequenceDiagram
     participant Orch as Orchestrator
-    participant SC as Sidecar
     participant Broker
     participant RA as Research Agent
     participant WA as Writer Agent
     participant REV as Reviewer Agent
     participant DB as Data Sources
 
-    Orch->>SC: 1. Request token for Research Agent<br/>scope: [read:data:*]
-    SC->>Broker: (bootstrap + register)
-    Broker-->>SC: JWT(read:data:*)
-    SC-->>RA: access_token, agent_id
+    Orch->>Broker: 1. Get launch token<br/>for Research Agent
+    Broker-->>Orch: launch_token
+
+    RA->>Broker: 2. POST /v1/register<br/>with launch_token
+    Broker-->>RA: JWT(read:data:*), agent_id
 
     RA->>DB: Read reports<br/>scope: read:data:*
     DB-->>RA: Data
 
-    RA->>Broker: POST /v1/delegate<br/>{ delegate_to: writer-agent,<br/>scope: [read:data:reports],<br/>ttl: 120 }
+    RA->>Broker: 3. POST /v1/delegate<br/>scope: [read:data:reports]
     Broker-->>RA: JWT(read:data:reports)<br/>+ delegation_chain
 
-    RA->>WA: delivery token
+    RA->>WA: 4. Pass token to Writer Agent
 
-    WA->>DB: Read (narrower scope)<br/>read:data:reports
+    WA->>DB: 5. Read (narrower scope)<br/>read:data:reports
     DB-->>WA: Report data only
 
-    WA->>Broker: POST /v1/delegate<br/>{ delegate_to: reviewer-agent,<br/>scope: [read:data:reports],<br/>ttl: 60 }
+    WA->>Broker: POST /v1/delegate<br/>{ delegate_to: spiffe://.../reviewer,<br/>scope: [read:data:reports],<br/>ttl: 60 }
     Broker-->>WA: JWT(read:data:reports)
 
     WA->>REV: delivery token
@@ -111,13 +110,19 @@ sequenceDiagram
 
 ```python
 import os
+import base64
+import binascii
 import requests
 import json
 from typing import Dict, Any, List
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-SIDECAR = os.environ.get("AGENTAUTH_SIDECAR_URL", "https://sidecar.internal:8081")
 BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal:8080")
+LAUNCH_TOKEN = os.environ.get("RESEARCH_AGENT_LAUNCH_TOKEN", "lt_...")
 TASK_ID = "analysis-2026-0215-001"
+WRITER_AGENT_ID = "spiffe://agentauth.local/agent/orch-research-001/task-writer-001/writer-001"
+REVIEWER_AGENT_ID = "spiffe://agentauth.local/agent/orch-research-001/task-review-001/reviewer-001"
 
 class ResearchAgent:
     """Research Agent with broad read:data:* scope."""
@@ -125,24 +130,44 @@ class ResearchAgent:
     def __init__(self):
         self.token = None
         self.agent_id = None
+        self.private_key = Ed25519PrivateKey.generate()
 
     def bootstrap(self) -> bool:
-        """Get initial token from sidecar."""
+        """Register with broker using Ed25519 challenge-response."""
         try:
-            resp = requests.post(f"{SIDECAR}/v1/token", json={
-                "agent_name": "research-agent",
+            # Step 1: Get challenge nonce
+            challenge_resp = requests.get(f"{BROKER}/v1/challenge", timeout=10)
+            challenge_resp.raise_for_status()
+            nonce = challenge_resp.json()["nonce"]
+
+            # Step 2: Sign the hex-decoded nonce bytes with Ed25519
+            nonce_bytes = binascii.unhexlify(nonce)
+            signature = base64.b64encode(self.private_key.sign(nonce_bytes)).decode()
+            public_key = base64.b64encode(
+                self.private_key.public_key().public_bytes(
+                    serialization.Encoding.Raw,
+                    serialization.PublicFormat.Raw,
+                )
+            ).decode()
+
+            # Step 3: Register agent
+            resp = requests.post(f"{BROKER}/v1/register", json={
+                "launch_token": LAUNCH_TOKEN,
+                "nonce": nonce,
+                "public_key": public_key,
+                "signature": signature,
+                "orch_id": "orch-research-001",
                 "task_id": TASK_ID,
-                "scope": ["read:data:*"],
-                "ttl": 300
+                "requested_scope": ["read:data:*"],
             }, timeout=10)
             resp.raise_for_status()
             data = resp.json()
             self.token = data["access_token"]
             self.agent_id = data["agent_id"]
-            print(f"[Research] Bootstrapped with agent_id: {self.agent_id}")
+            print(f"[Research] Registered with agent_id: {self.agent_id}")
             return True
         except Exception as e:
-            print(f"[Research] Bootstrap failed: {e}")
+            print(f"[Research] Registration failed: {e}")
             return False
 
     def research_data(self, topic: str) -> Dict[str, Any]:
@@ -163,14 +188,14 @@ class ResearchAgent:
         try:
             headers = {"Authorization": f"Bearer {self.token}"}
             resp = requests.post(f"{BROKER}/v1/delegate", json={
-                "delegate_to": "writer-agent",
+                "delegate_to": WRITER_AGENT_ID,
                 "scope": ["read:data:reports"],  # Narrower than read:data:*
                 "ttl": 120
             }, headers=headers, timeout=10)
             resp.raise_for_status()
             data = resp.json()
             token = data["access_token"]
-            print(f"[Research] Delegated narrower scope to writer-agent")
+            print(f"[Research] Delegated narrower scope to {WRITER_AGENT_ID}")
             return token
         except Exception as e:
             print(f"[Research] Delegation failed: {e}")
@@ -203,14 +228,14 @@ class WriterAgent:
         try:
             headers = {"Authorization": f"Bearer {self.token}"}
             resp = requests.post(f"{BROKER}/v1/delegate", json={
-                "delegate_to": "reviewer-agent",
+                "delegate_to": REVIEWER_AGENT_ID,
                 "scope": ["read:data:reports"],  # Same scope, no escalation
                 "ttl": 60
             }, headers=headers, timeout=10)
             resp.raise_for_status()
             data = resp.json()
             token = data["access_token"]
-            print(f"[Writer] Delegated scope to reviewer-agent")
+            print(f"[Writer] Delegated scope to {REVIEWER_AGENT_ID}")
             return token
         except Exception as e:
             print(f"[Writer] Delegation failed: {e}")
@@ -255,8 +280,8 @@ def run_pipeline():
         print("Failed to delegate to writer")
         return False
 
-    # In real code, we'd extract agent_id from delegation response
-    writer = WriterAgent(writer_token, "writer-agent-instance-123")
+    # These SPIFFE IDs must belong to agents that are already registered.
+    writer = WriterAgent(writer_token, WRITER_AGENT_ID)
     report = writer.process_research(research_output)
 
     # Stage 3: Reviewer Agent with same-level delegated scope
@@ -265,7 +290,7 @@ def run_pipeline():
         print("Failed to delegate to reviewer")
         return False
 
-    reviewer = ReviewerAgent(reviewer_token, "reviewer-agent-instance-456")
+    reviewer = ReviewerAgent(reviewer_token, REVIEWER_AGENT_ID)
     is_approved = reviewer.review_output(report)
 
     print(f"\n✓ Pipeline completed. Report approved: {is_approved}")
@@ -332,11 +357,11 @@ class WriterAgentDangerous:
 
 ---
 
-## Pattern 2: Sidecar-Per-Microservice
+## Pattern 2: Multi-Service Authorization
 
 ### Use Case
 
-A microservices architecture where different services have different trust boundaries and access levels. A payment service should never access customer PII, and a user service should never access billing data. Deploying a separate sidecar per service boundary enforces this isolation at the credential layer.
+A microservices architecture where different services have different trust boundaries and access levels. A payment service should never access customer PII, and a user service should never access billing data. Each service is registered as an app with a scope ceiling, and the operator controls what scopes each service can request.
 
 ### When to Use
 
@@ -345,58 +370,43 @@ Use this pattern when:
 - Services should never access each other's sensitive data
 - Scope boundaries map to service boundaries
 - You want to prevent lateral movement if a service is compromised
+- You want centralized control over service credentials
 
 ### Flow Diagram
 
 ```mermaid
 flowchart TB
-    subgraph customer_service["Customer Service"]
-        CS["Service Code"]
-        CSC["Sidecar"]
-    end
-
-    subgraph payment_service["Payment Service"]
-        PS["Service Code"]
-        PSC["Sidecar"]
-    end
-
-    subgraph order_service["Order Service"]
-        OS["Service Code"]
-        OSC["Sidecar"]
+    subgraph services["Microservices"]
+        CS["Customer Service"]
+        PS["Payment Service"]
+        OS["Order Service"]
     end
 
     subgraph agentauth["Shared Broker"]
-        B["Broker<br/>(single instance)"]
+        B["Broker"]
+        Apps["App Registry:<br/>- customer-app<br/>- payment-app<br/>- order-app"]
     end
 
     subgraph data["Data Layer"]
-        PIIDB["PII Database<br/>(customer names, emails, etc.)"]
-        BILLDB["Billing Database<br/>(credit cards, invoices, etc.)"]
-        ORDERDB["Order Database<br/>(items, quantities, etc.)"]
+        PIIDB["PII Database"]
+        BILLDB["Billing Database"]
+        ORDERDB["Order Database"]
     end
 
-    CS -->|"POST /v1/token<br/>read:pii:*"| CSC
-    CSC -->|"scope ceiling:<br/>read:pii:*"| B
-    B -->|"JWT(read:pii:*)"| CSC
-    CSC -->|"access_token"| CS
+    CS -->|"POST /v1/app/auth<br/>client_id, client_secret"| B
+    B -->|"JWT(read:pii:*)"| CS
 
-    PS -->|"POST /v1/token<br/>read:billing:*, write:billing:*"| PSC
-    PSC -->|"scope ceiling:<br/>read:billing:*, write:billing:*"| B
-    B -->|"JWT(read:billing:*,<br/>write:billing:*)"| PSC
-    PSC -->|"access_token"| PS
+    PS -->|"POST /v1/app/auth<br/>client_id, client_secret"| B
+    B -->|"JWT(read:billing:*,<br/>write:billing:*)"| PS
 
-    OS -->|"POST /v1/token<br/>read:orders:*"| OSC
-    OSC -->|"scope ceiling:<br/>read:orders:*"| B
-    B -->|"JWT(read:orders:*)"| OSC
-    OSC -->|"access_token"| OS
+    OS -->|"POST /v1/app/auth<br/>client_id, client_secret"| B
+    B -->|"JWT(read:orders:*)"| OS
 
     CS -->|"read:pii:*"| PIIDB
     PS -->|"read:billing:*, write:billing:*"| BILLDB
     OS -->|"read:orders:*"| ORDERDB
 
-    style CSC fill:#e8f5e9
-    style PSC fill:#ffebee
-    style OSC fill:#fff3e0
+    Apps -->|"scope ceilings<br/>enforce boundaries"| B
 ```
 
 ### Python Code Example
@@ -409,70 +419,69 @@ from typing import Dict, Any
 
 # ── Service-Specific Configuration ──────────────────────────────────
 
+BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal:8080")
+
 class ServiceConfig:
-    """Configuration for a microservice sidecar."""
+    """Configuration for a microservice app."""
 
-    def __init__(self, service_name: str, sidecar_url: str, allowed_scope: str):
+    def __init__(self, service_name: str, client_id: str, client_secret: str):
         self.service_name = service_name
-        self.sidecar_url = sidecar_url
-        self.allowed_scope = allowed_scope  # Scope ceiling for this service
+        self.client_id = client_id
+        self.client_secret = client_secret
 
 
-# Each service receives a different sidecar URL and scope ceiling
+# Each service has registered client credentials with restricted scope ceiling
 CONFIG = {
     "customer": ServiceConfig(
         "customer-service",
-        os.environ.get("CUSTOMER_SIDECAR_URL", "https://sidecar-customer.internal:8081"),
-        "read:pii:*"  # Only read PII, no access to billing or orders
+        os.environ.get("CUSTOMER_CLIENT_ID", "app-customer"),
+        os.environ.get("CUSTOMER_CLIENT_SECRET", "sk_...")
     ),
     "payment": ServiceConfig(
         "payment-service",
-        os.environ.get("PAYMENT_SIDECAR_URL", "https://sidecar-payment.internal:8081"),
-        "read:billing:*,write:billing:*"  # Only billing scope, no PII
+        os.environ.get("PAYMENT_CLIENT_ID", "app-payment"),
+        os.environ.get("PAYMENT_CLIENT_SECRET", "sk_...")
     ),
     "order": ServiceConfig(
         "order-service",
-        os.environ.get("ORDER_SIDECAR_URL", "https://sidecar-order.internal:8081"),
-        "read:orders:*,write:orders:*"  # Only order scope, no PII or billing
+        os.environ.get("ORDER_CLIENT_ID", "app-order"),
+        os.environ.get("ORDER_CLIENT_SECRET", "sk_...")
     ),
 }
 
 
 class MicroService(ABC):
-    """Base class for microservices using scoped credentials."""
+    """Base class for microservices using scoped app credentials."""
 
     def __init__(self, config: ServiceConfig):
         self.config = config
         self.token = None
-        self.agent_id = None
 
     @abstractmethod
     def _business_logic(self) -> Any:
         """Service-specific business logic."""
         pass
 
-    def bootstrap_token(self, task_id: str) -> bool:
-        """Request scoped token from service sidecar."""
+    def authenticate(self, task_id: str) -> bool:
+        """Authenticate as app and get scoped token."""
         try:
-            resp = requests.post(f"{self.config.sidecar_url}/v1/token", json={
-                "agent_name": f"{self.config.service_name}-agent",
-                "task_id": task_id,
-                "scope": self.config.allowed_scope.split(","),
-                "ttl": 300
+            resp = requests.post(f"{BROKER}/v1/app/auth", json={
+                "client_id": self.config.client_id,
+                "client_secret": self.config.client_secret
             }, timeout=10)
             resp.raise_for_status()
             data = resp.json()
             self.token = data["access_token"]
-            self.agent_id = data["agent_id"]
-            print(f"[{self.config.service_name}] Bootstrapped with scope: {self.config.allowed_scope}")
+            scopes = data.get("scopes", [])
+            print(f"[{self.config.service_name}] Authenticated with scopes: {scopes}")
             return True
         except Exception as e:
-            print(f"[{self.config.service_name}] Bootstrap failed: {e}")
+            print(f"[{self.config.service_name}] Authentication failed: {e}")
             return False
 
     def execute(self, task_id: str) -> bool:
-        """Bootstrap and execute service logic."""
-        if not self.bootstrap_token(task_id):
+        """Authenticate and execute service logic."""
+        if not self.authenticate(task_id):
             return False
         return self._business_logic()
 
@@ -482,21 +491,16 @@ class CustomerService(MicroService):
 
     def _business_logic(self) -> Any:
         """Fetch and process customer data."""
-        print(f"[{self.config.service_name}] Executing with token scope: read:pii:*")
+        print(f"[{self.config.service_name}] Executing with app token")
 
         headers = {"Authorization": f"Bearer {self.token}"}
 
-        # This service CAN read customer PII
-        print(f"[{self.config.service_name}] ✓ Reading customer records (read:pii:*)")
+        # This service CAN read customer PII (read:pii:*)
+        print(f"[{self.config.service_name}] ✓ Reading customer records")
 
-        # This service CANNOT read billing data even if it tried
-        # The sidecar scope ceiling prevents requesting billing scope
-        # If somehow a malicious agent tried to escalate:
-        print(f"[{self.config.service_name}] ✗ Attempting to read billing data...")
-
-        # Attempting to use scope beyond the ceiling would fail:
-        # resp = requests.get("https://billing-api/invoices", headers=headers)
-        # Result: 403 Forbidden (scope insufficient)
+        # This service CANNOT request billing scope
+        # The app's scope ceiling prevents this
+        print(f"[{self.config.service_name}] ✗ Cannot access billing data (scope ceiling enforced)")
 
         return True
 
@@ -506,22 +510,15 @@ class PaymentService(MicroService):
 
     def _business_logic(self) -> Any:
         """Process payments."""
-        print(f"[{self.config.service_name}] Executing with token scope: read:billing:*, write:billing:*")
+        print(f"[{self.config.service_name}] Executing with app token")
 
         headers = {"Authorization": f"Bearer {self.token}"}
 
-        # This service CAN read and write billing data
+        # This service CAN read/write billing data
         print(f"[{self.config.service_name}] ✓ Processing payment (read:billing:*, write:billing:*)")
 
-        # This service CANNOT read customer PII even if it tried
-        print(f"[{self.config.service_name}] ✗ Attempting to read customer PII...")
-
-        # Attempting to use scope beyond the ceiling would fail:
-        # resp = requests.get("https://customer-api/details", headers=headers)
-        # Result: 403 Forbidden (scope insufficient)
-
-        # Even if a malicious actor compromises this service,
-        # the scope boundary prevents access to PII data
+        # This service CANNOT request PII scope
+        print(f"[{self.config.service_name}] ✗ Cannot access PII (scope ceiling enforced)")
 
         return True
 
@@ -531,11 +528,11 @@ class OrderService(MicroService):
 
     def _business_logic(self) -> Any:
         """Process orders."""
-        print(f"[{self.config.service_name}] Executing with token scope: read:orders:*, write:orders:*")
+        print(f"[{self.config.service_name}] Executing with app token")
 
         headers = {"Authorization": f"Bearer {self.token}"}
 
-        # This service CAN read and write order data
+        # This service CAN read/write order data
         print(f"[{self.config.service_name}] ✓ Processing order (read:orders:*, write:orders:*)")
 
         # Isolated from other data domains
@@ -546,12 +543,12 @@ class OrderService(MicroService):
 
 def run_multi_service_pipeline():
     """Execute all services with scope isolation."""
-    print("=== Sidecar-Per-Microservice Pattern ===\n")
-    print("Each service has its own sidecar with a scope ceiling.\n")
+    print("=== Multi-Service Authorization Pattern ===\n")
+    print("Each service authenticates with app credentials and receives scoped tokens.\n")
 
     task_id = "multi-service-task-2026-0215"
 
-    # Execute all services concurrently (in a real system)
+    # Execute all services
     services = [
         CustomerService(CONFIG["customer"]),
         PaymentService(CONFIG["payment"]),
@@ -568,8 +565,9 @@ def run_multi_service_pipeline():
     print(f"\n✓ All services executed. Success: {success}")
     print("\nScope Isolation Summary:")
     print("─" * 60)
-    for name, config in CONFIG.items():
-        print(f"{name.upper()}: {config.allowed_scope}")
+    print("Customer App: read:pii:*")
+    print("Payment App:  read:billing:*, write:billing:*")
+    print("Order App:    read:orders:*, write:orders:*")
     print("─" * 60)
     print("\nKey benefit: If payment-service is compromised,")
     print("attacker can only access billing data, not PII or orders.")
@@ -583,21 +581,21 @@ if __name__ == "__main__":
 
 ### Security Considerations
 
-1. **Scope Ceiling Enforcement:** The sidecar rejects any token request outside its scope ceiling. You cannot request `read:pii:*` from the payment-service sidecar -- it will immediately return 403.
+1. **Scope Ceiling Enforcement:** Each app is registered with a scope ceiling. The broker rejects any request for scopes beyond this ceiling.
 
 2. **Service Isolation:** A compromised payment service cannot escalate to access PII. The scope boundary is cryptographic and enforced at the broker level.
 
-3. **Operator Control:** The operator deploys sidecars and sets scope ceilings. Developers cannot override this -- they receive tokens respecting the ceiling.
+3. **Operator Control:** The operator registers apps and sets scope ceilings via `aactl app register`. Services inherit these restrictions automatically.
 
-4. **Revocation Granularity:** If the payment service is compromised, the operator can revoke all tokens issued via the payment-service sidecar without affecting other services.
+4. **Short-Lived Tokens:** App tokens have short TTLs (configurable, default 30 minutes), reducing damage window from a compromise.
+
+5. **Revocation Granularity:** If a service is compromised, the operator can revoke all tokens for that app without affecting other services.
 
 ### What Goes Wrong Without AgentAuth
 
 ```python
 # DANGEROUS: Monolithic credential approach without service isolation
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# Anti-pattern: All services share one broad credential
 MASTER_API_KEY = "sk-master-key-all-access"
 
 class CustomerServiceDangerous:
@@ -606,7 +604,7 @@ class CustomerServiceDangerous:
         # Can read customer PII (intended)
         # Can also read/write billing data (unintended!)
         # Can read/write orders (unintended!)
-        # Lifetime: months
+        # Lifetime: months or years
 
 
 class PaymentServiceDangerous:
@@ -615,19 +613,19 @@ class PaymentServiceDangerous:
         # Can read/write billing (intended)
         # But ALSO read customer PII (unintended!)
         # But ALSO read/write orders (unintended!)
-        # Lifetime: months
+        # Lifetime: months or years
 
 
 # Compromise scenario:
 # If payment-service is breached via SQL injection,
-# attacker obtains MASTER_API_KEY from env and gains access to:
+# attacker obtains MASTER_API_KEY and gains access to:
 #   - All customer PII
 #   - All billing records
 #   - All order data
 #
 # With AgentAuth, the attacker would only get:
-#   - Billing data (service's scope ceiling)
-#   - For 5 minutes (token TTL)
+#   - Billing data (app's scope ceiling)
+#   - For 30 minutes (token TTL)
 #   - With full audit trail showing the breach
 ```
 
@@ -655,25 +653,28 @@ Use this pattern when:
 
 ```mermaid
 sequenceDiagram
+    participant App
     participant Agent
-    participant SC as Sidecar
     participant Broker
     participant AuditLog
     participant BillingSystem
 
-    Agent->>SC: 1. POST /v1/token<br/>{ agent_name, task_id, scope }
-    SC->>Broker: (register + exchange)
-    Broker->>AuditLog: event: token_issued<br/>timestamp: 2026-02-15T10:30:00Z<br/>jti: abc123
+    App->>Broker: 1. Create launch token
+    Broker-->>App: launch_token
 
-    Broker-->>SC: { access_token, agent_id }
-    SC-->>Agent: { access_token, expires_in: 300 }
+    App->>Agent: Pass launch_token
+
+    Agent->>Broker: POST /v1/register<br/>{ launch_token, nonce, public_key,<br/>signature, orch_id, task_id, requested_scope }
+    Broker->>AuditLog: event: agent_registered<br/>timestamp: 2026-02-15T10:30:00Z<br/>agent_id: abc
+
+    Broker-->>Agent: { access_token, agent_id }
 
     Note over Agent: Work for N seconds<br/>(task runs 45 seconds)
 
     Agent->>Broker: 2. POST /v1/token/release<br/>Authorization: Bearer <token>
-    Broker->>AuditLog: event: token_released<br/>timestamp: 2026-02-15T10:30:45Z<br/>jti: abc123<br/>duration_seconds: 45
+    Broker->>AuditLog: event: token_released<br/>timestamp: 2026-02-15T10:30:45Z<br/>agent_id: abc<br/>duration_seconds: 45
 
-    Broker-->>Agent: { status: "released" }
+    Broker-->>Agent: 204 No Content
 
     BillingSystem->>AuditLog: Query issued+released events
     AuditLog-->>BillingSystem: Credential lifetime: 45 seconds
@@ -683,35 +684,61 @@ sequenceDiagram
 ### Python Code Example
 
 ```python
+import base64
+import binascii
 import os
+import re
 import requests
 import time
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ed25519
 
-SIDECAR = os.environ.get("AGENTAUTH_SIDECAR_URL", "https://sidecar.internal:8081")
 BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal:8080")
+LAUNCH_TOKEN = os.environ.get("ETL_AGENT_LAUNCH_TOKEN", "")
+ORCH_ID = "orch-etl-001"
 
 
 class TokenLifecycleAgent:
     """Agent that explicitly releases tokens when work completes."""
 
-    def __init__(self, agent_name: str, task_id: str):
+    def __init__(self, agent_name: str, task_id: str, launch_token: str):
         self.agent_name = agent_name
         self.task_id = task_id
+        self.launch_token = launch_token
         self.token = None
         self.agent_id = None
         self.issued_at = None
+        self.private_key = ed25519.Ed25519PrivateKey.generate()
 
-    def request_token(self) -> bool:
-        """Request token and record issue time."""
+    def request_token(self, requested_scope: Optional[List[str]] = None) -> bool:
+        """Register with the broker and record issue time."""
         try:
+            requested_scope = requested_scope or ["read:data:*", "write:results:*"]
             self.issued_at = datetime.utcnow()
-            resp = requests.post(f"{SIDECAR}/v1/token", json={
-                "agent_name": self.agent_name,
+
+            challenge_resp = requests.get(f"{BROKER}/v1/challenge", timeout=10)
+            challenge_resp.raise_for_status()
+            nonce = challenge_resp.json()["nonce"]
+
+            nonce_bytes = binascii.unhexlify(nonce)
+            signature = base64.b64encode(self.private_key.sign(nonce_bytes)).decode()
+            public_key = base64.b64encode(
+                self.private_key.public_key().public_bytes(
+                    serialization.Encoding.Raw,
+                    serialization.PublicFormat.Raw,
+                )
+            ).decode()
+
+            resp = requests.post(f"{BROKER}/v1/register", json={
+                "launch_token": self.launch_token,
+                "nonce": nonce,
+                "public_key": public_key,
+                "signature": signature,
+                "orch_id": ORCH_ID,
                 "task_id": self.task_id,
-                "scope": ["read:data:*", "write:results:*"],
-                "ttl": 300
+                "requested_scope": requested_scope,
             }, timeout=10)
             resp.raise_for_status()
             data = resp.json()
@@ -782,6 +809,11 @@ class TokenLeakDetector:
         self.broker = broker_url
         self.admin_token = admin_token
 
+    @staticmethod
+    def _extract_jti(detail: str) -> Optional[str]:
+        match = re.search(r"jti=([a-f0-9]+)", detail)
+        return match.group(1) if match else None
+
     def find_leaked_tokens(self, task_id: str) -> Dict[str, Any]:
         """Query audit log to find tokens issued but never released for a task."""
         try:
@@ -807,11 +839,13 @@ class TokenLeakDetector:
 
             for event in events:
                 if event["event_type"] == "token_issued":
-                    jti = event["detail"].get("jti")
-                    issued_tokens[jti] = event
+                    jti = self._extract_jti(event.get("detail", ""))
+                    if jti:
+                        issued_tokens[jti] = event
                 elif event["event_type"] == "token_released":
-                    jti = event["detail"].get("jti")
-                    released_tokens.add(jti)
+                    jti = self._extract_jti(event.get("detail", ""))
+                    if jti:
+                        released_tokens.add(jti)
 
             # Tokens that were issued but not released
             leaked = {
@@ -842,7 +876,7 @@ def run_token_lifecycle():
     task_id = "etl-task-2026-0215-payload-001"
 
     # Agent: Request token, do work, release token
-    agent = TokenLifecycleAgent("etl-agent", task_id)
+    agent = TokenLifecycleAgent("etl-agent", task_id, LAUNCH_TOKEN)
 
     if not agent.request_token():
         print("Failed to request token")
@@ -977,13 +1011,19 @@ sequenceDiagram
 ### Python Code Example
 
 ```python
+import base64
+import binascii
 import os
 import requests
 from typing import List, Dict, Any, Optional
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ed25519
 
 BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal:8080")
-SIDECAR = os.environ.get("AGENTAUTH_SIDECAR_URL", "https://sidecar.internal:8081")
 TASK_ID = "analysis-cascade-2026-0215"
+ORCH_LAUNCH_TOKEN = os.environ.get("ORCH_AGENT_LAUNCH_TOKEN", "")
+ANALYZER_AGENT_ID = "spiffe://agentauth.local/agent/orch-analysis-001/task-analyzer-001/analyzer-001"
+SPECIALIST_AGENT_ID = "spiffe://agentauth.local/agent/orch-analysis-001/task-specialist-001/specialist-001"
 
 
 class DelegationChainValidator:
@@ -1017,19 +1057,37 @@ class DelegationChainValidator:
 class OrchestratorAgent:
     """Top-level agent with broad scope."""
 
-    def __init__(self):
+    def __init__(self, launch_token: str):
+        self.launch_token = launch_token
         self.token = None
         self.agent_id = None
         self.scope = ["read:data:*"]  # Broad initial scope
+        self.private_key = ed25519.Ed25519PrivateKey.generate()
 
     def bootstrap(self) -> bool:
-        """Get initial token from sidecar."""
+        """Register with broker using launch token."""
         try:
-            resp = requests.post(f"{SIDECAR}/v1/token", json={
-                "agent_name": "orchestrator-agent",
+            challenge_resp = requests.get(f"{BROKER}/v1/challenge", timeout=10)
+            challenge_resp.raise_for_status()
+            nonce = challenge_resp.json()["nonce"]
+
+            nonce_bytes = binascii.unhexlify(nonce)
+            signature = base64.b64encode(self.private_key.sign(nonce_bytes)).decode()
+            public_key = base64.b64encode(
+                self.private_key.public_key().public_bytes(
+                    serialization.Encoding.Raw,
+                    serialization.PublicFormat.Raw,
+                )
+            ).decode()
+
+            resp = requests.post(f"{BROKER}/v1/register", json={
+                "launch_token": self.launch_token,
+                "nonce": nonce,
+                "public_key": public_key,
+                "signature": signature,
+                "orch_id": "orch-analysis-001",
                 "task_id": TASK_ID,
-                "scope": self.scope,
-                "ttl": 600  # 10 minutes for orchestrator
+                "requested_scope": self.scope,
             }, timeout=10)
             resp.raise_for_status()
             data = resp.json()
@@ -1052,7 +1110,7 @@ class OrchestratorAgent:
         try:
             headers = {"Authorization": f"Bearer {self.token}"}
             resp = requests.post(f"{BROKER}/v1/delegate", json={
-                "delegate_to": "analyzer-agent",
+                "delegate_to": ANALYZER_AGENT_ID,
                 "scope": narrower_scope,
                 "ttl": 300  # 5 minutes for delegated agent
             }, headers=headers, timeout=10)
@@ -1062,7 +1120,7 @@ class OrchestratorAgent:
             token = data["access_token"]
             chain = data.get("delegation_chain", [])
 
-            print(f"[Orchestrator] Delegated to analyzer with scope: {narrower_scope}")
+            print(f"[Orchestrator] Delegated to {ANALYZER_AGENT_ID} with scope: {narrower_scope}")
             print(f"[Orchestrator] Delegation chain depth: {len(chain) + 1}")
 
             return token
@@ -1106,7 +1164,7 @@ class AnalyzerAgent:
         try:
             headers = {"Authorization": f"Bearer {self.token}"}
             resp = requests.post(f"{BROKER}/v1/delegate", json={
-                "delegate_to": "specialist-agent",
+                "delegate_to": SPECIALIST_AGENT_ID,
                 "scope": narrower_scope,
                 "ttl": 120  # 2 minutes for specialist
             }, headers=headers, timeout=10)
@@ -1116,7 +1174,7 @@ class AnalyzerAgent:
             token = data["access_token"]
             chain = data.get("delegation_chain", [])
 
-            print(f"[Analyzer] Delegated to specialist with scope: {narrower_scope}")
+            print(f"[Analyzer] Delegated to {SPECIALIST_AGENT_ID} with scope: {narrower_scope}")
             print(f"[Analyzer] Delegation chain depth: {len(chain) + 1}")
 
             return token
@@ -1165,8 +1223,10 @@ def run_delegation_cascade():
     print("Specialist (read:data:logs)")
     print()
 
-    # Level 1: Orchestrator bootstraps
-    orch = OrchestratorAgent()
+    # Level 1: Orchestrator bootstraps. The analyzer and specialist IDs must
+    # come from earlier registrations because /v1/delegate targets registered
+    # SPIFFE IDs, not free-form agent names.
+    orch = OrchestratorAgent(ORCH_LAUNCH_TOKEN)
     if not orch.bootstrap():
         print("Failed to bootstrap orchestrator")
         return False
@@ -1277,12 +1337,14 @@ flowchart TB
     end
 
     subgraph operator["Operator Actions"]
+        direction TB
         Auth["1. Authenticate with AA_ADMIN_SECRET"]
         Assess["2. Assess blast radius"]
         Decide{"3. Choose revocation level"}
     end
 
     subgraph revocation["Revocation Levels"]
+        direction LR
         TokenRev["Token Level<br/>Single token by JTI"]
         AgentRev["Agent Level<br/>All tokens for SPIFFE ID"]
         TaskRev["Task Level<br/>All tokens for task_id"]
@@ -1290,6 +1352,7 @@ flowchart TB
     end
 
     subgraph broker["Broker Action"]
+        direction TB
         UpdateRevList["Update revocation list"]
         LogEvent["Log revocation event"]
         Notify["Notify all resource servers"]
@@ -1317,10 +1380,18 @@ flowchart TB
     LogEvent --> Notify
     Notify --> Invalid
 
-    style TokenRev fill:#e8f5e9
-    style AgentRev fill:#fff3e0
-    style TaskRev fill:#fce4ec
-    style ChainRev fill:#f3e5f5
+    style E fill:#ffebee,stroke:#ef5350,color:#b71c1c
+    style Auth fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
+    style Assess fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
+    style Decide fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
+    style TokenRev fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
+    style AgentRev fill:#fff3e0,stroke:#ffb74d,color:#e65100
+    style TaskRev fill:#fce4ec,stroke:#f06292,color:#880e4f
+    style ChainRev fill:#f3e5f5,stroke:#ba68c8,color:#4a148c
+    style UpdateRevList fill:#e0f7fa,stroke:#26c6da,color:#006064
+    style LogEvent fill:#e0f7fa,stroke:#26c6da,color:#006064
+    style Notify fill:#e0f7fa,stroke:#26c6da,color:#006064
+    style Invalid fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
 ```
 
 ### Python Code Example
@@ -1372,8 +1443,7 @@ class EmergencyRevocationManager:
         """Authenticate as operator using admin secret."""
         try:
             resp = requests.post(f"{self.broker}/v1/admin/auth", json={
-                "client_id": "operator",
-                "client_secret": self.admin_secret
+                "secret": self.admin_secret
             }, timeout=10)
             resp.raise_for_status()
 
@@ -1623,46 +1693,55 @@ class IncidentResponseWithoutRevocation:
 
 ---
 
-## Pattern 6: BYOK (Bring Your Own Key) Registration
+## Pattern 6: App-Managed Agent Registration
 
 ### Use Case
 
-Advanced use cases where agents manage their own Ed25519 keypairs. Useful for:
-- Agents deployed in restricted environments (cannot call sidecar)
-- Decentralized agent networks
-- Agents requiring custody of their private keys
+Advanced use cases where an orchestration app manages agent registration with the broker. Useful for:
+- Apps that manage multiple agents in production
+- Agents requiring app-controlled credential lifecycle
+- Decentralized agent networks with central control
 - Compliance scenarios requiring agent-controlled key material
 
 ### When to Use
 
 Use this pattern when:
-- Standard sidecar path is unavailable
-- Agent must manage its own key material
-- You have Ed25519 cryptography expertise
-- Keys must never touch the broker or sidecar
+- An app must create launch tokens for agents it manages
+- You need fine-grained control over agent credential lifetime
+- You require audit trail of which app created which agents
+- You have multiple apps managing overlapping agent populations
 
 ### Flow Diagram
 
 ```mermaid
 sequenceDiagram
-    participant Agent
+    participant App
     participant Broker
+    participant Agent
     participant Resource
 
-    Note over Agent: 1. Generate Ed25519 keypair<br/>(private key stays local)
+    Note over App: 1. Authenticate as app<br/>with client credentials
+
+    App->>Broker: POST /v1/app/auth
+    Broker-->>App: app_token (short-lived)
+
+    Note over App: 2. Create launch token for agent
+
+    App->>Broker: POST /v1/app/launch-tokens<br/>Bearer app_token<br/>{ agent_name, allowed_scope, max_ttl, ttl }
+
+    Broker-->>App: { launch_token, expires_at }
+
+    Note over App: 3. Deliver launch token to agent
+
+    App->>Agent: launch_token
+
+    Note over Agent: 4. Register using launch token
 
     Agent->>Broker: GET /v1/challenge
-    Broker-->>Agent: { nonce: "64-char-hex", expires_in: 30 }
+    Broker-->>Agent: nonce
 
-    Note over Agent: 2. Sign nonce with private key
-
-    Agent->>Broker: POST /v1/register<br/>{ launch_token, nonce,<br/>public_key, signature,<br/>orch_id, task_id, scope }
-
-    Note over Broker: Verify Ed25519 signature<br/>Consume launch token<br/>Generate SPIFFE ID<br/>Issue JWT token
-
+    Agent->>Broker: POST /v1/register<br/>{ launch_token, nonce, public_key,<br/>signature, orch_id, task_id, requested_scope }
     Broker-->>Agent: { agent_id, access_token, expires_in }
-
-    Note over Agent: 3. Private key never leaves agent
 
     Agent->>Resource: GET /api/data<br/>Authorization: Bearer <token>
     Resource-->>Agent: Data
@@ -1671,6 +1750,7 @@ sequenceDiagram
 ### Python Code Example
 
 ```python
+import base64
 import os
 import requests
 import secrets
@@ -1698,19 +1778,19 @@ class Ed25519KeyManager:
             self.public_key = self.private_key.public_key()
 
             print("[BYOK] Generated Ed25519 keypair")
-            print(f"[BYOK] Public key (hex): {self._public_key_hex()[:32]}...")
+            print(f"[BYOK] Public key (base64): {self._public_key_b64()[:32]}...")
             return True
         except Exception as e:
             print(f"[BYOK] Key generation failed: {e}")
             return False
 
-    def _public_key_hex(self) -> str:
-        """Export public key as hex string."""
+    def _public_key_b64(self) -> str:
+        """Export public key as base64 string."""
         public_bytes = self.public_key.public_bytes(
             encoding=serialization.Encoding.Raw,
             format=serialization.PublicFormat.Raw
         )
-        return public_bytes.hex()
+        return base64.b64encode(public_bytes).decode("utf-8")
 
     def _public_key_pem(self) -> str:
         """Export public key as PEM string."""
@@ -1724,7 +1804,7 @@ class Ed25519KeyManager:
         """Sign a nonce (hex string) with the private key."""
         nonce_bytes = bytes.fromhex(nonce)
         signature = self.private_key.sign(nonce_bytes)
-        return signature.hex()
+        return base64.b64encode(signature).decode("utf-8")
 
 
 class OperatorLaunchTokenIssuer:
@@ -1739,8 +1819,7 @@ class OperatorLaunchTokenIssuer:
         """Authenticate as operator."""
         try:
             resp = requests.post(f"{self.broker}/v1/admin/auth", json={
-                "client_id": "operator",
-                "client_secret": self.admin_secret
+                "secret": self.admin_secret
             }, timeout=10)
             resp.raise_for_status()
             data = resp.json()
@@ -1759,7 +1838,7 @@ class OperatorLaunchTokenIssuer:
 
         try:
             headers = {"Authorization": f"Bearer {self.admin_token}"}
-            resp = requests.post(f"{self.broker}/v1/admin/launch-tokens", json={
+            resp = requests.post(f"{self.broker}/v1/app/launch-tokens", json={
                 "agent_name": agent_name,
                 "allowed_scope": allowed_scope.split(","),
                 "max_ttl": 300,
@@ -1772,7 +1851,7 @@ class OperatorLaunchTokenIssuer:
             token = data["launch_token"]
             print(f"[Operator] Issued launch token for {agent_name}")
             print(f"[Operator] Launch token: {token[:16]}...")
-            print(f"[Operator] Expires in: {data.get('expires_in', 60)} seconds")
+            print(f"[Operator] Expires at: {data.get('expires_at', 'unknown')}")
             return token
         except Exception as e:
             print(f"[Operator] Launch token issuance failed: {e}")
@@ -1826,7 +1905,7 @@ class BYOKAgent:
             resp = requests.post(f"{BROKER}/v1/register", json={
                 "launch_token": self.launch_token,
                 "nonce": nonce,
-                "public_key": self.keys._public_key_hex(),
+                "public_key": self.keys._public_key_b64(),
                 "signature": signature,
                 "orch_id": "orch-standalone-byok",
                 "task_id": TASK_ID,
@@ -1935,14 +2014,14 @@ def demonstrate_byok_key_management():
     print("   - Cleanup: Delete when agent terminates")
 
     print("\nComparison:")
-    print("  Standard Path (Sidecar):")
-    print("    ✓ Simpler (sidecar handles key generation)")
-    print("    ✓ Fewer moving parts")
-    print("    ✗ Requires sidecar deployment")
+    print("  App-Managed Path:")
+    print("    ✓ Central control over credentials")
+    print("    ✓ Audit trail of agent creation")
+    print("    ✗ Requires app infrastructure")
 
-    print("\n  BYOK Path:")
-    print("    ✓ Works without sidecar")
-    print("    ✓ Agent controls key material")
+    print("\n  Direct Agent Registration Path:")
+    print("    ✓ Agent controls credentials directly")
+    print("    ✓ Independent agent management")
     print("    ✗ More complex (requires cryptography)")
     print("    ✗ Requires operational discipline")
 
@@ -2020,7 +2099,7 @@ When implementing AgentAuth patterns, verify:
 
 ### Scope and Delegation
 
-- [ ] Scope ceilings are enforced at the sidecar level
+- [ ] Scope ceilings are enforced at the broker level
 - [ ] Delegation always narrows scope (never escalates)
 - [ ] Delegation depth is limited (maximum 5 hops)
 - [ ] Scope format is validated: `action:resource:identifier`
@@ -2044,7 +2123,7 @@ When implementing AgentAuth patterns, verify:
 
 ### Deployment and Operations
 
-- [ ] Sidecar scope ceiling matches the union of all expected scopes
+- [ ] App scope ceilings match the union of all expected scopes
 - [ ] Broker is deployed as high-availability, critical infrastructure
 - [ ] Audit database is separated from main application database
 - [ ] Admin secret rotation is scheduled and tested
@@ -2066,11 +2145,11 @@ When implementing AgentAuth patterns, verify:
 
 **Solution:** Always release tokens when work is done. Use try/finally to ensure release even if work fails.
 
-### Pitfall 3: Sharing Sidecar Across Service Boundaries
+### Pitfall 3: Overly Permissive App Scope Ceilings
 
-**Problem:** Using one sidecar for multiple unrelated services defeats service isolation.
+**Problem:** Registering apps with broad scope ceilings (e.g., `*:*:*`) defeats service isolation.
 
-**Solution:** Deploy a sidecar per service with independent scope ceilings.
+**Solution:** Register each app with narrow scope ceilings. A payment app should have `read:billing:*,write:billing:*`, not `*:*:*`.
 
 ### Pitfall 4: Delegation Loops
 

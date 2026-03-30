@@ -1,33 +1,36 @@
 # Common Tasks
 
-Enterprise-grade step-by-step instructions for AgentAuth workflows, organized by role.
+Step-by-step instructions for AgentAuth workflows, organized by role.
 
 **Document metadata:**
 - **Audience:** Developers (building AI agents), Platform Operators (managing AgentAuth deployments)
-- **Version:** 2.0 (Enterprise)
-- **Prerequisites:** Broker running, sidecar configured. See [Getting Started: Developer](getting-started-developer.md) or [Getting Started: Operator](getting-started-operator.md).
+- **Version:** 2.0.0
+- **Prerequisites:** Broker running. See [Getting Started: Developer](getting-started-developer.md) or [Getting Started: Operator](getting-started-operator.md).
 - **Next steps:** For advanced topics, see [Concepts](concepts.md), [API Reference](api.md), [Architecture](architecture.md), or [Troubleshooting](troubleshooting.md).
 
 ---
 
 ## Quick Reference
 
-| Task | Endpoint | Role | HTTP Method |
-|------|----------|------|-------------|
-| Get a Token | `POST /v1/token` | Developer | Sidecar |
+| Task | Endpoint | Role | Interface |
+|------|----------|------|-----------|
+| Register Agent | `POST /v1/register` | Developer | Broker |
 | Validate a Token | `POST /v1/token/validate` | Developer | Broker |
-| Renew a Token | `POST /v1/token/renew` | Developer | Sidecar |
+| Renew a Token | `POST /v1/token/renew` | Developer | Broker |
 | Release a Token | `POST /v1/token/release` | Developer | Broker |
 | Delegate a Token | `POST /v1/delegate` | Developer | Broker |
-| Check Sidecar Health | `GET /v1/health` | Developer | Sidecar |
+| Check Broker Health | `GET /v1/health` | Developer | Broker |
 | Authenticate as Admin | `POST /v1/admin/auth` | Operator | Broker |
-| Create Launch Token | `POST /v1/admin/launch-tokens` | Operator | Broker |
+| Register App | `POST /v1/admin/apps` | Operator | Broker |
+| List Apps | `GET /v1/admin/apps` | Operator | Broker |
+| Create Launch Token (admin) | `POST /v1/admin/launch-tokens` | Operator | Broker |
+| App Authentication | `POST /v1/app/auth` | Developer | Broker |
+| Create Launch Token (app) | `POST /v1/app/launch-tokens` | Developer | Broker |
 | Revoke Tokens | `POST /v1/revoke` | Operator | Broker |
 | Query Audit Trail | `GET /v1/audit/events` | Operator | Broker |
-| Get Sidecar Metrics | `GET /v1/metrics` | Operator | Sidecar |
-| List Sidecars (aactl) | `aactl sidecars list` | Operator | CLI |
-| Get Ceiling (aactl) | `aactl sidecars ceiling get <id>` | Operator | CLI |
-| Set Ceiling (aactl) | `aactl sidecars ceiling set <id> --scopes ...` | Operator | CLI |
+| Get Broker Metrics | `GET /v1/metrics` | Operator | Broker |
+| Register App (aactl) | `aactl app register --name NAME --scopes SCOPES` | Operator | CLI |
+| List Apps (aactl) | `aactl app list` | Operator | CLI |
 | Revoke Tokens (aactl) | `aactl revoke --level <level> --target <target>` | Operator | CLI |
 | Query Audit Trail (aactl) | `aactl audit events [--filters]` | Operator | CLI |
 
@@ -35,46 +38,65 @@ Enterprise-grade step-by-step instructions for AgentAuth workflows, organized by
 
 ## Developer Tasks
 
-> **Persona:** Developer building an AI agent in Python or TypeScript. You interact with the sidecar. No admin credentials required.
+> **Persona:** Developer building an AI agent in Python or TypeScript. You interact with the broker directly. No admin credentials required.
 >
-> **Prerequisite:** [Getting Started: Developer](getting-started-developer.md)
+> **Prerequisite:** [Getting Started: Developer](getting-started-developer.md), [API Reference](api.md)
 
-### Get a Token (via Sidecar)
+### Register an Agent
 
-Request a scoped, short-lived token from the sidecar. The sidecar handles all broker communication and key management transparently.
+Register an agent with the broker using a launch token. The launch token is provided by your operator and grants permission to register a single agent.
 
-**What's happening:** The sidecar maintains a persistent broker session and can cache/renew agent tokens. Your agent contacts the sidecar (not the broker directly) for quick, low-latency token acquisition. The sidecar applies the configured scope ceiling to prevent excessive scopes.
+**What's happening:** The registration flow is challenge-response based. You request a challenge nonce from the broker, generate an Ed25519 key pair, sign the hex-decoded nonce bytes with your private key, and submit the signature plus your base64-encoded public key. The broker validates the Ed25519 signature and issues your agent an access token.
 
 **Python example:**
 
 ```python
 import requests
-import json
+import base64
+import binascii
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-SIDECAR = "http://localhost:8081"
+BROKER = "http://localhost:8080"
 
-def get_token(sidecar, agent_name, scope, ttl=300, task_id=None):
-    """Request a scoped token from the sidecar."""
-    payload = {
-        "agent_name": agent_name,
-        "scope": scope,
-        "ttl": ttl,
-    }
-    if task_id:
-        payload["task_id"] = task_id
+def register_agent(broker, launch_token, orch_id, task_id, requested_scope):
+    """Register an agent with the broker using Ed25519 challenge-response."""
+    # Step 1: Generate an Ed25519 key pair
+    private_key = Ed25519PrivateKey.generate()
+    public_key_bytes = private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    public_key_b64 = base64.b64encode(public_key_bytes).decode()
 
-    resp = requests.post(f"{sidecar}/v1/token", json=payload)
-    resp.raise_for_status()
-    return resp.json()
+    # Step 2: Get a challenge nonce from the broker
+    challenge_resp = requests.get(f"{broker}/v1/challenge")
+    challenge_resp.raise_for_status()
+    nonce = challenge_resp.json()["nonce"]
 
-# Acquire a token
+    # Step 3: Sign the hex-decoded nonce bytes with Ed25519
+    nonce_bytes = binascii.unhexlify(nonce)
+    signature = private_key.sign(nonce_bytes)
+    signature_b64 = base64.b64encode(signature).decode()
+
+    # Step 4: Register with the broker
+    reg_resp = requests.post(f"{broker}/v1/register", json={
+        "launch_token": launch_token,
+        "nonce": nonce,
+        "public_key": public_key_b64,
+        "signature": signature_b64,
+        "orch_id": orch_id,
+        "task_id": task_id,
+        "requested_scope": requested_scope,
+    })
+    reg_resp.raise_for_status()
+    return reg_resp.json()
+
+# Register agent
 try:
-    data = get_token(
-        SIDECAR,
-        agent_name="data-processor",
-        scope=["read:data:*"],
-        ttl=300,
-        task_id="task-analyze-q4"
+    data = register_agent(
+        BROKER,
+        launch_token="launch_token_from_operator",
+        orch_id="orch-pipeline-001",
+        task_id="task-analyze-q4",
+        requested_scope=["read:data:*"],
     )
 
     token = data["access_token"]
@@ -82,102 +104,29 @@ try:
     expires_in = data["expires_in"]
 
     print(f"Agent:       {agent_id}")
-    print(f"Scope:       {data['scope']}")
     print(f"Expires in:  {expires_in}s")
+    print(f"Token:       {token}")
 except requests.exceptions.HTTPError as e:
-    print(f"Token request failed: {e.response.status_code} - {e.response.text}")
+    print(f"Registration failed: {e.response.status_code} - {e.response.text}")
 ```
 
 **Expected response (200 OK):**
 
 ```json
 {
-  "access_token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzcGlmZmU6Ly9hZ2VudGF1dGgubG9jYWwvYWdlbnQvb3JjaC8uLi4iLCJleHAiOjE3NDU0MDU2MzAsImlhdCI6MTc0NTQwNTMzMCwic2NvcGUiOlsicmVhZDpkYXRhOioiXSwiYWdlbnRfbmFtZSI6ImRhdGEtcHJvY2Vzc29yIn0.sIGNATURE",
-  "expires_in": 300,
-  "scope": ["read:data:*"],
+  "access_token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzcGlmZmU6Ly9hZ2VudGF1dGgubG9jYWwvYWdlbnQvb3JjaC8uLi4iLCJleHAiOjE3NDU0MDU2MzAsImlhdCI6MTc0NTQwNTMzMCwic2NvcGUiOlsicmVhZDpkYXRhOioiXX0.SIGNATURE",
   "agent_id": "spiffe://agentauth.local/agent/orch-001/task-analyze-q4/proc-abc123",
-  "token_type": "Bearer"
+  "expires_in": 300
 }
 ```
-
-**TypeScript/Node.js example:**
-
-```typescript
-import fetch from 'node-fetch';
-
-const SIDECAR = "http://localhost:8081";
-
-interface TokenResponse {
-  access_token: string;
-  expires_in: number;
-  scope: string[];
-  agent_id: string;
-  token_type: string;
-}
-
-async function getToken(
-  sidecar: string,
-  agentName: string,
-  scope: string[],
-  ttl: number = 300,
-  taskId?: string
-): Promise<TokenResponse> {
-  const payload = {
-    agent_name: agentName,
-    scope,
-    ttl,
-    ...(taskId && { task_id: taskId }),
-  };
-
-  const response = await fetch(`${sidecar}/v1/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Token request failed: ${response.status} - ${error}`);
-  }
-
-  return response.json() as Promise<TokenResponse>;
-}
-
-// Usage
-try {
-  const tokenData = await getToken(
-    SIDECAR,
-    "data-processor",
-    ["read:data:*"],
-    300,
-    "task-analyze-q4"
-  );
-
-  console.log(`Agent:       ${tokenData.agent_id}`);
-  console.log(`Scope:       ${tokenData.scope.join(', ')}`);
-  console.log(`Expires in:  ${tokenData.expires_in}s`);
-} catch (error) {
-  console.error(`Error: ${error.message}`);
-}
-```
-
-**Request fields:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `agent_name` | string | Yes | Identifies this agent instance |
-| `task_id` | string | No | Associates the token with a specific task |
-| `scope` | string[] | Yes | Requested permissions (`action:resource:identifier`) |
-| `ttl` | int | No | Token lifetime in seconds (default: 300, max: 900) |
 
 **If this fails:**
 
 | Status | Meaning | Action |
 |--------|---------|--------|
-| 400 | Invalid request (malformed JSON, missing fields) | Check payload syntax; ensure `agent_name` and `scope` are present |
-| 403 | Requested scope exceeds sidecar ceiling | Request a narrower scope; ask your operator what scopes are available |
-| 502 | Sidecar cannot reach broker | Retry with exponential backoff; check broker health |
-| 503 | Broker unavailable but sidecar has cached token | Retry; sidecar may serve cached token if available |
+| 400 | Invalid request (malformed JSON, missing fields, invalid signature) | Check payload syntax; ensure signature is correct |
+| 401 | Launch token invalid or expired | Request a fresh launch token from your operator |
+| 403 | Requested scope exceeds launch token policy | Ask your operator for a wider `allowed_scope`, or narrow `requested_scope` |
 
 ---
 
@@ -388,8 +337,8 @@ try {
 |-------|---------|--------|
 | Broker unreachable | Network connectivity issue | Verify broker is running; check firewall rules |
 | Invalid token format | Token is malformed | Ensure you're passing the full JWT string |
-| `token_expired` | Token timestamp has passed | Re-acquire a fresh token from the sidecar |
-| `token_revoked` | Token was revoked by operator | Re-acquire a fresh token; investigate with operator |
+| `token_expired` | Token timestamp has passed | Renew the token or re-register to get a fresh one |
+| `token_revoked` | Token was revoked by operator | Re-register to get a fresh token; investigate with operator |
 | `invalid_signature` | JWT signature verification failed | Token may be corrupted or forged; obtain new one |
 
 ---
@@ -398,27 +347,26 @@ try {
 
 Renew a token before it expires. The renewed token has fresh timestamps but maintains the same identity and scope.
 
-**What's happening:** Renewal extends your token's lifetime without needing to go back through the full registration flow. The sidecar validates your current token with the broker and issues a fresh one. This is efficient for long-running tasks. A renewal loop pattern keeps tokens fresh automatically.
+**What's happening:** Renewal extends your token's lifetime without needing to go back through the full registration flow. The broker validates your current token and issues a fresh one. This is efficient for long-running tasks. A renewal loop pattern keeps tokens fresh automatically.
 
 **Python example (simple renewal):**
 
 ```python
 import requests
-import time
 
-SIDECAR = "http://localhost:8081"
+BROKER = "http://localhost:8080"
 
-def renew_token(sidecar, token):
+def renew_token(broker, token):
     """Renew a token. Returns new token data or raises on failure."""
     resp = requests.post(
-        f"{sidecar}/v1/token/renew",
+        f"{broker}/v1/token/renew",
         headers={"Authorization": f"Bearer {token}"},
     )
 
     if resp.status_code == 401:
-        raise RuntimeError("Token expired -- re-acquire from sidecar")
+        raise RuntimeError("Token expired -- re-register to get a new one")
     if resp.status_code == 403:
-        raise RuntimeError("Token revoked -- re-acquire from sidecar")
+        raise RuntimeError("Token revoked -- re-register to get a new one")
 
     resp.raise_for_status()
     return resp.json()
@@ -426,7 +374,7 @@ def renew_token(sidecar, token):
 # Simple renewal
 token = "<your_current_access_token>"
 try:
-    data = renew_token(SIDECAR, token)
+    data = renew_token(BROKER, token)
     new_token = data["access_token"]
     new_ttl = data["expires_in"]
     print(f"Renewed. New TTL: {new_ttl}s")
@@ -441,71 +389,48 @@ import requests
 import time
 import threading
 
-SIDECAR = "http://localhost:8081"
+BROKER = "http://localhost:8080"
 
 class TokenManager:
     """Manages token renewal for long-running tasks."""
 
-    def __init__(self, sidecar, agent_name, scope, ttl=300):
-        self.sidecar = sidecar
-        self.agent_name = agent_name
-        self.scope = scope
-        self.ttl = ttl
-        self.token = None
+    def __init__(self, broker, token):
+        self.broker = broker
+        self.token = token
         self.expires_at = 0
         self.lock = threading.Lock()
         self._renew_loop_thread = None
         self._stop_flag = False
 
     def acquire(self):
-        """Get or renew the token as needed."""
+        """Get the current token, renewing if needed."""
         with self.lock:
             now = time.time()
 
-            # If token doesn't exist or is within 80% TTL, renew/re-acquire
-            if not self.token or now >= self.expires_at * 0.8:
+            # If token is within 80% TTL, renew it
+            if now >= self.expires_at * 0.8:
                 self._refresh_token()
 
             return self.token
 
     def _refresh_token(self):
-        """Refresh the token (renewal or initial acquisition)."""
-        if self.token:
-            try:
-                resp = requests.post(
-                    f"{self.sidecar}/v1/token/renew",
-                    headers={"Authorization": f"Bearer {self.token}"},
-                    timeout=5
-                )
-                if resp.status_code in (401, 403):
-                    # Token expired or revoked; re-acquire
-                    self._acquire_fresh()
-                else:
-                    resp.raise_for_status()
-                    data = resp.json()
-                    self.token = data["access_token"]
-                    self.expires_at = time.time() + data["expires_in"]
-            except requests.exceptions.RequestException:
-                # Network error; try to re-acquire
-                self._acquire_fresh()
-        else:
-            self._acquire_fresh()
+        """Refresh the token via renewal."""
+        try:
+            resp = requests.post(
+                f"{self.broker}/v1/token/renew",
+                headers={"Authorization": f"Bearer {self.token}"},
+                timeout=5
+            )
+            if resp.status_code in (401, 403):
+                # Token expired or revoked; cannot auto-renew
+                raise RuntimeError("Token cannot be renewed; agent must re-register")
 
-    def _acquire_fresh(self):
-        """Acquire a fresh token from the sidecar."""
-        resp = requests.post(
-            f"{self.sidecar}/v1/token",
-            json={
-                "agent_name": self.agent_name,
-                "scope": self.scope,
-                "ttl": self.ttl,
-            },
-            timeout=5
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        self.token = data["access_token"]
-        self.expires_at = time.time() + data["expires_in"]
+            resp.raise_for_status()
+            data = resp.json()
+            self.token = data["access_token"]
+            self.expires_at = time.time() + data["expires_in"]
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Renewal failed: {e}")
 
     def start_renewal_loop(self):
         """Start a background thread that renews the token periodically."""
@@ -521,13 +446,13 @@ class TokenManager:
         while not self._stop_flag:
             time.sleep(1)  # Check every second
 
-            with self.lock:
-                now = time.time()
-                if self.token and now >= self.expires_at * 0.8:
-                    try:
+            try:
+                with self.lock:
+                    now = time.time()
+                    if now >= self.expires_at * 0.8:
                         self._refresh_token()
-                    except Exception as e:
-                        print(f"Renewal loop error: {e}")
+            except Exception as e:
+                print(f"Renewal loop error: {e}")
 
     def stop(self):
         """Stop the renewal loop."""
@@ -536,12 +461,14 @@ class TokenManager:
             self._renew_loop_thread.join(timeout=2)
 
 # Usage
-manager = TokenManager(SIDECAR, "my-agent", ["read:data:*"], ttl=300)
+# Assuming you already have a token from registration
+current_token = "<your_access_token>"
+manager = TokenManager(BROKER, current_token)
 manager.start_renewal_loop()
 
 # In your main loop, get the token whenever needed
-current_token = manager.acquire()
-print(f"Using token: {current_token[:40]}...")
+active_token = manager.acquire()
+print(f"Using token: {active_token[:40]}...")
 
 # Cleanup
 manager.stop()
@@ -552,9 +479,7 @@ manager.stop()
 ```json
 {
   "access_token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...",
-  "expires_in": 300,
-  "scope": ["read:data:*"],
-  "token_type": "Bearer"
+  "expires_in": 300
 }
 ```
 
@@ -563,29 +488,25 @@ manager.stop()
 ```typescript
 import fetch from 'node-fetch';
 
-const SIDECAR = "http://localhost:8081";
+const BROKER = "http://localhost:8080";
 
 interface TokenData {
   access_token: string;
   expires_in: number;
-  scope: string[];
-  token_type: string;
 }
 
+type RegisterFresh = () => Promise<TokenData>;
+
 class TokenManager {
-  private sidecar: string;
-  private agentName: string;
-  private scope: string[];
-  private ttl: number;
+  private broker: string;
+  private registerFresh: RegisterFresh;
   private token: string | null = null;
   private expiresAt: number = 0;
   private renewalTimer: NodeJS.Timeout | null = null;
 
-  constructor(sidecar: string, agentName: string, scope: string[], ttl: number = 300) {
-    this.sidecar = sidecar;
-    this.agentName = agentName;
-    this.scope = scope;
-    this.ttl = ttl;
+  constructor(broker: string, registerFresh: RegisterFresh) {
+    this.broker = broker;
+    this.registerFresh = registerFresh;
   }
 
   async acquire(): Promise<string> {
@@ -602,7 +523,7 @@ class TokenManager {
   private async refresh(): Promise<void> {
     if (this.token) {
       try {
-        const response = await fetch(`${this.sidecar}/v1/token/renew`, {
+        const response = await fetch(`${this.broker}/v1/token/renew`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${this.token}`,
@@ -631,22 +552,11 @@ class TokenManager {
   }
 
   private async acquireFresh(): Promise<void> {
-    const response = await fetch(`${this.sidecar}/v1/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        agent_name: this.agentName,
-        scope: this.scope,
-        ttl: this.ttl,
-      }),
-      signal: AbortSignal.timeout(5000),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Token acquisition failed: ${response.status}`);
-    }
-
-    const data = (await response.json()) as TokenData;
+    // registerFresh must perform the full challenge-response registration flow:
+    // GET /v1/challenge -> sign the hex-decoded nonce with Ed25519 ->
+    // POST /v1/register with launch_token, nonce, public_key, signature,
+    // orch_id, task_id, and requested_scope.
+    const data = await this.registerFresh();
     this.token = data.access_token;
     this.expiresAt = Date.now() / 1000 + data.expires_in;
   }
@@ -677,8 +587,14 @@ class TokenManager {
   }
 }
 
-// Usage
-const manager = new TokenManager(SIDECAR, "my-agent", ["read:data:*"], 300);
+// Usage: wire in the same registration helper you use during startup.
+const registerFreshToken = async (): Promise<TokenData> => {
+  // This callback may need to fetch a fresh launch token if your launch
+  // tokens are single-use (the broker defaults to single_use=true).
+  return registerAgent(BROKER, getLaunchToken(), "orch-001", "task-001", ["read:data:*"]);
+};
+
+const manager = new TokenManager(BROKER, registerFreshToken);
 manager.startRenewalLoop();
 
 // Get token whenever needed
@@ -695,10 +611,10 @@ manager.stop();
 
 | Status | Meaning | Action |
 |--------|---------|--------|
-| 401 | Token expired | Re-acquire via `POST /v1/token` |
-| 403 | Token revoked | Re-acquire via `POST /v1/token`; investigate with operator |
-| 502 | Broker unreachable | Retry with exponential backoff; sidecar may serve cached token |
-| 503 | Broker unavailable | Sidecar will attempt to serve cached token if available |
+| 401 | Token expired | Renew via `POST /v1/token/renew` or re-run the full registration flow |
+| 403 | Token revoked | Re-run the full registration flow with a fresh launch token; investigate with operator |
+| 502 | Broker unreachable | Retry with exponential backoff |
+| 503 | Broker unavailable | Retry with exponential backoff; use stale token if available locally |
 
 ---
 
@@ -832,10 +748,12 @@ except requests.exceptions.RequestException as e:
       "agent": "spiffe://agentauth.local/agent/orch-001/task-002/def",
       "scope": ["read:data:users"]
     }
-  ],
-  "chain_hash": "a1b2c3d4e5f6..."
+  ]
 }
 ```
+
+The broker computes a delegation chain hash and embeds it inside the delegated
+JWT claims; it is not returned as a top-level JSON response field.
 
 **TypeScript/Node.js example:**
 
@@ -853,7 +771,6 @@ interface DelegationResponse {
   access_token: string;
   expires_in: number;
   delegation_chain: DelegationChainEntry[];
-  chain_hash: string;
 }
 
 async function delegateToken(
@@ -930,7 +847,7 @@ try {
 | 400 | Invalid request (bad format, missing fields) | Verify `delegate_to` is a valid SPIFFE ID and `scope` is an array |
 | 403 | Scope escalation or widening attempted | Ensure delegated scope is a strict subset of your scope |
 | 404 | Delegate agent not found in broker | Verify the agent's SPIFFE ID is correct and it has registered |
-| 401 | Your token is invalid or expired | Re-acquire your token from the sidecar |
+| 401 | Your token is invalid or expired | Renew or re-register to get a fresh token |
 
 ---
 
@@ -941,27 +858,25 @@ Implement graceful token expiration with automatic re-acquisition.
 **Python example:**
 
 ```python
+import os
 import requests
 import time
 from functools import wraps
 
-SIDECAR = "http://localhost:8081"
 BROKER = "http://localhost:8080"
 
-def acquire_token(sidecar, agent_name, scope, ttl=300):
-    """Acquire a fresh token from the sidecar."""
-    resp = requests.post(
-        f"{sidecar}/v1/token",
-        json={
-            "agent_name": agent_name,
-            "scope": scope,
-            "ttl": ttl,
-        }
+def acquire_token(broker, launch_token_provider, orch_id, task_id, requested_scope):
+    """Acquire a fresh token by re-running the full registration flow."""
+    launch_token = launch_token_provider()
+    return register_agent(
+        broker,
+        launch_token=launch_token,
+        orch_id=orch_id,
+        task_id=task_id,
+        requested_scope=requested_scope,
     )
-    resp.raise_for_status()
-    return resp.json()
 
-def handle_token_expiration(sidecar_url, agent_name, scope):
+def handle_token_expiration(broker_url, launch_token_provider, orch_id, task_id, scope):
     """Decorator: handle token expiration and retry requests."""
     def decorator(func):
         @wraps(func)
@@ -969,7 +884,13 @@ def handle_token_expiration(sidecar_url, agent_name, scope):
             # Get token from kwargs or acquire fresh
             token = kwargs.get("token")
             if not token:
-                token_data = acquire_token(sidecar_url, agent_name, scope)
+                token_data = acquire_token(
+                    broker_url,
+                    launch_token_provider,
+                    orch_id,
+                    task_id,
+                    scope,
+                )
                 token = token_data["access_token"]
 
             kwargs["token"] = token
@@ -982,7 +903,13 @@ def handle_token_expiration(sidecar_url, agent_name, scope):
                     if e.response.status_code == 401:
                         # Token expired; re-acquire and retry
                         if attempt < max_retries - 1:
-                            token_data = acquire_token(sidecar_url, agent_name, scope)
+                            token_data = acquire_token(
+                                broker_url,
+                                launch_token_provider,
+                                orch_id,
+                                task_id,
+                                scope,
+                            )
                             kwargs["token"] = token_data["access_token"]
                             continue
                     raise
@@ -991,7 +918,18 @@ def handle_token_expiration(sidecar_url, agent_name, scope):
         return wrapper
     return decorator
 
-@handle_token_expiration(SIDECAR, "my-agent", ["read:data:*"])
+def get_launch_token():
+    # Replace this with your operator/app callback if launch tokens are
+    # single-use and must be reissued before every re-registration.
+    return os.environ["AGENTAUTH_LAUNCH_TOKEN"]
+
+@handle_token_expiration(
+    BROKER,
+    get_launch_token,
+    "orch-pipeline-001",
+    "task-analyze-q4",
+    ["read:data:*"],
+)
 def make_api_call(endpoint, token):
     """Example API call using token."""
     headers = {"Authorization": f"Bearer {token}"}
@@ -1009,11 +947,11 @@ except Exception as e:
 
 ---
 
-### Check Sidecar Health
+### Check Broker Health
 
-Verify that the sidecar is running and connected to the broker.
+Verify that the broker is running and ready to serve requests.
 
-**What's happening:** The sidecar health endpoint reports on its broker connection status, registered agent count, and scope ceiling. Use this for startup checks and monitoring.
+**What's happening:** The health endpoint reports on broker status, database connectivity, and audit event count. Use this for startup checks and monitoring.
 
 **Python example:**
 
@@ -1021,27 +959,27 @@ Verify that the sidecar is running and connected to the broker.
 import requests
 import json
 
-SIDECAR = "http://localhost:8081"
+BROKER = "http://localhost:8080"
 
-def check_sidecar_health(sidecar):
-    """Check sidecar health status."""
-    resp = requests.get(f"{sidecar}/v1/health")
+def check_broker_health(broker):
+    """Check broker health status."""
+    resp = requests.get(f"{broker}/v1/health")
     resp.raise_for_status()
     return resp.json()
 
 try:
-    health = check_sidecar_health(SIDECAR)
+    health = check_broker_health(BROKER)
 
-    print(f"Sidecar healthy:     {health['healthy']}")
-    print(f"Broker connected:    {health['broker_connected']}")
-    print(f"Agents registered:   {health['agents_registered']}")
-    print(f"Scope ceiling:       {', '.join(health['scope_ceiling'])}")
-    print(f"Uptime:              {health['uptime_seconds']}s")
+    print(f"Status:              {health['status']}")
+    print(f"Version:             {health['version']}")
+    print(f"Database connected:  {health['db_connected']}")
+    print(f"Audit events:        {health['audit_events_count']}")
+    print(f"Uptime:              {health['uptime']}s")
 
-    if not health['healthy']:
-        print(f"⚠ Warning: {health.get('status_message', 'Sidecar unhealthy')}")
+    if health['status'] != 'ok':
+        print(f"⚠ Warning: Broker status is {health['status']}")
 except requests.exceptions.ConnectionError:
-    print("✗ Sidecar unreachable at", SIDECAR)
+    print("✗ Broker unreachable at", BROKER)
 except requests.exceptions.HTTPError as e:
     print(f"✗ Health check failed: {e.response.status_code}")
 ```
@@ -1050,12 +988,11 @@ except requests.exceptions.HTTPError as e:
 
 ```json
 {
-  "healthy": true,
-  "broker_connected": true,
-  "agents_registered": 3,
-  "scope_ceiling": ["read:data:*", "write:data:*"],
-  "uptime_seconds": 1234,
-  "status_message": "Operational"
+  "status": "ok",
+  "version": "2.0.0",
+  "uptime": 1234,
+  "db_connected": true,
+  "audit_events_count": 42
 }
 ```
 
@@ -1064,20 +1001,19 @@ except requests.exceptions.HTTPError as e:
 ```typescript
 import fetch from 'node-fetch';
 
-const SIDECAR = "http://localhost:8081";
+const BROKER = "http://localhost:8080";
 
 interface HealthStatus {
-  healthy: boolean;
-  broker_connected: boolean;
-  agents_registered: number;
-  scope_ceiling: string[];
-  uptime_seconds: number;
-  status_message: string;
+  status: string;
+  version: string;
+  uptime: number;
+  db_connected: boolean;
+  audit_events_count: number;
 }
 
-async function checkSidecarHealth(sidecar: string): Promise<HealthStatus> {
+async function checkBrokerHealth(broker: string): Promise<HealthStatus> {
   try {
-    const response = await fetch(`${sidecar}/v1/health`, {
+    const response = await fetch(`${broker}/v1/health`, {
       method: 'GET',
       signal: AbortSignal.timeout(5000),
     });
@@ -1088,22 +1024,22 @@ async function checkSidecarHealth(sidecar: string): Promise<HealthStatus> {
 
     return response.json() as Promise<HealthStatus>;
   } catch (error) {
-    throw new Error(`Sidecar unreachable: ${error}`);
+    throw new Error(`Broker unreachable: ${error}`);
   }
 }
 
 // Usage
 try {
-  const health = await checkSidecarHealth(SIDECAR);
+  const health = await checkBrokerHealth(BROKER);
 
-  console.log(`Sidecar healthy:     ${health.healthy}`);
-  console.log(`Broker connected:    ${health.broker_connected}`);
-  console.log(`Agents registered:   ${health.agents_registered}`);
-  console.log(`Scope ceiling:       ${health.scope_ceiling.join(', ')}`);
-  console.log(`Uptime:              ${health.uptime_seconds}s`);
+  console.log(`Status:              ${health.status}`);
+  console.log(`Version:             ${health.version}`);
+  console.log(`Database connected:  ${health.db_connected}`);
+  console.log(`Audit events:        ${health.audit_events_count}`);
+  console.log(`Uptime:              ${health.uptime}s`);
 
-  if (!health.healthy) {
-    console.warn(`⚠ Warning: ${health.status_message}`);
+  if (health.status !== 'ok') {
+    console.warn(`⚠ Warning: Broker status is ${health.status}`);
   }
 } catch (error) {
   console.error(`✗ ${error.message}`);
@@ -1114,9 +1050,9 @@ try {
 
 | Issue | Meaning | Action |
 |-------|---------|--------|
-| Connection refused | Sidecar is not running | Start the sidecar container or process |
-| `broker_connected: false` | Sidecar cannot reach broker | Check broker is running; verify network connectivity |
-| HTTP 503 | Sidecar is starting up | Retry in a few seconds |
+| Connection refused | Broker is not running | Start the broker container or process |
+| `db_connected: false` | Broker cannot reach database | Check database is running; verify data path |
+| HTTP 503 | Broker is starting up | Retry in a few seconds |
 
 ---
 
@@ -1136,16 +1072,14 @@ Every admin operation requires a Bearer token obtained from the admin auth endpo
 
 **Using aactl (recommended):**
 
-> **Note:** aactl is available for demo and development use. Production auth will be added in a future release.
-
-aactl reads `AACTL_BROKER_URL` and `AACTL_ADMIN_SECRET` from environment variables and authenticates automatically before every command. No explicit login step is needed:
+aactl reads `AACTL_ADMIN_SECRET` and `AACTL_BROKER_URL` from environment variables and authenticates automatically before every command. No explicit login step is needed:
 
 ```bash
 export AACTL_BROKER_URL=http://localhost:8080
-export AACTL_ADMIN_SECRET=change-me-in-production
+export AACTL_ADMIN_SECRET=my-secure-admin-secret-here
 
 # aactl then auto-authenticates on each invocation
-aactl sidecars list
+aactl app list
 ```
 
 **Bash/curl example:**
@@ -1155,11 +1089,12 @@ aactl sidecars list
 set -e
 
 BROKER="http://localhost:8080"
+ADMIN_SECRET="my-secure-admin-secret-here"
 
 # Get admin token
 ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
   -H "Content-Type: application/json" \
-  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
+  -d "{\"secret\": \"$ADMIN_SECRET\"}" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
 echo "Admin token acquired (first 40 chars): ${ADMIN_TOKEN:0:40}..."
@@ -1204,10 +1139,7 @@ class AdminTokenManager:
         # Acquire fresh
         resp = requests.post(
             f"{self.broker}/v1/admin/auth",
-            json={
-                "client_id": "admin",
-                "client_secret": self.admin_secret,
-            }
+            json={"secret": self.admin_secret}
         )
         resp.raise_for_status()
         data = resp.json()
@@ -1228,7 +1160,7 @@ except requests.exceptions.RequestException as e:
     print(f"Authentication failed: {e}")
 ```
 
-**Admin token scopes:** `admin:launch-tokens:*`, `admin:revoke:*`, `admin:audit:*`, `admin:metrics:*`
+**Admin token scopes:** `admin:launch-tokens:*`, `admin:revoke:*`, `admin:audit:*`
 
 **Rate limit:** 5 requests/second, burst 10, per IP address. Exceeding returns 429 with `Retry-After: 1`.
 
@@ -1237,7 +1169,7 @@ except requests.exceptions.RequestException as e:
 | Status | Meaning | Action |
 |--------|---------|--------|
 | 401 | Bad credentials | Verify `AA_ADMIN_SECRET` is correct and matches broker |
-| 400 | Missing `client_id` or `client_secret` | Ensure both fields are present in the request |
+| 400 | Missing `secret` field | Ensure `secret` field is present in the request |
 | 429 | Rate limited | Wait for `Retry-After` seconds before retrying |
 
 ---
@@ -1259,7 +1191,7 @@ BROKER="http://localhost:8080"
 # Acquire admin token first
 ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
   -H "Content-Type: application/json" \
-  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
+  -d "{\"secret\": \"$AA_ADMIN_SECRET\"}" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
 # Create launch token
@@ -1396,7 +1328,7 @@ AgentAuth provides four revocation levels, each with a different blast radius. U
 
 **Using aactl (recommended):**
 
-> **Note:** aactl is available for demo and development use. Production auth will be added in a future release.
+> **Note:** aactl authenticates using `AACTL_ADMIN_SECRET` against the broker's admin auth endpoint. Set `AACTL_BROKER_URL` and `AACTL_ADMIN_SECRET` before use.
 
 ```bash
 # Token-level: revoke a single token by JTI
@@ -1423,7 +1355,7 @@ BROKER="http://localhost:8080"
 # Authenticate
 ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
   -H "Content-Type: application/json" \
-  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
+  -d "{\"secret\": \"$AA_ADMIN_SECRET\"}" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
 # Validate the token to get its JTI
@@ -1465,7 +1397,7 @@ SPIFFE_ID="spiffe://agentauth.local/agent/orch/task/instance"
 # Authenticate
 ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
   -H "Content-Type: application/json" \
-  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
+  -d "{\"secret\": \"$AA_ADMIN_SECRET\"}" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
 # Revoke all tokens for this agent
@@ -1488,7 +1420,7 @@ TASK_ID="task-001"
 # Authenticate
 ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
   -H "Content-Type: application/json" \
-  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
+  -d "{\"secret\": \"$AA_ADMIN_SECRET\"}" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
 # Revoke all tokens for this task
@@ -1511,7 +1443,7 @@ ROOT_DELEGATOR="spiffe://agentauth.local/agent/orch/task/instance"
 # Authenticate
 ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
   -H "Content-Type: application/json" \
-  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
+  -d "{\"secret\": \"$AA_ADMIN_SECRET\"}" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
 # Revoke entire delegation chain rooted at this agent
@@ -1635,7 +1567,7 @@ The audit trail is an append-only, hash-chained log of every significant operati
 
 **Using aactl (recommended):**
 
-> **Note:** aactl is available for demo and development use. Production auth will be added in a future release.
+> **Note:** aactl authenticates using `AACTL_ADMIN_SECRET` against the broker's admin auth endpoint. Set `AACTL_BROKER_URL` and `AACTL_ADMIN_SECRET` before use.
 
 ```bash
 # All events (table output)
@@ -1665,7 +1597,7 @@ BROKER="http://localhost:8080"
 # Authenticate
 ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
   -H "Content-Type: application/json" \
-  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
+  -d "{\"secret\": \"$AA_ADMIN_SECRET\"}" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
 # All events (default: last 100)
@@ -1693,9 +1625,9 @@ echo "=== Events for specific task ==="
 curl -s "http://localhost:8080/v1/audit/events?task_id=task-001" \
   -H "Authorization: Bearer $ADMIN_TOKEN" | python3 -m json.tool
 
-# Filter by outcome (success, failure, or completed)
-echo "=== Failed operations ==="
-curl -s "http://localhost:8080/v1/audit/events?outcome=failure" \
+# Filter by outcome (success or denied)
+echo "=== Denied operations ==="
+curl -s "http://localhost:8080/v1/audit/events?outcome=denied" \
   -H "Authorization: Bearer $ADMIN_TOKEN" | python3 -m json.tool
 
 # Paginate through large result sets
@@ -1712,7 +1644,7 @@ curl -s "http://localhost:8080/v1/audit/events?limit=50&offset=100" \
     {
       "id": "event-001",
       "timestamp": "2026-02-15T11:00:00Z",
-      "event_type": "token_acquired",
+      "event_type": "token_issued",
       "agent_id": "spiffe://agentauth.local/agent/orch/task/instance",
       "task_id": "task-001",
       "orch_id": "orch-001",
@@ -1851,8 +1783,8 @@ except Exception as e:
 |-----------|------|-------------|
 | `agent_id` | string | Filter by agent SPIFFE ID |
 | `task_id` | string | Filter by task ID |
-| `event_type` | string | Filter by event type (e.g., `token_acquired`, `token_revoked`, `delegation_issued`) |
-| `outcome` | string | Filter by outcome: `success`, `failure`, or `completed` |
+| `event_type` | string | Filter by event type (e.g., `token_issued`, `token_revoked`, `delegation_created`) |
+| `outcome` | string | Filter by outcome: `success` or `denied` |
 | `since` | string | Start time (RFC 3339 format, e.g., `2026-02-15T00:00:00Z`) |
 | `until` | string | End time (RFC 3339 format) |
 | `limit` | int | Max results (default: 100, max: 1000) |
@@ -1862,13 +1794,13 @@ except Exception as e:
 
 | Type | Meaning |
 |------|---------|
-| `token_acquired` | Token issued to agent |
+| `token_issued` | Token issued to agent |
 | `token_renewed` | Token renewed by agent |
 | `token_revoked` | Token revoked by operator |
 | `token_validated` | Token validated (may be frequent; filter carefully) |
-| `delegation_issued` | Token delegated from one agent to another |
-| `agent_registered` | New agent registered with sidecar |
-| `launch_token_created` | Launch token created by operator |
+| `delegation_created` | Token delegated from one agent to another |
+| `agent_registered` | New agent registered with broker |
+| `launch_token_issued` | Launch token created by operator |
 | `admin_auth` | Admin authentication occurred |
 
 **Hash chain verification:** Each event has a `hash` and `prev_hash` field. To verify integrity, recompute `SHA256(prev_hash | id | timestamp | event_type | agent_id | task_id | orch_id | detail)` for each event and confirm it matches the recorded `hash`. The first event's `prev_hash` is all zeros.
@@ -1883,58 +1815,68 @@ except Exception as e:
 
 ---
 
-### Update Sidecar Scope Ceiling at Runtime
+### Register and Manage Apps
 
-Update the maximum allowed scopes for a sidecar without restarting it.
+Apps are third-party services that call AgentAuth to create launch tokens and manage agents.
 
-**What's happening:** The sidecar enforces a scope ceiling—agents cannot request scopes beyond this limit. You can update this ceiling at runtime by making an admin API call to the broker, which propagates the change to all sidecars. No sidecar restart required.
+**What's happening:** Each app gets a `client_id` and `client_secret` for API authentication. The app can then authenticate to the broker via `POST /v1/app/auth`, which returns an app token with restricted scopes. The app can use this token to create launch tokens for agents it manages. The broker enforces a scope ceiling—the app cannot request scopes beyond the scope ceiling assigned during app registration.
 
 **Using aactl (recommended):**
 
-> **Note:** aactl is available for demo and development use. Production auth will be added in a future release.
-
 ```bash
-# List sidecars to find the sidecar ID
-aactl sidecars list
+# Register a new app with specific scope ceiling
+aactl app register --name "my-pipeline" --scopes "read:data:*,write:results:*"
 
-# Check the current ceiling
-aactl sidecars ceiling get <sidecar-id>
+# List all registered apps
+aactl app list
 
-# Update the ceiling
-aactl sidecars ceiling set <sidecar-id> --scopes read:data:*,write:data:users
+# Get details of a specific app
+aactl app get my-app-id
+
+# Update an app's scopes
+aactl app update --id my-app-id --scopes "read:data:reports"
+
+# Deregister an app
+aactl app remove --id my-app-id
 ```
 
-**Bash/curl example:**
+**Bash/curl example for app authentication:**
 
 ```bash
 #!/bin/bash
 set -e
 
 BROKER="http://localhost:8080"
+CLIENT_ID="app-pipeline-123"
+CLIENT_SECRET="sk_app_abc123..."
 
-# Authenticate
-ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
+# Step 1: Get an app token using client credentials
+APP_TOKEN=$(curl -s -X POST "$BROKER/v1/app/auth" \
   -H "Content-Type: application/json" \
-  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
+  -d "{\"client_id\": \"$CLIENT_ID\", \"client_secret\": \"$CLIENT_SECRET\"}" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
-# Update sidecar scope ceiling
-curl -s -X PATCH "$BROKER/v1/admin/sidecar/config" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -d '{
-    "scope_ceiling": ["read:data:*", "write:data:users"]
-  }' | python3 -m json.tool
+echo "App token acquired: ${APP_TOKEN:0:40}..."
 
-echo "Scope ceiling updated"
+# Step 2: Use the app token to create launch tokens
+curl -s -X POST "$BROKER/v1/admin/launch-tokens" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $APP_TOKEN" \
+  -d '{
+    "agent_name": "processor-1",
+    "allowed_scope": ["read:data:*"],
+    "ttl": 1800
+  }' | python3 -m json.tool
 ```
 
-**Expected response (200 OK):**
+**Expected response for app auth (200 OK):**
 
 ```json
 {
-  "scope_ceiling": ["read:data:*", "write:data:users"],
-  "effective_at": "2026-02-15T12:00:00Z"
+  "access_token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...",
+  "expires_in": 1800,
+  "token_type": "Bearer",
+  "scopes": ["app:launch-tokens:*", "app:agents:*", "app:audit:read"]
 }
 ```
 
@@ -1945,59 +1887,57 @@ import requests
 
 BROKER = "http://localhost:8080"
 
-def update_sidecar_scope_ceiling(broker, admin_token, new_scope_ceiling):
-    """Update the sidecar scope ceiling."""
-    resp = requests.patch(
-        f"{broker}/v1/admin/sidecar/config",
-        headers={
-            "Authorization": f"Bearer {admin_token}",
-            "Content-Type": "application/json",
-        },
+def authenticate_app(broker, client_id, client_secret):
+    """Authenticate as an app and get a short-lived token."""
+    resp = requests.post(
+        f"{broker}/v1/app/auth",
         json={
-            "scope_ceiling": new_scope_ceiling,
+            "client_id": client_id,
+            "client_secret": client_secret,
         }
     )
 
-    if resp.status_code == 400:
-        raise ValueError(f"Invalid scope ceiling: {resp.json().get('detail')}")
     if resp.status_code == 401:
-        raise ValueError("Admin token invalid or expired")
+        raise ValueError("Invalid app credentials")
+    if resp.status_code == 429:
+        raise ValueError("Rate limited; retry later")
 
     resp.raise_for_status()
     return resp.json()
 
-# Update scope ceiling
+# Get app token
 try:
-    result = update_sidecar_scope_ceiling(
+    result = authenticate_app(
         BROKER,
-        admin_token="<admin_token>",
-        new_scope_ceiling=["read:data:*", "write:data:users"]
+        client_id="app-pipeline-123",
+        client_secret="sk_app_abc123..."
     )
 
-    print(f"Scope ceiling updated")
-    print(f"  New ceiling: {', '.join(result['scope_ceiling'])}")
-    print(f"  Effective at: {result['effective_at']}")
+    print(f"App authenticated")
+    print(f"  Token: {result['access_token'][:40]}...")
+    print(f"  Scopes: {', '.join(result['scopes'])}")
+    print(f"  TTL: {result['expires_in']}s")
 except ValueError as e:
-    print(f"Update failed: {e}")
+    print(f"Authentication failed: {e}")
 except requests.exceptions.RequestException as e:
     print(f"Network error: {e}")
 ```
 
-**If update fails:**
+**If app auth fails:**
 
 | Status | Meaning | Action |
 |--------|---------|--------|
-| 400 | Invalid scope list | Verify scopes follow the pattern `action:resource:identifier` |
-| 401 | Admin token invalid | Re-authenticate and get a fresh admin token |
-| 409 | Update in progress | Retry in a few seconds |
+| 400 | Missing client credentials | Verify both `client_id` and `client_secret` are present |
+| 401 | Invalid credentials | Verify credentials match the registered app |
+| 429 | Rate limited | Wait before retrying; apps are limited to 10 requests/minute per client_id |
 
 ---
 
 ### Monitor Health and Metrics
 
-Track broker and sidecar health, request latency, and token activity.
+Track broker health, request latency, and token activity.
 
-**What's happening:** Both broker and sidecar expose Prometheus-compatible metrics and health endpoints. These let you build dashboards, set up alerts, and investigate performance issues in real time.
+**What's happening:** The broker exposes a health endpoint and Prometheus-compatible metrics. These let you build dashboards, set up alerts, and investigate performance issues in real time.
 
 **Bash/curl examples:**
 
@@ -2007,37 +1947,19 @@ Track broker and sidecar health, request latency, and token activity.
 # Check broker health
 curl -s http://localhost:8080/v1/health | python3 -m json.tool
 
-# Check sidecar health
-curl -s http://localhost:8081/v1/health | python3 -m json.tool
-
 # Scrape Prometheus metrics from broker
 curl -s http://localhost:8080/v1/metrics | head -20
-
-# Scrape Prometheus metrics from sidecar
-curl -s http://localhost:8081/v1/metrics | head -20
 ```
 
 **Expected broker health response:**
 
 ```json
 {
-  "healthy": true,
-  "uptime_seconds": 12345,
-  "version": "1.0.0",
-  "timestamp": "2026-02-15T12:00:00Z"
-}
-```
-
-**Expected sidecar health response:**
-
-```json
-{
-  "healthy": true,
-  "broker_connected": true,
-  "agents_registered": 5,
-  "scope_ceiling": ["read:data:*", "write:data:*"],
-  "uptime_seconds": 6789,
-  "status_message": "Operational"
+  "status": "ok",
+  "version": "2.0.0",
+  "uptime": 12345,
+  "db_connected": true,
+  "audit_events_count": 42
 }
 ```
 
@@ -2046,14 +1968,12 @@ curl -s http://localhost:8081/v1/metrics | head -20
 | What to monitor | Metric | Alert when |
 |-----------------|--------|------------|
 | Broker availability | `agentauth_broker_up` | Value is 0 |
-| Sidecar-broker connection | `agentauth_sidecar_circuit_state` | Value > 0 (open or probing) |
 | Failed admin auth | `agentauth_admin_auth_total{status="failure"}` | Sustained increase |
-| Revocation activity | `agentauth_tokens_revoked_total` | Unexpected spike |
-| Sidecar bootstrap failures | `agentauth_sidecar_bootstrap_total{status="failure"}` | Any increase after initial startup |
-| Cached token usage | `agentauth_sidecar_cached_tokens_served_total` | Sustained increase (indicates broker issues) |
+| Failed app auth | `agentauth_app_auth_total{status="failure"}` | Sustained increase |
 | Registration failures | `agentauth_registrations_total{status="failure"}` | Unexpected failures |
-| Request latency | `agentauth_request_duration_seconds` | p99 exceeds acceptable threshold |
+| Revocation activity | `agentauth_tokens_revoked_total` | Unexpected spike |
 | Token expiration | `agentauth_tokens_expired_total` | Monitor trends |
+| Request latency | `agentauth_request_duration_seconds` | p99 exceeds acceptable threshold |
 
 **Python example (health checks):**
 
@@ -2062,7 +1982,6 @@ import requests
 import json
 
 BROKER = "http://localhost:8080"
-SIDECAR = "http://localhost:8081"
 
 def check_broker_health(broker):
     """Check broker health."""
@@ -2070,33 +1989,25 @@ def check_broker_health(broker):
     resp.raise_for_status()
     return resp.json()
 
-def check_sidecar_health(sidecar):
-    """Check sidecar health."""
-    resp = requests.get(f"{sidecar}/v1/health")
-    resp.raise_for_status()
-    return resp.json()
-
-def fetch_metrics(endpoint, port):
+def fetch_metrics(broker):
     """Fetch Prometheus metrics."""
-    resp = requests.get(f"http://localhost:{port}/v1/metrics")
+    resp = requests.get(f"{broker}/v1/metrics")
     resp.raise_for_status()
     return resp.text
 
 # Check health
 try:
     broker_health = check_broker_health(BROKER)
-    print(f"Broker: {'✓' if broker_health['healthy'] else '✗'}")
-
-    sidecar_health = check_sidecar_health(SIDECAR)
-    print(f"Sidecar: {'✓' if sidecar_health['healthy'] else '✗'}")
-    print(f"  Broker connected: {sidecar_health['broker_connected']}")
-    print(f"  Agents registered: {sidecar_health['agents_registered']}")
+    print(f"Broker status: {broker_health['status']}")
+    print(f"Version: {broker_health['version']}")
+    print(f"Database connected: {broker_health['db_connected']}")
+    print(f"Audit events: {broker_health['audit_events_count']}")
 except requests.exceptions.RequestException as e:
     print(f"Health check failed: {e}")
 
 # Fetch and parse metrics
 try:
-    metrics = fetch_metrics(BROKER, 8080)
+    metrics = fetch_metrics(BROKER)
 
     # Simple example: look for specific metrics
     for line in metrics.split('\n'):
@@ -2113,12 +2024,6 @@ scrape_configs:
   - job_name: 'agentauth-broker'
     static_configs:
       - targets: ['localhost:8080']
-    metrics_path: /v1/metrics
-    scrape_interval: 15s
-
-  - job_name: 'agentauth-sidecar'
-    static_configs:
-      - targets: ['localhost:8081']
     metrics_path: /v1/metrics
     scrape_interval: 15s
 ```
@@ -2152,17 +2057,17 @@ readinessProbe:
 
 | Issue | Meaning | Action |
 |-------|---------|--------|
-| Connection refused | Service not running | Start broker/sidecar process |
-| `healthy: false` | Service degraded | Check logs for errors; may recover automatically |
+| Connection refused | Broker is not running | Start broker process |
+| `status` != "ok" | Broker degraded | Check logs for errors; may recover automatically |
 | Metrics missing | Metrics endpoint disabled | Ensure metrics are enabled in configuration |
 
 ---
 
-### Emergency Response: Immediate Scope Narrowing
+### Emergency Response: Token Revocation
 
-In a security incident, immediately narrow the scope ceiling to prevent further damage.
+In a security incident, immediately revoke compromised tokens or all tokens for a specific task.
 
-**What's happening:** If you detect a compromise, you can reduce the scope ceiling to prevent new agents from requesting high-privilege scopes. Existing tokens are unaffected; this only constrains future acquisitions. Combined with targeted revocations, this buys time for investigation.
+**What's happening:** If you detect a compromise, you can revoke tokens at the agent, task, or chain level. This immediately invalidates all affected tokens. Combined with targeted scope restrictions for apps, this limits further damage while you investigate.
 
 **Bash/curl example:**
 
@@ -2171,26 +2076,17 @@ In a security incident, immediately narrow the scope ceiling to prevent further 
 set -e
 
 BROKER="http://localhost:8080"
+ADMIN_SECRET="my-secure-admin-secret-here"
 
 # EMERGENCY: Authenticate as admin
 ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
   -H "Content-Type: application/json" \
-  -d "{\"client_id\": \"admin\", \"client_secret\": \"$AA_ADMIN_SECRET\"}" \
+  -d "{\"secret\": \"$ADMIN_SECRET\"}" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
-echo "[INCIDENT] Narrowing scope ceiling to read-only..."
+echo "[INCIDENT] Revoking all tokens for compromised task..."
 
-# Step 1: Narrow scope ceiling to read-only
-curl -s -X PATCH "$BROKER/v1/admin/sidecar/config" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -d '{
-    "scope_ceiling": ["read:data:*"]
-  }' | python3 -m json.tool
-
-echo "[INCIDENT] Scope ceiling narrowed. New agent requests will be limited to read:data:*"
-
-# Step 2: Revoke all tokens for the affected task
+# Step 1: Revoke all tokens for the affected task
 TASK_ID="task-compromised"
 curl -s -X POST "$BROKER/v1/revoke" \
   -H "Content-Type: application/json" \
@@ -2199,11 +2095,22 @@ curl -s -X POST "$BROKER/v1/revoke" \
 
 echo "[INCIDENT] Revoked all tokens for $TASK_ID"
 
+# Step 2: Restrict app scope ceiling to minimal permissions
+APP_ID="affected-app"
+curl -s -X PUT "$BROKER/v1/admin/apps/$APP_ID" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{
+    "scopes": ["read:data:*"]
+  }' | python3 -m json.tool
+
+echo "[INCIDENT] Restricted app $APP_ID to read-only scope"
+
 # Step 3: Query audit trail for evidence
 curl -s "http://localhost:8080/v1/audit/events?task_id=$TASK_ID&limit=20" \
   -H "Authorization: Bearer $ADMIN_TOKEN" | python3 -m json.tool
 
-echo "[INCIDENT] Response plan executed. Investigate and restore scope when safe."
+echo "[INCIDENT] Revocation plan executed. Investigate and restore scope when safe."
 ```
 
 **Python emergency response script:**
@@ -2216,8 +2123,8 @@ from datetime import datetime, timedelta
 
 BROKER = "http://localhost:8080"
 
-def emergency_incident_response(broker, admin_secret, compromised_task_id):
-    """Execute emergency incident response: narrow scope and revoke tokens."""
+def emergency_incident_response(broker, admin_secret, compromised_task_id, affected_app_id=None):
+    """Execute emergency incident response: revoke tokens and restrict app scope."""
 
     print(f"[{datetime.utcnow().isoformat()}] EMERGENCY INCIDENT RESPONSE INITIATED")
 
@@ -2225,7 +2132,7 @@ def emergency_incident_response(broker, admin_secret, compromised_task_id):
     try:
         auth_resp = requests.post(
             f"{broker}/v1/admin/auth",
-            json={"client_id": "admin", "client_secret": admin_secret}
+            json={"secret": admin_secret}
         )
         auth_resp.raise_for_status()
         admin_token = auth_resp.json()["access_token"]
@@ -2234,20 +2141,7 @@ def emergency_incident_response(broker, admin_secret, compromised_task_id):
         print(f"[✗] Authentication failed: {e}")
         return False
 
-    # Step 2: Narrow scope ceiling
-    try:
-        scope_resp = requests.patch(
-            f"{broker}/v1/admin/sidecar/config",
-            headers={"Authorization": f"Bearer {admin_token}"},
-            json={"scope_ceiling": ["read:data:*"]}
-        )
-        scope_resp.raise_for_status()
-        print("[✓] Scope ceiling narrowed to read-only")
-    except requests.exceptions.RequestException as e:
-        print(f"[✗] Scope narrowing failed: {e}")
-        return False
-
-    # Step 3: Revoke all tokens for the compromised task
+    # Step 2: Revoke all tokens for the compromised task
     try:
         revoke_resp = requests.post(
             f"{broker}/v1/revoke",
@@ -2260,6 +2154,20 @@ def emergency_incident_response(broker, admin_secret, compromised_task_id):
     except requests.exceptions.RequestException as e:
         print(f"[✗] Revocation failed: {e}")
         return False
+
+    # Step 3: Restrict affected app scope to read-only
+    if affected_app_id:
+        try:
+            app_resp = requests.put(
+                f"{broker}/v1/admin/apps/{affected_app_id}",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                json={"scopes": ["read:data:*"]}
+            )
+            app_resp.raise_for_status()
+            print(f"[✓] Restricted app {affected_app_id} to read-only scope")
+        except requests.exceptions.RequestException as e:
+            print(f"[✗] App scope restriction failed: {e}")
+            return False
 
     # Step 4: Audit trail check
     try:
@@ -2287,7 +2195,9 @@ def emergency_incident_response(broker, admin_secret, compromised_task_id):
         return False
 
     print(f"[{datetime.utcnow().isoformat()}] EMERGENCY RESPONSE COMPLETE")
-    print("[!] Scope is now read-only. Tokens for the compromised task have been revoked.")
+    print("[!] Tokens for the compromised task have been revoked.")
+    if affected_app_id:
+        print(f"[!] App {affected_app_id} is now read-only.")
     print("[!] Investigate and restore normal scope settings once the incident is resolved.")
 
     return True
@@ -2298,26 +2208,26 @@ if not admin_secret:
     print("Error: AA_ADMIN_SECRET not set")
     sys.exit(1)
 
-success = emergency_incident_response(BROKER, admin_secret, "task-compromised")
+success = emergency_incident_response(BROKER, admin_secret, "task-compromised", "affected-app")
 sys.exit(0 if success else 1)
 ```
 
 **Incident response checklist:**
 
 1. ✓ Authenticate with admin credentials
-2. ✓ Narrow scope ceiling to `["read:data:*"]` (read-only)
-3. ✓ Revoke all tokens for the compromised task
+2. ✓ Revoke all tokens for the compromised task
+3. ✓ Restrict affected app scope to minimal permissions
 4. ✓ Query audit trail to identify affected agents and users
 5. ✓ Document the timeline and scope of compromise
 6. ✓ Notify relevant teams
 7. ⧗ Wait for investigation to complete
-8. ⧗ Restore normal scope ceiling once safe
+8. ⧗ Restore normal scope settings once safe
 
 ---
 
 ## Error Handling Reference
 
-AgentAuth uses RFC 7807 `application/problem+json` error responses from the broker. The sidecar uses a simpler JSON error format.
+AgentAuth uses RFC 7807 `application/problem+json` error responses.
 
 **Broker error format (RFC 7807):**
 
@@ -2334,12 +2244,12 @@ AgentAuth uses RFC 7807 `application/problem+json` error responses from the brok
 }
 ```
 
-**Sidecar error format:**
+**Broker error format:**
 
 ```json
 {
   "error": "Forbidden",
-  "detail": "requested scope exceeds sidecar ceiling"
+  "detail": "requested scope exceeds scope ceiling"
 }
 ```
 
@@ -2354,7 +2264,7 @@ AgentAuth uses RFC 7807 `application/problem+json` error responses from the brok
 | 404 | Not found | No | Verify resource ID |
 | 429 | Rate limited | Yes | Wait for `Retry-After` header |
 | 500 | Server error | Yes (with backoff) | Check service logs; may be transient |
-| 502 | Bad gateway | Yes (with backoff) | Broker unreachable; sidecar may use cache |
+| 502 | Bad gateway | Yes (with backoff) | Broker unreachable |
 | 503 | Service unavailable | Yes (with backoff) | Service starting up or recovering |
 
 ---
@@ -2365,5 +2275,5 @@ AgentAuth uses RFC 7807 `application/problem+json` error responses from the brok
 - **Developer Guide:** [getting-started-developer.md](getting-started-developer.md) — Setup and first agent
 - **Operator Guide:** [getting-started-operator.md](getting-started-operator.md) — Deployment and administration
 - **Concepts:** [concepts.md](concepts.md) — SPIFFE, token lifetime, delegation, scopes
-- **Architecture:** [architecture.md](architecture.md) — Sidecar, broker, key management, trust model
+- **Architecture:** [architecture.md](architecture.md) — Broker, key management, trust model
 - **Troubleshooting:** [troubleshooting.md](troubleshooting.md) — Common problems and solutions
