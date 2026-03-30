@@ -592,3 +592,181 @@ requests.post(f"{BROKER}/v1/revoke",
 | 8. Observability | Metrics per scope | Revocation alerts | SLA monitoring | Batch completion metrics | Agent count + depth alerts |
 
 Component 6 (Mutual Auth) is implemented as a Go API and applies when agents need to verify each other's identity directly — for example, bank branch agents in a mesh topology exchanging compliance data (Scenario 5).
+
+---
+
+## Scenario 6: Go-Native Agent — Minimal Dependencies, Minimal Attack Surface
+
+AgentAuth's core security path — Ed25519 signing, JWT creation/verification, SHA-256 hash chains, challenge-response, scope enforcement — is built entirely on the **Go standard library**. No JWT library. No auth framework. No middleware library.
+
+This means a Go agent integrating with AgentAuth has **zero additional dependencies** for the security-critical path. Everything needed is in `crypto/ed25519`, `crypto/sha256`, `encoding/base64`, `encoding/json`, and `net/http`.
+
+### Why This Matters
+
+| Risk | Typical AI Agent Stack | AgentAuth Go Agent |
+|------|----------------------|-------------------|
+| Supply chain attack via compromised dependency | PyJWT, python-jose, requests, cryptography — each with transitive deps | Go stdlib only. No third-party code in the auth path. |
+| CVE in JWT library | Common — CVE-2022-29217 (PyJWT), CVE-2024-33663 (python-jose) | No JWT library to patch. JWT is 50 lines of `base64` + `ed25519`. |
+| Dependency confusion attack | pip/npm packages can be typosquatted | Zero `go get` needed for agent auth code |
+| Binary size | Python: 50MB+ with dependencies | Go: single static binary, ~15MB total |
+| Audit scope | Must audit every transitive dependency | Audit scope: Go stdlib (maintained by the Go team) |
+
+### AgentAuth Broker Dependencies
+
+Only 5 direct dependencies, and none are in the token signing/verification path:
+
+| Dependency | Purpose | In Security Path? |
+|-----------|---------|------------------|
+| `golang.org/x/crypto` | bcrypt for admin secret hashing | Admin auth only — not token path |
+| `modernc.org/sqlite` | Pure-Go SQLite (no CGO, no C) | Persistence only |
+| `github.com/spiffe/go-spiffe/v2` | SPIFFE ID format validation | Identity format only |
+| `github.com/prometheus/client_golang` | Metrics exposition | Observability only |
+| `github.com/spf13/cobra` | CLI framework (aactl) | CLI only — not broker |
+
+**The Ed25519 signing, JWT encoding, signature verification, scope checking, revocation checking, and hash-chain audit trail use zero third-party code.**
+
+### Go Agent Example — Complete Registration with Stdlib Only
+
+```go
+package main
+
+import (
+	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+)
+
+// No third-party imports. Every package above ships with Go.
+
+const broker = "http://localhost:8080"
+
+func main() {
+	launchToken := os.Getenv("LAUNCH_TOKEN")
+	if launchToken == "" {
+		fmt.Fprintln(os.Stderr, "LAUNCH_TOKEN not set")
+		os.Exit(1)
+	}
+
+	// ━━━ Component 1: Generate Ed25519 keypair (Go stdlib) ━━━
+	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	pubB64 := base64.StdEncoding.EncodeToString(pubKey)
+
+	// ━━━ Component 1: Get challenge nonce ━━━
+	nonce := mustGet(broker + "/v1/challenge")["nonce"].(string)
+
+	// ━━━ Component 1: Sign nonce with Ed25519 (Go stdlib) ━━━
+	nonceBytes, _ := hex.DecodeString(nonce)
+	signature := ed25519.Sign(privKey, nonceBytes)
+	sigB64 := base64.StdEncoding.EncodeToString(signature)
+
+	// ━━━ Component 1+2: Register and get scoped token ━━━
+	regResp := mustPost(broker+"/v1/register", map[string]interface{}{
+		"launch_token":   launchToken,
+		"nonce":          nonce,
+		"public_key":     pubB64,
+		"signature":      sigB64,
+		"orch_id":        "go-pipeline",
+		"task_id":        "task-001",
+		"requested_scope": []string{"read:data:*"},
+	})
+
+	token := regResp["access_token"].(string)
+	agentID := regResp["agent_id"].(string)
+	expiresIn := regResp["expires_in"].(float64)
+
+	fmt.Printf("Registered: %s\n", agentID)
+	fmt.Printf("Token expires in: %.0fs\n", expiresIn)
+	fmt.Printf("Token: %s...\n", token[:40])
+
+	// ━━━ Component 3: Use token on authenticated endpoints ━━━
+	// The broker validates this token on every request:
+	// format → alg=EdDSA → kid check → Ed25519 signature → claims → revocation
+	req, _ := http.NewRequest("POST", broker+"/v1/token/validate",
+		jsonBody(map[string]string{"token": token}))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	fmt.Printf("Token valid: %d\n", resp.StatusCode)
+
+	// ━━━ Component 2: Renew before expiry ━━━
+	renewReq, _ := http.NewRequest("POST", broker+"/v1/token/renew", nil)
+	renewReq.Header.Set("Authorization", "Bearer "+token)
+	renewResp, _ := http.DefaultClient.Do(renewReq)
+	defer renewResp.Body.Close()
+	if renewResp.StatusCode == 200 {
+		var rr map[string]interface{}
+		json.NewDecoder(renewResp.Body).Decode(&rr)
+		token = rr["access_token"].(string)
+		fmt.Println("Token renewed — old token is now revoked (Component 4)")
+	}
+
+	// ━━━ Component 4: Release token when done ━━━
+	releaseReq, _ := http.NewRequest("POST", broker+"/v1/token/release", nil)
+	releaseReq.Header.Set("Authorization", "Bearer "+token)
+	http.DefaultClient.Do(releaseReq)
+	fmt.Println("Token released — task complete (Component 5: audit event recorded)")
+}
+
+// Helpers — also stdlib only
+
+func mustGet(url string) map[string]interface{} {
+	resp, err := http.Get(url)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	return result
+}
+
+func mustPost(url string, body interface{}) map[string]interface{} {
+	resp, err := http.Post(url, "application/json", jsonBody(body))
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+	return result
+}
+
+func jsonBody(v interface{}) io.Reader {
+	b, _ := json.Marshal(v)
+	return bytes.NewReader(b)
+}
+```
+
+**What this demonstrates:**
+
+- The entire agent auth flow — keygen, challenge, sign, register, use, renew, release — uses **zero `go get` dependencies**
+- Every `import` is a Go stdlib package
+- A security auditor reviewing this agent needs to audit exactly one thing: the Go standard library
+- Compare to a Python agent that needs `pip install requests cryptography PyJWT` — each with its own CVE history and transitive dependency tree
+
+### Components in the Go Agent
+
+| Line | Component | Go Stdlib Used |
+|------|-----------|---------------|
+| `ed25519.GenerateKey(rand.Reader)` | 1. Ephemeral Identity | `crypto/ed25519`, `crypto/rand` |
+| `hex.DecodeString(nonce)` | 1. Challenge-Response | `encoding/hex` |
+| `ed25519.Sign(privKey, nonceBytes)` | 1. Cryptographic Proof | `crypto/ed25519` |
+| `POST /v1/register` | 1+2. Identity + Token | `net/http`, `encoding/json` |
+| `Authorization: Bearer` | 3. Zero-Trust | `net/http` |
+| `POST /v1/token/renew` | 2+4. Renewal + Revocation | `net/http` |
+| `POST /v1/token/release` | 4+5. Release + Audit | `net/http` |
+
+**No JWT library needed.** The broker handles JWT creation and verification. The agent just sends HTTP requests and uses the token as an opaque bearer string.
