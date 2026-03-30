@@ -85,26 +85,15 @@ When both Cowork and Claude Code are active, read `COWORK_SESSION.md` for shared
 - **Docs update WITH every code change** — if code changes behavior, the docs update goes in the same commit or the same branch. No "fix docs later." B0-B4 proved that deferred doc updates cause massive drift. The doc files to check: `docs/api.md`, `docs/architecture.md`, `docs/concepts.md`, `docs/implementation-map.md`, `docs/scenarios.md`, `docs/api/openapi.yaml`.
 - **Use `cherrypick-devflow` skill** for migration. Use `devflow` for new features after migration.
 
-## Lessons Learned (from internal development)
+## Recent Lessons (last 3 sessions — older archived to MEMORY_ARCHIVE.md)
 
-- The original agentauth repo was a file COPY (not clone) of agentauth-internal — that's why it had no history. This time we cloned properly so all 412 commits are preserved.
-- Phase 1C-alpha (`3f9639f`) looks clean but has `hitl_scopes` baked into the app data model in 4 source files. Fork point must be `2c5194e` (TD-006) to get truly zero HITL.
-- SEC-L1/L2a/L2b commits are on the P2 branch which also has OIDC code. Cherry-picks from these commits may have OIDC context in conflict markers — always check for IssuerURL, federation, thumbprint, jwk references and drop them.
-- `cfg.go` is the most conflict-prone file — it gets modified by P1, SEC-L1, and SEC-L2a. Each batch adds fields to the same struct.
-- B0 sidecar removal cherry-pick (`34bb887`) conflicted in 5 files (MEMORY.md, tkn_svc.go, renew_hdl.go, sql_store.go x3, admin_hdl_test.go). Key resolution: remove SidecarID from IssueReq/claims, remove ScopeCeiling from renewResp, remove sidecar CRUD/tables from store, remove stale sidecar comment from routes. Keep app-level code intact.
-- Cherry-pick brings stale files from agentauth (flow.md, .vscode/, .plans/production-gap-analysis.md) — always unstage and discard these before committing.
-- G6 smoke test failed with 401 because `test_batch.sh` used a different secret than `docker-compose.yml`'s default. Root cause: `docker-compose.yml` has `AA_ADMIN_SECRET=${AA_ADMIN_SECRET:-change-me-in-production}` — if the export doesn't reach the container, it gets the wrong secret. Fix: export `AA_ADMIN_SECRET` at script level BEFORE any Docker commands.
-- `live_test_docker.sh` still references sidecar (`broker sidecar` in compose commands) — tracked as TD-S03. Needs decision: delete or rewrite.
-- B2 (P1): cfg.Load() now returns (Cfg, error) — breaking API change, all callers updated. Admin auth uses bcrypt.CompareHashAndPassword, not subtle.ConstantTimeCompare.
-- B2 conflicts: cfg.go had HITL fields (HITLApprovalTTL) — dropped. admin_hdl_test.go had HITL gate tests (~300 lines) — dropped entirely. CHANGELOG.md and docs/api.md had sidecar sections — dropped.
-- Config file security: symlink rejection (os.Lstat + ModeSymlink), permission checks (rejects looser than 0600), O_EXCL atomic creation. All from security review fix commits.
-- `~/.agentauth/config` on the host machine causes cfg tests to fail — they pick it up as a fallback. Fix: set `HOME` to `t.TempDir()` in tests, or delete the file. Tracked by test isolation fixes.
-- Security review fix commits reference finding IDs (C-1, I-3, etc.) in commit messages — keep this pattern for traceability.
-- Tech debt added: TD-S06 (rate limiting on admin auth), TD-S07 (post-migration doc refresh).
-- Docker image name is `agentauth-core-broker` (not `agentauth-broker`). Container mode tests must use the correct image name.
-- B3 (SEC-L1): Bind address now defaults to 127.0.0.1 (was 0.0.0.0). docker-compose.yml must set `AA_BIND_ADDRESS=0.0.0.0` for container mode — containers binding loopback are unreachable via Docker port mapping.
-- B3 conflicts: cmd/broker/main.go had HITL approval pruner goroutine and OIDC issuer log — both dropped. Background goroutines for JTI pruning and agent expiry kept.
+- B3 (SEC-L1): Bind address now defaults to 127.0.0.1 (was 0.0.0.0). docker-compose.yml must set `AA_BIND_ADDRESS=0.0.0.0` for container mode.
 - B3: Weak secret denylist rejects "change-me-in-production" at startup. HTTP timeouts: Read 15s, ReadHeader 5s, Write 30s, Idle 120s. TLS 1.2 minimum with AEAD-only ciphers.
-- B3: C5 (OIDC) story skipped — agentauth-core has no OIDC endpoints. 12/12 other stories PASS.
-- B4 (SEC-L2a): S4/S5 initially FAILED because `TknSvc.revoker` was nil at runtime — `main.go` never called `SetRevoker()`. Unit tests passed because mocks inject the revoker. Classic mock/integration gap. Fixed by adding one line to main.go + `RevokeByJTI()` adapter on RevSvc. Also sanitized error info leakage in renewal handler (H1).
+- B4 (SEC-L2a): S4/S5 initially FAILED because `TknSvc.revoker` was nil at runtime — `main.go` never called `SetRevoker()`. Unit tests passed because mocks inject the revoker. Classic mock/integration gap. Fixed by adding one line to main.go + `RevokeByJTI()` adapter on RevSvc.
+- App launch token route split: `393d376` from agentauth-internal was missing from cherry-pick batches. The fork point (`2c5194e`) had `RequireAnyScope` on one endpoint. The split into `/v1/admin/launch-tokens` (operator) and `/v1/app/launch-tokens` (app) happened AFTER the fork. Must cherry-pick it separately.
+- Doc overhaul (2026-03-30): B0-B4 docs were never updated with code changes. Result: 54 findings (8 CRIT, 22 HIGH). Key issues: signing key persistence claimed ephemeral (wrong since B1), admin auth claimed subtle.ConstantTimeCompare (wrong since B2), store types fabricated, registration examples used HMAC instead of Ed25519, app endpoints had wrong scopes/fields. Fixed all on `fix/docs-overhaul`.
+- Docs must update WITH every code change — same commit or same branch. No deferred doc work. This is a standing rule.
+- `docs/examples/*.md` files were proposed templates, not real docs. Don't audit them. They were deleted.
+- All 8 v1.3 pattern components are implemented and documented. `docs/implementation-map.md` traces each to exact Go files. `docs/scenarios.md` has 6 real-world scenarios.
+- AgentAuth has only 5 direct Go dependencies. Ed25519/JWT/hash-chain/scope/revocation all use Go stdlib. Strong supply chain story.
 - Next batch: B5 (SEC-L2b) — 5 commits. Has acceptance tests from `agentauth/tests/fix-sec-l2b/`.

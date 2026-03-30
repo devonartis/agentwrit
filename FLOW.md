@@ -126,12 +126,15 @@ Contamination: CLEAN
 Evidence: `tests/sec-l2a/evidence/`
 Waiting on Cowork merge review.
 
-### Current Step: B4 merge review → B5 cherry-pick
-3. Tracker: `.plans/tracker.jsonl`
+### Current Step: B5 cherry-pick (SEC-L2b)
 
-**Guides:**
-- Cherry-Pick Guide: `agentauth/.plans/modularization/Cherry-Pick-Guide.md`
-- Feature Inventory: `agentauth/.plans/modularization/Cowork-Feature-Inventory.md`
-- Repo Map: `agentauth/.plans/modularization/Repo-Directory-Map.md`
-- Migration Audit: `.plans/cherry-pick/MIGRATION-AUDIT.md`
-- Skill: `cherrypick-devflow`
+**What's done:** B0-B4 merged. App launch token route split merged. Doc overhaul merged. All 8 v1.3 components documented.
+
+**What's next:**
+1. B5 (SEC-L2b): Security headers, MaxBytesBody, error sanitization — 5 commits
+2. B6 (SEC-A1 + Gates): TTL bypass fix, gates regression — 2 commits
+3. Docs update with each batch (standing rule)
+
+**Skill:** `cherrypick-devflow`
+**Tracker:** `.plans/tracker.jsonl`
+**Cherry-Pick Guide:** `agentauth/.plans/modularization/Cherry-Pick-Guide.md`
