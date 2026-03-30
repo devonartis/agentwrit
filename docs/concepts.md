@@ -503,7 +503,7 @@ sequenceDiagram
     Agent->>Broker: GET /v1/challenge
     Broker-->>Agent: { nonce }
 
-    Agent->>Broker: POST /v1/register<br/>{ launch_token, nonce, public_key,<br/>signature, orch_id, task_id, scope }
+    Agent->>Broker: POST /v1/register<br/>{ launch_token, nonce, public_key,<br/>signature, orch_id, task_id, requested_scope }
     Note over Broker: Launch token consumed.<br/>Cannot be reused.
     Broker-->>Agent: { agent_id, access_token, expires_in }
 

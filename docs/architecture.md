@@ -375,11 +375,13 @@ flowchart LR
 
     MUX --> PUB["Public Handlers\n(health, challenge,\nmetrics, validate)"]
 
-    MUX --> MB1["MaxBytesBody"] --> AUTH_ONLY["ValMw.Wrap"] --> AUTH_H["Auth Handlers\n(renew, delegate)"]
+    MUX --> MB1["MaxBytesBody"] --> AUTH_ONLY["ValMw.Wrap"] --> AUTH_H["Auth Handlers\n(renew, delegate,\nrelease)"]
 
-    MUX --> MB2["MaxBytesBody"] --> SCOPE_W["ValMw.Wrap"] --> SCOPE_C["ValMw\n.RequireScope"] --> ADMIN_H["Scoped Handlers\n(exchange, revoke,\nlaunch-tokens, app/auth)"]
+    MUX --> AUDIT_W["ValMw.Wrap"] --> AUDIT_C["ValMw\n.RequireScope"] --> AUDIT_H["Audit Handler\n(audit/events)"]
 
-    MUX --> RL["RateLimiter\n.Wrap"] --> RL_H["Rate-Limited\n(admin/auth)"]
+    MUX --> MB2["MaxBytesBody"] --> SCOPE_W["ValMw.Wrap"] --> SCOPE_C["ValMw\n.RequireScope /\n.RequireAnyScope"] --> ADMIN_H["Scoped POST Handlers\n(revoke, launch-tokens,\nadmin/apps)"]
+
+    MUX --> RL["RateLimiter\n.Wrap"] --> RL_H["Rate-Limited\n(admin/auth,\napp/auth)"]
 
     MUX --> MB3["MaxBytesBody"] --> REG_H["Register\n(launch token\nin body)"]
 ```
@@ -453,4 +455,4 @@ These are explicit trust boundaries and limitations of the current implementatio
 | Go stdlib `crypto/ed25519` | -- | Token signing and nonce signature verification |
 | Go stdlib `crypto/sha256` | -- | Audit hash chain, delegation chain hash |
 | Go stdlib `net/http` | -- | HTTP server (Go 1.22+ method routing) |
-| Go stdlib `crypto/subtle` | -- | Constant-time admin secret comparison |
+| `golang.org/x/crypto/bcrypt` | v0.48.0 | Admin secret hash verification |

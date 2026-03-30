@@ -288,8 +288,8 @@ sequenceDiagram
     Note over A,B: Step 4: Agent Registers
     A->>B: GET /v1/challenge
     B-->>A: {nonce}
-    A->>B: POST /v1/register<br/>{launch_token, signed_nonce, public_key}
-    B-->>A: {agent_id, access_token}
+    A->>B: POST /v1/register<br/>{launch_token, nonce, public_key,<br/>signature, orch_id, task_id, requested_scope}
+    B-->>A: {agent_id, access_token, expires_in}
 ```
 
 ### Step 1: Authenticate as Admin

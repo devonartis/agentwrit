@@ -12,8 +12,8 @@ Step-by-step instructions for AgentAuth workflows, organized by role.
 
 ## Quick Reference
 
-| Task | Endpoint | Role | HTTP Method |
-|------|----------|------|-------------|
+| Task | Endpoint | Role | Interface |
+|------|----------|------|-----------|
 | Register Agent | `POST /v1/register` | Developer | Broker |
 | Validate a Token | `POST /v1/token/validate` | Developer | Broker |
 | Renew a Token | `POST /v1/token/renew` | Developer | Broker |
@@ -478,9 +478,7 @@ manager.stop()
 ```json
 {
   "access_token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...",
-  "expires_in": 300,
-  "scope": ["read:data:*"],
-  "token_type": "Bearer"
+  "expires_in": 300
 }
 ```
 
@@ -494,24 +492,20 @@ const BROKER = "http://localhost:8080";
 interface TokenData {
   access_token: string;
   expires_in: number;
-  scope: string[];
-  token_type: string;
 }
+
+type RegisterFresh = () => Promise<TokenData>;
 
 class TokenManager {
   private broker: string;
-  private agentName: string;
-  private scope: string[];
-  private ttl: number;
+  private registerFresh: RegisterFresh;
   private token: string | null = null;
   private expiresAt: number = 0;
   private renewalTimer: NodeJS.Timeout | null = null;
 
-  constructor(broker: string, agentName: string, scope: string[], ttl: number = 300) {
+  constructor(broker: string, registerFresh: RegisterFresh) {
     this.broker = broker;
-    this.agentName = agentName;
-    this.scope = scope;
-    this.ttl = ttl;
+    this.registerFresh = registerFresh;
   }
 
   async acquire(): Promise<string> {
@@ -557,22 +551,11 @@ class TokenManager {
   }
 
   private async acquireFresh(): Promise<void> {
-    const response = await fetch(`${this.broker}/v1/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        agent_name: this.agentName,
-        scope: this.scope,
-        ttl: this.ttl,
-      }),
-      signal: AbortSignal.timeout(5000),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Token acquisition failed: ${response.status}`);
-    }
-
-    const data = (await response.json()) as TokenData;
+    // registerFresh must perform the full challenge-response registration flow:
+    // GET /v1/challenge -> sign the hex-decoded nonce with Ed25519 ->
+    // POST /v1/register with launch_token, nonce, public_key, signature,
+    // orch_id, task_id, and requested_scope.
+    const data = await this.registerFresh();
     this.token = data.access_token;
     this.expiresAt = Date.now() / 1000 + data.expires_in;
   }
@@ -603,8 +586,14 @@ class TokenManager {
   }
 }
 
-// Usage
-const manager = new TokenManager(BROKER, "my-agent", ["read:data:*"], 300);
+// Usage: wire in the same registration helper you use during startup.
+const registerFreshToken = async (): Promise<TokenData> => {
+  // This callback may need to fetch a fresh launch token if your launch
+  // tokens are single-use (the broker defaults to single_use=true).
+  return registerAgent(BROKER, getLaunchToken(), "orch-001", "task-001", ["read:data:*"]);
+};
+
+const manager = new TokenManager(BROKER, registerFreshToken);
 manager.startRenewalLoop();
 
 // Get token whenever needed
@@ -621,8 +610,8 @@ manager.stop();
 
 | Status | Meaning | Action |
 |--------|---------|--------|
-| 401 | Token expired | Renew via `POST /v1/token/renew` or re-register via `POST /v1/register` |
-| 403 | Token revoked | Re-register via `POST /v1/register`; investigate with operator |
+| 401 | Token expired | Renew via `POST /v1/token/renew` or re-run the full registration flow |
+| 403 | Token revoked | Re-run the full registration flow with a fresh launch token; investigate with operator |
 | 502 | Broker unreachable | Retry with exponential backoff |
 | 503 | Broker unavailable | Retry with exponential backoff; use stale token if available locally |
 
@@ -758,10 +747,12 @@ except requests.exceptions.RequestException as e:
       "agent": "spiffe://agentauth.local/agent/orch-001/task-002/def",
       "scope": ["read:data:users"]
     }
-  ],
-  "chain_hash": "a1b2c3d4e5f6..."
+  ]
 }
 ```
+
+The broker computes a delegation chain hash and embeds it inside the delegated
+JWT claims; it is not returned as a top-level JSON response field.
 
 **TypeScript/Node.js example:**
 
@@ -779,7 +770,6 @@ interface DelegationResponse {
   access_token: string;
   expires_in: number;
   delegation_chain: DelegationChainEntry[];
-  chain_hash: string;
 }
 
 async function delegateToken(
@@ -867,26 +857,25 @@ Implement graceful token expiration with automatic re-acquisition.
 **Python example:**
 
 ```python
+import os
 import requests
 import time
 from functools import wraps
 
 BROKER = "http://localhost:8080"
 
-def acquire_token(broker, agent_name, scope, ttl=300):
-    """Acquire a fresh token from the broker."""
-    resp = requests.post(
-        f"{broker}/v1/register",
-        json={
-            "agent_name": agent_name,
-            "scope": scope,
-            "ttl": ttl,
-        }
+def acquire_token(broker, launch_token_provider, orch_id, task_id, requested_scope):
+    """Acquire a fresh token by re-running the full registration flow."""
+    launch_token = launch_token_provider()
+    return register_agent(
+        broker,
+        launch_token=launch_token,
+        orch_id=orch_id,
+        task_id=task_id,
+        requested_scope=requested_scope,
     )
-    resp.raise_for_status()
-    return resp.json()
 
-def handle_token_expiration(broker_url, agent_name, scope):
+def handle_token_expiration(broker_url, launch_token_provider, orch_id, task_id, scope):
     """Decorator: handle token expiration and retry requests."""
     def decorator(func):
         @wraps(func)
@@ -894,7 +883,13 @@ def handle_token_expiration(broker_url, agent_name, scope):
             # Get token from kwargs or acquire fresh
             token = kwargs.get("token")
             if not token:
-                token_data = acquire_token(broker_url, agent_name, scope)
+                token_data = acquire_token(
+                    broker_url,
+                    launch_token_provider,
+                    orch_id,
+                    task_id,
+                    scope,
+                )
                 token = token_data["access_token"]
 
             kwargs["token"] = token
@@ -907,7 +902,13 @@ def handle_token_expiration(broker_url, agent_name, scope):
                     if e.response.status_code == 401:
                         # Token expired; re-acquire and retry
                         if attempt < max_retries - 1:
-                            token_data = acquire_token(broker_url, agent_name, scope)
+                            token_data = acquire_token(
+                                broker_url,
+                                launch_token_provider,
+                                orch_id,
+                                task_id,
+                                scope,
+                            )
                             kwargs["token"] = token_data["access_token"]
                             continue
                     raise
@@ -916,7 +917,18 @@ def handle_token_expiration(broker_url, agent_name, scope):
         return wrapper
     return decorator
 
-@handle_token_expiration(BROKER, "my-agent", ["read:data:*"])
+def get_launch_token():
+    # Replace this with your operator/app callback if launch tokens are
+    # single-use and must be reissued before every re-registration.
+    return os.environ["AGENTAUTH_LAUNCH_TOKEN"]
+
+@handle_token_expiration(
+    BROKER,
+    get_launch_token,
+    "orch-pipeline-001",
+    "task-analyze-q4",
+    ["read:data:*"],
+)
 def make_api_call(endpoint, token):
     """Example API call using token."""
     headers = {"Authorization": f"Bearer {token}"}

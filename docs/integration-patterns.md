@@ -97,7 +97,7 @@ sequenceDiagram
     WA->>DB: 5. Read (narrower scope)<br/>read:data:reports
     DB-->>WA: Report data only
 
-    WA->>Broker: POST /v1/delegate<br/>{ delegate_to: reviewer-agent,<br/>scope: [read:data:reports],<br/>ttl: 60 }
+    WA->>Broker: POST /v1/delegate<br/>{ delegate_to: spiffe://.../reviewer,<br/>scope: [read:data:reports],<br/>ttl: 60 }
     Broker-->>WA: JWT(read:data:reports)
 
     WA->>REV: delivery token
@@ -115,11 +115,14 @@ import binascii
 import requests
 import json
 from typing import Dict, Any, List
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal:8080")
 LAUNCH_TOKEN = os.environ.get("RESEARCH_AGENT_LAUNCH_TOKEN", "lt_...")
 TASK_ID = "analysis-2026-0215-001"
+WRITER_AGENT_ID = "spiffe://agentauth.local/agent/orch-research-001/task-writer-001/writer-001"
+REVIEWER_AGENT_ID = "spiffe://agentauth.local/agent/orch-research-001/task-review-001/reviewer-001"
 
 class ResearchAgent:
     """Research Agent with broad read:data:* scope."""
@@ -185,14 +188,14 @@ class ResearchAgent:
         try:
             headers = {"Authorization": f"Bearer {self.token}"}
             resp = requests.post(f"{BROKER}/v1/delegate", json={
-                "delegate_to": "writer-agent",
+                "delegate_to": WRITER_AGENT_ID,
                 "scope": ["read:data:reports"],  # Narrower than read:data:*
                 "ttl": 120
             }, headers=headers, timeout=10)
             resp.raise_for_status()
             data = resp.json()
             token = data["access_token"]
-            print(f"[Research] Delegated narrower scope to writer-agent")
+            print(f"[Research] Delegated narrower scope to {WRITER_AGENT_ID}")
             return token
         except Exception as e:
             print(f"[Research] Delegation failed: {e}")
@@ -225,14 +228,14 @@ class WriterAgent:
         try:
             headers = {"Authorization": f"Bearer {self.token}"}
             resp = requests.post(f"{BROKER}/v1/delegate", json={
-                "delegate_to": "reviewer-agent",
+                "delegate_to": REVIEWER_AGENT_ID,
                 "scope": ["read:data:reports"],  # Same scope, no escalation
                 "ttl": 60
             }, headers=headers, timeout=10)
             resp.raise_for_status()
             data = resp.json()
             token = data["access_token"]
-            print(f"[Writer] Delegated scope to reviewer-agent")
+            print(f"[Writer] Delegated scope to {REVIEWER_AGENT_ID}")
             return token
         except Exception as e:
             print(f"[Writer] Delegation failed: {e}")
@@ -277,8 +280,8 @@ def run_pipeline():
         print("Failed to delegate to writer")
         return False
 
-    # In real code, we'd extract agent_id from delegation response
-    writer = WriterAgent(writer_token, "writer-agent-instance-123")
+    # These SPIFFE IDs must belong to agents that are already registered.
+    writer = WriterAgent(writer_token, WRITER_AGENT_ID)
     report = writer.process_research(research_output)
 
     # Stage 3: Reviewer Agent with same-level delegated scope
@@ -287,7 +290,7 @@ def run_pipeline():
         print("Failed to delegate to reviewer")
         return False
 
-    reviewer = ReviewerAgent(reviewer_token, "reviewer-agent-instance-456")
+    reviewer = ReviewerAgent(reviewer_token, REVIEWER_AGENT_ID)
     is_approved = reviewer.review_output(report)
 
     print(f"\n✓ Pipeline completed. Report approved: {is_approved}")
@@ -661,7 +664,7 @@ sequenceDiagram
 
     App->>Agent: Pass launch_token
 
-    Agent->>Broker: POST /v1/register<br/>{ launch_token, nonce, signature }
+    Agent->>Broker: POST /v1/register<br/>{ launch_token, nonce, public_key,<br/>signature, orch_id, task_id, requested_scope }
     Broker->>AuditLog: event: agent_registered<br/>timestamp: 2026-02-15T10:30:00Z<br/>agent_id: abc
 
     Broker-->>Agent: { access_token, agent_id }
@@ -681,35 +684,61 @@ sequenceDiagram
 ### Python Code Example
 
 ```python
+import base64
+import binascii
 import os
+import re
 import requests
 import time
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ed25519
 
 BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal:8080")
-BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal:8080")
+LAUNCH_TOKEN = os.environ.get("ETL_AGENT_LAUNCH_TOKEN", "")
+ORCH_ID = "orch-etl-001"
 
 
 class TokenLifecycleAgent:
     """Agent that explicitly releases tokens when work completes."""
 
-    def __init__(self, agent_name: str, task_id: str):
+    def __init__(self, agent_name: str, task_id: str, launch_token: str):
         self.agent_name = agent_name
         self.task_id = task_id
+        self.launch_token = launch_token
         self.token = None
         self.agent_id = None
         self.issued_at = None
+        self.private_key = ed25519.Ed25519PrivateKey.generate()
 
-    def request_token(self) -> bool:
-        """Request token and record issue time."""
+    def request_token(self, requested_scope: Optional[List[str]] = None) -> bool:
+        """Register with the broker and record issue time."""
         try:
+            requested_scope = requested_scope or ["read:data:*", "write:results:*"]
             self.issued_at = datetime.utcnow()
+
+            challenge_resp = requests.get(f"{BROKER}/v1/challenge", timeout=10)
+            challenge_resp.raise_for_status()
+            nonce = challenge_resp.json()["nonce"]
+
+            nonce_bytes = binascii.unhexlify(nonce)
+            signature = base64.b64encode(self.private_key.sign(nonce_bytes)).decode()
+            public_key = base64.b64encode(
+                self.private_key.public_key().public_bytes(
+                    serialization.Encoding.Raw,
+                    serialization.PublicFormat.Raw,
+                )
+            ).decode()
+
             resp = requests.post(f"{BROKER}/v1/register", json={
-                "agent_name": self.agent_name,
+                "launch_token": self.launch_token,
+                "nonce": nonce,
+                "public_key": public_key,
+                "signature": signature,
+                "orch_id": ORCH_ID,
                 "task_id": self.task_id,
-                "scope": ["read:data:*", "write:results:*"],
-                "ttl": 300
+                "requested_scope": requested_scope,
             }, timeout=10)
             resp.raise_for_status()
             data = resp.json()
@@ -780,6 +809,11 @@ class TokenLeakDetector:
         self.broker = broker_url
         self.admin_token = admin_token
 
+    @staticmethod
+    def _extract_jti(detail: str) -> Optional[str]:
+        match = re.search(r"jti=([a-f0-9]+)", detail)
+        return match.group(1) if match else None
+
     def find_leaked_tokens(self, task_id: str) -> Dict[str, Any]:
         """Query audit log to find tokens issued but never released for a task."""
         try:
@@ -805,11 +839,13 @@ class TokenLeakDetector:
 
             for event in events:
                 if event["event_type"] == "token_issued":
-                    jti = event["detail"].get("jti")
-                    issued_tokens[jti] = event
+                    jti = self._extract_jti(event.get("detail", ""))
+                    if jti:
+                        issued_tokens[jti] = event
                 elif event["event_type"] == "token_released":
-                    jti = event["detail"].get("jti")
-                    released_tokens.add(jti)
+                    jti = self._extract_jti(event.get("detail", ""))
+                    if jti:
+                        released_tokens.add(jti)
 
             # Tokens that were issued but not released
             leaked = {
@@ -840,7 +876,7 @@ def run_token_lifecycle():
     task_id = "etl-task-2026-0215-payload-001"
 
     # Agent: Request token, do work, release token
-    agent = TokenLifecycleAgent("etl-agent", task_id)
+    agent = TokenLifecycleAgent("etl-agent", task_id, LAUNCH_TOKEN)
 
     if not agent.request_token():
         print("Failed to request token")
@@ -975,13 +1011,19 @@ sequenceDiagram
 ### Python Code Example
 
 ```python
+import base64
+import binascii
 import os
 import requests
 from typing import List, Dict, Any, Optional
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ed25519
 
 BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal:8080")
-BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal:8080")
 TASK_ID = "analysis-cascade-2026-0215"
+ORCH_LAUNCH_TOKEN = os.environ.get("ORCH_AGENT_LAUNCH_TOKEN", "")
+ANALYZER_AGENT_ID = "spiffe://agentauth.local/agent/orch-analysis-001/task-analyzer-001/analyzer-001"
+SPECIALIST_AGENT_ID = "spiffe://agentauth.local/agent/orch-analysis-001/task-specialist-001/specialist-001"
 
 
 class DelegationChainValidator:
@@ -1015,19 +1057,37 @@ class DelegationChainValidator:
 class OrchestratorAgent:
     """Top-level agent with broad scope."""
 
-    def __init__(self):
+    def __init__(self, launch_token: str):
+        self.launch_token = launch_token
         self.token = None
         self.agent_id = None
         self.scope = ["read:data:*"]  # Broad initial scope
+        self.private_key = ed25519.Ed25519PrivateKey.generate()
 
     def bootstrap(self) -> bool:
         """Register with broker using launch token."""
         try:
+            challenge_resp = requests.get(f"{BROKER}/v1/challenge", timeout=10)
+            challenge_resp.raise_for_status()
+            nonce = challenge_resp.json()["nonce"]
+
+            nonce_bytes = binascii.unhexlify(nonce)
+            signature = base64.b64encode(self.private_key.sign(nonce_bytes)).decode()
+            public_key = base64.b64encode(
+                self.private_key.public_key().public_bytes(
+                    serialization.Encoding.Raw,
+                    serialization.PublicFormat.Raw,
+                )
+            ).decode()
+
             resp = requests.post(f"{BROKER}/v1/register", json={
-                "agent_name": "orchestrator-agent",
+                "launch_token": self.launch_token,
+                "nonce": nonce,
+                "public_key": public_key,
+                "signature": signature,
+                "orch_id": "orch-analysis-001",
                 "task_id": TASK_ID,
-                "scope": self.scope,
-                "ttl": 600  # 10 minutes for orchestrator
+                "requested_scope": self.scope,
             }, timeout=10)
             resp.raise_for_status()
             data = resp.json()
@@ -1050,7 +1110,7 @@ class OrchestratorAgent:
         try:
             headers = {"Authorization": f"Bearer {self.token}"}
             resp = requests.post(f"{BROKER}/v1/delegate", json={
-                "delegate_to": "analyzer-agent",
+                "delegate_to": ANALYZER_AGENT_ID,
                 "scope": narrower_scope,
                 "ttl": 300  # 5 minutes for delegated agent
             }, headers=headers, timeout=10)
@@ -1060,7 +1120,7 @@ class OrchestratorAgent:
             token = data["access_token"]
             chain = data.get("delegation_chain", [])
 
-            print(f"[Orchestrator] Delegated to analyzer with scope: {narrower_scope}")
+            print(f"[Orchestrator] Delegated to {ANALYZER_AGENT_ID} with scope: {narrower_scope}")
             print(f"[Orchestrator] Delegation chain depth: {len(chain) + 1}")
 
             return token
@@ -1104,7 +1164,7 @@ class AnalyzerAgent:
         try:
             headers = {"Authorization": f"Bearer {self.token}"}
             resp = requests.post(f"{BROKER}/v1/delegate", json={
-                "delegate_to": "specialist-agent",
+                "delegate_to": SPECIALIST_AGENT_ID,
                 "scope": narrower_scope,
                 "ttl": 120  # 2 minutes for specialist
             }, headers=headers, timeout=10)
@@ -1114,7 +1174,7 @@ class AnalyzerAgent:
             token = data["access_token"]
             chain = data.get("delegation_chain", [])
 
-            print(f"[Analyzer] Delegated to specialist with scope: {narrower_scope}")
+            print(f"[Analyzer] Delegated to {SPECIALIST_AGENT_ID} with scope: {narrower_scope}")
             print(f"[Analyzer] Delegation chain depth: {len(chain) + 1}")
 
             return token
@@ -1163,8 +1223,10 @@ def run_delegation_cascade():
     print("Specialist (read:data:logs)")
     print()
 
-    # Level 1: Orchestrator bootstraps
-    orch = OrchestratorAgent()
+    # Level 1: Orchestrator bootstraps. The analyzer and specialist IDs must
+    # come from earlier registrations because /v1/delegate targets registered
+    # SPIFFE IDs, not free-form agent names.
+    orch = OrchestratorAgent(ORCH_LAUNCH_TOKEN)
     if not orch.bootstrap():
         print("Failed to bootstrap orchestrator")
         return False

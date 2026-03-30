@@ -953,7 +953,7 @@ Examples:
 - `admin:revoke:*` -- Admin revocation on any target
 - `admin:launch-tokens:*` -- Admin launch token management
 - `admin:audit:*` -- Admin audit access
-- `admin:apps:*` -- Application management
+- `app:launch-tokens:*` -- App-issued launch token management
 
 ### Wildcard Rules
 
@@ -1049,4 +1049,3 @@ Applied to `POST /v1/admin/auth` and `POST /v1/app/auth`:
 | `agentauth_active_agents` | Gauge | -- | Currently registered agents |
 | `agentauth_request_duration_seconds` | HistogramVec | `endpoint` | Request latency |
 | `agentauth_clock_skew_total` | Counter | -- | Clock skew events |
-
