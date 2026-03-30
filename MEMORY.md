@@ -1,8 +1,14 @@
 # MEMORY.md — agentauth-core
 
-## Source Pattern
+## Mission
 
-**[Ephemeral Agent Credentialing v1.2](https://github.com/devonartis/AI-Security-Blueprints/blob/main/patterns/ephemeral-agent-credentialing/versions/v1.2.md)** — the security pattern AgentAuth implements. Every feature, fix, and design decision traces to this document.
+**Build the open-source core of AgentAuth** — a production-grade, pluggable credential broker for AI agents implementing the **[Ephemeral Agent Credentialing v1.3](https://github.com/devonartis/AI-Security-Blueprints/blob/main/patterns/ephemeral-agent-credentialing/versions/v1.3.md)** security pattern.
+
+**Core principles:**
+- **Pattern-driven:** Every feature, fix, and design decision traces to the v1.3 pattern document. The code implements all 8 core components.
+- **Pluggable architecture:** The core is designed so enterprise modules (HITL, OIDC provider, Resource Server, MCP integration, cloud credential exchange, federation bridge) can plug in without modifying core code. Interfaces and extension points over hard-coded integrations.
+- **Zero add-on contamination:** No HITL, OIDC, cloud, federation, or sidecar code in this repo. Those are enterprise modules that plug into the core.
+- **Minimal dependencies:** Ed25519/JWT/hash-chain/scope/revocation all use Go stdlib. Only 5 direct Go dependencies. Strong supply chain story.
 
 ## Origin
 
@@ -14,8 +20,8 @@ This repo was cloned from `agentauth-internal` at commit `2c5194e` (TD-006: Per-
 
 AgentAuth uses an open-core model:
 
-- **Core (this repo):** 8 blueprint components + App credential lifecycle. Will become open-source.
-- **Add-ons (separate repo, future):** HITL approval flow, OIDC provider, cloud credential exchange, federation bridge. Stays private/enterprise.
+- **Core (this repo):** 8 blueprint components + App credential lifecycle. Pluggable extension points. Will become open-source.
+- **Enterprise modules (separate repos, future):** HITL approval flow, OIDC provider, Resource Server, MCP integration, cloud credential exchange, federation bridge. Plug into core via interfaces. Stays private/enterprise.
 
 Both the legacy repos are kept as private archives:
 
@@ -77,13 +83,34 @@ When both Cowork and Claude Code are active, read `COWORK_SESSION.md` for shared
 
 **Docker lifecycle scripts:** Use `scripts/stack_up.sh` (build + start) and `scripts/stack_down.sh` (teardown with `-v --remove-orphans`) for Docker operations. Raw `docker compose build` is OK for build-only (G4 gate). Do NOT use raw `docker compose down` — always use `stack_down.sh`.
 
+## Acceptance Tests
+
+Each cherry-pick batch has acceptance tests in `tests/<batch-name>/`:
+- `user-stories.md` — stories with Who/What/Why/How/Expected
+- `integration.sh` — automated script that runs all stories + regression tests against a live broker
+- `evidence/` — terminal output from test runs
+
+**Pattern:** Legacy tests in `agentauth/tests/` must be adapted for core before use. Remove all OIDC/HITL/cloud/sidecar/federation references. Update ports (8443), registration flow (launch tokens), and endpoint paths.
+
+| Batch | Tests | Stories |
+|-------|-------|---------|
+| B0 | `tests/p0-production-foundations/` | 7 (K1-K5, S1-S2) |
+| B1 | `tests/p0-production-foundations/` | Same as B0 |
+| B2 | `tests/p1-admin-secret/` | 9 stories + 3 security reviews |
+| B3 | `tests/sec-l1/` | 12 stories |
+| B4 | `tests/sec-l2a/` | 13 stories (S1-S7, N1-N5, SEC1) |
+| B5 | `tests/sec-l2b/` | 6 stories (S1-S4,S6 + S5 skip) + 4 regression (R1-R4) |
+| B6 | TBD — must write before merge | TBD |
+
 ## Standing Rules
 
 - **Live tests require Docker** — `./scripts/stack_up.sh` first. No Docker = not a live test.
-- **No HITL in core** — zero tolerance. `grep -ri "hitl\|approval" internal/ cmd/` must return nothing.
+- **No add-on code in core** — zero tolerance. `grep -ri "hitl\|approval\|oidc\|federation\|cloud\|sidecar" internal/ cmd/` must return nothing.
 - **Cherry-pick one batch at a time** — build + test after each batch before proceeding.
+- **Acceptance tests adapted for core** — legacy tests have OIDC/HITL/sidecar code. Always audit and adapt before copying to core.
 - **Docs update WITH every code change** — if code changes behavior, the docs update goes in the same commit or the same branch. No "fix docs later." B0-B4 proved that deferred doc updates cause massive drift. The doc files to check: `docs/api.md`, `docs/architecture.md`, `docs/concepts.md`, `docs/implementation-map.md`, `docs/scenarios.md`, `docs/api/openapi.yaml`.
 - **Use `cherrypick-devflow` skill** for migration. Use `devflow` for new features after migration.
+- **Pluggable architecture** — core code must expose interfaces and extension points. Enterprise modules plug in; they never get baked into core.
 
 ## Recent Lessons (last 3 sessions — older archived to MEMORY_ARCHIVE.md)
 
