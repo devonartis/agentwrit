@@ -265,6 +265,7 @@ agent_token = spawn_agent(
 renewed = requests.post(f"{BROKER}/v1/token/renew",
     headers={"Authorization": f"Bearer {agent_token}"})
 agent_token = renewed.json()["access_token"]
+# New token preserves the original 300s TTL (clamped by MaxTTL)
 # Old token is immediately revoked (Component 4)
 
 # ━━━ Component 4: Revocation ━━━

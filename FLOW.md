@@ -157,16 +157,29 @@ LIVE-TEST-TEMPLATE updated with audience, personas, real-world grounding guidanc
 
 Key lessons: acceptance tests are NOT integration scripts. `integration.sh` is CI smoke — real evidence needs individual story files with executive-readable banners per LIVE-TEST-TEMPLATE. Personas must reflect production reality (App vs Developer).
 
-### Current Step: B6 cherry-pick (SEC-A1 + Gates) — LAST BATCH
+### Action: B6 — SEC-A1 + Gates cherry-pick (2026-03-30)
 
-**What's done:** B0-B5 merged. All security hardening in place. LIVE-TEST-TEMPLATE improved.
+Branch: `fix/sec-a1` off `develop`
+Cherry-picked 2 commits from agentauth: `9422e7c`, `e395a15`
 
-**What's next:**
-1. **B6 (SEC-A1 + Gates):** 2 commits — `9422e7c` (carry forward original TTL on renewal), `e395a15` (gates.sh regression subcommand). This is the LAST cherry-pick batch.
-2. B6 acceptance tests — must write (none exist in legacy). Follow LIVE-TEST-TEMPLATE with proper personas and executive-readable banners.
-3. After B6 merge → post-migration cleanup (Go module path update, final verification, remote swap). See Cherry-Pick Guide "Post-Migration" section.
-4. Review backburner design: `.plans/designs/acceptance-test-automation.md`
+- `9422e7c`: Conflict in `tkn_svc.go` — incoming had `AppID`, `AppName`, `OriginalPrincipal` fields not in core's `IssueReq`. Kept TTL fix, dropped three fields.
+- `e395a15`: Applied cleanly.
+- Gates G1-G6: ALL PASS
+- Regression unit test added: `TestRenew_PreservesTTL` (5 subtests)
+- Acceptance tests: 4 stories (S1, S2, S3, R1) — all PASS VPS mode
 
-**Skill:** `cherrypick-devflow`
-**Tracker:** `.plans/tracker.jsonl`
-**Cherry-Pick Guide:** `agentauth/.plans/modularization/Cherry-Pick-Guide.md`
+### Decision: Code comments must explain roles, not restate code (2026-03-30)
+
+During acceptance test authoring, the agent built tests against the admin flow instead of the app flow because no code comments explained which role calls which endpoint. Multiple prior sessions wrote and reviewed this code without flagging the gap. New rule in `.claude/rules/golang.md`: comments tell you what reading the code would NOT tell you — who calls it, why, boundaries.
+
+### Decision: TECH-DEBT.md moved to repo root (2026-03-30)
+
+Was at `.plans/TECH-DEBT.md`. Tech debt is a first-class artifact, not a planning doc. MEMORY.md now points to it instead of duplicating entries.
+
+### Decision: cherrypick-devflow skill updated with Step 3 (Regression Unit Tests) (2026-03-30)
+
+New step between Pick and Verify. If a cherry-pick changes existing behavior, write regression unit tests before running gates — so the new tests are included in G2. Also added code comments requirements to Pick step and verification to Docs step.
+
+### B6 Status: ACCEPTANCE TESTS PASS — pending code review and merge
+
+**Next:** Code review (running), then merge to develop. Then post-migration cleanup (Go module path update, final verification, remote swap). See Cherry-Pick Guide "Post-Migration" section.

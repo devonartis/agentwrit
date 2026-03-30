@@ -23,9 +23,14 @@ var (
 	ErrTokenRevoked     = errors.New("token has been revoked")
 )
 
-// IssueReq contains the parameters for issuing a new token via
-// [TknSvc.Issue]. At minimum Sub and Scope must be set. If TTL is zero
-// the broker's configured DefaultTTL is used.
+// IssueReq contains the parameters for issuing a new token.
+//
+// Sub identifies the principal: "admin" for operators, "app:<appID>" for
+// registered applications, or a SPIFFE ID for agents. Scope defines what
+// the token holder can do — admin scopes (admin:revoke:*, admin:audit:*),
+// app scopes (app:launch-tokens:*, app:agents:*), or task-specific agent
+// scopes (read:data:*, write:logs:*). TTL is seconds; 0 falls back to
+// DefaultTTL; always clamped by MaxTTL in Issue().
 type IssueReq struct {
 	Sub        string
 	Aud        []string
@@ -63,10 +68,20 @@ func computeKid(pub ed25519.PublicKey) string {
 	return base64.RawURLEncoding.EncodeToString(h[:])
 }
 
-// TknSvc is the core token service. It holds an Ed25519 key pair and
-// the broker configuration, and provides [Issue], [Verify], and [Renew]
-// operations. A single TknSvc instance is shared across all services
-// and handlers.
+// TknSvc is the core token service — the single authority for all JWT
+// operations in the broker. It signs, verifies, renews, and enforces TTL
+// constraints on every token in the system.
+//
+// Callers:
+//   - AdminSvc calls Issue to create admin JWTs (scope: admin:*)
+//   - AppSvc calls Issue to create app JWTs (scope: app:*)
+//   - IdentitySvc calls Issue to create agent JWTs (scope: task-specific, e.g. read:data:*)
+//   - RenewHdl calls Renew for agents extending their session
+//   - ValMw and ValHdl call Verify to authenticate any incoming Bearer token
+//
+// TknSvc does NOT enforce who can call it — that's the handler/middleware
+// layer's job (scope checks via ValMw.RequireScope). TknSvc trusts its
+// callers to have already passed authorization checks.
 type TknSvc struct {
 	signingKey ed25519.PrivateKey
 	pubKey     ed25519.PublicKey
@@ -99,9 +114,15 @@ func NewTknSvc(signingKey ed25519.PrivateKey, pubKey ed25519.PublicKey, c cfg.Cf
 	}
 }
 
-// Issue creates a new EdDSA-signed JWT from the given [IssueReq]. It
-// generates a fresh JTI, sets iat/nbf/exp based on the current time and
-// TTL, and returns an [IssueResp] containing the compact token string.
+// Issue creates a new EdDSA-signed JWT.
+//
+// Called by three roles, each with different scope semantics:
+//   - Admin (via AdminSvc): sub="admin", scope=admin:*, TTL=3600 (hardcoded, see TD-010)
+//   - App (via AppSvc.Authenticate): sub="app:<appID>", scope=app:*, TTL=app.TokenTTL
+//   - Agent (via IdentitySvc.Register): sub=SPIFFE ID, scope=task-specific, TTL=launch token's max_ttl
+//
+// Issue does NOT check authorization — callers must have already passed
+// scope checks. MaxTTL is the global safety ceiling; no caller can bypass it.
 func (s *TknSvc) Issue(req IssueReq) (*IssueResp, error) {
 	ttl := req.TTL
 	if ttl <= 0 {
@@ -150,11 +171,12 @@ func (s *TknSvc) Issue(req IssueReq) (*IssueResp, error) {
 	}, nil
 }
 
-// Verify parses a compact JWT string, verifies the Ed25519 signature, and
-// validates the claims (issuer, subject, JTI, expiry, nbf). On success it
-// returns the decoded [TknClaims]. On failure it returns one of
-// [ErrInvalidToken], [ErrSignatureInvalid], [ErrTokenRevoked], or a claims
-// validation error (e.g. [ErrNoExpiry], [ErrTokenExpired]).
+// Verify validates a compact JWT string — signature, claims, and revocation.
+//
+// Role-agnostic: validates admin, app, and agent tokens identically.
+// The caller (ValMw, ValHdl, Renew) decides what to do with the claims —
+// Verify does not check scope or role. Apps use ValHdl (POST /v1/token/validate)
+// to check agent tokens before granting access to resources.
 func (s *TknSvc) Verify(tokenStr string) (*TknClaims, error) {
 	parts := strings.SplitN(tokenStr, ".", 3)
 	if len(parts) != 3 {
@@ -211,10 +233,19 @@ func (s *TknSvc) Verify(tokenStr string) (*TknClaims, error) {
 	return &claims, nil
 }
 
-// Renew verifies an existing token and, if valid, revokes the predecessor
-// by JTI then issues a replacement token with the same subject, scope,
-// task, orchestration, and delegation chain but fresh timestamps and a new
-// JTI. The predecessor is invalidated before the new token is issued.
+// Renew replaces an agent's token with fresh timestamps and a new JTI.
+//
+// Called by: RenewHdl (POST /v1/token/renew) behind ValMw. Only agents
+// with valid, non-revoked tokens can renew. Admin and app tokens are
+// technically renewable but have no production reason to do so.
+//
+// SEC-A1 — TTL carry-forward: The renewed token preserves the original
+// TTL (Exp - Iat), NOT DefaultTTL. Without this, an agent issued with
+// TTL=120 could renew and get TTL=300 — a privilege escalation. MaxTTL
+// clamp still applies via Issue().
+//
+// Predecessor revocation is mandatory and happens BEFORE issuance.
+// If revocation fails, renewal fails — no orphaned valid predecessors.
 func (s *TknSvc) Renew(tokenStr string) (*IssueResp, error) {
 	claims, err := s.Verify(tokenStr)
 	if err != nil {

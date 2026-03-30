@@ -121,8 +121,9 @@ paths:
       description: >
         Verifies the Bearer token from the Authorization header and issues a
         replacement token with the same subject, scope, task, orchestration,
-        and delegation chain but fresh timestamps and a new JTI. The previous
-        token is revoked before the replacement is issued.
+        delegation chain, and TTL but fresh timestamps and a new JTI. The
+        original token's TTL is preserved, subject to MaxTTL clamping. The
+        previous token is revoked before the replacement is issued.
       operationId: renewToken
       security:
         - bearerAuth: []

@@ -86,7 +86,9 @@ Token Renewal:
   → internal/token/tkn_svc.go:Renew()
     1. Verify(tokenStr) — full verification pipeline
     2. revoker.RevokeByJTI(claims.Jti) — revoke predecessor BEFORE issuing new token
-    3. Issue() — new token with same sub, scope, task, orch, delegation chain
+    3. Compute originalTTL = claims.Exp - claims.Iat (preserve launch-time TTL)
+    4. Issue(TTL: originalTTL) — new token with same sub, scope, task, orch, delegation chain, TTL
+       MaxTTL clamp still applies in Issue()
     ← Returns new IssueResp
 ```
 

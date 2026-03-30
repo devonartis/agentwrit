@@ -725,6 +725,100 @@ func TestVerify_RejectsRevokedToken(t *testing.T) {
 	}
 }
 
+// --- SEC-A1 regression: TTL carry-forward on renewal ---
+
+func TestRenew_PreservesTTL(t *testing.T) {
+	pub, priv := testKeyPair(t)
+
+	tests := []struct {
+		name      string
+		issueTTL  int
+		maxTTL    int
+		wantRenew int
+	}{
+		{
+			name:      "custom TTL preserved on renewal",
+			issueTTL:  120,
+			maxTTL:    0,
+			wantRenew: 120,
+		},
+		{
+			name:      "default TTL preserved on renewal",
+			issueTTL:  0, // falls back to DefaultTTL=300
+			maxTTL:    0,
+			wantRenew: 300,
+		},
+		{
+			name:      "MaxTTL clamps renewed token",
+			issueTTL:  7200,
+			maxTTL:    3600,
+			wantRenew: 3600,
+		},
+		{
+			name:      "TTL under MaxTTL unchanged on renewal",
+			issueTTL:  1800,
+			maxTTL:    3600,
+			wantRenew: 1800,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := testCfg()
+			c.DefaultTTL = 300
+			c.MaxTTL = tt.maxTTL
+			svc := NewTknSvc(priv, pub, c)
+
+			resp1, err := svc.Issue(IssueReq{
+				Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+				Scope: []string{"read:data:*"},
+				TTL:   tt.issueTTL,
+			})
+			if err != nil {
+				t.Fatalf("Issue: %v", err)
+			}
+
+			resp2, err := svc.Renew(resp1.AccessToken)
+			if err != nil {
+				t.Fatalf("Renew: %v", err)
+			}
+
+			if resp2.ExpiresIn != tt.wantRenew {
+				t.Errorf("ExpiresIn = %d, want %d", resp2.ExpiresIn, tt.wantRenew)
+			}
+		})
+	}
+
+	// Verify the old bug is fixed: renewal must NOT escalate to DefaultTTL.
+	t.Run("renewal does not escalate to DefaultTTL", func(t *testing.T) {
+		c := testCfg()
+		c.DefaultTTL = 300
+
+		shortSvc := NewTknSvc(priv, pub, c)
+		resp, err := shortSvc.Issue(IssueReq{
+			Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+			Scope: []string{"read:data:*"},
+			TTL:   60,
+		})
+		if err != nil {
+			t.Fatalf("Issue: %v", err)
+		}
+
+		renewed, err := shortSvc.Renew(resp.AccessToken)
+		if err != nil {
+			t.Fatalf("Renew: %v", err)
+		}
+
+		if renewed.ExpiresIn == 300 {
+			t.Error("renewal escalated TTL to DefaultTTL — SEC-A1 ceiling bypass bug")
+		}
+		if renewed.ExpiresIn != 60 {
+			t.Errorf("ExpiresIn = %d, want 60 (original TTL)", renewed.ExpiresIn)
+		}
+	})
+
+}
+
 func TestVerify_RejectsZeroExpiry(t *testing.T) {
 	now := time.Now().Unix()
 	claims := &TknClaims{
