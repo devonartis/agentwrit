@@ -1,7 +1,9 @@
-// Package app provides the AppSvc service for app registration and
-// authentication. Apps are first-class entities with their own scoped
-// credentials (client_id + client_secret) that authenticate directly
-// with the broker without requiring the admin master key.
+// Package app manages the app credential lifecycle. Apps are software that
+// manage agents — an orchestrator, a CI pipeline, a SaaS backend. Admin
+// registers the app, giving it a scope ceiling (the maximum permissions it
+// can delegate). The app then authenticates independently with its own
+// client_id/secret and creates launch tokens for its agents, constrained
+// by that ceiling. This is the production path for getting agents credentialed.
 package app
 
 import (
@@ -47,7 +49,10 @@ var (
 // must start with a letter, no consecutive hyphens, max 64 chars.
 var appNameRe = regexp.MustCompile(`^[a-z][a-z0-9](?:-?[a-z0-9]+)*$`)
 
-// AppSvc handles app registration and authentication business logic.
+// AppSvc is the business logic for app lifecycle — register, authenticate,
+// update, deregister. Admin creates apps; apps authenticate themselves.
+// The scope ceiling set at registration is the hard limit on what agents
+// under this app can ever do (enforced in AdminHdl.handleCreateLaunchToken).
 type AppSvc struct {
 	store      *store.SqlStore
 	tknSvc     *token.TknSvc
@@ -196,7 +201,7 @@ func (s *AppSvc) AuthenticateApp(clientID, clientSecret string) (*token.IssueRes
 	return resp, nil
 }
 
-// ListApps returns all registered apps.
+// ListApps returns all registered apps. Used by admin for inventory and oversight.
 func (s *AppSvc) ListApps() ([]store.AppRecord, error) {
 	return s.store.ListApps()
 }
@@ -206,7 +211,8 @@ func (s *AppSvc) GetApp(appID string) (*store.AppRecord, error) {
 	return s.store.GetAppByID(appID)
 }
 
-// UpdateApp replaces the scope ceiling for an existing app.
+// UpdateApp replaces the scope ceiling for an existing app. This is how
+// admin narrows or widens what agents under this app are allowed to do.
 func (s *AppSvc) UpdateApp(appID string, newScopes []string, updatedBy string) error {
 	if err := validateScopes(newScopes); err != nil {
 		return err
@@ -245,8 +251,9 @@ func (s *AppSvc) UpdateAppTTL(appID string, newTTL int, updatedBy string) error 
 	return nil
 }
 
-// DeregisterApp marks an app as inactive. Its credentials stop working
-// immediately. The record is retained (soft delete).
+// DeregisterApp marks an app as inactive — its credentials stop working
+// immediately and it can no longer create launch tokens. The record is
+// retained (soft delete) so existing audit trails still reference it.
 func (s *AppSvc) DeregisterApp(appID string, deregisteredBy string) error {
 	rec, err := s.store.GetAppByID(appID)
 	if err != nil {

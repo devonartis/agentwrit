@@ -1,4 +1,4 @@
-{"id": "migration", "type": "epic", "name": "Cherry-Pick Migration from agentauth \u2192 agentauth-core", "status": "in_progress"}
+{"id": "migration", "type": "epic", "name": "Cherry-Pick Migration from agentauth \u2192 agentauth-core", "status": "done", "notes": "B0-B6 all merged to develop. 6 batches, 28 cherry-picks, all gates green, all acceptance tests PASS."}
 {"id": "b0", "type": "phase", "name": "B0: Sidecar Removal", "status": "done", "branch": "fix/sidecar-removal", "commits": ["34bb887", "909a777"], "acceptance_tests": "agentauth-internal/tests/phase-0/ (ran in internal, not re-run in core)"}
 {"id": "b0-g1", "type": "task", "name": "G1 Compile", "status": "done", "phase": "b0"}
 {"id": "b0-g2", "type": "task", "name": "G2 Unit Tests", "status": "done", "phase": "b0"}
@@ -84,5 +84,5 @@
 {"id": "b4-n4", "type": "story", "name": "L2a-N4: Wrong admin secret rejected (regression)", "status": "done", "phase": "b4"}
 {"id": "b4-n5", "type": "story", "name": "L2a-N5: Renewal failure on revocation error (unit test)", "status": "done", "phase": "b4"}
 {"id": "b4-sec1", "type": "story", "name": "L2a-SEC1: Code review \u2014 Verify() check order", "status": "done", "phase": "b4"}
-{"id": "b5", "type": "phase", "name": "B5 (SEC-L2b): Security Headers + MaxBytesBody + Error Sanitization", "status": "pending", "commits": ["daf2995", "e592acc", "2857b3a", "247727c", "c5da6c4"], "acceptance_tests": "agentauth/tests/fix-sec-l2b/ \u2014 has evidence", "source_tests": "agentauth/tests/fix-sec-l2b/"}
-{"id": "b6", "type": "phase", "name": "B6 (SEC-A1 + Gates): TTL Bypass Fix + Gates Regression", "status": "pending", "commits": ["9422e7c", "e395a15"], "acceptance_tests": "NONE \u2014 need to write before merge"}
+{"id": "b5", "type": "phase", "name": "B5 (SEC-L2b): Security Headers + MaxBytesBody + Error Sanitization", "status": "done", "branch": "fix/sec-l2b", "commits": ["daf2995", "e592acc", "2857b3a", "247727c", "c5da6c4"], "acceptance_tests": "agentauth/tests/fix-sec-l2b/ \u2014 has evidence", "source_tests": "agentauth/tests/fix-sec-l2b/"}
+{"id": "b6", "type": "phase", "name": "B6 (SEC-A1 + Gates): TTL Bypass Fix + Gates Regression", "status": "done", "branch": "fix/sec-a1", "commits": ["9422e7c", "e395a15"], "acceptance_tests": "NONE \u2014 need to write before merge"}

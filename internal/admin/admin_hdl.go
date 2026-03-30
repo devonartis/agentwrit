@@ -18,11 +18,13 @@ import (
 
 const hdlCmp = "AdminHdl"
 
-// AdminHdl is the HTTP handler for admin and app endpoints. It registers
-// POST /v1/admin/auth (rate-limited, unauthenticated),
-// POST /v1/admin/launch-tokens (requires admin:launch-tokens:* scope), and
-// POST /v1/app/launch-tokens (requires app:launch-tokens:* scope).
-// Both launch-token endpoints share the same handler.
+// AdminHdl serves admin auth and launch token creation. Two separate routes
+// hit the same handleCreateLaunchToken handler because both admin and apps
+// can create launch tokens — but with different trust levels. Admin callers
+// have no scope ceiling (they're the operator). App callers are constrained
+// by the app's scope ceiling set at registration, enforced in the handler
+// via authz.ScopeIsSubset. This is the key security boundary for the
+// app→agent delegation chain (see TD-013 for the admin bypass design question).
 type AdminHdl struct {
 	adminSvc    *AdminSvc
 	valMw       *authz.ValMw
@@ -85,6 +87,10 @@ type authResp struct {
 // maxBodyBytes is the maximum allowed request body size (1 MB).
 const maxBodyBytes int64 = 1 << 20
 
+// handleAuth — POST /v1/admin/auth. The operator authenticates with the
+// shared admin secret to get a short-lived JWT. Supports legacy detection
+// for the old client_id/client_secret shape so callers get a helpful error
+// instead of a cryptic auth failure.
 func (h *AdminHdl) handleAuth(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 
@@ -132,6 +138,11 @@ func (h *AdminHdl) handleAuth(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleCreateLaunchToken — POST /v1/admin/launch-tokens (admin) and
+// POST /v1/app/launch-tokens (app). Same handler, different trust: admin
+// callers pass through unconstrained, app callers have their requested
+// scopes checked against the app's scope ceiling. If an app tries to
+// create a launch token exceeding its ceiling, we deny and audit it.
 func (h *AdminHdl) handleCreateLaunchToken(w http.ResponseWriter, r *http.Request) {
 	claims := authz.ClaimsFromContext(r.Context())
 	if claims == nil {

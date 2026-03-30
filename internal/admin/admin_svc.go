@@ -1,14 +1,14 @@
-// Package admin provides administrator authentication and launch token
-// lifecycle management for the AgentAuth broker.
+// Package admin handles the operator side of the broker — authenticating
+// with the admin secret and managing launch tokens. The operator is the
+// human or automation that bootstraps the system: they register apps,
+// create launch tokens for testing/dev, and have oversight over revocation
+// and audit.
 //
-// Administrators authenticate via POST /v1/admin/auth with a shared
-// client_secret. On success they receive a short-lived JWT with admin
-// scopes that authorizes further operations such as creating launch
-// tokens and revoking agent tokens.
-//
-// Launch tokens are opaque 64-character hex strings with an associated
-// policy (allowed scope, max TTL, single-use flag). They are created via
-// POST /v1/admin/launch-tokens and consumed during agent registration.
+// Launch tokens are how agents get their first credential. An app (or
+// admin, for dev/testing) creates a launch token with a scope ceiling and
+// max TTL. The agent presents this token during registration to receive
+// its short-lived JWT. The launch token is the trust anchor — it defines
+// the upper bound of what the agent can do.
 package admin
 
 import (
@@ -78,10 +78,10 @@ type LaunchTokenPolicy struct {
 	MaxTTL       int      `json:"max_ttl"`
 }
 
-// AdminSvc handles administrator authentication (shared secret) and
-// launch token lifecycle (create, validate, consume). All launch token
-// storage is delegated to [store.SqlStore] so that tokens are visible
-// to the identity service during registration.
+// AdminSvc handles admin auth (shared secret → short-lived JWT) and launch
+// token lifecycle (create, validate, consume). Launch tokens are stored in
+// SqlStore so the identity service can look them up during agent registration
+// without depending on this package.
 type AdminSvc struct {
 	adminSecretHash []byte
 	tknSvc          *token.TknSvc
@@ -150,12 +150,14 @@ func (s *AdminSvc) Authenticate(secret string) (*token.IssueResp, error) {
 	return resp, nil
 }
 
-// CreateLaunchToken generates a cryptographically random opaque launch
-// token and binds it to the given policy (scope ceiling, max TTL,
-// single-use flag). The createdBy parameter is the subject of the admin
-// who issued the request (for audit purposes). The appID parameter,
-// when non-empty, associates the token with the creating app for
-// traceability (App -> Launch Token -> Agent).
+// CreateLaunchToken generates a launch token bound to a policy (scope
+// ceiling, max TTL, single-use). Both admin and apps call this — admin
+// directly for dev/testing, apps in production for their agents. When
+// appID is non-empty, the token is associated with the creating app so
+// the full chain (App → Launch Token → Agent) is traceable in audit.
+// Scope ceiling enforcement for app callers happens in the handler layer
+// (AdminHdl.handleCreateLaunchToken), not here — this function trusts
+// its callers to have already validated scopes.
 func (s *AdminSvc) CreateLaunchToken(req CreateLaunchTokenReq, createdBy, appID string) (*CreateLaunchTokenResp, error) {
 	if req.AgentName == "" {
 		return nil, ErrAgentNameEmpty

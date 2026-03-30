@@ -16,7 +16,9 @@ import (
 	"github.com/divineartis/agentauth/internal/obs"
 )
 
-// Sentinel errors returned by [TknSvc.Verify].
+// Sentinel errors for token verification. A single generic message is returned
+// to callers — the specific error is only visible internally to prevent
+// information leakage about token structure or revocation state.
 var (
 	ErrInvalidToken     = errors.New("invalid token format")
 	ErrSignatureInvalid = errors.New("signature verification failed")
@@ -282,9 +284,9 @@ func (s *TknSvc) Renew(tokenStr string) (*IssueResp, error) {
 	})
 }
 
-// PublicKey returns the Ed25519 public key used for token signature
-// verification. This can be shared with external services that need to
-// verify tokens independently.
+// PublicKey returns the Ed25519 public key so external services (resource
+// servers, federated brokers) can verify tokens without calling back to
+// the broker. Exposed via the OIDC discovery endpoint (/.well-known/jwks.json).
 func (s *TknSvc) PublicKey() ed25519.PublicKey {
 	return s.pubKey
 }

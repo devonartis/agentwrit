@@ -1,4 +1,6 @@
-// Package app — HTTP handler for app registration and authentication endpoints.
+// Package app — HTTP handlers for app CRUD (admin-operated) and app
+// authentication (self-service). The /v1/admin/apps/* routes are for the
+// operator managing apps; /v1/app/auth is how the app itself logs in.
 package app
 
 import (
@@ -22,9 +24,10 @@ const (
 	maxBodyBytes = int64(1 << 20) // 1 MB
 )
 
-// AppHdl handles HTTP requests for app registration and authentication.
-// Admin endpoints require a Bearer token with admin:launch-tokens:* scope.
-// POST /v1/app/auth is unauthenticated (rate-limited only).
+// AppHdl serves two audiences: admin (app CRUD under /v1/admin/apps,
+// protected by admin:launch-tokens:* scope) and apps themselves
+// (POST /v1/app/auth, unauthenticated but rate-limited to prevent
+// credential stuffing).
 type AppHdl struct {
 	appSvc      *AppSvc
 	valMw       *authz.ValMw
@@ -105,7 +108,9 @@ type appAuthResp struct {
 // Handlers
 // ---------------------------------------------------------------------------
 
-// handleRegisterApp — POST /v1/admin/apps
+// handleRegisterApp — POST /v1/admin/apps. Operator creates a new app,
+// setting its name, scope ceiling, and optional per-app TTL. Returns the
+// client_secret exactly once — it's never stored in plaintext.
 func (h *AppHdl) handleRegisterApp(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	var req registerAppReq
@@ -216,7 +221,9 @@ func (h *AppHdl) handleGetApp(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleUpdateApp — PUT /v1/admin/apps/{id}
+// handleUpdateApp — PUT /v1/admin/apps/{id}. Operator adjusts an app's
+// scope ceiling or per-app TTL. Supports partial updates — send only
+// the fields you want to change.
 func (h *AppHdl) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 	appID := r.PathValue("id")
 	if appID == "" {
@@ -287,7 +294,9 @@ func (h *AppHdl) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleDeregisterApp — DELETE /v1/admin/apps/{id}
+// handleDeregisterApp — DELETE /v1/admin/apps/{id}. Soft-deletes the app
+// so it can no longer authenticate or create launch tokens. Existing
+// agent tokens issued through this app remain valid until they expire.
 func (h *AppHdl) handleDeregisterApp(w http.ResponseWriter, r *http.Request) {
 	appID := r.PathValue("id")
 	if appID == "" {
@@ -322,7 +331,11 @@ func (h *AppHdl) handleDeregisterApp(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleAppAuth — POST /v1/app/auth (no Bearer required)
+// handleAppAuth — POST /v1/app/auth. This is how an app authenticates
+// with the broker to get its own JWT. No Bearer required — the app proves
+// identity via client_id + client_secret (bcrypt-verified). The returned
+// token carries app:launch-tokens:* and app:agents:* scopes, letting the
+// app create launch tokens for its agents within its scope ceiling.
 func (h *AppHdl) handleAppAuth(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	var req appAuthReq
