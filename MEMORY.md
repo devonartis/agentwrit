@@ -112,14 +112,28 @@ Each cherry-pick batch has acceptance tests in `tests/<batch-name>/`:
 - **Use `cherrypick-devflow` skill** for migration. Use `devflow` for new features after migration.
 - **Pluggable architecture** — core code must expose interfaces and extension points. Enterprise modules plug in; they never get baked into core.
 
+## Backburner Designs (review after migration is complete)
+
+- **Acceptance test automation + verification** — `.plans/designs/acceptance-test-automation.md`. Born during B5: how to automate story evidence creation while maintaining template compliance, and how to verify the agent followed the template with a deterministic hook. The `integration.sh` script is a CI smoke test — it does NOT produce proper evidence files. Three options captured: review hook, verify-evidence skill, or a runner script that produces template-compliant evidence. Review once B6 is merged.
+
 ## Recent Lessons (last 3 sessions — older archived to MEMORY_ARCHIVE.md)
 
-- B5 (SEC-L2b): Commit `247727c` (renew_hdl sanitization) was empty after conflict resolution — the sanitized `WriteProblem` call and tests were already present from `e592acc`. Skipped safely.
-- B5: Commit `c5da6c4` had a modify/delete conflict on `tests/fix-sec-l2b/evidence/S3-renew-tampered-generic.md` — evidence file doesn't exist in core (deleted during internal cleanup). Removed and continued.
-- B5: `e592acc` conflict in `main.go` contained OIDC routes (`/v1/jwks`, `/.well-known/openid-configuration`) and cloud handler (`/v1/cloud/credentials`). All dropped — add-on code.
-- B5: `handler_test.go` already had `newTestBroker` wired with SecurityHeaders + MaxBytesBody from prior batches. Only the new test functions at the bottom needed merging.
-- B5: Missing `context` and `errors` imports in `handler_test.go` after cherry-pick — needed by `TestRenew_DirectErrorMessageIsGeneric` which uses `context.Background()` and `errors.New()`. LSP diagnostics caught it.
-- Doc overhaul (2026-03-30): B0-B4 docs were never updated with code changes. Result: 54 findings (8 CRIT, 22 HIGH). Fixed all on `fix/docs-overhaul`. Standing rule: docs update WITH every code change.
-- jcodemunch indexes code symbols only — not markdown docs. Use context-mode (`ctx_execute_file`, `ctx_search`) for doc analysis to save context window.
-- `settings.json` (project, committed) vs `settings.local.json` (personal, gitignored). Broad tool permissions go in project-level; machine-specific Bash patterns go in local.
-- Next: B5 needs Docker gates (G4-G7), acceptance tests from `agentauth/tests/fix-sec-l2b/`, code review, then merge. After B5: B6 (SEC-A1 + Gates) — 2 commits, last batch.
+### B5 Acceptance Testing (2026-03-30) — CRITICAL lessons
+
+- **Acceptance tests are NOT integration scripts.** `integration.sh` runs PASS/FAIL checks but cuts corners: no individual story files, no executive-readable banners, no proper personas. It's a CI smoke test. Real acceptance tests produce individual `story-*.md` files per the `LIVE-TEST-TEMPLATE.md`.
+- **Executives and QA testers read acceptance evidence.** Every banner (Who/What/Why/How/Expected) must make sense to a non-technical reader. Write for the executive, not the engineer.
+- **Personas must reflect production reality.** "Developer (curl)" is wrong when the real actor is an automated App. Ask: "Who does this in production?" App = automated software. Developer = human exploring. Operator = human managing. Security Reviewer = verifying controls.
+- **Ground every story in reality.** If using curl to emulate an app, say so: "We emulate what the app does in production." Don't describe testing mechanics — describe the real-world scenario.
+- **Legacy acceptance tests need deep adaptation.** The legacy `integration.sh` had: wrong response field names (`token` vs `access_token`), wrong request field names (`allowed_scopes` vs `allowed_scope`, missing `agent_name`), wrong registration flow (simple name+scopes vs challenge-response with Ed25519), wrong nonce encoding (base64 vs hex), OIDC endpoints that don't exist in core. Every field must be verified against actual handler structs.
+- **One story at a time, verdict earned.** Don't pre-write PASS. Run the story, see the output, then write the verdict based on what you actually observed.
+- **LIVE-TEST-TEMPLATE updated** with: "Who Reads These Tests?" section, App persona, "Ground Every Story in Reality" guidance, Bad/Good banner examples.
+
+### B5 Cherry-Pick (2026-03-30) — technical lessons
+
+- B5: Commit `247727c` was empty after conflict resolution — content already present from `e592acc`. Skipped safely.
+- B5: `e592acc` conflict in `main.go` contained OIDC routes and cloud handler. All dropped — add-on code.
+- B5: Missing `context` and `errors` imports in `handler_test.go` after cherry-pick. LSP diagnostics caught it.
+- B5: `curl -sI -X POST` returns empty headers for POST endpoints — use `curl -s -D - -o /dev/null` instead to dump headers on POST requests.
+- jcodemunch indexes code symbols only — not markdown docs. Use context-mode for doc analysis.
+- `settings.json` (project, committed) vs `settings.local.json` (personal, gitignored). Broad tool permissions go in project-level.
+- Next: B5 ready to merge. Then B6 (SEC-A1 + Gates) — 2 commits, last batch.
