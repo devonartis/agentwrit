@@ -111,6 +111,7 @@ Each cherry-pick batch has acceptance tests in `tests/<batch-name>/`:
 - **Docs update WITH every code change** — if code changes behavior, the docs update goes in the same commit or the same branch. No "fix docs later." B0-B4 proved that deferred doc updates cause massive drift. The doc files to check: `docs/api.md`, `docs/architecture.md`, `docs/concepts.md`, `docs/implementation-map.md`, `docs/scenarios.md`, `docs/api/openapi.yaml`.
 - **Use `cherrypick-devflow` skill** for migration. Use `devflow` for new features after migration.
 - **Pluggable architecture** — core code must expose interfaces and extension points. Enterprise modules plug in; they never get baked into core.
+- **MEMORY.md lessons learned EVERY session** — before clearing context or ending a session, update MEMORY.md with lessons learned. This is not optional. If you learned something, write it down. If the user corrected you, write down what they said and why.
 
 ## Backburner Designs (review after migration is complete)
 
