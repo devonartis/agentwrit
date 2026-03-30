@@ -1,5 +1,6 @@
-// Package authz rate_mw.go provides a per-IP token-bucket rate limiter
-// for protecting sensitive endpoints (e.g. admin auth) against brute force.
+// rate_mw.go — per-key token-bucket rate limiter. Protects admin auth
+// (per-IP) and app auth (per-client_id) against brute force and credential
+// stuffing.
 package authz
 
 import (
@@ -81,11 +82,10 @@ func (rl *RateLimiter) Wrap(next http.Handler) http.Handler {
 	})
 }
 
-// WrapWithKeyExtractor wraps a handler with rate limiting using a custom key.
-// keyExtractor reads the request and returns the rate-limit key.
-// If the extractor returns an empty string, it falls back to client IP.
-// The extractor may modify r.Body (e.g. buffer then reset) so downstream
-// handlers still receive the full body.
+// WrapWithKeyExtractor rate-limits by a custom key instead of IP. Used on the
+// app auth endpoint (POST /v1/app/auth) where we rate-limit per client_id —
+// this prevents one compromised client from burning through the global rate
+// limit for everyone. Falls back to IP if the extractor returns empty.
 func (rl *RateLimiter) WrapWithKeyExtractor(next http.Handler, keyExtractor func(r *http.Request) string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := keyExtractor(r)

@@ -31,21 +31,21 @@
 
 | # | File | Symbols | Status |
 |---|------|---------|--------|
-| 8 | `internal/handler/val_hdl.go` | 6 | pending |
-| 9 | `internal/handler/reg_hdl.go` | 3 | pending |
-| 10 | `internal/handler/renew_hdl.go` | 4 | pending |
-| 11 | `internal/handler/revoke_hdl.go` | 5 | pending |
-| 12 | `internal/handler/release_hdl.go` | 3 | pending |
-| 13 | `internal/handler/challenge_hdl.go` | 4 | pending |
-| 14 | `internal/handler/audit_hdl.go` | 4 | pending |
-| 15 | `internal/handler/deleg_hdl.go` | 3 | pending |
-| 16 | `internal/handler/health_hdl.go` | 5 | pending |
-| 17 | `internal/handler/security_hdl.go` | 1 | pending |
-| 18 | `internal/handler/metrics_hdl.go` | 1 | pending |
-| 19 | `internal/handler/logging.go` | 4 | pending |
-| 20 | `internal/handler/doc.go` | 0 | pending |
-| 21 | `cmd/broker/main.go` | 3 | pending |
-| 22 | `cmd/broker/serve.go` | 3 | pending |
+| 8 | `internal/handler/val_hdl.go` | 6 | done — explains token introspection purpose for apps/resource servers |
+| 9 | `internal/handler/reg_hdl.go` | 3 | done — agent entry point, launch token flow |
+| 10 | `internal/handler/renew_hdl.go` | 4 | done — session extension, SEC-A1 TTL carry-forward |
+| 11 | `internal/handler/revoke_hdl.go` | 5 | done — admin kill switch, 4 revocation levels |
+| 12 | `internal/handler/release_hdl.go` | 3 | done — already clear (self-revocation) |
+| 13 | `internal/handler/challenge_hdl.go` | 4 | done — step 1 of registration flow |
+| 14 | `internal/handler/audit_hdl.go` | 4 | done — already clear |
+| 15 | `internal/handler/deleg_hdl.go` | 3 | done — scope attenuation, delegation chain provenance |
+| 16 | `internal/handler/health_hdl.go` | 5 | done — already clear |
+| 17 | `internal/handler/security_hdl.go` | 1 | done — already clear |
+| 18 | `internal/handler/metrics_hdl.go` | 1 | done — already clear |
+| 19 | `internal/handler/logging.go` | 4 | done — already clear |
+| 20 | `internal/handler/doc.go` | 0 | done — reorganized by audience (public/agent/admin) |
+| 21 | `cmd/broker/main.go` | 3 | done — already excellent route table |
+| 22 | `cmd/broker/serve.go` | 3 | done — timeout rationale, cipher suite reasoning |
 
 ## Chunk 3: Authorization & Revocation
 *Security-critical paths.*

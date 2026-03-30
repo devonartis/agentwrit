@@ -24,8 +24,9 @@ import (
 	"github.com/divineartis/agentauth/internal/obs"
 )
 
-// Event type constants used as the eventType argument to [AuditLog.Record].
-// Each constant corresponds to a specific broker operation.
+// Event type constants for the audit trail. These are the security-relevant
+// events that an auditor or SIEM would query. Auth failures and scope
+// violations are the ones that matter most for incident response.
 const (
 	EventAdminAuth               = "admin_auth"
 	EventAdminAuthFailed         = "admin_auth_failed"
