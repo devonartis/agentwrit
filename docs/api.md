@@ -365,7 +365,7 @@ curl -X POST http://localhost:8080/v1/register \
 
 #### POST /v1/token/renew
 
-Renew an existing token with fresh timestamps and a new JTI. The predecessor token is revoked before the replacement is issued. Renewal is atomic: the old JTI is invalidated even if issuance subsequently fails. The caller can safely retry.
+Renew an existing token with fresh timestamps and a new JTI. The original token's TTL is preserved — a token issued with 120s TTL renews to 120s, not the broker's DefaultTTL. The MaxTTL ceiling still applies. The predecessor token is revoked before the replacement is issued. Renewal is atomic: the old JTI is invalidated even if issuance subsequently fails. The caller can safely retry.
 
 **Auth:** Bearer token (validated by `ValMw`)
 

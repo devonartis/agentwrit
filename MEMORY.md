@@ -34,11 +34,9 @@ GitFlow: `main` → `develop` → `fix/*` or `feature/*` branches. Cherry-pick b
 
 ## Current State
 
-**Migration in progress — B5 merged, B6 is next (last batch).** B0-B5 all merged to develop. SecurityHeaders, MaxBytesBody, error sanitization all verified. LIVE-TEST-TEMPLATE improved with executive audience guidance.
+**Migration: B6 acceptance tests PASS — pending code review and merge (last batch).** B0-B5 merged. B6 on `fix/sec-a1` with all gates green and 4/4 acceptance stories PASS.
 
-**Current branch:** `develop` — clean. Next: `fix/sec-a1` for B6 (2 commits: TTL carry-forward on renewal, gates.sh regression).
-
-Use the `cherrypick-devflow` skill to run the migration. After B6 merge → post-migration cleanup, then switch to `devflow` for new feature development.
+**Current branch:** `fix/sec-a1` — ready for merge after code review. Then post-migration cleanup (Go module path update, final verification, remote swap), then switch to `devflow` for new feature development.
 
 ## Key Documents (in legacy agentauth repo)
 
@@ -59,17 +57,11 @@ Use the `cherrypick-devflow` skill to run the migration. After B6 merge → post
 | B3: SEC-L1 | Bind address, TLS enforcement, timeouts, weak secret denylist | `632b224` `6fa0198` `574d3b9` `cd09a34` `5489679` | **done** — merged |
 | B4: SEC-L2a | Token alg/kid validation, MaxTTL, revocation hardening | `8e63989` `0526c46` `c24e442` `67aeda7` `b78edb8` `ecb4c86` `078a674` `8366fa9` | **done** — 13/13 PASS, merged |
 | B5: SEC-L2b | Security headers, MaxBytesBody, error sanitization | `daf2995` `e592acc` `2857b3a` `247727c` `c5da6c4` | **done** — G1-G6 PASS, 5/5 acceptance PASS, 1 SKIP, merged |
-| B6: SEC-A1 + Gates | TTL bypass fix, gates regression | `9422e7c` `e395a15` | pending |
+| B6: SEC-A1 + Gates | TTL bypass fix, gates regression | `9422e7c` `e395a15` | **done** — G1-G6 PASS, 4/4 acceptance PASS, pending merge |
 
-## Tech Debt (carried forward from internal — relevant to core only)
+## Tech Debt
 
-| ID | What | Severity |
-|----|------|----------|
-| TD-001 | `app_rate_limited` audit event not emitted (rate limiter fires before handler) | Low |
-| TD-007 | Resilient logging — audit writes inline, no fallback on store failure | Medium |
-| TD-008 | Token predecessor not invalidated on renewal — two valid tokens exist | Medium |
-| TD-009 | JTI blocklist never pruned — memory grows indefinitely | Medium |
-| TD-010 | Admin TTL hardcoded — should be operator-configurable | Low |
+See `TECH-DEBT.md` at repo root for the full tech debt tracker.
 
 ## Cowork ↔ Claude Code Coordination
 
@@ -100,7 +92,7 @@ Each cherry-pick batch has acceptance tests in `tests/<batch-name>/`:
 | B3 | `tests/sec-l1/` | 12 stories |
 | B4 | `tests/sec-l2a/` | 13 stories (S1-S7, N1-N5, SEC1) |
 | B5 | `tests/sec-l2b/` | 6 stories (S1-S4,S6 + S5 skip) + 4 regression (R1-R4) |
-| B6 | TBD — must write before merge | TBD |
+| B6 | `tests/sec-a1/` | 4 stories (S1-S2, S3, R1) |
 
 ## Standing Rules
 
@@ -112,12 +104,39 @@ Each cherry-pick batch has acceptance tests in `tests/<batch-name>/`:
 - **Use `cherrypick-devflow` skill** for migration. Use `devflow` for new features after migration.
 - **Pluggable architecture** — core code must expose interfaces and extension points. Enterprise modules plug in; they never get baked into core.
 - **MEMORY.md lessons learned EVERY session** — before clearing context or ending a session, update MEMORY.md with lessons learned. This is not optional. If you learned something, write it down. If the user corrected you, write down what they said and why.
+- **Strong code comments on ALL code** — every function, handler, and type must have comments explaining what it does, who can call it (role/scope), why it exists, and its boundaries. See `.claude/rules/golang.md` for the full standard. Code must be self-documenting — if you have to read three other files to understand who can call a function, the comments are insufficient.
+- **Role model document required** — `docs/roles.md` defines who does what: Admin (operator), App (software managing agents), Agent (does work). All code and tests must align with these roles. See `TECH-DEBT.md` TD-012 for the gap. No acceptance test should be written without understanding the role model first.
 
 ## Backburner Designs (review after migration is complete)
 
 - **Acceptance test automation + verification** — `.plans/designs/acceptance-test-automation.md`. Born during B5: how to automate story evidence creation while maintaining template compliance, and how to verify the agent followed the template with a deterministic hook. The `integration.sh` script is a CI smoke test — it does NOT produce proper evidence files. Three options captured: review hook, verify-evidence skill, or a runner script that produces template-compliant evidence. Review once B6 is merged.
 
 ## Recent Lessons (last 3 sessions — older archived to MEMORY_ARCHIVE.md)
+
+### B6 Session (2026-03-30) — CRITICAL lessons learned
+
+**What went wrong — user corrections:**
+
+1. **Agent kept skipping banners on acceptance tests.** User had to stop me THREE times because I jumped straight to running curl commands without writing the Who/What/Why/How/Expected banner first. The template is non-negotiable. Banner goes IN the bash call, not as a separate step. Verdict comes AFTER seeing output, never pre-written.
+
+2. **Agent built the first acceptance test against the admin flow instead of the app flow.** User caught it: "why are we using launch-token from admin to check agents?" In production, APPS create launch tokens for agents, not admin. Admin registers apps, apps manage agents. The agent didn't know this because nothing in the code or docs explained the role model.
+
+3. **Agent called the handler ownership issue a "code smell" when it was actually a missing foundational document.** User walked me through why `admin:launch-tokens:*` exists (admin needs authority over launch tokens for revocation/oversight) and why admin creating agents is the wrong use of that scope. The agent kept downgrading the severity because it didn't understand the system's intent. User escalated: "you are writing code that you are not properly documenting the code nor giving app documentation."
+
+4. **Agent tried to fix test failures inline instead of running all tests first.** User corrected: "why are you not running acceptance tests all of them then we search on we fix afterwards it is a loop." Run everything, see what fails, then fix. Don't stop to debug after every failure.
+
+5. **Agent put tech debt in MEMORY.md.** User: "that is stupid we should have a TECH-DEBT.md." Then agent put it in `.plans/TECH-DEBT.md`. User: "that should be on the root not in the .plans folder." TECH-DEBT.md already existed at `.plans/` — agent didn't check first before trying to create a new file.
+
+6. **Agent wrote code comments that restated what the code does.** User corrected: "a person or agent can read the code by itself to know what it does." Comments must tell you what reading the code alone would NOT tell you: who calls it, why it exists, security boundaries, design history. If you have to read three other files to understand who can call a function, the comments are insufficient.
+
+**What we discovered — golden information:**
+
+- **Code comments are the interface between human intent and agent execution.** Multiple agent sessions wrote and reviewed code without flagging that the role model was undocumented. Each agent looked at the code, made assumptions, and moved on. Comments that explain roles and boundaries would have prevented every mistake in this session. Without them, agents compound wrong assumptions across sessions.
+- **If comments are strong, you can generate missing docs FROM the comments.** If comments are weak, you can't build docs, you can't build correct tests, and agents keep making the same mistakes. Strong comments → correct tests → correct docs. Weak comments → compounding errors.
+- **The three roles are: Admin (operator — manages apps, revokes, audits), App (software — manages its own agents within scope ceiling), Agent (does work with short-lived scoped tokens).** This was nowhere in the code or docs. Now in TECH-DEBT.md as TD-012 (CRITICAL) and partially in code comments on `tkn_svc.go`.
+- **`admin:launch-tokens:*` scope makes sense for oversight (list, inspect, revoke launch tokens) but the code lets admin CREATE launch tokens with no scope ceiling.** That's a design issue (TD-013), not a code smell. Admin-created agents have no AppID, no scope ceiling, no traceability.
+- **Regression unit tests belong BEFORE the gate suite**, not after. New Step 3 in cherrypick-devflow. The tests get included in G2 (unit tests gate), catching regressions before spending time on Docker builds and acceptance tests.
+- **Think through the test plan BEFORE writing code.** The agent kept jumping to curl commands, hitting wrong field names, wrong endpoints, wrong flows — all because it didn't verify the API contract first. Banner-first forces you to think about WHO does WHAT before typing a single command.
 
 ### B5 Acceptance Testing (2026-03-30) — CRITICAL lessons
 

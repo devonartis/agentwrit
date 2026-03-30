@@ -62,6 +62,58 @@ B0 removed all sidecar Go code and infrastructure but did NOT rewrite the user-f
 | TD-S14 | `docs/api/openapi.yaml` — 51 sidecar endpoint references | High | `docs/api/openapi.yaml` | OpenAPI spec still has all sidecar endpoints. Needs full rewrite to match core's broker-only API. |
 | TD-S15 | `.plans/cherry-pick/TESTING.md` — old secret `test-secret-minimum-32-characters-long` | Low | `.plans/cherry-pick/TESTING.md` (line 101) | Rejected at startup. Update to `live-test-secret-32bytes-long-ok` or remove. |
 
+## New — B6 (SEC-A1 + Gates)
+
+| ID | What | Severity | Files Affected | Notes |
+|----|------|----------|----------------|-------|
+| TD-011 | App launch-token endpoint registered by `AdminHdl`, not `AppHdl` — handler ownership mismatch | Medium | `internal/admin/admin_hdl.go:61-63` | App endpoint `POST /v1/app/launch-tokens` is wired in `AdminHdl.RegisterRoutes()`. Fix: move to `AppHdl.RegisterRoutes()` or extract shared `LaunchTokenHdl`. |
+| TD-012 | **MISSING: Role model documentation — who does what, which scopes, and why** | **CRITICAL** | `docs/` — new file needed | See detail below. Without this document, every agent that touches the code misunderstands the system. |
+| TD-013 | `POST /v1/admin/launch-tokens` lets admin CREATE agents — admin should only LIST/REVOKE launch tokens | High | `cmd/broker/main.go:257`, `internal/admin/admin_hdl.go:58-60` | See detail below. |
+| TD-014 | **Code comments audit — all handlers, services, and types need role/scope/boundary comments** | **CRITICAL** | All `internal/` packages | Every function, handler, and type must document: what it does, who can call it (role/scope), why it exists, and its boundaries. Current code has minimal Go doc comments that describe mechanics but not roles, scopes, or security boundaries. An agent reading only the source file cannot understand who calls what or why. Standard defined in `.claude/rules/golang.md`. |
+
+### TD-012 Detail: Missing Role Model Document
+
+**The problem:** There is no document that explains the roles, their scopes, and WHY each role has each capability. Multiple AI agent sessions have written code, reviewed code, and updated docs — and none flagged this gap. The result:
+
+- Acceptance tests get written against the wrong flow (admin creating agents instead of apps creating agents)
+- Code reviewers approve shared handlers between admin and app without questioning the boundary
+- `admin:launch-tokens:*` gets interpreted as "admin can create launch tokens" when it should mean "admin can oversee and revoke launch tokens"
+- Nobody understands the default roles of the apps
+
+**What the document must define:**
+
+| Role | Purpose | Scopes | CAN do | CANNOT do |
+|------|---------|--------|--------|-----------|
+| **Admin (Operator)** | Manages the system. Registers apps, revokes tokens, audits activity. | `admin:apps:*`, `admin:revoke:*`, `admin:audit:*`, `admin:launch-tokens:read` | Register/deregister apps, set scope ceilings, revoke any token/agent/task/chain, view audit trail, list/inspect launch tokens | Create launch tokens, launch agents, act as an app |
+| **App** | Registered software that manages its own agents within its scope ceiling. | `app:launch-tokens:*`, `app:agents:*`, `app:audit:read` | Create launch tokens (within ceiling), manage its own agents, read its own audit events | Revoke other apps' agents, register other apps, exceed its scope ceiling |
+| **Agent** | Does actual work with a short-lived, scope-attenuated token. | Task-specific (e.g., `read:data:*`) | Validate tokens, renew own token, delegate (scope attenuation only) | Escalate scope, extend TTL beyond original, access admin/app endpoints |
+
+**The production flow:**
+1. Admin registers an App (sets name, scope ceiling, max TTL)
+2. App authenticates via `POST /v1/app/auth` → gets app token
+3. App creates launch tokens via `POST /v1/app/launch-tokens` → scope must be within ceiling
+4. Agent registers using the launch token → gets short-lived scoped token
+5. Agent works, renews as needed (TTL preserved), delegates if needed
+6. Admin revokes if something goes wrong — can kill at token, agent, task, or chain level
+
+**Where this doc should live:** `docs/roles.md` or a new section in `docs/concepts.md`.
+
+### TD-013 Detail: Admin Should Not Create Agents
+
+The admin token (issued at `cmd/broker/main.go:255-258`) gets scope `admin:launch-tokens:*`. The handler at `POST /v1/admin/launch-tokens` uses `RequireScope("admin:launch-tokens:*")` and calls `handleCreateLaunchToken` — which CREATES a launch token with NO scope ceiling check (the ceiling check at line 152-170 only fires for `app:` subjects).
+
+This means admin can create launch tokens with ANY scopes, no ceiling, no AppID. Agents created from these tokens:
+- Have no app association (empty AppID)
+- Had no scope ceiling enforcement
+- Are not traceable to any app
+
+`admin:launch-tokens:*` should mean oversight (list, inspect, revoke launch tokens), NOT creation. Creating agents is the app's responsibility — that's where scope ceiling enforcement happens.
+
+**Fix options:**
+1. Remove `POST /v1/admin/launch-tokens` entirely — admin manages apps, apps manage agents
+2. Restrict to dev mode only — useful for bootstrapping/testing, blocked in production
+3. Require an app_id parameter — admin creates on behalf of an app, ceiling still enforced
+
 ---
 
 ## When to Fix

@@ -52,7 +52,33 @@ If conflicts occur, resolve using the Feature Inventory's "Modified Files" table
 
 Document every conflict resolution: which file, what was kept, what was dropped.
 
-### 3. Verify
+**Code comments:** Every function, handler, or type touched during the cherry-pick MUST have strong comments per `.claude/rules/golang.md`. This means: what it does, who can call it (role/scope), why it exists, and its boundaries. If a cherry-picked commit adds or modifies a handler, the comment must explain the role model — which role calls this endpoint, what scope is required, and what security constraints apply. Do not defer this — write the comments during the pick, not later.
+
+### 3. Regression Unit Tests
+
+After cherry-picking, assess whether the batch changes **existing behavior** (not just adds new code). If any commit modifies how an existing function works, write targeted regression unit tests before running the gates.
+
+**When to write regression tests:**
+- A function's behavior changes (e.g., Renew now preserves TTL instead of falling back to default)
+- An existing code path gains new validation or guards
+- Error handling changes (different error returned, new failure modes)
+
+**When NOT to write regression tests:**
+- Purely additive changes (new file, new function, new CLI subcommand)
+- Shell script / infrastructure changes
+- Documentation-only commits
+
+**How to write them:**
+- Table-driven with `t.Run` subtests (per `.claude/rules/golang.md`)
+- Cover: the new behavior works, the old bug is fixed, edge cases, interaction with existing guards (e.g., MaxTTL clamp)
+- Place in the same `_test.go` file as the function under test
+- Add a section comment: `// --- B<N> regression: <description> ---`
+
+**Run them before proceeding:** `go test ./<package>/ -run <TestName> -v`
+
+If any test fails, the cherry-pick has a problem. Fix before continuing.
+
+### 4. Verify
 
 Run the automated test script. This is the single gate — it covers compile, unit tests,
 contamination, Docker build/start, smoke test, and batch-specific checks:
@@ -72,7 +98,7 @@ to `.plans/cherry-pick/TESTING.md` automatically.
 
 **Hard stop if any gate FAILs.** Fix the issue, re-run, and do not proceed until all gates are green.
 
-### 4. Update Application Docs
+### 5. Update Application Docs
 
 **This is not optional.** B0-B4 deferred doc updates caused 54 findings (8 CRITICAL). Every batch that changes behavior MUST update the application docs in the same branch.
 
@@ -89,9 +115,14 @@ For each file, ask: "Does this batch change anything this doc describes?" If yes
 
 **Verification:** After updating, read each changed doc section and verify it matches the actual code. Do not trust sub-agent doc updates blindly — spot-check against the handler structs and middleware code using jcodemunch. The B4 doc disaster happened because no one verified the doc changes matched reality.
 
-### 5. Acceptance Tests
+**Code comments check:** Verify that every function, handler, and type touched by this batch has strong comments per `.claude/rules/golang.md`. Check: who can call it (role/scope), why it exists, and security boundaries. If comments are missing or mechanics-only ("handles X"), fix them now. This is a hard gate — do not proceed to acceptance tests with undocumented code.
 
-Follow `tests/LIVE-TEST-TEMPLATE.md` exactly. Key rules:
+### 6. Acceptance Tests
+
+**Before writing any stories, read the examples reference:**
+Read `references/acceptance-examples.md` (in this skill's directory) for real examples of well-written stories from this project. It shows the expected quality bar for banners, personas, and verdicts — with good/bad comparisons and common mistakes.
+
+Then follow `tests/LIVE-TEST-TEMPLATE.md` for the full process. Key rules:
 
 - **Individual story files** — one `story-*.md` per story, not a bulk script dump
 - **Executive-readable banners** — Who/What/Why/How/Expected must make sense to a non-technical reader
@@ -103,13 +134,13 @@ Follow `tests/LIVE-TEST-TEMPLATE.md` exactly. Key rules:
 
 If the batch has existing acceptance tests in `agentauth/tests/<batch>/`, adapt them for core (remove OIDC/HITL/sidecar, fix field names, fix registration flow to use challenge-response). Do NOT copy legacy tests without auditing every field name against the actual handler structs.
 
-### 6. Review
+### 7. Review
 
 Delegate to a `code-reviewer` sub-agent: compare what the batch was supposed to add (from the guide) against what actually landed (`git diff HEAD~<N>..HEAD`). Flag anything that doesn't match or shouldn't be there.
 
 Save to `.plans/cherry-pick/B<N>-review.md`.
 
-### 7. Record
+### 8. Record
 
 - Save evidence to `.plans/cherry-pick/B<N>-evidence.md` (terminal output from build, tests, contamination check, spot-check)
 - Update `MEMORY.md` batch tracker — mark batch done, add lessons learned

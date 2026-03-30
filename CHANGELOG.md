@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — B6 (SEC-A1 + Gates): TTL Carry-Forward on Renewal
+
+- **TTL carry-forward on renewal** (`internal/token/tkn_svc.go`): Renew now preserves the original token's TTL instead of falling back to DefaultTTL. Computes `originalTTL = Exp - Iat` from the predecessor token and passes it to Issue. MaxTTL clamp still applies. Closes a privilege escalation where an agent issued with TTL=120 could renew and get TTL=300 (the default).
+- **gates.sh regression subcommand** (`scripts/gates.sh`): New `regression` mode discovers and runs all `tests/*/regression.sh` scripts, reports per-phase pass/fail summary.
+- **Regression unit tests**: `TestRenew_PreservesTTL` with 5 subtests — custom TTL preserved, default TTL preserved, MaxTTL clamps, under-limit unchanged, escalation-to-default blocked.
+
+#### Cherry-Pick Details
+
+- Source: 2 commits from `agentauth` legacy repo (B6 batch — final batch)
+- Conflicts resolved: `tkn_svc.go` — incoming commit had `AppID`, `AppName`, `OriginalPrincipal` fields not present in core's `IssueReq` struct. Kept TTL fix, dropped three add-on fields.
+- Contamination: CLEAN
+
+#### Tech Debt Discovered
+
+- TD-012 (CRITICAL): Missing role model documentation — no doc explains Admin vs App vs Agent roles, scopes, or boundaries
+- TD-013 (HIGH): `POST /v1/admin/launch-tokens` lets admin create agents without scope ceiling enforcement
+- TD-014 (CRITICAL): Code comments across `internal/` don't explain roles, scopes, or security boundaries
+
 ### Added — B5 (SEC-L2b): HTTP Security Hardening
 
 - **SecurityHeaders middleware** (`internal/handler/security_hdl.go`): Sets `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`, `X-Frame-Options: DENY` on all responses. Conditionally adds HSTS (`Strict-Transport-Security: max-age=63072000; includeSubDomains`) when TLS mode is `tls` or `mtls`. Handlers can override `Cache-Control` (last-writer-wins).

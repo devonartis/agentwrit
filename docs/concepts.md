@@ -184,7 +184,7 @@ stateDiagram-v2
 - Scope format: `action:resource:identifier` with wildcard `*` support in the identifier position
 - Default TTL of 300 seconds (5 minutes), configurable via `AA_DEFAULT_TTL`
 - Scope attenuation enforced at registration, delegation, and app-authenticated launch token creation
-- Token renewal via `POST /v1/token/renew` issues fresh timestamps while preserving identity and scope
+- Token renewal via `POST /v1/token/renew` issues fresh timestamps while preserving identity, scope, and original TTL (clamped by MaxTTL)
 - Token release via `POST /v1/token/release` signals task completion (optional but recommended for audit clarity)
 
 ---
