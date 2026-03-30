@@ -396,7 +396,7 @@ flowchart LR
 
 1. **Hybrid persistence.** Critical state (audit events, revocations, app registrations) is persisted to SQLite via write-through from in-memory structures. Transient state (nonces, agent records, launch tokens) lives in memory behind `sync.RWMutex` and is cleared on restart. This design ensures the audit trail and revocation list survive broker restarts while keeping the hot path fast.
 
-2. **Fresh Ed25519 keys every startup.** The broker generates a new signing key pair on each start via `crypto/rand`. All previously issued tokens become unverifiable. This is intentional -- long-lived tokens are an anti-pattern for ephemeral credentialing.
+2. **Persistent Ed25519 signing key.** On first startup, the broker generates an Ed25519 key pair via `crypto/rand` and writes it to `AA_SIGNING_KEY_PATH` (default `./signing.key`) in PKCS8 PEM format with `0600` permissions. On subsequent startups, the existing key is loaded from disk. Tokens remain valid across restarts as long as the key file persists. Delete the key file to force key rotation (all previously issued tokens become unverifiable). See `internal/keystore` for implementation.
 
 3. **Scope attenuation is one-way.** Scopes can only narrow, never expand. Enforced at registration (requested vs. launch token ceiling), delegation (delegated vs. delegator scope), and token exchange (requested vs. app ceiling entries).
 

@@ -267,7 +267,7 @@ paths:
           in: query
           schema:
             type: integer
-            default: 50
+            default: 100
           description: Maximum number of events to return
         - name: offset
           in: query
@@ -631,17 +631,31 @@ components:
 
     RegisterRequest:
       type: object
-      required: [launch_token, nonce_signature, public_key]
+      required: [launch_token, nonce, public_key, signature, orch_id, task_id, requested_scope]
       properties:
         launch_token:
           type: string
           description: Launch token issued by admin
-        nonce_signature:
+        nonce:
           type: string
-          description: Base64-encoded Ed25519 signature of the nonce
+          description: Hex-encoded nonce from GET /v1/challenge
         public_key:
           type: string
           description: Base64-encoded Ed25519 public key
+        signature:
+          type: string
+          description: Base64-encoded Ed25519 signature of the hex-decoded nonce bytes
+        orch_id:
+          type: string
+          description: Orchestrator identifier
+        task_id:
+          type: string
+          description: Task identifier
+        requested_scope:
+          type: array
+          items:
+            type: string
+          description: Requested scopes (must be subset of launch token ceiling)
 
     RegisterResponse:
       type: object
@@ -743,8 +757,11 @@ components:
 
     DelegateRequest:
       type: object
-      required: [scope]
+      required: [delegate_to, scope]
       properties:
+        delegate_to:
+          type: string
+          description: SPIFFE ID of the agent to delegate to
         scope:
           type: array
           items:
@@ -752,6 +769,27 @@ components:
           description: >
             Requested scopes for the delegation token. Each scope must be
             a subset of the caller's scopes.
+        ttl:
+          type: integer
+          description: Optional TTL override in seconds
+
+    DelegRecord:
+      type: object
+      properties:
+        agent:
+          type: string
+          description: SPIFFE ID of the delegator
+        scope:
+          type: array
+          items:
+            type: string
+          description: Scopes at this delegation level
+        delegated_at:
+          type: string
+          description: RFC3339 timestamp of delegation
+        signature:
+          type: string
+          description: Ed25519 signature of the delegation
 
     DelegateResponse:
       type: object
@@ -766,10 +804,11 @@ components:
         delegation_chain:
           type: array
           items:
-            type: string
+            $ref: "#/components/schemas/DelegRecord"
           description: >
-            Chain of delegation JTIs showing the ancestry of this token.
-            Useful for auditing and revocation.
+            Chain of delegation records showing the ancestry of this token.
+            Each entry contains the delegator's agent ID, scopes, timestamp,
+            and cryptographic signature.
 
     # =========================================================================
     # Revocation
@@ -1082,14 +1121,14 @@ components:
       properties:
         status:
           type: string
-          enum: [healthy, degraded, unhealthy]
-          description: Overall broker status
+          enum: [ok]
+          description: Overall broker status (always "ok")
         version:
           type: string
-          description: Broker version
+          description: Broker version (e.g. "2.0.0")
         uptime:
-          type: string
-          description: Broker uptime duration
+          type: integer
+          description: Broker uptime in seconds
         db_connected:
           type: boolean
           description: Whether the database is connected

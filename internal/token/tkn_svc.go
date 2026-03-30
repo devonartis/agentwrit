@@ -211,10 +211,10 @@ func (s *TknSvc) Verify(tokenStr string) (*TknClaims, error) {
 	return &claims, nil
 }
 
-// Renew verifies an existing token and, if valid, issues a replacement
-// token with the same subject, scope, task, orchestration, and delegation
-// chain but fresh timestamps and a new JTI. The original token remains
-// valid until its own expiry (or revocation).
+// Renew verifies an existing token and, if valid, revokes the predecessor
+// by JTI then issues a replacement token with the same subject, scope,
+// task, orchestration, and delegation chain but fresh timestamps and a new
+// JTI. The predecessor is invalidated before the new token is issued.
 func (s *TknSvc) Renew(tokenStr string) (*IssueResp, error) {
 	claims, err := s.Verify(tokenStr)
 	if err != nil {

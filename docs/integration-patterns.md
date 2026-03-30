@@ -110,13 +110,14 @@ sequenceDiagram
 
 ```python
 import os
+import base64
+import binascii
 import requests
 import json
 from typing import Dict, Any, List
-import hmac
-import hashlib
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal:8080")
+BROKER = os.environ.get("AACTL_BROKER_URL", "https://broker.internal:8080")
 LAUNCH_TOKEN = os.environ.get("RESEARCH_AGENT_LAUNCH_TOKEN", "lt_...")
 TASK_ID = "analysis-2026-0215-001"
 
@@ -126,29 +127,32 @@ class ResearchAgent:
     def __init__(self):
         self.token = None
         self.agent_id = None
+        self.private_key = Ed25519PrivateKey.generate()
 
     def bootstrap(self) -> bool:
-        """Register with broker using launch token."""
+        """Register with broker using Ed25519 challenge-response."""
         try:
             # Step 1: Get challenge nonce
             challenge_resp = requests.get(f"{BROKER}/v1/challenge", timeout=10)
             challenge_resp.raise_for_status()
             nonce = challenge_resp.json()["nonce"]
 
-            # Step 2: Sign the nonce with launch token
-            signature = hmac.new(
-                LAUNCH_TOKEN.encode(),
-                nonce.encode(),
-                hashlib.sha256
-            ).hexdigest()
+            # Step 2: Sign the hex-decoded nonce bytes with Ed25519
+            nonce_bytes = binascii.unhexlify(nonce)
+            signature = base64.b64encode(self.private_key.sign(nonce_bytes)).decode()
+            public_key = base64.b64encode(
+                self.private_key.public_key().public_bytes_raw()
+            ).decode()
 
             # Step 3: Register agent
             resp = requests.post(f"{BROKER}/v1/register", json={
-                "agent_name": "research-agent",
-                "task_id": TASK_ID,
+                "launch_token": LAUNCH_TOKEN,
                 "nonce": nonce,
+                "public_key": public_key,
                 "signature": signature,
-                "launch_token": LAUNCH_TOKEN
+                "orch_id": "orch-research-001",
+                "task_id": TASK_ID,
+                "requested_scope": ["read:data:*"],
             }, timeout=10)
             resp.raise_for_status()
             data = resp.json()
@@ -1363,8 +1367,7 @@ class EmergencyRevocationManager:
         """Authenticate as operator using admin secret."""
         try:
             resp = requests.post(f"{self.broker}/v1/admin/auth", json={
-                "client_id": "operator",
-                "client_secret": self.admin_secret
+                "secret": self.admin_secret
             }, timeout=10)
             resp.raise_for_status()
 
@@ -1739,8 +1742,7 @@ class OperatorLaunchTokenIssuer:
         """Authenticate as operator."""
         try:
             resp = requests.post(f"{self.broker}/v1/admin/auth", json={
-                "client_id": "operator",
-                "client_secret": self.admin_secret
+                "secret": self.admin_secret
             }, timeout=10)
             resp.raise_for_status()
             data = resp.json()

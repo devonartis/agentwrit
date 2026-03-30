@@ -75,8 +75,8 @@ aactl init --mode prod --config-path /etc/agentauth/config.yaml
 ### Configure
 
 ```bash
-export AGENTAUTH_BROKER_URL=http://localhost:8080
-export AGENTAUTH_ADMIN_SECRET=change-me-in-production
+export AACTL_BROKER_URL=http://localhost:8080
+export AACTL_ADMIN_SECRET=my-secure-admin-secret-here
 ```
 
 ### Quick reference
@@ -136,7 +136,7 @@ All broker configuration is via environment variables prefixed `AA_`. Configurat
 
 - **`AA_ADMIN_SECRET`** is the root of trust for the entire system. Anyone who knows this value can create launch tokens, revoke credentials, and read the audit trail. Treat it like a root password.
 - **`AA_SEED_TOKENS`** bypasses the normal bootstrap flow by printing tokens to stdout. This is for local development and testing only.
-- The broker generates a **fresh Ed25519 signing key pair on every startup**. This means all previously issued tokens become invalid after a broker restart. This is by design -- there is no persistent key material to protect.
+- The broker **persists its Ed25519 signing key** to disk at `AA_SIGNING_KEY_PATH` (default `./signing.key`). A new key is generated only on first startup. Tokens remain valid across restarts. To rotate the key, delete the file and restart — all previously issued tokens become invalid. Protect the key file as you would any private key.
 
 ---
 
@@ -260,7 +260,7 @@ volumes:
 
 On startup, the broker loads all existing audit events from SQLite to rebuild the hash chain in memory. The number of events loaded is logged and exposed as the `agentauth_audit_events_loaded` Prometheus gauge.
 
-**Note:** The broker still generates a fresh Ed25519 signing key pair on every startup. Audit events persist, but previously issued tokens remain invalid after a restart. If you need tokens to survive restarts, that requires a separate key persistence mechanism (not currently supported).
+**Note:** The broker persists its Ed25519 signing key to `AA_SIGNING_KEY_PATH`. Both audit events and signing keys survive restarts, so previously issued tokens remain valid. To force key rotation, delete the signing key file and restart.
 
 ---
 

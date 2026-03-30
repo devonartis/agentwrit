@@ -45,58 +45,56 @@ Enterprise-grade step-by-step instructions for AgentAuth workflows, organized by
 
 Register an agent with the broker using a launch token. The launch token is provided by your operator and grants permission to register a single agent.
 
-**What's happening:** The registration flow is challenge-response based. You request a challenge (nonce) from the broker, sign it with the launch token, and return the signature along with your agent's public key. The broker validates the signature and issues your agent an access token.
+**What's happening:** The registration flow is challenge-response based. You request a challenge nonce from the broker, generate an Ed25519 key pair, sign the hex-decoded nonce bytes with your private key, and submit the signature plus your base64-encoded public key. The broker validates the Ed25519 signature and issues your agent an access token.
 
 **Python example:**
 
 ```python
 import requests
-import json
-import hmac
-import hashlib
+import base64
+import binascii
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 BROKER = "http://localhost:8080"
 
-def register_agent(broker, launch_token, agent_name, task_id=None):
-    """Register an agent with the broker."""
-    # Step 1: Get a challenge nonce
+def register_agent(broker, launch_token, orch_id, task_id, requested_scope):
+    """Register an agent with the broker using Ed25519 challenge-response."""
+    # Step 1: Generate an Ed25519 key pair
+    private_key = Ed25519PrivateKey.generate()
+    public_key_bytes = private_key.public_key().public_bytes_raw()
+    public_key_b64 = base64.b64encode(public_key_bytes).decode()
+
+    # Step 2: Get a challenge nonce from the broker
     challenge_resp = requests.get(f"{broker}/v1/challenge")
     challenge_resp.raise_for_status()
-    challenge_data = challenge_resp.json()
-    nonce = challenge_data["nonce"]
+    nonce = challenge_resp.json()["nonce"]
 
-    # Step 2: Sign the nonce with the launch token
-    signature = hmac.new(
-        launch_token.encode(),
-        nonce.encode(),
-        hashlib.sha256
-    ).hexdigest()
+    # Step 3: Sign the hex-decoded nonce bytes with Ed25519
+    nonce_bytes = binascii.unhexlify(nonce)
+    signature = private_key.sign(nonce_bytes)
+    signature_b64 = base64.b64encode(signature).decode()
 
-    # Step 3: Register with the broker
-    reg_payload = {
-        "agent_name": agent_name,
-        "nonce": nonce,
-        "signature": signature,
+    # Step 4: Register with the broker
+    reg_resp = requests.post(f"{broker}/v1/register", json={
         "launch_token": launch_token,
-    }
-    if task_id:
-        reg_payload["task_id"] = task_id
-
-    reg_resp = requests.post(
-        f"{broker}/v1/register",
-        json=reg_payload
-    )
+        "nonce": nonce,
+        "public_key": public_key_b64,
+        "signature": signature_b64,
+        "orch_id": orch_id,
+        "task_id": task_id,
+        "requested_scope": requested_scope,
+    })
     reg_resp.raise_for_status()
     return reg_resp.json()
 
 # Register agent
 try:
-    launch_token = "launch_token_from_operator"
     data = register_agent(
         BROKER,
-        launch_token=launch_token,
-        agent_name="data-processor",
-        task_id="task-analyze-q4"
+        launch_token="launch_token_from_operator",
+        orch_id="orch-pipeline-001",
+        task_id="task-analyze-q4",
+        requested_scope=["read:data:*"],
     )
 
     token = data["access_token"]
@@ -110,7 +108,7 @@ except requests.exceptions.HTTPError as e:
     print(f"Registration failed: {e.response.status_code} - {e.response.text}")
 ```
 
-**Expected response (201 Created):**
+**Expected response (200 OK):**
 
 ```json
 {
@@ -622,8 +620,8 @@ manager.stop();
 
 | Status | Meaning | Action |
 |--------|---------|--------|
-| 401 | Token expired | Re-acquire via `POST /v1/token` |
-| 403 | Token revoked | Re-acquire via `POST /v1/token`; investigate with operator |
+| 401 | Token expired | Renew via `POST /v1/token/renew` or re-register via `POST /v1/register` |
+| 403 | Token revoked | Re-register via `POST /v1/register`; investigate with operator |
 | 502 | Broker unreachable | Retry with exponential backoff |
 | 503 | Broker unavailable | Retry with exponential backoff; use stale token if available locally |
 
@@ -1060,10 +1058,11 @@ Every admin operation requires a Bearer token obtained from the admin auth endpo
 
 **Using aactl (recommended):**
 
-aactl reads `AA_ADMIN_SECRET` from environment variables and authenticates automatically before every command. No explicit login step is needed:
+aactl reads `AACTL_ADMIN_SECRET` and `AACTL_BROKER_URL` from environment variables and authenticates automatically before every command. No explicit login step is needed:
 
 ```bash
-export AA_ADMIN_SECRET=change-me-in-production
+export AACTL_BROKER_URL=http://localhost:8080
+export AACTL_ADMIN_SECRET=my-secure-admin-secret-here
 
 # aactl then auto-authenticates on each invocation
 aactl app list
@@ -1076,7 +1075,7 @@ aactl app list
 set -e
 
 BROKER="http://localhost:8080"
-ADMIN_SECRET="change-me-in-production"
+ADMIN_SECRET="my-secure-admin-secret-here"
 
 # Get admin token
 ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
@@ -2063,7 +2062,7 @@ In a security incident, immediately revoke compromised tokens or all tokens for 
 set -e
 
 BROKER="http://localhost:8080"
-ADMIN_SECRET="change-me-in-production"
+ADMIN_SECRET="my-secure-admin-secret-here"
 
 # EMERGENCY: Authenticate as admin
 ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \

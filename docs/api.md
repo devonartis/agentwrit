@@ -323,7 +323,7 @@ curl -X POST http://localhost:8080/v1/register \
 
 #### POST /v1/token/renew
 
-Renew an existing token with fresh timestamps and a new JTI. The original token remains valid until its own expiry.
+Renew an existing token with fresh timestamps and a new JTI. The predecessor token is revoked before the replacement is issued. Renewal is atomic: the old JTI is invalidated even if issuance subsequently fails. The caller can safely retry.
 
 **Auth:** Bearer token (validated by `ValMw`)
 
@@ -647,71 +647,65 @@ curl "http://localhost:8080/v1/audit/events?event_type=agent_registered&limit=10
 
 ---
 
-### App Management Endpoints (Bearer + admin scope required)
+### App Management Endpoints (Bearer + `admin:launch-tokens:*` scope)
+
+All app management endpoints require a Bearer token with `admin:launch-tokens:*` scope.
 
 ---
 
 #### POST /v1/admin/apps
 
-Create a new registered application.
+Register a new application. The broker generates a `client_id` and `client_secret` automatically.
 
-**Auth:** Bearer token with `admin:apps:create` scope
+**Auth:** Bearer token with `admin:launch-tokens:*` scope
 
 **Request body:**
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `name` | string | Yes | Application name |
-| `client_id` | string | Yes | Unique client identifier |
-| `description` | string | No | Application description |
+| `scopes` | string[] | Yes | Scope ceiling for this app's tokens |
+| `token_ttl` | int | No | App JWT TTL in seconds (default: `AA_APP_TOKEN_TTL`, typically 1800) |
 
-**Response 201:**
+**Response 200:**
 
 | Field | Type | Description |
 |---|---|---|
-| `id` | string | Application ID |
-| `name` | string | Application name |
-| `client_id` | string | Client identifier |
-| `client_secret` | string | Generated secret (returned only once) |
-| `created_at` | string | RFC3339 creation timestamp |
+| `app_id` | string | Application ID (UUID) |
+| `client_id` | string | Generated client identifier |
+| `client_secret` | string | Generated secret (**returned only once**) |
+| `scopes` | string[] | Scope ceiling |
+| `token_ttl` | int | Configured token TTL in seconds |
 
 **Error responses:**
 
 | Status | Type | Condition |
 |---|---|---|
-| 400 | `invalid_request` | Missing required fields or invalid format |
+| 400 | `invalid_request` | Missing `name` or `scopes` |
+| 400 | `invalid_ttl` | `token_ttl` is zero or negative |
 | 401 | `unauthorized` | Missing or invalid Bearer token |
-| 403 | `insufficient_scope` | Token lacks required scope |
-| 409 | `conflict` | Client ID already exists |
-| 500 | `internal_error` | Application creation failed |
+| 403 | `insufficient_scope` | Token lacks `admin:launch-tokens:*` scope |
 
 ```bash
 curl -X POST http://localhost:8080/v1/admin/apps \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
-  -d '{"name": "my-app", "client_id": "app-001"}'
+  -d '{"name": "my-app", "scopes": ["read:data:*"], "token_ttl": 1800}'
 ```
 
 ---
 
 #### GET /v1/admin/apps
 
-List all registered applications.
+List all registered applications. Returns all apps (no pagination).
 
-**Auth:** Bearer token with `admin:apps:read` scope
-
-**Query parameters:**
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `limit` | int | 100 | Max applications to return |
-| `offset` | int | 0 | Pagination offset |
+**Auth:** Bearer token with `admin:launch-tokens:*` scope
 
 **Response 200:**
 
 | Field | Type | Description |
 |---|---|---|
-| `apps` | App[] | Array of applications |
+| `apps` | App[] | Array of application objects |
 | `total` | int | Total application count |
 
 **Error responses:**
@@ -719,10 +713,10 @@ List all registered applications.
 | Status | Type | Condition |
 |---|---|---|
 | 401 | `unauthorized` | Missing or invalid Bearer token |
-| 403 | `insufficient_scope` | Token lacks required scope |
+| 403 | `insufficient_scope` | Token lacks `admin:launch-tokens:*` scope |
 
 ```bash
-curl "http://localhost:8080/v1/admin/apps?limit=10" \
+curl http://localhost:8080/v1/admin/apps \
   -H "Authorization: Bearer <admin-token>"
 ```
 
@@ -730,18 +724,18 @@ curl "http://localhost:8080/v1/admin/apps?limit=10" \
 
 #### GET /v1/admin/apps/{id}
 
-Get details of a specific application.
+Get details of a specific application (without `client_secret`).
 
-**Auth:** Bearer token with `admin:apps:read` scope
+**Auth:** Bearer token with `admin:launch-tokens:*` scope
 
-**Response 200:** Application details (without client_secret)
+**Response 200:** Application object with all fields except `client_secret`.
 
 **Error responses:**
 
 | Status | Type | Condition |
 |---|---|---|
 | 401 | `unauthorized` | Missing or invalid Bearer token |
-| 403 | `insufficient_scope` | Token lacks required scope |
+| 403 | `insufficient_scope` | Token lacks `admin:launch-tokens:*` scope |
 | 404 | `not_found` | Application not found |
 
 ```bash
@@ -753,54 +747,59 @@ curl http://localhost:8080/v1/admin/apps/{id} \
 
 #### PUT /v1/admin/apps/{id}
 
-Update an application.
+Update an application's scope ceiling or token TTL.
 
-**Auth:** Bearer token with `admin:apps:update` scope
+**Auth:** Bearer token with `admin:launch-tokens:*` scope
 
 **Request body:**
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `name` | string | No | New application name |
-| `description` | string | No | New description |
+| `scopes` | string[] | No | New scope ceiling |
+| `token_ttl` | int | No | New token TTL in seconds |
 
-**Response 200:** Updated application details
+**Response 200:** Updated application object.
 
 **Error responses:**
 
 | Status | Type | Condition |
 |---|---|---|
 | 400 | `invalid_request` | Malformed request |
+| 400 | `invalid_ttl` | `token_ttl` is zero or negative |
 | 401 | `unauthorized` | Missing or invalid Bearer token |
-| 403 | `insufficient_scope` | Token lacks required scope |
+| 403 | `insufficient_scope` | Token lacks `admin:launch-tokens:*` scope |
 | 404 | `not_found` | Application not found |
-| 500 | `internal_error` | Update failed |
 
 ```bash
 curl -X PUT http://localhost:8080/v1/admin/apps/{id} \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
-  -d '{"name": "updated-name"}'
+  -d '{"scopes": ["read:data:*", "write:data:reports"], "token_ttl": 3600}'
 ```
 
 ---
 
 #### DELETE /v1/admin/apps/{id}
 
-Delete an application.
+Deregister an application.
 
-**Auth:** Bearer token with `admin:apps:delete` scope
+**Auth:** Bearer token with `admin:launch-tokens:*` scope
 
-**Response 204:** No Content (success)
+**Response 200:**
+
+| Field | Type | Description |
+|---|---|---|
+| `app_id` | string | Application ID |
+| `status` | string | Always `"inactive"` |
+| `deregistered_at` | string | RFC3339 deregistration timestamp |
 
 **Error responses:**
 
 | Status | Type | Condition |
 |---|---|---|
 | 401 | `unauthorized` | Missing or invalid Bearer token |
-| 403 | `insufficient_scope` | Token lacks required scope |
+| 403 | `insufficient_scope` | Token lacks `admin:launch-tokens:*` scope |
 | 404 | `not_found` | Application not found |
-| 500 | `internal_error` | Deletion failed |
 
 ```bash
 curl -X DELETE http://localhost:8080/v1/admin/apps/{id} \
@@ -813,7 +812,7 @@ curl -X DELETE http://localhost:8080/v1/admin/apps/{id} \
 
 Authenticate as an application using client credentials.
 
-**Auth:** None (rate-limited: 5 req/s, burst 10)
+**Auth:** None (rate-limited: 10 req/min per client_id, burst 3)
 
 **Request body:**
 
@@ -826,10 +825,10 @@ Authenticate as an application using client credentials.
 
 | Field | Type | Description |
 |---|---|---|
-| `access_token` | string | App JWT (TTL 300s) |
-| `expires_in` | int | Always 300 |
+| `access_token` | string | App JWT (TTL = app's configured `token_ttl`, default 1800s) |
+| `expires_in` | int | Token lifetime in seconds |
 | `token_type` | string | Always `"Bearer"` |
-| `scopes` | string[] | Granted scopes |
+| `scopes` | string[] | Fixed operational scopes: `["app:launch-tokens:*", "app:agents:*", "app:audit:read"]` |
 
 **Error responses:**
 
@@ -848,9 +847,9 @@ curl -X POST http://localhost:8080/v1/app/auth \
 ```json
 {
   "access_token": "eyJ...",
-  "expires_in": 300,
+  "expires_in": 1800,
   "token_type": "Bearer",
-  "scopes": ["read:data:*"]
+  "scopes": ["app:launch-tokens:*", "app:agents:*", "app:audit:read"]
 }
 ```
 

@@ -416,10 +416,12 @@ aactl init --mode prod --config-path /path/to/config.yaml
 This creates a configuration file with a bcrypt-hashed admin secret. Set `AA_CONFIG_PATH` to point to this file:
 
 ```bash
-export AA_CONFIG_PATH="/path/to/config.yaml"
-export AA_ADMIN_SECRET=""  # Will be read from config file
+export AA_CONFIG_PATH="/path/to/config"
+unset AA_ADMIN_SECRET  # Must be UNSET (not empty) to fall through to config file
 go run ./cmd/broker
 ```
+
+> **Warning:** Do not set `AA_ADMIN_SECRET=""` — an empty string is on the denylist and will cause the broker to exit. Leave the variable **unset** to let the config file provide the secret.
 
 2. If the secret is correct but doesn't match, verify the `AA_ADMIN_SECRET` environment variable is set on the broker:
 
