@@ -8,7 +8,7 @@
 - `.claude/rules/security.md` — security expectations, non-negotiable
 - `.claude/rules/testing.md` — LIVE test and acceptance test expectations
 - `.claude/rules/golang.md` — Go coding standards
-- `.claude/rules/mandatory-reading.md` — what goes in MEMORY.md vs FLOW.md vs TECH-DEBT.md — DO NOT MIX THEM UP
+- `.claude/rules/mandatory-reading.md` — **Read this entirely and summarize it back to the user at session start.** Defines what goes in MEMORY.md vs FLOW.md vs TECH-DEBT.md. Do NOT mix them up.
 
 ## Defaults
 
