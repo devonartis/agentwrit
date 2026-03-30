@@ -1,6 +1,6 @@
-# Project Artifacts — What Goes Where
+# Mandatory Reading — Project Files
 
-**Do NOT mix these up. Each file has ONE purpose.**
+**Do NOT mix these up. Each file has ONE purpose. Read this EVERY session.**
 
 ## MEMORY.md — Lessons Learned, Session Thoughts, Golden Knowledge
 - **Lessons learned** — what went wrong, what the user corrected, what was discovered. Written honestly and in detail: "agent did X wrong, user corrected with Y, because Z." These are golden — they feed blog posts, newsletter content, and future session context.
