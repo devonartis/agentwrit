@@ -10,9 +10,13 @@ AGENTS.md
 .claude/
 !.claude/skills/
 .active_module
+/.agents/
 
 # Internal QA reports
 docs/QA_REPORT_*.md
+/audit/
+/AgentAuth_*.docx
+/tests/*/evidence/DOC-AUDIT-REPORT.md
 
 # Python artifacts
 __pycache__/
