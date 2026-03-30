@@ -34,11 +34,11 @@ GitFlow: `main` → `develop` → `fix/*` or `feature/*` branches. Cherry-pick b
 
 ## Current State
 
-**Migration in progress — B5 cherry-picked, gates G1-G3 PASS.** SecurityHeaders middleware, global MaxBytesBody, error sanitization (val_hdl, renew_hdl, ValMw) all landed. Docs updated. Needs Docker gates (G4-G7), acceptance tests, review, then merge to develop.
+**Migration in progress — B5 merged, B6 is next (last batch).** B0-B5 all merged to develop. SecurityHeaders, MaxBytesBody, error sanitization all verified. LIVE-TEST-TEMPLATE improved with executive audience guidance.
 
-**Current branch:** `fix/sec-l2b` — 4 cherry-pick commits (1 skipped as empty). G1-G3 PASS. Next: Docker gates, acceptance tests from `agentauth/tests/fix-sec-l2b/`, code review, merge.
+**Current branch:** `develop` — clean. Next: `fix/sec-a1` for B6 (2 commits: TTL carry-forward on renewal, gates.sh regression).
 
-Use the `cherrypick-devflow` skill to run the migration. After migration is complete, switch to `devflow` for new feature development.
+Use the `cherrypick-devflow` skill to run the migration. After B6 merge → post-migration cleanup, then switch to `devflow` for new feature development.
 
 ## Key Documents (in legacy agentauth repo)
 
@@ -53,12 +53,12 @@ Use the `cherrypick-devflow` skill to run the migration. After migration is comp
 
 | Batch | What | Commits | Status |
 |-------|------|---------|--------|
-| B0: Sidecar Removal | Remove sidecar subsystem | `34bb887` `909a777` | **done** — merged to fix/sidecar-removal, needs go test + merge to develop |
+| B0: Sidecar Removal | Remove sidecar subsystem | `34bb887` `909a777` | **done** — merged |
 | B1: P0 | Persistent signing key, graceful shutdown | `9c1d51d` `f96549f` `6d0d77d` `cec8b34` `0fef76b` `e823bea` | **done** — merged |
 | B2: P1 | Config file parser, bcrypt admin auth, aactl init | `313aa41` `869a8f7` `58cbce2` `4978ecd` `866cc78` `3dfada7` `ebc4884` `1c5f293` | **done** — merged |
 | B3: SEC-L1 | Bind address, TLS enforcement, timeouts, weak secret denylist | `632b224` `6fa0198` `574d3b9` `cd09a34` `5489679` | **done** — merged |
 | B4: SEC-L2a | Token alg/kid validation, MaxTTL, revocation hardening | `8e63989` `0526c46` `c24e442` `67aeda7` `b78edb8` `ecb4c86` `078a674` `8366fa9` | **done** — 13/13 PASS, merged |
-| B5: SEC-L2b | Security headers, MaxBytesBody, error sanitization | `daf2995` `e592acc` `2857b3a` `247727c` `c5da6c4` | **in progress** — G1-G3 PASS, needs Docker gates + acceptance tests |
+| B5: SEC-L2b | Security headers, MaxBytesBody, error sanitization | `daf2995` `e592acc` `2857b3a` `247727c` `c5da6c4` | **done** — G1-G6 PASS, 5/5 acceptance PASS, 1 SKIP, merged |
 | B6: SEC-A1 + Gates | TTL bypass fix, gates regression | `9422e7c` `e395a15` | pending |
 
 ## Tech Debt (carried forward from internal — relevant to core only)
