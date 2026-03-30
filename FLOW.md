@@ -145,13 +145,27 @@ Cherry-picked 5 commits from agentauth: `daf2995`, `e592acc`, `2857b3a`, `247727
 
 **B5 Status: CHERRY-PICK DONE, G1-G3 PASS — needs Docker gates + acceptance tests + review**
 
-### Current Step: B5 verification (SEC-L2b)
+### B5 Status: MERGED (2026-03-30)
 
-**What's done:** B0-B4 merged. B5 cherry-picked, G1-G3 PASS, docs updated.
+Branch: `fix/sec-l2b` → develop
+12 commits (4 cherry-picks + 8 docs/test/fix commits), 28 files changed
+Gates G1-G6: ALL PASS (G7 skipped — batch-specific not wired in test_batch.sh)
+Acceptance tests: 5/5 PASS, 1 SKIP (S5 TLS). 4 regression PASS (R1-R4).
+Code review: PASS — no contamination, all 5 planned items satisfied
+Contamination: CLEAN
+LIVE-TEST-TEMPLATE updated with audience, personas, real-world grounding guidance
+
+Key lessons: acceptance tests are NOT integration scripts. `integration.sh` is CI smoke — real evidence needs individual story files with executive-readable banners per LIVE-TEST-TEMPLATE. Personas must reflect production reality (App vs Developer).
+
+### Current Step: B6 cherry-pick (SEC-A1 + Gates) — LAST BATCH
+
+**What's done:** B0-B5 merged. All security hardening in place. LIVE-TEST-TEMPLATE improved.
 
 **What's next:**
-1. B5: Docker gates (G4-G7), acceptance tests from `agentauth/tests/fix-sec-l2b/`, code review, merge
-2. B6 (SEC-A1 + Gates): TTL bypass fix, gates regression — 2 commits (last batch)
+1. **B6 (SEC-A1 + Gates):** 2 commits — `9422e7c` (carry forward original TTL on renewal), `e395a15` (gates.sh regression subcommand). This is the LAST cherry-pick batch.
+2. B6 acceptance tests — must write (none exist in legacy). Follow LIVE-TEST-TEMPLATE with proper personas and executive-readable banners.
+3. After B6 merge → post-migration cleanup (Go module path update, final verification, remote swap). See Cherry-Pick Guide "Post-Migration" section.
+4. Review backburner design: `.plans/designs/acceptance-test-automation.md`
 
 **Skill:** `cherrypick-devflow`
 **Tracker:** `.plans/tracker.jsonl`
