@@ -216,6 +216,9 @@ flowchart LR
 - No session caching -- tokens are verified from scratch on each request
 - Revocation is checked against all 4 levels (token, agent, task, chain) on every validation
 - All access attempts (success and failure) are recorded in the audit trail
+- Error responses are sanitized -- `ValMw` returns a generic `"token verification failed"` message regardless of the specific failure reason, preventing information leakage about token state
+- Global `SecurityHeaders` middleware sets `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`, `X-Frame-Options: DENY` on all responses, with HSTS added when TLS is enabled
+- Global `MaxBytesBody` middleware limits all request bodies to 1 MB, protecting against oversized payloads
 
 ---
 

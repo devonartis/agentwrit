@@ -96,7 +96,7 @@ Token Renewal:
 |------|-------------|
 | `internal/token/tkn_svc.go:105` | `Issue()` — token creation with TTL clamping |
 | `internal/token/tkn_svc.go:158` | `Verify()` — 6-step verification pipeline |
-| `internal/token/tkn_svc.go:218` | `Renew()` — predecessor revocation + reissuance |
+| `internal/token/tkn_svc.go:218` | `Renew()` — predecessor revocation + reissuance (returns generic `"token renewal failed"` on error) |
 | `internal/token/tkn_svc.go:59` | `computeKid()` — RFC 7638 JWK Thumbprint |
 | `internal/token/tkn_claims.go:61` | `Validate()` — claim-level checks (exp, nbf, iss, sub, jti) |
 | `internal/token/revoker.go` | `Revoker` interface — breaks circular dependency |
@@ -149,11 +149,12 @@ Rate limiting:
 
 | File | What it does |
 |------|-------------|
-| `internal/authz/val_mw.go:62` | `Wrap()` — token verification middleware |
+| `internal/authz/val_mw.go:62` | `Wrap()` — token verification middleware (returns generic `"token verification failed"` on error) |
 | `internal/authz/val_mw.go:130` | `RequireScope()` — single scope enforcement |
 | `internal/authz/val_mw.go:158` | `RequireAnyScope()` — multi-scope enforcement |
 | `internal/authz/scope.go` | `ScopeIsSubset()` — scope comparison logic |
 | `internal/authz/rate_mw.go` | `RateLimiter` — per-IP and per-key rate limiting |
+| `internal/handler/security_hdl.go` | `SecurityHeaders` — global middleware: `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`, `X-Frame-Options: DENY`, HSTS when TLS enabled. Also wraps global `MaxBytesBody` (1 MB) for all endpoints. |
 
 ### Scope Format
 
@@ -418,6 +419,8 @@ Agent → POST /v1/delegate (with Bearer token, requesting scope narrowing)
 
 Component 8: LoggingMiddleware records request start (obs)
 Component 8: RequestIDMiddleware assigns X-Request-ID (problemdetails)
+Component 3: SecurityHeaders sets security response headers (handler/security_hdl.go)
+Component 3: MaxBytesBody enforces 1 MB body limit (handler/security_hdl.go)
 Component 3: ValMw.Wrap() extracts Bearer token
 Component 2: TknSvc.Verify() runs 6-step pipeline (format, alg, kid, sig, claims, revocation)
 Component 4: Revoker.IsRevoked() checks 4 levels (inside Verify)

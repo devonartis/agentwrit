@@ -55,9 +55,11 @@ func (h *ValHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 
 	if err != nil {
+		obs.Warn("VALIDATE", "hdl", "token verification failed", "err="+err.Error(),
+			"request_id="+problemdetails.GetRequestID(r.Context()))
 		if encErr := json.NewEncoder(w).Encode(validateRespInvalid{
 			Valid: false,
-			Error: err.Error(),
+			Error: "token is invalid or expired",
 		}); encErr != nil {
 			obs.Warn("VALIDATE", "hdl", "failed to encode response", "err="+encErr.Error())
 		}
@@ -66,9 +68,11 @@ func (h *ValHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Check revocation status after signature verification
 	if h.revSvc != nil && h.revSvc.IsRevoked(claims) {
+		obs.Warn("VALIDATE", "hdl", "token revoked", "sub="+claims.Sub,
+			"request_id="+problemdetails.GetRequestID(r.Context()))
 		if encErr := json.NewEncoder(w).Encode(validateRespInvalid{
 			Valid: false,
-			Error: "token has been revoked",
+			Error: "token is invalid or expired",
 		}); encErr != nil {
 			obs.Warn("VALIDATE", "hdl", "failed to encode response", "err="+encErr.Error())
 		}

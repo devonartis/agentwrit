@@ -33,7 +33,11 @@ The `error_code` field is always present. The `hint` field is optional and prese
 
 All responses include an `X-Request-ID` header. If the client sends `X-Request-ID`, it is propagated; otherwise the broker generates one.
 
-Request bodies are limited to 1 MB on POST endpoints.
+All responses include security headers: `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`, and `X-Frame-Options: DENY`. When TLS is enabled (`AA_TLS_MODE=tls` or `mtls`), responses also include `Strict-Transport-Security` (HSTS).
+
+Request bodies are limited to 1 MB on ALL endpoints (enforced by global middleware).
+
+**Error sanitization:** Token validation, renewal, and auth middleware endpoints return generic error messages (e.g., `"token is invalid or expired"`, `"token renewal failed"`, `"token verification failed"`) to prevent leaking internal details to clients.
 
 ---
 
@@ -230,9 +234,11 @@ Verify a token and return its claims. Also checks revocation status.
 ```json
 {
   "valid": false,
-  "error": "token expired"
+  "error": "token is invalid or expired"
 }
 ```
+
+> **Note:** Error messages are intentionally generic to prevent information leakage. The broker does not distinguish between expired, revoked, malformed, or otherwise invalid tokens in its client-facing error responses.
 
 **Error responses:**
 
@@ -376,7 +382,7 @@ Renew an existing token with fresh timestamps and a new JTI. The predecessor tok
 
 | Status | Type | Condition |
 |---|---|---|
-| 401 | `unauthorized` | Missing, invalid, expired, or revoked Bearer token |
+| 401 | `unauthorized` | Missing, invalid, expired, or revoked Bearer token. Error detail: `"token renewal failed"` (generic, no internal details leaked). |
 
 ```bash
 curl -X POST http://localhost:8080/v1/token/renew \

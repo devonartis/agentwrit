@@ -93,7 +93,7 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 				m.auditLog.Record(audit.EventTokenAuthFailed, "", "", "", "token verification failed: "+err.Error()+" | path="+r.URL.Path,
 				audit.WithOutcome("denied"), audit.WithResource(r.URL.Path))
 			}
-			problemdetails.WriteProblem(r.Context(), w, 401, "unauthorized", "token verification failed: "+err.Error(), r.URL.Path)
+			problemdetails.WriteProblem(r.Context(), w, 401, "unauthorized", "token verification failed", r.URL.Path)
 			return
 		}
 

@@ -126,14 +126,32 @@ Contamination: CLEAN
 Evidence: `tests/sec-l2a/evidence/`
 Waiting on Cowork merge review.
 
-### Current Step: B5 cherry-pick (SEC-L2b)
+### Action: B5 — SEC-L2b cherry-pick (2026-03-30)
 
-**What's done:** B0-B4 merged. App launch token route split merged. Doc overhaul merged. All 8 v1.3 components documented.
+Branch: `fix/sec-l2b` off `develop`
+Cherry-picked 5 commits from agentauth: `daf2995`, `e592acc`, `2857b3a`, `247727c`, `c5da6c4`
+
+**Results:**
+- 4 commits applied, 1 skipped (247727c — empty after conflict resolution, content already present)
+- Conflicts resolved:
+  - `main.go`: OIDC/cloud routes dropped (add-on code)
+  - `handler_test.go`: Kept comprehensive test suite from prior commits, dropped simpler incoming version
+  - `renew_hdl.go`: Kept `obs.Warn` log line (observability), incoming side wanted to remove it
+  - `tests/fix-sec-l2b/evidence/S3-renew-tampered-generic.md`: Removed (doesn't exist in core)
+- Fix: Added missing `context` and `errors` imports to `handler_test.go`
+- Gates G1-G3: ALL PASS (compile, 15 packages unit tests, contamination clean)
+- Docs updated: architecture.md, api.md, concepts.md, implementation-map.md, getting-started-operator.md
+- CHANGELOG.md updated with B5 section
+
+**B5 Status: CHERRY-PICK DONE, G1-G3 PASS — needs Docker gates + acceptance tests + review**
+
+### Current Step: B5 verification (SEC-L2b)
+
+**What's done:** B0-B4 merged. B5 cherry-picked, G1-G3 PASS, docs updated.
 
 **What's next:**
-1. B5 (SEC-L2b): Security headers, MaxBytesBody, error sanitization — 5 commits
-2. B6 (SEC-A1 + Gates): TTL bypass fix, gates regression — 2 commits
-3. Docs update with each batch (standing rule)
+1. B5: Docker gates (G4-G7), acceptance tests from `agentauth/tests/fix-sec-l2b/`, code review, merge
+2. B6 (SEC-A1 + Gates): TTL bypass fix, gates regression — 2 commits (last batch)
 
 **Skill:** `cherrypick-devflow`
 **Tracker:** `.plans/tracker.jsonl`

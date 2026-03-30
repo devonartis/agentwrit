@@ -14,10 +14,13 @@
 package problemdetails
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"io"
 	"log"
 	"net/http"
 )
@@ -72,9 +75,26 @@ const maxBodyBytes int64 = 1 << 20
 // MaxBytesBody wraps an [http.Handler] so that the request body is
 // limited to 1 MB via [http.MaxBytesReader]. Requests that exceed the
 // limit receive a 413 Request Entity Too Large RFC 7807 response.
+//
+// The body is eagerly buffered up to the limit so that handlers using
+// streaming decoders (e.g. json.NewDecoder) also get the 413 when the
+// payload exceeds the limit, regardless of how much they actually read.
 func MaxBytesBody(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+		limited := http.MaxBytesReader(w, r.Body, maxBodyBytes)
+		buf, err := io.ReadAll(limited)
+		if err != nil {
+			var mbe *http.MaxBytesError
+			if errors.As(err, &mbe) {
+				WriteProblem(r.Context(), w, http.StatusRequestEntityTooLarge,
+					"payload_too_large", "request body must not exceed 1 MB", r.URL.Path)
+				return
+			}
+			WriteProblem(r.Context(), w, http.StatusBadRequest,
+				"invalid_request", "failed to read request body", r.URL.Path)
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(buf))
 		next.ServeHTTP(w, r)
 	})
 }
