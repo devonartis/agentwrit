@@ -25,7 +25,7 @@ export AA_ADMIN_SECRET="$(openssl rand -hex 32)"
 
 # 3. Verify the broker is healthy
 curl http://localhost:8080/v1/health
-# {"status":"ok","version":"3.0.0","uptime":5}
+# {"status":"ok","version":"2.0.0","uptime":5,"db_connected":true,"audit_events_count":0}
 ```
 
 To tear down the stack:
@@ -65,11 +65,11 @@ go build -o aactl ./cmd/aactl/
 Use `aactl init` to set up configuration. This creates a config file with broker URL and secret:
 
 ```bash
-# Dev mode (creates ~/.agentauth/config.yaml)
+# Dev mode (creates ~/.agentauth/config)
 aactl init --mode dev --force
 
 # Prod mode with custom path
-aactl init --mode prod --config-path /etc/agentauth/config.yaml
+aactl init --mode prod --config-path /etc/agentauth/config
 ```
 
 ### Configure
@@ -337,7 +337,7 @@ Launch token fields:
 
 | Field | Description |
 |-------|-------------|
-| `agent_name` | Descriptive name for the agent (used in SPIFFE ID generation). |
+| `agent_name` | Descriptive label stored with the launch token for operator context and auditability. |
 | `allowed_scope` | Maximum scopes the agent can request during registration. |
 | `max_ttl` | Maximum token TTL (seconds) the agent can request. Default: 300. |
 | `single_use` | If `true`, the launch token is consumed after one successful registration. If `false`, it can be reused until it expires. |
@@ -376,7 +376,7 @@ This endpoint records the token release in the audit trail and marks the token a
 
 | Endpoint | Port | Description |
 |----------|------|-------------|
-| `GET /v1/health` (broker) | 8080 | Returns `{"status":"ok","version":"3.0.0","uptime":N}`. Used by Docker health checks and load balancers. |
+| `GET /v1/health` (broker) | 8080 | Returns `{"status":"ok","version":"2.0.0","uptime":N,"db_connected":true,"audit_events_count":N}`. Used by Docker health checks and load balancers. |
 | `GET /v1/metrics` (broker) | 8080 | Prometheus metrics exposition endpoint. |
 
 ### Broker Prometheus Metrics

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — Documentation Accuracy and Pre-SDK Integration Guidance
+
+- Corrected public documentation to match the current broker contract for agent registration, renewal, release, app authentication, launch token creation, and health responses.
+- Added explicit pre-SDK guidance for Go developers: direct HTTP integration is the supported path today, with end-to-end Go examples for registration, token renewal, and token release in `docs/getting-started-developer.md`.
+- Updated public-facing docs to reflect persistent signing key behavior, current `AACTL_*` operator environment variables, current health payload fields, and the current `2.0.0` broker version reported by the running service.
+- Fixed multiple copy/paste examples that previously used stale payload shapes, stale response examples, or outdated audit event names.
+
 ### Added — B4 (SEC-L2a): Token Hardening
 
 - `AA_MAX_TTL` configuration: maximum token lifetime ceiling (default 86400s, set to 0 to disable)

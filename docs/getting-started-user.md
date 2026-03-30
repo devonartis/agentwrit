@@ -71,11 +71,11 @@ Docker Compose is the easiest way to get started. It launches the broker in two 
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/divineartis/agentauth.git
-cd agentauth
+git clone https://github.com/divineartis/agentauth-core.git
+cd agentauth-core
 
 # 2. Set the admin secret (required -- broker exits without it)
-export AA_ADMIN_SECRET="my-secret-key-change-in-production"
+export AA_ADMIN_SECRET="$(openssl rand -hex 32)"
 
 # 3. Start the stack
 ./scripts/stack_up.sh
@@ -92,7 +92,7 @@ curl http://localhost:8080/v1/health
 
 Expected response:
 ```json
-{"status": "ok", "version": "3.0.0", "uptime": 5}
+{"status":"ok","version":"2.0.0","uptime":5,"db_connected":true,"audit_events_count":0}
 ```
 
 ### Option B: Local Go Build
@@ -101,14 +101,14 @@ If you prefer to build and run locally without Docker:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/divineartis/agentauth.git
-cd agentauth
+git clone https://github.com/divineartis/agentauth-core.git
+cd agentauth-core
 
 # 2. Build the Go binaries
 go build ./...
 
 # 3. Start the broker
-export AA_ADMIN_SECRET="my-secret-key-change-in-production"
+export AA_ADMIN_SECRET="$(openssl rand -hex 32)"
 go run ./cmd/broker
 ```
 

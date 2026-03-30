@@ -117,7 +117,7 @@ import json
 from typing import Dict, Any, List
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-BROKER = os.environ.get("AACTL_BROKER_URL", "https://broker.internal:8080")
+BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal:8080")
 LAUNCH_TOKEN = os.environ.get("RESEARCH_AGENT_LAUNCH_TOKEN", "lt_...")
 TASK_ID = "analysis-2026-0215-001"
 
@@ -141,7 +141,10 @@ class ResearchAgent:
             nonce_bytes = binascii.unhexlify(nonce)
             signature = base64.b64encode(self.private_key.sign(nonce_bytes)).decode()
             public_key = base64.b64encode(
-                self.private_key.public_key().public_bytes_raw()
+                self.private_key.public_key().public_bytes(
+                    serialization.Encoding.Raw,
+                    serialization.PublicFormat.Raw,
+                )
             ).decode()
 
             # Step 3: Register agent
@@ -1651,7 +1654,7 @@ sequenceDiagram
 
     Note over App: 2. Create launch token for agent
 
-    App->>Broker: POST /v1/admin/launch-tokens<br/>Bearer app_token<br/>{ agent_name, scope, ttl }
+    App->>Broker: POST /v1/admin/launch-tokens<br/>Bearer app_token<br/>{ agent_name, allowed_scope, max_ttl, ttl }
 
     Broker-->>App: { launch_token, expires_at }
 
@@ -1664,7 +1667,7 @@ sequenceDiagram
     Agent->>Broker: GET /v1/challenge
     Broker-->>Agent: nonce
 
-    Agent->>Broker: POST /v1/register<br/>{ launch_token, nonce, signature }
+    Agent->>Broker: POST /v1/register<br/>{ launch_token, nonce, public_key,<br/>signature, orch_id, task_id, requested_scope }
     Broker-->>Agent: { agent_id, access_token, expires_in }
 
     Agent->>Resource: GET /api/data<br/>Authorization: Bearer <token>
@@ -1674,6 +1677,7 @@ sequenceDiagram
 ### Python Code Example
 
 ```python
+import base64
 import os
 import requests
 import secrets
@@ -1701,19 +1705,19 @@ class Ed25519KeyManager:
             self.public_key = self.private_key.public_key()
 
             print("[BYOK] Generated Ed25519 keypair")
-            print(f"[BYOK] Public key (hex): {self._public_key_hex()[:32]}...")
+            print(f"[BYOK] Public key (base64): {self._public_key_b64()[:32]}...")
             return True
         except Exception as e:
             print(f"[BYOK] Key generation failed: {e}")
             return False
 
-    def _public_key_hex(self) -> str:
-        """Export public key as hex string."""
+    def _public_key_b64(self) -> str:
+        """Export public key as base64 string."""
         public_bytes = self.public_key.public_bytes(
             encoding=serialization.Encoding.Raw,
             format=serialization.PublicFormat.Raw
         )
-        return public_bytes.hex()
+        return base64.b64encode(public_bytes).decode("utf-8")
 
     def _public_key_pem(self) -> str:
         """Export public key as PEM string."""
@@ -1727,7 +1731,7 @@ class Ed25519KeyManager:
         """Sign a nonce (hex string) with the private key."""
         nonce_bytes = bytes.fromhex(nonce)
         signature = self.private_key.sign(nonce_bytes)
-        return signature.hex()
+        return base64.b64encode(signature).decode("utf-8")
 
 
 class OperatorLaunchTokenIssuer:
@@ -1774,7 +1778,7 @@ class OperatorLaunchTokenIssuer:
             token = data["launch_token"]
             print(f"[Operator] Issued launch token for {agent_name}")
             print(f"[Operator] Launch token: {token[:16]}...")
-            print(f"[Operator] Expires in: {data.get('expires_in', 60)} seconds")
+            print(f"[Operator] Expires at: {data.get('expires_at', 'unknown')}")
             return token
         except Exception as e:
             print(f"[Operator] Launch token issuance failed: {e}")
@@ -1828,7 +1832,7 @@ class BYOKAgent:
             resp = requests.post(f"{BROKER}/v1/register", json={
                 "launch_token": self.launch_token,
                 "nonce": nonce,
-                "public_key": self.keys._public_key_hex(),
+                "public_key": self.keys._public_key_b64(),
                 "signature": signature,
                 "orch_id": "orch-standalone-byok",
                 "task_id": TASK_ID,

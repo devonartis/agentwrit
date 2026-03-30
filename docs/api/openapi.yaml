@@ -5,7 +5,7 @@ info:
     Ephemeral agent credentialing broker. Issues short-lived, scope-attenuated
     EdDSA JWT tokens to AI agents via Ed25519 challenge-response identity
     verification. All error responses use RFC 7807 application/problem+json.
-  version: "3.0.0"
+  version: "2.0.0"
   contact:
     name: AgentAuth
   license:
@@ -121,8 +121,8 @@ paths:
       description: >
         Verifies the Bearer token from the Authorization header and issues a
         replacement token with the same subject, scope, task, orchestration,
-        and delegation chain but fresh timestamps and a new JTI. The original
-        token remains valid until its own expiry or revocation.
+        and delegation chain but fresh timestamps and a new JTI. The previous
+        token is revoked before the replacement is issued.
       operationId: renewToken
       security:
         - bearerAuth: []

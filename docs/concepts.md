@@ -183,7 +183,7 @@ stateDiagram-v2
 - JWTs signed with EdDSA (Ed25519), containing claims: `sub` (SPIFFE ID), `scope`, `task_id`, `orch_id`, `delegation_chain`, `chain_hash`, `jti`, `exp`, `iat`
 - Scope format: `action:resource:identifier` with wildcard `*` support in the identifier position
 - Default TTL of 300 seconds (5 minutes), configurable via `AA_DEFAULT_TTL`
-- Scope attenuation enforced at registration, delegation, and token exchange
+- Scope attenuation enforced at registration, delegation, and app-authenticated launch token creation
 - Token renewal via `POST /v1/token/renew` issues fresh timestamps while preserving identity and scope
 - Token release via `POST /v1/token/release` signals task completion (optional but recommended for audit clarity)
 
@@ -296,8 +296,8 @@ Each hash is computed over: `prev_hash | event_id | timestamp | event_type | age
 **What AgentAuth implements:**
 - `AuditLog` provides append-only storage with automatic hash chaining using SHA-256
 - Audit events persist to SQLite (configured via `AA_DB_PATH`); if no database path is set, events are stored in memory only
-- 17 event types covering the full lifecycle: `admin_auth`, `agent_registered`, `token_issued`, `token_revoked`, `token_renewed`, `delegation_created`, `token_released`, and more
-- Structured audit fields include: `resource` (resource being accessed), `outcome` (success/failure/completed), `deleg_depth` (delegation chain depth), `deleg_chain_hash` (chain integrity hash), `bytes_transferred` (data size)
+- 25 event types covering the full lifecycle: `admin_auth`, `admin_auth_failed`, `launch_token_issued`, `launch_token_denied`, `agent_registered`, `registration_policy_violation`, `token_issued`, `token_revoked`, `token_renewed`, `token_released`, `token_renewal_failed`, `delegation_created`, `resource_accessed`, `token_auth_failed`, `token_revoked_access`, `scope_violation`, `scope_ceiling_exceeded`, `delegation_attenuation_violation`, `scopes_ceiling_updated`, `app_registered`, `app_authenticated`, `app_auth_failed`, `app_updated`, `app_deregistered`, `app_rate_limited`
+- Structured audit fields include: `resource` (resource being accessed), `outcome` (`success` or `denied`), `deleg_depth` (delegation chain depth), `deleg_chain_hash` (chain integrity hash), `bytes_transferred` (data size)
 - PII sanitization automatically redacts values associated with `secret`, `password`, `token_value`, and `private_key`
 - `GET /v1/audit/events` supports filtering by `agent_id`, `task_id`, `event_type`, `outcome`, `since`, `until`, with pagination via `limit` and `offset`
 - Every event includes the hash chain fields, enabling verification of trail integrity

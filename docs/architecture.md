@@ -37,7 +37,7 @@ flowchart TB
     DEV -- "Bearer token" --> RS
 ```
 
-**Broker** (`cmd/broker`) -- The central authority. Generates Ed25519 key pairs on startup, issues EdDSA-signed JWTs, validates challenge-response registrations, manages scope attenuation, delegation, revocation, and maintains a hash-chained audit trail. All endpoints use `application/json` with RFC 7807 error responses.
+**Broker** (`cmd/broker`) -- The central authority. Loads or generates a persistent Ed25519 signing key (`internal/keystore`), issues EdDSA-signed JWTs, validates challenge-response registrations, manages scope attenuation, delegation, revocation, and maintains a hash-chained audit trail. All endpoints use `application/json` with RFC 7807 error responses.
 
 **App Service** (`internal/app`) -- Manages application registrations and app-level authentication. Operators register apps with `aactl app register`, which generates a client_id and client_secret. Apps authenticate with `POST /v1/app/auth` using those credentials to get scoped tokens.
 
@@ -57,6 +57,7 @@ flowchart TB
             CFG["cfg\nEnv var config"]
             OBS["obs\nStructured logging\nPrometheus metrics"]
             STORE["store\nSqlStore\nSQLite + In-memory"]
+            KEYSTORE["keystore\nEd25519 key persistence\nPKCS8 PEM"]
         end
 
         subgraph Security["Security Layer"]
@@ -112,6 +113,7 @@ agentauth/
 |   |-- deleg/                   # Scope-attenuated delegation with chain signing
 |   |-- handler/                 # HTTP handlers for all broker endpoints
 |   |-- identity/                # Challenge-response registration, SPIFFE IDs
+|   |-- keystore/                # Ed25519 signing key persistence (PKCS8 PEM)
 |   |-- mutauth/                 # Mutual authentication (Go API only)
 |   |-- obs/                     # Structured logging and Prometheus metrics
 |   |-- problemdetails/          # RFC 7807 errors, request ID, body limits
@@ -133,10 +135,12 @@ flowchart TD
     MAIN_B["cmd/broker/main.go"] --> CFG
     MAIN_B --> OBS
     MAIN_B --> STORE
+    MAIN_B --> KEYSTORE
     MAIN_B --> TOKEN
     MAIN_B --> IDENTITY
     MAIN_B --> AUTHZ
     MAIN_B --> ADMIN
+    MAIN_B --> APP
     MAIN_B --> DELEG
     MAIN_B --> REVOKE
     MAIN_B --> AUDIT
@@ -177,10 +181,19 @@ flowchart TD
     DELEG --> AUDIT
     DELEG --> OBS
 
+    APP["app"] --> STORE
+    APP --> TOKEN
+    APP --> AUDIT
+    APP --> AUTHZ
+    APP --> OBS
+
     REVOKE["revoke"] --> TOKEN
+    REVOKE --> OBS
 
     TOKEN["token"] --> CFG
     TOKEN --> OBS
+
+    KEYSTORE["keystore"]
 
     MUTAUTH["mutauth"] --> TOKEN
     MUTAUTH --> STORE
@@ -198,9 +211,9 @@ flowchart TD
     classDef transport fill:#fce4ec
     classDef protocol fill:#f3e5f5
 
-    class CFG,OBS,STORE foundation
+    class CFG,OBS,STORE,KEYSTORE foundation
     class TOKEN,IDENTITY,AUTHZ security
-    class ADMIN,DELEG,REVOKE,AUDIT domain
+    class ADMIN,APP,DELEG,REVOKE,AUDIT domain
     class HANDLER,PD transport
     class MUTAUTH protocol
 ```
@@ -216,12 +229,13 @@ The 7-component Ephemeral Agent Credentialing pattern maps directly to Go packag
 | Pattern Component | Go Packages | Key Types | Key Functions |
 |---|---|---|---|
 | **Foundation** | | | |
-| Store | `store` | `SqlStore`, `NonceTbl`, `AgentTbl`, `AppTbl`, `RevokeTbl`, `AuditTbl` | `CreateNonce()`, `SaveAgent()`, `SaveApp()`, `Record()`, `Query()` |
+| Store | `store` | `SqlStore`, `LaunchTokenRecord`, `AgentRecord`, `AppRecord`, `RevocationEntry` | `CreateNonce()`, `SaveAgent()`, `SaveApp()`, `SaveRevocation()`, `LoadAllAuditEvents()`, `LoadAllRevocations()` |
+| Keystore | `keystore` | — | `LoadOrGenerate()` — persistent Ed25519 key management (PKCS8 PEM, 0600 permissions) |
 | **Pattern Components** | | | |
 | 1. Ephemeral Identity Issuance | `identity`, `store`, `handler` | `IdSvc`, `RegHdl`, `ChallengeHdl`, `SqlStore` | `IdSvc.Register()`, `NewSpiffeId()` |
-| 2. Short-Lived Task-Scoped Tokens | `token`, `authz` | `TknSvc`, `TknClaims`, `IssueReq` | `TknSvc.Issue()`, `TknSvc.Renew()` |
-| 3. Zero-Trust Enforcement | `authz`, `handler` | `ValMw`, `RateLimiter` | `ValMw.Wrap()`, `ValMw.RequireScope()`, `ScopeIsSubset()` |
-| 4. Automatic Expiration & Revocation | `revoke`, `handler` | `RevSvc`, `RevokeHdl`, `ReleaseHdl` | `RevSvc.Revoke()`, `RevSvc.IsRevoked()`, `RevSvc.LoadFromEntries()` |
+| 2. Short-Lived Task-Scoped Tokens | `token`, `authz` | `TknSvc`, `TknClaims`, `IssueReq`, `Revoker` | `TknSvc.Issue()`, `TknSvc.Verify()`, `TknSvc.Renew()`, `TknSvc.SetRevoker()` |
+| 3. Zero-Trust Enforcement | `authz`, `handler` | `ValMw`, `RateLimiter` | `ValMw.Wrap()`, `ValMw.RequireScope()`, `ValMw.RequireAnyScope()`, `ScopeIsSubset()` |
+| 4. Automatic Expiration & Revocation | `revoke`, `token`, `handler` | `RevSvc`, `Revoker`, `RevokeHdl`, `ReleaseHdl` | `RevSvc.Revoke()`, `RevSvc.RevokeByJTI()`, `RevSvc.IsRevoked()`, `RevSvc.LoadFromEntries()` |
 | 5. Immutable Audit Logging | `audit`, `handler` | `AuditLog`, `AuditEvent`, `AuditHdl`, `RecordOption` | `AuditLog.Record()`, `AuditLog.Query()`, `WithOutcome()`, `WithResource()` |
 | 6. Agent-to-Agent Mutual Auth | `mutauth` | `MutAuthHdl`, `DiscoveryRegistry`, `HeartbeatMgr` | `InitiateHandshake()`, `RespondToHandshake()`, `CompleteHandshake()` |
 | 7. Delegation Chain Verification | `deleg`, `handler` | `DelegSvc`, `DelegHdl`, `DelegRecord` | `DelegSvc.Delegate()` |
@@ -289,7 +303,7 @@ sequenceDiagram
 
     Note over A: Sign hex-decoded nonce bytes<br/>with Ed25519 private key
 
-    A->>RH: POST /v1/register {launch_token, nonce,<br/>public_key, signature, orch_id, task_id, scope}
+    A->>RH: POST /v1/register {launch_token, nonce,<br/>public_key, signature, orch_id, task_id, requested_scope}
     RH->>ID: Register(req)
 
     ID->>ID: 1. Validate required fields
@@ -381,15 +395,17 @@ flowchart LR
 | `POST /v1/register` | RequestID -> Logging -> MaxBytesBody -> Handler |
 | `POST /v1/token/renew` | RequestID -> Logging -> MaxBytesBody -> ValMw -> Handler |
 | `POST /v1/delegate` | RequestID -> Logging -> MaxBytesBody -> ValMw -> Handler |
-| `POST /v1/token/exchange` | RequestID -> Logging -> MaxBytesBody -> ValMw -> ValMw.RequireScope(`app:exchange:*`) -> Handler |
+| `POST /v1/token/release` | RequestID -> Logging -> MaxBytesBody -> ValMw -> Handler |
 | `POST /v1/revoke` | RequestID -> Logging -> MaxBytesBody -> ValMw -> ValMw.RequireScope(`admin:revoke:*`) -> Handler |
 | `GET /v1/audit/events` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:audit:*`) -> Handler |
 | `POST /v1/admin/auth` | RequestID -> Logging -> RateLimiter(5/s, burst 10) -> Handler |
-| `POST /v1/admin/launch-tokens` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
-| `POST /v1/app/auth` | RequestID -> Logging -> RateLimiter(5/s, burst 10) -> Handler |
-| `POST /v1/token/release` | RequestID -> Logging -> MaxBytesBody -> ValMw -> Handler |
+| `POST /v1/admin/launch-tokens` | RequestID -> Logging -> ValMw -> ValMw.RequireAnyScope(`admin:launch-tokens:*`, `app:launch-tokens:*`) -> Handler |
+| `POST /v1/admin/apps` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
 | `GET /v1/admin/apps` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
-
+| `GET /v1/admin/apps/{id}` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
+| `PUT /v1/admin/apps/{id}` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
+| `DELETE /v1/admin/apps/{id}` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
+| `POST /v1/app/auth` | RequestID -> Logging -> RateLimiter(10/min per client_id, burst 3) -> Handler |
 ---
 
 ## Key Design Decisions
@@ -398,11 +414,11 @@ flowchart LR
 
 2. **Persistent Ed25519 signing key.** On first startup, the broker generates an Ed25519 key pair via `crypto/rand` and writes it to `AA_SIGNING_KEY_PATH` (default `./signing.key`) in PKCS8 PEM format with `0600` permissions. On subsequent startups, the existing key is loaded from disk. Tokens remain valid across restarts as long as the key file persists. Delete the key file to force key rotation (all previously issued tokens become unverifiable). See `internal/keystore` for implementation.
 
-3. **Scope attenuation is one-way.** Scopes can only narrow, never expand. Enforced at registration (requested vs. launch token ceiling), delegation (delegated vs. delegator scope), and token exchange (requested vs. app ceiling entries).
+3. **Scope attenuation is one-way.** Scopes can only narrow, never expand. Enforced at registration (requested scope vs. launch token ceiling), delegation (delegated vs. delegator scope), and app-authenticated launch-token creation (requested `allowed_scope` vs. app ceiling).
 
 4. **Scope check before launch token consumption.** At registration, `ScopeIsSubset` is called before `ConsumeLaunchToken`. A scope violation returns an error without wasting a single-use token.
 
-5. **Constant-time secret comparison.** Admin authentication uses `subtle.ConstantTimeCompare` to prevent timing attacks on `AA_ADMIN_SECRET`.
+5. **Bcrypt secret comparison.** Admin authentication uses `bcrypt.CompareHashAndPassword` (cost 12) to prevent timing attacks on `AA_ADMIN_SECRET`. The plaintext secret is bcrypt-hashed at startup in `cfg.Load()` and the hash is stored in `Cfg.AdminSecretHash`. The plaintext is wiped from memory after hashing.
 
 6. **Apps as first-class entities.** Developer applications are registered with the broker via `aactl` and authenticate directly using client credentials (`POST /v1/app/auth`). Each app has its own scope ceiling and configurable JWT TTL (bounded by broker-wide min/max).
 

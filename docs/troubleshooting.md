@@ -168,11 +168,13 @@ signature = private_key.sign(nonce_bytes)
 sig_b64 = base64.b64encode(signature).decode()
 
 reg = requests.post(f"{BROKER}/v1/register", json={
-    "agent_name": "my-agent",
+    "launch_token": launch_token,
+    "orch_id": "orch-001",
     "task_id": "task-001",
     "public_key": pub_b64,
     "signature": sig_b64,
     "nonce": nonce_hex,
+    "requested_scope": ["read:data:*"],
 })
 ```
 
@@ -222,7 +224,7 @@ sig_b64 = base64.b64encode(signature).decode()
 
 reg = requests.post(f"{BROKER}/v1/register", json={
     "launch_token": new_launch_token,
-    "agent_name": "my-agent",
+    "orch_id": "orch-001",
     "task_id": "task-001",
     "public_key": pub_b64,
     "signature": sig_b64,
@@ -232,7 +234,7 @@ reg = requests.post(f"{BROKER}/v1/register", json={
 new_token = reg.json()["access_token"]
 ```
 
-If the agent itself was revoked, use a fresh `agent_name` and `task_id` combination when re-registering.
+If the task or agent lineage was revoked, get a fresh launch token and choose the appropriate `orch_id` / `task_id` values for the new run.
 
 ---
 
@@ -609,19 +611,19 @@ After restarting the broker, all previously issued tokens fail validation:
 }
 ```
 
-**Cause:** The broker generates a fresh Ed25519 signing key pair on every startup. This is by design -- there is no persistent key material. All tokens signed with the old key become invalid immediately.
+**Cause:** The broker normally persists its Ed25519 signing key at `AA_SIGNING_KEY_PATH` and reloads it on restart. Tokens only start failing after a restart if the key file is missing, the path points to ephemeral storage, or the broker starts with a different key path.
 
 **Fix:**
 
-This is expected behavior. After a broker restart:
+This is not expected in a stable deployment. After a restart that changes the signing key:
 
-1. **Agents must re-register.** Any agent holding a token from before the restart will get 401 errors and must go through the registration flow again.
+1. **Agents must re-register.** Any agent holding a token from before the key change will get 401 errors and must go through the registration flow again.
 
-3. **Plan restarts during low-traffic windows** if possible, to minimize disruption.
+2. **Verify `AA_SIGNING_KEY_PATH`.** Make sure it points to persistent storage and that the key file survives restarts.
 
-4. **In production**, consider running the broker behind a process manager that restarts it automatically but infrequently. Do not restart the broker as part of routine operations.
+3. **Preserve the key file.** Do not delete or rotate the signing key unless you intentionally want all existing tokens to become invalid.
 
-5. **Audit events survive restarts** when `AA_DB_PATH` is configured. The broker reloads all audit events from SQLite on startup and rebuilds the in-memory hash chain. Verify with `curl http://localhost:8080/v1/health` — the `audit_events_count` field should reflect previously recorded events.
+4. **Audit events survive restarts** when `AA_DB_PATH` is configured. The broker reloads all audit events from SQLite on startup and rebuilds the in-memory hash chain. Verify with `curl http://localhost:8080/v1/health` — the `audit_events_count` field should reflect previously recorded events.
 
 ---
 

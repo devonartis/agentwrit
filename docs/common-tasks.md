@@ -1,10 +1,10 @@
 # Common Tasks
 
-Enterprise-grade step-by-step instructions for AgentAuth workflows, organized by role.
+Step-by-step instructions for AgentAuth workflows, organized by role.
 
 **Document metadata:**
 - **Audience:** Developers (building AI agents), Platform Operators (managing AgentAuth deployments)
-- **Version:** 2.0 (Enterprise)
+- **Version:** 2.0.0
 - **Prerequisites:** Broker running. See [Getting Started: Developer](getting-started-developer.md) or [Getting Started: Operator](getting-started-operator.md).
 - **Next steps:** For advanced topics, see [Concepts](concepts.md), [API Reference](api.md), [Architecture](architecture.md), or [Troubleshooting](troubleshooting.md).
 
@@ -54,6 +54,7 @@ import requests
 import base64
 import binascii
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 BROKER = "http://localhost:8080"
 
@@ -61,7 +62,7 @@ def register_agent(broker, launch_token, orch_id, task_id, requested_scope):
     """Register an agent with the broker using Ed25519 challenge-response."""
     # Step 1: Generate an Ed25519 key pair
     private_key = Ed25519PrivateKey.generate()
-    public_key_bytes = private_key.public_key().public_bytes_raw()
+    public_key_bytes = private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
     public_key_b64 = base64.b64encode(public_key_bytes).decode()
 
     # Step 2: Get a challenge nonce from the broker
@@ -124,7 +125,7 @@ except requests.exceptions.HTTPError as e:
 |--------|---------|--------|
 | 400 | Invalid request (malformed JSON, missing fields, invalid signature) | Check payload syntax; ensure signature is correct |
 | 401 | Launch token invalid or expired | Request a fresh launch token from your operator |
-| 409 | Agent already registered | Use a different agent name or task ID |
+| 403 | Requested scope exceeds launch token policy | Ask your operator for a wider `allowed_scope`, or narrow `requested_scope` |
 
 ---
 
@@ -1611,9 +1612,9 @@ echo "=== Events for specific task ==="
 curl -s "http://localhost:8080/v1/audit/events?task_id=task-001" \
   -H "Authorization: Bearer $ADMIN_TOKEN" | python3 -m json.tool
 
-# Filter by outcome (success, failure, or completed)
-echo "=== Failed operations ==="
-curl -s "http://localhost:8080/v1/audit/events?outcome=failure" \
+# Filter by outcome (success or denied)
+echo "=== Denied operations ==="
+curl -s "http://localhost:8080/v1/audit/events?outcome=denied" \
   -H "Authorization: Bearer $ADMIN_TOKEN" | python3 -m json.tool
 
 # Paginate through large result sets
@@ -1630,7 +1631,7 @@ curl -s "http://localhost:8080/v1/audit/events?limit=50&offset=100" \
     {
       "id": "event-001",
       "timestamp": "2026-02-15T11:00:00Z",
-      "event_type": "token_acquired",
+      "event_type": "token_issued",
       "agent_id": "spiffe://agentauth.local/agent/orch/task/instance",
       "task_id": "task-001",
       "orch_id": "orch-001",
@@ -1769,8 +1770,8 @@ except Exception as e:
 |-----------|------|-------------|
 | `agent_id` | string | Filter by agent SPIFFE ID |
 | `task_id` | string | Filter by task ID |
-| `event_type` | string | Filter by event type (e.g., `token_acquired`, `token_revoked`, `delegation_issued`) |
-| `outcome` | string | Filter by outcome: `success`, `failure`, or `completed` |
+| `event_type` | string | Filter by event type (e.g., `token_issued`, `token_revoked`, `delegation_created`) |
+| `outcome` | string | Filter by outcome: `success` or `denied` |
 | `since` | string | Start time (RFC 3339 format, e.g., `2026-02-15T00:00:00Z`) |
 | `until` | string | End time (RFC 3339 format) |
 | `limit` | int | Max results (default: 100, max: 1000) |
@@ -1780,13 +1781,13 @@ except Exception as e:
 
 | Type | Meaning |
 |------|---------|
-| `token_acquired` | Token issued to agent |
+| `token_issued` | Token issued to agent |
 | `token_renewed` | Token renewed by agent |
 | `token_revoked` | Token revoked by operator |
 | `token_validated` | Token validated (may be frequent; filter carefully) |
-| `delegation_issued` | Token delegated from one agent to another |
+| `delegation_created` | Token delegated from one agent to another |
 | `agent_registered` | New agent registered with broker |
-| `launch_token_created` | Launch token created by operator |
+| `launch_token_issued` | Launch token created by operator |
 | `admin_auth` | Admin authentication occurred |
 
 **Hash chain verification:** Each event has a `hash` and `prev_hash` field. To verify integrity, recompute `SHA256(prev_hash | id | timestamp | event_type | agent_id | task_id | orch_id | detail)` for each event and confirm it matches the recorded `hash`. The first event's `prev_hash` is all zeros.
@@ -1860,9 +1861,9 @@ curl -s -X POST "$BROKER/v1/admin/launch-tokens" \
 ```json
 {
   "access_token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...",
-  "expires_in": 300,
+  "expires_in": 1800,
   "token_type": "Bearer",
-  "scopes": ["read:data:*", "write:results:*"]
+  "scopes": ["app:launch-tokens:*", "app:agents:*", "app:audit:read"]
 }
 ```
 

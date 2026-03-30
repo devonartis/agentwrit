@@ -2,7 +2,7 @@
 
 > **Document Version:** 3.0 | **Last Updated:** March 2026 | **Status:** Current
 >
-> **Audience:** Developer building an AI agent in Python or TypeScript.
+> **Audience:** Developer building an AI agent in Python, TypeScript, or Go.
 >
 > **Prerequisite:** Your operator has deployed the broker and given you its URL and your allowed scopes. If you are the operator, see [Getting Started: Operator](getting-started-operator.md).
 >
@@ -26,7 +26,11 @@ The registration flow gives you full control over your keys. You manage the cryp
 - Broker URL from your operator (e.g., `https://broker.internal.company.com`)
 - A launch token from your operator
 - Your allowed scopes from your operator (e.g., `read:data:*`, `write:data:*`)
-- Python 3.8+ with `requests` and `cryptography` installed
+- One of:
+  - Python 3.8+ with `requests` and `cryptography`
+  - Go 1.24+ with the standard library
+
+There is no AgentAuth SDK yet. Today, Go integrations should call the broker's HTTP API directly and perform the Ed25519 registration flow themselves.
 
 You will manage your own Ed25519 keys and follow the registration flow.
 
@@ -66,7 +70,7 @@ sig_b64 = base64.b64encode(signature).decode()
 # 4. Register with broker
 reg = requests.post(f"{BROKER}/v1/register", json={
     "launch_token": LAUNCH_TOKEN,
-    "agent_name": "my-agent",
+    "orch_id": "orch-001",
     "task_id": "task-001",
     "public_key": pub_b64,
     "signature": sig_b64,
@@ -87,6 +91,108 @@ headers = {"Authorization": f"Bearer {token}"}
 # resource_resp = requests.get("https://your-api/resource", headers=headers)
 ```
 
+### Go Working Example
+
+```go
+package main
+
+import (
+	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+)
+
+type challengeResp struct {
+	Nonce     string `json:"nonce"`
+	ExpiresIn int    `json:"expires_in"`
+}
+
+type registerResp struct {
+	AccessToken string `json:"access_token"`
+	AgentID     string `json:"agent_id"`
+	ExpiresIn   int    `json:"expires_in"`
+}
+
+func main() {
+	broker := os.Getenv("AGENTAUTH_BROKER_URL")
+	if broker == "" {
+		broker = "https://broker.internal.company.com"
+	}
+	launchToken := os.Getenv("AGENTAUTH_LAUNCH_TOKEN")
+	if launchToken == "" {
+		panic("AGENTAUTH_LAUNCH_TOKEN is required")
+	}
+
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	pubB64 := base64.StdEncoding.EncodeToString(pub)
+
+	challengeRes, err := http.Get(broker + "/v1/challenge")
+	if err != nil {
+		panic(err)
+	}
+	defer challengeRes.Body.Close()
+
+	if challengeRes.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(challengeRes.Body)
+		panic(fmt.Sprintf("challenge failed: HTTP %d: %s", challengeRes.StatusCode, string(body)))
+	}
+
+	var challenge challengeResp
+	if err := json.NewDecoder(challengeRes.Body).Decode(&challenge); err != nil {
+		panic(err)
+	}
+
+	nonceBytes, err := hex.DecodeString(challenge.Nonce)
+	if err != nil {
+		panic(err)
+	}
+	sigB64 := base64.StdEncoding.EncodeToString(ed25519.Sign(priv, nonceBytes))
+
+	payload := map[string]any{
+		"launch_token":    launchToken,
+		"nonce":           challenge.Nonce,
+		"public_key":      pubB64,
+		"signature":       sigB64,
+		"orch_id":         "orch-001",
+		"task_id":         "task-001",
+		"requested_scope": []string{"read:data:*"},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		panic(err)
+	}
+
+	regRes, err := http.Post(broker+"/v1/register", "application/json", bytes.NewReader(body))
+	if err != nil {
+		panic(err)
+	}
+	defer regRes.Body.Close()
+
+	if regRes.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(regRes.Body)
+		panic(fmt.Sprintf("register failed: HTTP %d: %s", regRes.StatusCode, string(body)))
+	}
+
+	var reg registerResp
+	if err := json.NewDecoder(regRes.Body).Decode(&reg); err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Token acquired for %s, expires in %ds\n", reg.AgentID, reg.ExpiresIn)
+	fmt.Printf("Bearer token: %s\n", reg.AccessToken)
+}
+```
+
 ### What Just Happened
 
 ```mermaid
@@ -98,7 +204,7 @@ sequenceDiagram
     App->>B: GET /v1/challenge
     B-->>App: nonce (hex, 30s TTL)
     App->>App: Sign bytes.fromhex(nonce)
-    App->>B: POST /v1/register<br/>{"launch_token", "public_key", "signature", "nonce", "requested_scope"}
+    App->>B: POST /v1/register<br/>{"launch_token", "nonce", "public_key", "signature", "orch_id", "task_id", "requested_scope"}
     B-->>App: {"access_token", "agent_id", "expires_in"}
 ```
 
@@ -298,6 +404,31 @@ release_token(BROKER, your_token)
 
 Response: 204 No Content (or 401 if token is invalid/expired).
 
+### Token Release in Go
+
+```go
+func releaseToken(brokerURL, token string) error {
+	req, err := http.NewRequest(http.MethodPost, brokerURL+"/v1/token/release", nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("release failed: HTTP %d: %s", resp.StatusCode, string(body))
+}
+```
+
 ### Token Renewal
 
 Tokens are short-lived (default 5 minutes). Renew before expiry to avoid interruption.
@@ -361,6 +492,57 @@ sequenceDiagram
 
 If renewal fails with 401 or 403, your token was either expired or revoked. Re-register to get a fresh token.
 
+### Token Renewal in Go
+
+```go
+type renewResp struct {
+	AccessToken string `json:"access_token"`
+	ExpiresIn   int    `json:"expires_in"`
+}
+
+func renewToken(brokerURL, token string) (*renewResp, error) {
+	req, err := http.NewRequest(http.MethodPost, brokerURL+"/v1/token/renew", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("renewal failed: HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var out renewResp
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func renewalLoop(brokerURL, token string, ttl int) error {
+	currentToken := token
+	currentTTL := ttl
+
+	for {
+		time.Sleep(time.Duration(float64(currentTTL) * 0.8 * float64(time.Second)))
+
+		renewed, err := renewToken(brokerURL, currentToken)
+		if err != nil {
+			return err
+		}
+
+		currentToken = renewed.AccessToken
+		currentTTL = renewed.ExpiresIn
+	}
+}
+```
+
 ---
 
 ## TypeScript Examples
@@ -405,7 +587,7 @@ const regResp = await fetch(`${BROKER}/v1/register`, {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
     launch_token: LAUNCH_TOKEN,
-    agent_name: "my-agent",
+    orch_id: "orch-001",
     task_id: "task-001",
     public_key: pubB64,
     signature: sigB64,
@@ -485,7 +667,7 @@ If your launch token specifies `allowed_scope: ["read:data:*"]` and you request 
 # This will fail if your launch token only allows ["read:data:*"]
 reg = requests.post(f"{BROKER}/v1/register", json={
     "launch_token": LAUNCH_TOKEN,
-    "agent_name": "my-agent",
+    "orch_id": "orch-001",
     "task_id": "task-001",
     "public_key": pub_b64,
     "signature": sig_b64,
