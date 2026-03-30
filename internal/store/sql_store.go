@@ -1,16 +1,15 @@
-// Package store provides the persistence layer for nonces, launch tokens,
-// and agent records.
+// Package store is the single persistence layer for the broker. It holds
+// everything: nonces (challenge-response), launch tokens (agent bootstrapping),
+// agent records, app records, audit events, and revocations.
 //
-// The current implementation ([SqlStore]) keeps everything in memory behind
-// a [sync.RWMutex]. The type is named SqlStore to ease a future migration to
-// a SQL-backed store without changing call sites.
+// Two storage modes coexist: in-memory maps behind a sync.RWMutex for fast
+// lookups (nonces, launch tokens, agents), and SQLite for data that must
+// survive restarts (audit events, revocations, app records). Call InitDB
+// to enable SQLite; without it, only in-memory storage is available.
 //
-// SQLite-backed audit persistence is available via [SqlStore.InitDB],
-// [SqlStore.SaveAuditEvent], [SqlStore.LoadAllAuditEvents],
-// [SqlStore.QueryAuditEvents], and [SqlStore.Close]. Revocation persistence
-// is provided by [SqlStore.SaveRevocation] and [SqlStore.LoadAllRevocations].
-//
-// All public methods are safe for concurrent use.
+// The type is named SqlStore for historical reasons — it started as pure
+// in-memory and gained SQLite incrementally. All public methods are
+// safe for concurrent use.
 package store
 
 import (
@@ -106,9 +105,10 @@ type nonceRecord struct {
 	consumed  bool
 }
 
-// SqlStore provides in-memory storage with read/write mutex protection,
-// and optional SQLite-backed audit event persistence. Create one with
-// [NewSqlStore] and call [InitDB] to enable persistence.
+// SqlStore is the broker's single storage backend. In-memory maps handle
+// ephemeral data (nonces, launch tokens, agents), while SQLite persists
+// durable data (audit trail, revocations, app registry). Create with
+// NewSqlStore, then call InitDB to enable SQLite persistence.
 type SqlStore struct {
 	mu             sync.RWMutex
 	nonces         map[string]*nonceRecord
@@ -625,9 +625,10 @@ func (s *SqlStore) QueryAuditEvents(filters audit.QueryFilters) ([]audit.AuditEv
 // App persistence
 // ---------------------------------------------------------------------------
 
-// AppRecord stores the persistent state of a registered application.
-// Each app has its own scoped credentials (client_id + bcrypt-hashed secret)
-// and a scope ceiling that caps what agents the app may create.
+// AppRecord is an app's persistent state in SQLite. Apps are the production
+// path for agent credentialing — they authenticate independently and create
+// launch tokens within their scope ceiling. The secret hash is never returned
+// in API responses.
 type AppRecord struct {
 	AppID            string    // "app-{name}-{random6hex}"
 	Name             string    // Human-readable, unique

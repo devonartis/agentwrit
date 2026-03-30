@@ -52,11 +52,11 @@
 
 | # | File | Symbols | Status |
 |---|------|---------|--------|
-| 23 | `internal/authz/scope.go` | 3 | pending |
-| 24 | `internal/authz/val_mw.go` | 13 | pending |
-| 25 | `internal/authz/rate_mw.go` | 7 | pending |
-| 26 | `internal/revoke/rev_svc.go` | 7 | pending |
-| 27 | `internal/audit/audit_log.go` | 18 | pending |
+| 23 | `internal/authz/scope.go` | 3 | done — already clear (scope model, attenuation rule) |
+| 24 | `internal/authz/val_mw.go` | 13 | done — already clear (middleware chain, scope checks) |
+| 25 | `internal/authz/rate_mw.go` | 7 | done — fixed package comment, explained per-client_id purpose |
+| 26 | `internal/revoke/rev_svc.go` | 7 | done — already excellent (4-level revocation, persistence) |
+| 27 | `internal/audit/audit_log.go` | 18 | done — added event constant intent, rest already solid |
 
 ## Chunk 4: Supporting Infrastructure
 
