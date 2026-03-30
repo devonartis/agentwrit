@@ -119,7 +119,7 @@ func NewTknSvc(signingKey ed25519.PrivateKey, pubKey ed25519.PublicKey, c cfg.Cf
 // Issue creates a new EdDSA-signed JWT.
 //
 // Called by three roles, each with different scope semantics:
-//   - Admin (via AdminSvc): sub="admin", scope=admin:*, TTL=3600 (hardcoded, see TD-010)
+//   - Admin (via AdminSvc): sub="admin", scope=admin:*, TTL=300 (hardcoded, see TD-010)
 //   - App (via AppSvc.Authenticate): sub="app:<appID>", scope=app:*, TTL=app.TokenTTL
 //   - Agent (via IdentitySvc.Register): sub=SPIFFE ID, scope=task-specific, TTL=launch token's max_ttl
 //
