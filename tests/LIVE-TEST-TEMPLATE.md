@@ -4,6 +4,16 @@ This is the step-by-step guide for how live tests are written and executed in th
 
 Read this entire document before writing or running any test.
 
+## Who Reads These Tests?
+
+**Executives and manual QA testers read every story and verdict.** They are the primary audience — not engineers. Every banner, every verdict, every piece of evidence must make sense to someone who has never seen a line of Go code.
+
+- **An executive** reads the evidence folder to decide whether a release is safe. They need to understand: what changed, what could go wrong, and whether we proved it works. If they have to ask an engineer "what does this mean?", the evidence failed.
+- **A QA tester** reads the story to understand what they are verifying. They need to be able to reproduce the test and write a verdict without understanding the broker's internals.
+- **An engineer** reads the story last. If the evidence is clear enough for the first two audiences, engineers get what they need automatically.
+
+**Write for audience #1 (the executive). The other two follow.**
+
 **When to write these stories:** Immediately after the spec is approved — before writing any implementation code. The stories are the acceptance criteria. They define what "done" looks like. If the stories can't be written, the spec isn't clear enough to implement. See `.plans/Development-Flow.md` for the full process.
 
 ---
@@ -148,9 +158,12 @@ its activation token for a bearer token. It should no longer exist.
 ```
 
 **Personas and their tools — never mix these:**
-- **Operator** — uses `aactl` commands. Operators don't hand-craft HTTP.
-- **Developer** — uses `curl` / HTTP client. Developers have no CLI.
-- **Security Reviewer** — uses whichever tool proves the security property.
+- **Operator** — uses `aactl` commands. Operators manage the broker, configure secrets, review audit trails. They don't hand-craft HTTP.
+- **App** (or Application) — uses `curl` / HTTP client. An app is a registered software application that authenticates with client credentials, creates launch tokens, and manages its own agents. When a story is about an app authenticating, getting tokens, or registering agents — the persona is App, not Developer.
+- **Developer** — uses `curl` / HTTP client. A developer is a person building an integration. When a story is about a human exploring the API, testing endpoints, or debugging — the persona is Developer.
+- **Security Reviewer** — uses whichever tool proves the security property. The reviewer's job is to verify that security controls work: that errors don't leak, that revoked tokens are rejected, that headers are set.
+
+**Choosing the right persona:** Ask "who is doing this action in production?" If it's automated software calling an API → **App**. If it's a human operating the system → **Operator**. If it's a human exploring or testing → **Developer** or **Security Reviewer**. Getting this wrong makes the story confusing — an executive reads "the developer validates a token" and thinks a person is doing it, when really it's an automated app.
 
 ---
 
@@ -323,13 +336,23 @@ Every evidence file starts with a plain language banner. This is NOT optional. T
 
 The banner has five parts:
 
-| Part | What it says | Example |
-|------|-------------|---------|
-| **Who** | Which persona is doing this | "The security reviewer." |
-| **What** | What they're doing and what changed, in plain English | "Before Phase 0, the broker had a route where a sidecar exchanged its activation token for a bearer token. We removed it because there are no sidecars in the stack." |
-| **Why** | Why this test matters — what breaks if it fails | "If this route still responds, someone with a stolen activation token could get a bearer token from the broker." |
-| **How to run** | Step-by-step instructions a QA person can follow | "Source the environment file. Then send a POST to the old sidecar activation URL on the broker." |
-| **Expected** | What the output should be, in plain language | "HTTP 404 — the route no longer exists." |
+| Part | What it says | Bad example | Good example |
+|------|-------------|-------------|--------------|
+| **Who** | Which persona is doing this — and why them | "Developer (curl)" | "The security reviewer. Their job is to verify that error messages don't leak internal details that could help an attacker." |
+| **What** | What they're doing, what changed, and the business context — in plain English | "POST /v1/token/validate with an invalid token" | "An app sends a token to the broker to check whether it should trust an agent. The token is invalid — maybe it expired, maybe it was tampered with. Before this fix, the broker told the app exactly WHY the token was bad (e.g., 'token contains an invalid number of segments'). Now it gives a generic message." |
+| **Why** | Why this test matters — what goes wrong for real users if it fails | "H3: JWT errors must not leak" | "If the broker reveals why a token failed, an attacker can use that information to craft better forged tokens. For example, knowing 'invalid signature' vs 'expired' tells the attacker the token format is correct and they just need a better key." |
+| **How to run** | Step-by-step instructions a QA person can follow. If emulating an app, say so. | "curl -X POST /v1/token/validate -d ..." | "Source the environment file. We emulate what an app does in production: it sends a token to the broker's validate endpoint to check if the token is trustworthy. We deliberately send a bad token to see what error message comes back." |
+| **Expected** | What the output should be — plain language first, then the technical detail | "Generic error, no JWT internals" | "The broker says the token is invalid but does NOT reveal why. The error message should say 'token is invalid or expired' — nothing about signatures, segments, or algorithms." |
+
+### Ground Every Story in Reality
+
+Before writing a story, ask: **"Is this really how this would work in the real world?"**
+
+- If the story says "the developer validates a token" — would a developer really do that manually in production? No. An **app** validates tokens as part of its normal operation. The persona should be App, and the story should say the app is validating tokens it received from agents to decide whether to trust them.
+- If you're running a script or curl command to emulate what an app would do, **say so explicitly** in the How section: "We emulate what the app does in production by sending the same HTTP request the app would send."
+- If the test is purely a security verification (like "does the error message leak internals?"), that's a Security Reviewer story — and the How should explain that the reviewer is deliberately sending bad input to check what comes back.
+
+**The test must reflect production reality, not testing convenience.** A story that describes something no real user would ever do is not a useful acceptance test — it's a unit test pretending to be one.
 
 ### The Mental Model — Who Is Reading This?
 
