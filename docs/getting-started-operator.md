@@ -145,6 +145,9 @@ All broker configuration is via environment variables prefixed `AA_`. Configurat
 - **`AA_ADMIN_SECRET`** is the root of trust for the entire system. Anyone who knows this value can create launch tokens, revoke credentials, and read the audit trail. Treat it like a root password.
 - **`AA_SEED_TOKENS`** bypasses the normal bootstrap flow by printing tokens to stdout. This is for local development and testing only.
 - The broker **persists its Ed25519 signing key** to disk at `AA_SIGNING_KEY_PATH` (default `./signing.key`). A new key is generated only on first startup. Tokens remain valid across restarts. To rotate the key, delete the file and restart — all previously issued tokens become invalid. Protect the key file as you would any private key.
+- **Security headers** are set on ALL responses automatically: `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`, `X-Frame-Options: DENY`. When `AA_TLS_MODE` is `tls` or `mtls`, `Strict-Transport-Security` (HSTS) is also included. No configuration is needed -- these are always active.
+- **Request body limit** of 1 MB is enforced globally on all endpoints (not just POST). Requests exceeding this limit are rejected before reaching any handler.
+- **Error messages are sanitized** for security-sensitive endpoints. Token validation, renewal, and auth middleware return generic messages (e.g., `"token is invalid or expired"`) to prevent leaking internal state to clients.
 
 ---
 

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — B5 (SEC-L2b): HTTP Security Hardening
+
+- **SecurityHeaders middleware** (`internal/handler/security_hdl.go`): Sets `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`, `X-Frame-Options: DENY` on all responses. Conditionally adds HSTS (`Strict-Transport-Security: max-age=63072000; includeSubDomains`) when TLS mode is `tls` or `mtls`. Handlers can override `Cache-Control` (last-writer-wins).
+- **Global MaxBytesBody**: Moved from per-route wrappers to global middleware stack. All endpoints now enforce 1MB request body limit. Returns 413 `Request Entity Too Large` for oversized payloads. Eager body buffering prevents streaming JSON decoders from bypassing the limit.
+- **Error sanitization — val_hdl**: Token validation errors return generic `"token is invalid or expired"` instead of leaking internal error details. Full error logged with `request_id` for debugging.
+- **Error sanitization — renew_hdl**: Token renewal errors return generic `"token renewal failed"` instead of leaking internal error details. Full error logged to audit trail.
+- **Error sanitization — ValMw**: Authentication middleware errors return generic `"token verification failed"` instead of leaking internal error details. Full error logged to audit trail.
+- **Global middleware ordering**: `mux → SecurityHeaders → MaxBytesBody → LoggingMiddleware → RequestIDMiddleware` (outermost to innermost).
+
+#### Cherry-Pick Details
+
+- Source: 5 commits from `agentauth` legacy repo (B5 batch)
+- Applied: 4 commits (1 skipped as empty — content already present from prior batch)
+- Conflicts resolved: `main.go` (OIDC/cloud routes dropped), `handler_test.go` (kept comprehensive test suite from prior commits), `renew_hdl.go` (kept obs.Warn log line)
+- Contamination: CLEAN (zero HITL/OIDC/cloud/federation references)
+
 ### Changed — Documentation Accuracy and Pre-SDK Integration Guidance
 
 - Corrected public documentation to match the current broker contract for agent registration, renewal, release, app authentication, launch token creation, and health responses.

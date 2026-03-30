@@ -28,9 +28,9 @@ GitFlow: `main` → `develop` → `fix/*` or `feature/*` branches. Cherry-pick b
 
 ## Current State
 
-**Migration in progress — B0 complete.** Sidecar subsystem removed (cherry-picked `34bb887` and `909a777` from agentauth). Go code is zero-sidecar. Docs still have some sidecar user guide references (will rewrite later).
+**Migration in progress — B5 cherry-picked, gates G1-G3 PASS.** SecurityHeaders middleware, global MaxBytesBody, error sanitization (val_hdl, renew_hdl, ValMw) all landed. Docs updated. Needs Docker gates (G4-G7), acceptance tests, review, then merge to develop.
 
-**Current branch:** `fix/sidecar-removal` — needs `go build ./...` and `go test ./...` on local machine (sandbox has no Go), then merge to `develop`.
+**Current branch:** `fix/sec-l2b` — 4 cherry-pick commits (1 skipped as empty). G1-G3 PASS. Next: Docker gates, acceptance tests from `agentauth/tests/fix-sec-l2b/`, code review, merge.
 
 Use the `cherrypick-devflow` skill to run the migration. After migration is complete, switch to `devflow` for new feature development.
 
@@ -48,11 +48,11 @@ Use the `cherrypick-devflow` skill to run the migration. After migration is comp
 | Batch | What | Commits | Status |
 |-------|------|---------|--------|
 | B0: Sidecar Removal | Remove sidecar subsystem | `34bb887` `909a777` | **done** — merged to fix/sidecar-removal, needs go test + merge to develop |
-| B1: P0 | Persistent signing key, graceful shutdown | `9c1d51d` `f96549f` `6d0d77d` `cec8b34` `0fef76b` `e823bea` | pending |
-| B2: P1 | Config file parser, bcrypt admin auth, aactl init | `313aa41` `869a8f7` `58cbce2` `4978ecd` `866cc78` `3dfada7` `ebc4884` `1c5f293` | pending |
-| B3: SEC-L1 | Bind address, TLS enforcement, timeouts, weak secret denylist | `632b224` `6fa0198` `574d3b9` `cd09a34` `5489679` | pending |
-| B4: SEC-L2a | Token alg/kid validation, MaxTTL, revocation hardening | `8e63989` `0526c46` `c24e442` `67aeda7` `b78edb8` `ecb4c86` `078a674` `8366fa9` | **done** — 13/13 PASS |
-| B5: SEC-L2b | Security headers, MaxBytesBody, error sanitization | `daf2995` `e592acc` `2857b3a` `247727c` `c5da6c4` | pending |
+| B1: P0 | Persistent signing key, graceful shutdown | `9c1d51d` `f96549f` `6d0d77d` `cec8b34` `0fef76b` `e823bea` | **done** — merged |
+| B2: P1 | Config file parser, bcrypt admin auth, aactl init | `313aa41` `869a8f7` `58cbce2` `4978ecd` `866cc78` `3dfada7` `ebc4884` `1c5f293` | **done** — merged |
+| B3: SEC-L1 | Bind address, TLS enforcement, timeouts, weak secret denylist | `632b224` `6fa0198` `574d3b9` `cd09a34` `5489679` | **done** — merged |
+| B4: SEC-L2a | Token alg/kid validation, MaxTTL, revocation hardening | `8e63989` `0526c46` `c24e442` `67aeda7` `b78edb8` `ecb4c86` `078a674` `8366fa9` | **done** — 13/13 PASS, merged |
+| B5: SEC-L2b | Security headers, MaxBytesBody, error sanitization | `daf2995` `e592acc` `2857b3a` `247727c` `c5da6c4` | **in progress** — G1-G3 PASS, needs Docker gates + acceptance tests |
 | B6: SEC-A1 + Gates | TTL bypass fix, gates regression | `9422e7c` `e395a15` | pending |
 
 ## Tech Debt (carried forward from internal — relevant to core only)
@@ -87,13 +87,12 @@ When both Cowork and Claude Code are active, read `COWORK_SESSION.md` for shared
 
 ## Recent Lessons (last 3 sessions — older archived to MEMORY_ARCHIVE.md)
 
-- B3 (SEC-L1): Bind address now defaults to 127.0.0.1 (was 0.0.0.0). docker-compose.yml must set `AA_BIND_ADDRESS=0.0.0.0` for container mode.
-- B3: Weak secret denylist rejects "change-me-in-production" at startup. HTTP timeouts: Read 15s, ReadHeader 5s, Write 30s, Idle 120s. TLS 1.2 minimum with AEAD-only ciphers.
-- B4 (SEC-L2a): S4/S5 initially FAILED because `TknSvc.revoker` was nil at runtime — `main.go` never called `SetRevoker()`. Unit tests passed because mocks inject the revoker. Classic mock/integration gap. Fixed by adding one line to main.go + `RevokeByJTI()` adapter on RevSvc.
-- App launch token route split: `393d376` from agentauth-internal was missing from cherry-pick batches. The fork point (`2c5194e`) had `RequireAnyScope` on one endpoint. The split into `/v1/admin/launch-tokens` (operator) and `/v1/app/launch-tokens` (app) happened AFTER the fork. Must cherry-pick it separately.
-- Doc overhaul (2026-03-30): B0-B4 docs were never updated with code changes. Result: 54 findings (8 CRIT, 22 HIGH). Key issues: signing key persistence claimed ephemeral (wrong since B1), admin auth claimed subtle.ConstantTimeCompare (wrong since B2), store types fabricated, registration examples used HMAC instead of Ed25519, app endpoints had wrong scopes/fields. Fixed all on `fix/docs-overhaul`.
-- Docs must update WITH every code change — same commit or same branch. No deferred doc work. This is a standing rule.
-- `docs/examples/*.md` files were proposed templates, not real docs. Don't audit them. They were deleted.
-- All 8 v1.3 pattern components are implemented and documented. `docs/implementation-map.md` traces each to exact Go files. `docs/scenarios.md` has 6 real-world scenarios.
-- AgentAuth has only 5 direct Go dependencies. Ed25519/JWT/hash-chain/scope/revocation all use Go stdlib. Strong supply chain story.
-- Next batch: B5 (SEC-L2b) — 5 commits. Has acceptance tests from `agentauth/tests/fix-sec-l2b/`.
+- B5 (SEC-L2b): Commit `247727c` (renew_hdl sanitization) was empty after conflict resolution — the sanitized `WriteProblem` call and tests were already present from `e592acc`. Skipped safely.
+- B5: Commit `c5da6c4` had a modify/delete conflict on `tests/fix-sec-l2b/evidence/S3-renew-tampered-generic.md` — evidence file doesn't exist in core (deleted during internal cleanup). Removed and continued.
+- B5: `e592acc` conflict in `main.go` contained OIDC routes (`/v1/jwks`, `/.well-known/openid-configuration`) and cloud handler (`/v1/cloud/credentials`). All dropped — add-on code.
+- B5: `handler_test.go` already had `newTestBroker` wired with SecurityHeaders + MaxBytesBody from prior batches. Only the new test functions at the bottom needed merging.
+- B5: Missing `context` and `errors` imports in `handler_test.go` after cherry-pick — needed by `TestRenew_DirectErrorMessageIsGeneric` which uses `context.Background()` and `errors.New()`. LSP diagnostics caught it.
+- Doc overhaul (2026-03-30): B0-B4 docs were never updated with code changes. Result: 54 findings (8 CRIT, 22 HIGH). Fixed all on `fix/docs-overhaul`. Standing rule: docs update WITH every code change.
+- jcodemunch indexes code symbols only — not markdown docs. Use context-mode (`ctx_execute_file`, `ctx_search`) for doc analysis to save context window.
+- `settings.json` (project, committed) vs `settings.local.json` (personal, gitignored). Broad tool permissions go in project-level; machine-specific Bash patterns go in local.
+- Next: B5 needs Docker gates (G4-G7), acceptance tests from `agentauth/tests/fix-sec-l2b/`, code review, then merge. After B5: B6 (SEC-A1 + Gates) — 2 commits, last batch.
