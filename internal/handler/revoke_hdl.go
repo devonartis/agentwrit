@@ -12,10 +12,11 @@ import (
 	"github.com/divineartis/agentauth/internal/revoke"
 )
 
-// RevokeHdl handles POST /v1/revoke. It accepts a revocation level and
-// target, delegates to [revoke.RevSvc], records an audit event, and
-// increments the revocation Prometheus counter. This endpoint requires
-// the "admin:revoke:*" scope.
+// RevokeHdl handles POST /v1/revoke — the admin's kill switch. Supports four
+// revocation levels: "token" (one JTI), "agent" (all tokens for a subject),
+// "task" (all tokens for a task_id), "chain" (all tokens in a delegation
+// chain). This is how operators contain a compromised agent or cancel a
+// runaway task. Requires admin:revoke:* scope.
 type RevokeHdl struct {
 	revSvc   *revoke.RevSvc
 	auditLog *audit.AuditLog

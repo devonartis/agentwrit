@@ -8,9 +8,11 @@ import (
 	"github.com/divineartis/agentauth/internal/store"
 )
 
-// ChallengeHdl handles GET /v1/challenge. It generates a cryptographic
-// nonce that the agent must sign with its Ed25519 private key during
-// registration. The nonce is valid for 30 seconds.
+// ChallengeHdl handles GET /v1/challenge — step 1 of the agent registration
+// flow. The agent fetches a nonce, signs it with its Ed25519 private key, and
+// sends the signature back in POST /v1/register. This proves the agent holds
+// the key without ever transmitting it. The nonce expires in 30 seconds to
+// prevent replay.
 type ChallengeHdl struct {
 	store *store.SqlStore
 }

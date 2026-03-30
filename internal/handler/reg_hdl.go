@@ -11,9 +11,12 @@ import (
 	"github.com/divineartis/agentauth/internal/store"
 )
 
-// RegHdl handles POST /v1/register. It decodes the registration request,
-// delegates to [identity.IdSvc.Register], and maps service-level errors to
-// appropriate RFC 7807 HTTP responses.
+// RegHdl handles POST /v1/register — the agent's entry point into the system.
+// An agent presents a launch token, a signed challenge (proving it holds an
+// Ed25519 private key), and its requested scopes. If the launch token is valid
+// and the scopes fit within the token's ceiling, the agent gets a short-lived
+// JWT. This is the only way agents get credentials — there's no direct admin
+// path to issue agent tokens (see TD-013 for why that matters).
 type RegHdl struct {
 	idSvc *identity.IdSvc
 }

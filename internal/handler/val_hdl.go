@@ -10,10 +10,12 @@ import (
 	"github.com/divineartis/agentauth/internal/token"
 )
 
-// ValHdl handles POST /v1/token/validate. It accepts a token in the
-// request body and returns a JSON response indicating whether the token
-// is valid, along with the decoded claims on success. If a [revoke.RevSvc]
-// is provided, revoked tokens are reported as invalid.
+// ValHdl handles POST /v1/token/validate — the token introspection endpoint.
+// This is how apps (and any resource server) check whether an agent's token
+// is still valid before granting access. No auth required on this endpoint
+// because the token itself is the proof — the response just says valid/invalid
+// with decoded claims. Revoked tokens show as invalid with no detail about why,
+// preventing information leakage.
 type ValHdl struct {
 	tknSvc *token.TknSvc
 	revSvc *revoke.RevSvc

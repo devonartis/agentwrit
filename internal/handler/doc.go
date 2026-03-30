@@ -1,26 +1,27 @@
-// Package handler provides HTTP handlers for all AgentAuth broker endpoints.
+// Package handler provides the HTTP layer for the broker. Handlers are thin —
+// they parse requests, call a domain service, and format responses. All
+// business logic lives in the service packages (token, admin, app, identity,
+// deleg, revoke). Errors go out as RFC 9457 problem+json via problemdetails.
 //
-// Each handler type wraps a domain service (e.g. IdSvc, TknSvc, DelegSvc)
-// and translates between HTTP request/response semantics and service method
-// calls. Handlers are thin: they parse the request, call the service, and
-// format the response. Business logic lives in the service packages.
+// The middleware pipeline (wired in cmd/broker/main.go) runs on every request:
+// RequestID → Logging → MaxBytesBody → SecurityHeaders → Handler.
+// Auth-protected routes add: ValMw (Bearer verification) → RequireScope.
 //
-// Error responses use RFC 7807 "application/problem+json" via the
-// problemdetails package. All handlers share the same middleware pipeline
-// defined in cmd/broker/main.go: RequestID → Logging → MaxBytesBody →
-// (optional) ValMw → (optional) RequireScope → Handler.
+// Endpoints by audience:
 //
-// Handler types and their endpoints:
+//   Public (no auth):
+//   - ChallengeHdl:      GET  /v1/challenge          — nonce for agent registration
+//   - RegHdl:            POST /v1/register            — agent gets first credential
+//   - ValHdl:            POST /v1/token/validate      — apps verify agent tokens
+//   - HealthHdl:         GET  /v1/health              — liveness + readiness
+//   - MetricsHdl:        GET  /v1/metrics             — Prometheus scrape
 //
-//   - ChallengeHdl:      GET  /v1/challenge
-//   - RegHdl:            POST /v1/register
-//   - ValHdl:            POST /v1/token/validate
-//   - RenewHdl:          POST /v1/token/renew
-//   - ReleaseHdl:        POST /v1/token/release
-//   - DelegHdl:          POST /v1/delegate
-//   - RevokeHdl:         POST /v1/revoke
-//   - AuditHdl:          GET  /v1/audit/events
-//   - HealthHdl:         GET  /v1/health
-//   - MetricsHdl:        GET  /v1/metrics
-//   - HandshakeHdl:      Mutual auth (Go API only, not HTTP-exposed)
+//   Agent (Bearer auth):
+//   - RenewHdl:          POST /v1/token/renew         — extend session
+//   - ReleaseHdl:        POST /v1/token/release       — self-revoke when done
+//   - DelegHdl:          POST /v1/delegate            — create sub-token for another agent
+//
+//   Admin (Bearer + admin:* scope):
+//   - RevokeHdl:         POST /v1/revoke              — kill switch (4 levels)
+//   - AuditHdl:          GET  /v1/audit/events        — query tamper-evident trail
 package handler

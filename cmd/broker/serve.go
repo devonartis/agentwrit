@@ -15,7 +15,10 @@ import (
 	"github.com/divineartis/agentauth/internal/obs"
 )
 
-// buildServer creates an http.Server with hardened timeouts and TLS config.
+// buildServer creates an http.Server with production-hardened timeouts and
+// TLS config. The cipher suite is restricted to AEAD-only (GCM, ChaCha20)
+// — no CBC, no RC4. Timeout values are defensive: 5s to read headers prevents
+// slowloris, 15s read / 30s write covers normal operations with margin.
 func buildServer(c cfg.Cfg, addr string, handler http.Handler) *http.Server {
 	srv := &http.Server{
 		Addr:              addr,

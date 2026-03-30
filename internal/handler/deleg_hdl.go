@@ -11,9 +11,11 @@ import (
 	"github.com/divineartis/agentauth/internal/problemdetails"
 )
 
-// DelegHdl handles POST /v1/delegate. It extracts the caller's claims
-// from context (set by [authz.ValMw]), decodes the delegation request,
-// and delegates to [deleg.DelegSvc.Delegate].
+// DelegHdl handles POST /v1/delegate — how an agent creates a sub-token for
+// another agent with narrower scope. The delegating agent can only pass along
+// permissions it already has (scope attenuation is enforced). The delegation
+// chain is recorded in the token claims so the full provenance is visible:
+// who delegated what to whom.
 type DelegHdl struct {
 	delegSvc *deleg.DelegSvc
 }

@@ -12,9 +12,10 @@ import (
 	"github.com/divineartis/agentauth/internal/token"
 )
 
-// RenewHdl handles POST /v1/token/renew. It extracts the Bearer token
-// from the Authorization header, verifies it, and issues a replacement
-// token with fresh timestamps. Must be wrapped with [authz.ValMw].
+// RenewHdl handles POST /v1/token/renew — lets an agent extend its session
+// when a task takes longer than expected. The old token is revoked and a new
+// one issued with the same scopes and original TTL (not DefaultTTL — that
+// would be a privilege escalation, see SEC-A1). Must be wrapped with ValMw.
 type RenewHdl struct {
 	tknSvc   *token.TknSvc
 	auditLog *audit.AuditLog
