@@ -84,7 +84,7 @@ flowchart TB
 
         subgraph Transport["Transport Layer"]
             HANDLER["handler\nHTTP handlers\nChallengeHdl, RegHdl,\nValHdl, RenewHdl, ..."]
-            SECHDL["security_hdl\nSecurityHeaders\nMaxBytesBody (global)"]
+            SECHDL["security_hdl\nSecurityHeaders"]
             PD["problemdetails\nRFC 7807 errors\nRequestID"]
         end
 
@@ -120,7 +120,7 @@ agentauth/
 |   |-- authz/                   # Bearer middleware, scope checking, rate limiter
 |   |-- cfg/                     # Broker configuration from AA_* env vars
 |   |-- deleg/                   # Scope-attenuated delegation with chain signing
-|   |-- handler/                 # HTTP handlers for all broker endpoints + security_hdl.go (SecurityHeaders, global MaxBytesBody)
+|   |-- handler/                 # HTTP handlers for all broker endpoints + security_hdl.go (SecurityHeaders)
 |   |-- identity/                # Challenge-response registration, SPIFFE IDs
 |   |-- keystore/                # Ed25519 signing key persistence (PKCS8 PEM)
 |   |-- mutauth/                 # Mutual authentication (Go API only)
@@ -289,7 +289,7 @@ sequenceDiagram
     LOG-->>LOG: Log method, path, status, latency, request_id
 ```
 
-Not all routes use every middleware. Public endpoints (health, challenge, metrics) skip `ValMw` and `ValMw.RequireScope`. `SecurityHeaders` and `MaxBytesBody` are global middleware applied to ALL requests (moved from per-route to global). `SecurityHeaders` sets `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`, and `X-Frame-Options: DENY` on every response, and adds `Strict-Transport-Security` (HSTS) when `AA_TLS_MODE` is `tls` or `mtls`.
+Not all routes use every middleware. Public endpoints (health, challenge, metrics) skip `ValMw` and `ValMw.RequireScope`. `SecurityHeaders` (`internal/handler/security_hdl.go`) and `MaxBytesBody` (`internal/problemdetails/problemdetails.go`) are global middleware applied to ALL requests. Execution order on an incoming request: `RequestID → Logging → MaxBytesBody → SecurityHeaders → route handler`. `SecurityHeaders` sets `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`, and `X-Frame-Options: DENY` on every response, and adds `Strict-Transport-Security` (HSTS) when `AA_TLS_MODE` is `tls` or `mtls`. `MaxBytesBody` enforces a 1 MB request body limit — oversized requests get HTTP 413 before reaching any handler.
 
 ---
 
@@ -404,25 +404,25 @@ flowchart LR
 
 | Route | Middleware Chain |
 |---|---|
-| `GET /v1/challenge` | RequestID -> Logging -> SecurityHeaders -> MaxBytesBody -> Handler |
-| `GET /v1/health` | RequestID -> Logging -> SecurityHeaders -> MaxBytesBody -> Handler |
-| `GET /v1/metrics` | RequestID -> Logging -> SecurityHeaders -> MaxBytesBody -> Handler |
-| `POST /v1/token/validate` | RequestID -> Logging -> SecurityHeaders -> MaxBytesBody -> Handler |
-| `POST /v1/register` | RequestID -> Logging -> SecurityHeaders -> MaxBytesBody -> Handler |
-| `POST /v1/token/renew` | RequestID -> Logging -> SecurityHeaders -> MaxBytesBody -> ValMw -> Handler |
-| `POST /v1/delegate` | RequestID -> Logging -> SecurityHeaders -> MaxBytesBody -> ValMw -> Handler |
-| `POST /v1/token/release` | RequestID -> Logging -> SecurityHeaders -> MaxBytesBody -> ValMw -> Handler |
-| `POST /v1/revoke` | RequestID -> Logging -> SecurityHeaders -> MaxBytesBody -> ValMw -> ValMw.RequireScope(`admin:revoke:*`) -> Handler |
-| `GET /v1/audit/events` | RequestID -> Logging -> SecurityHeaders -> MaxBytesBody -> ValMw -> ValMw.RequireScope(`admin:audit:*`) -> Handler |
-| `POST /v1/admin/auth` | RequestID -> Logging -> SecurityHeaders -> MaxBytesBody -> RateLimiter(5/s, burst 10) -> Handler |
-| `POST /v1/admin/launch-tokens` | RequestID -> Logging -> SecurityHeaders -> MaxBytesBody -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
-| `POST /v1/app/launch-tokens` | RequestID -> Logging -> SecurityHeaders -> MaxBytesBody -> ValMw -> ValMw.RequireScope(`app:launch-tokens:*`) -> Handler |
-| `POST /v1/admin/apps` | RequestID -> Logging -> SecurityHeaders -> MaxBytesBody -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
-| `GET /v1/admin/apps` | RequestID -> Logging -> SecurityHeaders -> MaxBytesBody -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
-| `GET /v1/admin/apps/{id}` | RequestID -> Logging -> SecurityHeaders -> MaxBytesBody -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
-| `PUT /v1/admin/apps/{id}` | RequestID -> Logging -> SecurityHeaders -> MaxBytesBody -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
-| `DELETE /v1/admin/apps/{id}` | RequestID -> Logging -> SecurityHeaders -> MaxBytesBody -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
-| `POST /v1/app/auth` | RequestID -> Logging -> SecurityHeaders -> MaxBytesBody -> RateLimiter(10/min per client_id, burst 3) -> Handler |
+| `GET /v1/challenge` | RequestID -> Logging -> MaxBytesBody -> SecurityHeaders -> Handler |
+| `GET /v1/health` | RequestID -> Logging -> MaxBytesBody -> SecurityHeaders -> Handler |
+| `GET /v1/metrics` | RequestID -> Logging -> MaxBytesBody -> SecurityHeaders -> Handler |
+| `POST /v1/token/validate` | RequestID -> Logging -> MaxBytesBody -> SecurityHeaders -> Handler |
+| `POST /v1/register` | RequestID -> Logging -> MaxBytesBody -> SecurityHeaders -> Handler |
+| `POST /v1/token/renew` | RequestID -> Logging -> MaxBytesBody -> SecurityHeaders -> ValMw -> Handler |
+| `POST /v1/delegate` | RequestID -> Logging -> MaxBytesBody -> SecurityHeaders -> ValMw -> Handler |
+| `POST /v1/token/release` | RequestID -> Logging -> MaxBytesBody -> SecurityHeaders -> ValMw -> Handler |
+| `POST /v1/revoke` | RequestID -> Logging -> MaxBytesBody -> SecurityHeaders -> ValMw -> ValMw.RequireScope(`admin:revoke:*`) -> Handler |
+| `GET /v1/audit/events` | RequestID -> Logging -> MaxBytesBody -> SecurityHeaders -> ValMw -> ValMw.RequireScope(`admin:audit:*`) -> Handler |
+| `POST /v1/admin/auth` | RequestID -> Logging -> MaxBytesBody -> SecurityHeaders -> RateLimiter(5/s, burst 10) -> Handler |
+| `POST /v1/admin/launch-tokens` | RequestID -> Logging -> MaxBytesBody -> SecurityHeaders -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
+| `POST /v1/app/launch-tokens` | RequestID -> Logging -> MaxBytesBody -> SecurityHeaders -> ValMw -> ValMw.RequireScope(`app:launch-tokens:*`) -> Handler |
+| `POST /v1/admin/apps` | RequestID -> Logging -> MaxBytesBody -> SecurityHeaders -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
+| `GET /v1/admin/apps` | RequestID -> Logging -> MaxBytesBody -> SecurityHeaders -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
+| `GET /v1/admin/apps/{id}` | RequestID -> Logging -> MaxBytesBody -> SecurityHeaders -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
+| `PUT /v1/admin/apps/{id}` | RequestID -> Logging -> MaxBytesBody -> SecurityHeaders -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
+| `DELETE /v1/admin/apps/{id}` | RequestID -> Logging -> MaxBytesBody -> SecurityHeaders -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
+| `POST /v1/app/auth` | RequestID -> Logging -> MaxBytesBody -> SecurityHeaders -> RateLimiter(10/min per client_id, burst 3) -> Handler |
 ---
 
 ## Key Design Decisions

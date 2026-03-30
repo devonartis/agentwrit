@@ -154,7 +154,8 @@ Rate limiting:
 | `internal/authz/val_mw.go:158` | `RequireAnyScope()` — multi-scope enforcement |
 | `internal/authz/scope.go` | `ScopeIsSubset()` — scope comparison logic |
 | `internal/authz/rate_mw.go` | `RateLimiter` — per-IP and per-key rate limiting |
-| `internal/handler/security_hdl.go` | `SecurityHeaders` — global middleware: `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`, `X-Frame-Options: DENY`, HSTS when TLS enabled. Also wraps global `MaxBytesBody` (1 MB) for all endpoints. |
+| `internal/handler/security_hdl.go` | `SecurityHeaders` — global middleware: `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`, `X-Frame-Options: DENY`, HSTS when TLS enabled. |
+| `internal/problemdetails/problemdetails.go` | `MaxBytesBody` — global middleware: 1 MB request body limit on all endpoints. Returns HTTP 413 for oversized requests. |
 
 ### Scope Format
 
@@ -420,7 +421,7 @@ Agent → POST /v1/delegate (with Bearer token, requesting scope narrowing)
 Component 8: LoggingMiddleware records request start (obs)
 Component 8: RequestIDMiddleware assigns X-Request-ID (problemdetails)
 Component 3: SecurityHeaders sets security response headers (handler/security_hdl.go)
-Component 3: MaxBytesBody enforces 1 MB body limit (handler/security_hdl.go)
+Component 3: MaxBytesBody enforces 1 MB body limit (problemdetails/problemdetails.go)
 Component 3: ValMw.Wrap() extracts Bearer token
 Component 2: TknSvc.Verify() runs 6-step pipeline (format, alg, kid, sig, claims, revocation)
 Component 4: Revoker.IsRevoked() checks 4 levels (inside Verify)

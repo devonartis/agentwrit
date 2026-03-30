@@ -72,16 +72,47 @@ to `.plans/cherry-pick/TESTING.md` automatically.
 
 **Hard stop if any gate FAILs.** Fix the issue, re-run, and do not proceed until all gates are green.
 
-### 4. Review
+### 4. Update Application Docs
+
+**This is not optional.** B0-B4 deferred doc updates caused 54 findings (8 CRITICAL). Every batch that changes behavior MUST update the application docs in the same branch.
+
+**Doc files to check:** `docs/api.md`, `docs/architecture.md`, `docs/concepts.md`, `docs/implementation-map.md`, `docs/getting-started-operator.md`, `docs/scenarios.md`, `docs/api/openapi.yaml`.
+
+For each file, ask: "Does this batch change anything this doc describes?" If yes, update it. Specifically:
+
+- **api.md** — new endpoints, changed response shapes, changed error messages, new headers
+- **architecture.md** — new middleware, changed request lifecycle, new components in diagrams
+- **concepts.md** — new security properties, changed component descriptions
+- **implementation-map.md** — new source files, changed function behavior
+- **getting-started-operator.md** — new config options, changed defaults, new security behavior operators should know about
+- **openapi.yaml** — new endpoints, changed schemas, new headers
+
+**Verification:** After updating, read each changed doc section and verify it matches the actual code. Do not trust sub-agent doc updates blindly — spot-check against the handler structs and middleware code using jcodemunch. The B4 doc disaster happened because no one verified the doc changes matched reality.
+
+### 5. Acceptance Tests
+
+Follow `tests/LIVE-TEST-TEMPLATE.md` exactly. Key rules:
+
+- **Individual story files** — one `story-*.md` per story, not a bulk script dump
+- **Executive-readable banners** — Who/What/Why/How/Expected must make sense to a non-technical reader
+- **Real personas** — App (automated software), Operator (human managing), Security Reviewer (verifying controls). NOT "Developer (curl)" when the real actor is an App.
+- **Ground in reality** — if using curl to emulate an app, say so. Describe the production scenario, not the testing mechanic.
+- **One story at a time** — run, see output, then write verdict. Don't pre-write PASS.
+- **VPS first, Container second** — compiled binary, then Docker
+- **README.md** in evidence/ — summary table with all verdicts
+
+If the batch has existing acceptance tests in `agentauth/tests/<batch>/`, adapt them for core (remove OIDC/HITL/sidecar, fix field names, fix registration flow to use challenge-response). Do NOT copy legacy tests without auditing every field name against the actual handler structs.
+
+### 6. Review
 
 Delegate to a `code-reviewer` sub-agent: compare what the batch was supposed to add (from the guide) against what actually landed (`git diff HEAD~<N>..HEAD`). Flag anything that doesn't match or shouldn't be there.
 
 Save to `.plans/cherry-pick/B<N>-review.md`.
 
-### 5. Record
+### 7. Record
 
 - Save evidence to `.plans/cherry-pick/B<N>-evidence.md` (terminal output from build, tests, contamination check, spot-check)
-- Update `MEMORY.md` batch tracker — mark batch done
+- Update `MEMORY.md` batch tracker — mark batch done, add lessons learned
 - Update `FLOW.md` — record what happened, set next batch
 - Update `CHANGELOG.md` — what was added
 - Commit: `git add -A && git commit -m "docs(cherry-pick): B<N> [name] — analysis, review, evidence"`
