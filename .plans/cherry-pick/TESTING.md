@@ -387,3 +387,10 @@ The gate commands are all shell one-liners or short scripts — they translate d
 | 2026-03-30 | B5 | G1:Compile | PASS | branch=fix/sec-l2b |
 | 2026-03-30 | B5 | G2:UnitTests | PASS | branch=fix/sec-l2b |
 | 2026-03-30 | B5 | G3:Contamination | PASS | branch=fix/sec-l2b |
+
+| 2026-03-30 | B5 | G1:Compile | PASS | branch=fix/sec-l2b |
+| 2026-03-30 | B5 | G2:UnitTests | PASS | branch=fix/sec-l2b |
+| 2026-03-30 | B5 | G3:Contamination | PASS | branch=fix/sec-l2b |
+| 2026-03-30 | B5 | G4:DockerBuild | PASS | branch=fix/sec-l2b |
+| 2026-03-30 | B5 | G5:DockerStart | PASS | branch=fix/sec-l2b |
+| 2026-03-30 | B5 | G6:SmokeTest | PASS | branch=fix/sec-l2b |

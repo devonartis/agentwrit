@@ -63,7 +63,7 @@ section "Setup: Admin auth + Agent registration"
 AUTH_RESP=$(curl -sf -X POST "${BROKER_URL}/v1/admin/auth" \
   -H "Content-Type: application/json" \
   -d "{\"secret\": \"${AA_ADMIN_SECRET}\"}")
-ADMIN_TOKEN=$(echo "$AUTH_RESP" | jq -r .token)
+ADMIN_TOKEN=$(echo "$AUTH_RESP" | jq -r .access_token)
 if [ -z "$ADMIN_TOKEN" ] || [ "$ADMIN_TOKEN" = "null" ]; then
   echo "FATAL: Could not get admin token. Response: $AUTH_RESP"
   exit 1
@@ -74,7 +74,7 @@ echo "  Admin token: ${ADMIN_TOKEN:0:20}..."
 LT_RESP=$(curl -sf -X POST "${BROKER_URL}/v1/admin/launch-tokens" \
   -H "Authorization: Bearer ${ADMIN_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{"allowed_scopes":["read:data:*"],"max_ttl":300,"single_use":false}')
+  -d '{"agent_name":"l2b-test-agent","allowed_scope":["read:data:*"],"max_ttl":300}')
 LAUNCH_TOKEN=$(echo "$LT_RESP" | jq -r .launch_token)
 if [ -z "$LAUNCH_TOKEN" ] || [ "$LAUNCH_TOKEN" = "null" ]; then
   echo "FATAL: Could not create launch token. Response: $LT_RESP"
@@ -82,12 +82,44 @@ if [ -z "$LAUNCH_TOKEN" ] || [ "$LAUNCH_TOKEN" = "null" ]; then
 fi
 echo "  Launch token: ${LAUNCH_TOKEN:0:20}..."
 
-# Register agent with launch token
-REG_RESP=$(curl -sf -X POST "${BROKER_URL}/v1/register" \
-  -H "Authorization: Bearer ${LAUNCH_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"l2b-test-agent","scopes":["read:data:*"]}')
-AGENT_TOKEN=$(echo "$REG_RESP" | jq -r .token)
+# Register agent via challenge-response flow
+# 1. Get challenge nonce
+CHALLENGE_RESP=$(curl -sf "${BROKER_URL}/v1/challenge")
+NONCE=$(echo "$CHALLENGE_RESP" | jq -r .nonce)
+if [ -z "$NONCE" ] || [ "$NONCE" = "null" ]; then
+  echo "FATAL: Could not get challenge nonce. Response: $CHALLENGE_RESP"
+  exit 1
+fi
+echo "  Nonce: ${NONCE:0:20}..."
+
+# 2. Generate Ed25519 keypair, sign nonce, and register (Python helper)
+REG_RESP=$(python3 -c "
+import json, base64, sys, urllib.request
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
+key = Ed25519PrivateKey.generate()
+pub = key.public_key()
+pub_bytes = pub.public_bytes(Encoding.Raw, PublicFormat.Raw)
+pub_b64 = base64.b64encode(pub_bytes).decode()
+sig = key.sign(bytes.fromhex('${NONCE}'))
+sig_b64 = base64.b64encode(sig).decode()
+
+body = json.dumps({
+    'launch_token': '${LAUNCH_TOKEN}',
+    'nonce': '${NONCE}',
+    'public_key': pub_b64,
+    'signature': sig_b64,
+    'orch_id': 'l2b-orch',
+    'task_id': 'l2b-task',
+    'requested_scope': ['read:data:*']
+}).encode()
+req = urllib.request.Request('${BROKER_URL}/v1/register', data=body,
+    headers={'Content-Type': 'application/json'})
+resp = urllib.request.urlopen(req)
+print(resp.read().decode())
+")
+AGENT_TOKEN=$(echo "$REG_RESP" | jq -r .access_token)
 AGENT_ID=$(echo "$REG_RESP" | jq -r .agent_id)
 if [ -z "$AGENT_TOKEN" ] || [ "$AGENT_TOKEN" = "null" ]; then
   echo "FATAL: Could not register agent. Response: $REG_RESP"
@@ -117,17 +149,36 @@ fi
 
 # ── S2: Generic error on revoked token (H3) ──
 section "S2: Validate generic error on revoked token (H3)"
-# Register a throw-away agent to revoke
+# Register a throw-away agent to revoke (challenge-response flow)
 LT2_RESP=$(curl -sf -X POST "${BROKER_URL}/v1/admin/launch-tokens" \
   -H "Authorization: Bearer ${ADMIN_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{"allowed_scopes":["read:data:*"],"max_ttl":300,"single_use":false}')
+  -d '{"agent_name":"l2b-revoke-agent","allowed_scope":["read:data:*"],"max_ttl":300}')
 LT2=$(echo "$LT2_RESP" | jq -r .launch_token)
-REV_REG=$(curl -sf -X POST "${BROKER_URL}/v1/register" \
-  -H "Authorization: Bearer ${LT2}" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"l2b-revoke-test","scopes":["read:data:*"]}')
-REV_TOKEN=$(echo "$REV_REG" | jq -r .token)
+CHALLENGE2_RESP=$(curl -sf "${BROKER_URL}/v1/challenge")
+NONCE2=$(echo "$CHALLENGE2_RESP" | jq -r .nonce)
+REV_REG=$(python3 -c "
+import json, base64, urllib.request
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
+key = Ed25519PrivateKey.generate()
+pub_bytes = key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+sig = key.sign(bytes.fromhex('${NONCE2}'))
+body = json.dumps({
+    'launch_token': '${LT2}',
+    'nonce': '${NONCE2}',
+    'public_key': base64.b64encode(pub_bytes).decode(),
+    'signature': base64.b64encode(sig).decode(),
+    'orch_id': 'l2b-rev-orch',
+    'task_id': 'l2b-rev-task',
+    'requested_scope': ['read:data:*']
+}).encode()
+req = urllib.request.Request('${BROKER_URL}/v1/register', data=body,
+    headers={'Content-Type': 'application/json'})
+print(urllib.request.urlopen(req).read().decode())
+")
+REV_TOKEN=$(echo "$REV_REG" | jq -r .access_token)
 REV_ID=$(echo "$REV_REG" | jq -r .agent_id)
 echo "  Revoking agent: $REV_ID"
 
@@ -173,11 +224,11 @@ section "S4: Security headers on all responses (H1)"
 S4_FAIL=0
 for EP in "/v1/health" "/v1/metrics" "/v1/token/validate"; do
   if [ "$EP" = "/v1/token/validate" ]; then
-    HEADERS=$(curl -sI -X POST "${BROKER_URL}${EP}" \
+    HEADERS=$(curl -s -D - -o /dev/null -X POST "${BROKER_URL}${EP}" \
       -H "Content-Type: application/json" \
       -d '{"token":"x"}')
   else
-    HEADERS=$(curl -sI "${BROKER_URL}${EP}")
+    HEADERS=$(curl -s -D - -o /dev/null "${BROKER_URL}${EP}")
   fi
   echo "  --- ${EP} ---"
   echo "$HEADERS" | grep -iE "x-content-type|x-frame|cache-control|strict-transport" || echo "  (none found)"
@@ -233,7 +284,7 @@ pass "R2: Agent registration works"
 section "R3: Token renewal works (B1)"
 R3_RESP=$(curl -sf -X POST "${BROKER_URL}/v1/token/renew" \
   -H "Authorization: Bearer ${AGENT_TOKEN}")
-R3_TOKEN=$(echo "$R3_RESP" | jq -r .token)
+R3_TOKEN=$(echo "$R3_RESP" | jq -r .access_token)
 echo "  Renew response: ${R3_RESP:0:200}..."
 if [ -n "$R3_TOKEN" ] && [ "$R3_TOKEN" != "null" ]; then
   pass "R3: Token renewal works"
