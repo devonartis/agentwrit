@@ -527,11 +527,13 @@ sequenceDiagram
     Note over Agent: Agent now has an ephemeral<br/>identity and scoped token.<br/>No long-lived secret needed.
 ```
 
+The diagram above shows the **operator bootstrap path** (`POST /v1/admin/launch-tokens`). In production, **apps create launch tokens for their own agents** via `POST /v1/app/launch-tokens` — the operator only registers the app once. See the [API Reference](api.md#end-to-end-authentication-flows) for both paths.
+
 The launch token has several properties that limit risk:
 
 - **Short TTL** (default 30 seconds) -- the window for theft is tiny
 - **Single-use** -- even if intercepted, it can only be used once
-- **Scope ceiling** -- the launch token limits what scope the agent can request
+- **Scope ceiling** -- the launch token limits what scope the agent can request. On the app route, the broker also enforces the app's registered scope ceiling.
 - **Operator-controlled** -- launch tokens are created on demand, not pre-provisioned
 
 ---

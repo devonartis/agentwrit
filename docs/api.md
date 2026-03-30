@@ -37,34 +37,70 @@ Request bodies are limited to 1 MB on POST endpoints.
 
 ---
 
-## End-to-End Authentication Flow
+## End-to-End Authentication Flows
 
-This diagram shows the complete flow from operator bootstrap through developer token usage:
+Two paths exist for creating launch tokens. Both lead to the same agent registration flow.
+
+### Path A: Operator Bootstrap (platform management)
+
+Used for initial setup, dev/testing, and break-glass scenarios. The operator creates launch tokens directly.
 
 ```mermaid
 sequenceDiagram
-    participant Admin as Operator
+    participant Op as Operator
     participant BR as Broker
     participant Agent as Agent
 
-    Note over Admin,BR: 1. Operator Bootstrap
-    Admin->>BR: POST /v1/admin/auth<br/>{"secret": "admin-secret"}
-    BR-->>Admin: {"access_token": "admin-jwt"}
+    Note over Op,BR: 1. Operator authenticates
+    Op->>BR: POST /v1/admin/auth<br/>{"secret": "admin-secret"}
+    BR-->>Op: {"access_token": "admin-jwt"}
 
-    Admin->>BR: POST /v1/admin/launch-tokens<br/>{"agent_name", "allowed_scope", ...}
-    BR-->>Admin: {"launch_token": "64-hex-chars"}
+    Note over Op,BR: 2. Operator creates launch token (admin route)
+    Op->>BR: POST /v1/admin/launch-tokens<br/>Bearer: admin-jwt<br/>{"agent_name", "allowed_scope", ...}
+    BR-->>Op: {"launch_token": "64-hex-chars"}
 
-    Note over Agent,BR: 2. Agent Registration
+    Note over Op,Agent: 3. Operator delivers launch token to agent
+
+    Note over Agent,BR: 4. Agent registers
     Agent->>BR: GET /v1/challenge
     BR-->>Agent: {"nonce": "64-hex-chars"}
-    Agent->>BR: POST /v1/register<br/>{"launch_token", "nonce", "public_key", "signature", ...}
+    Agent->>BR: POST /v1/register<br/>{"launch_token", "nonce", "public_key",<br/>"signature", "orch_id", "task_id", "requested_scope"}
     BR-->>Agent: {"access_token": "agent-jwt", "agent_id"}
-
-    Note over Agent: 3. Use Token
-    Agent->>Agent: Authorization: Bearer <token>
-    Agent->>BR: Any authenticated endpoint
-    BR-->>Agent: Response
 ```
+
+### Path B: App-Driven (production runtime)
+
+Used for normal operations. The app manages its own agents within its scope ceiling.
+
+```mermaid
+sequenceDiagram
+    participant Op as Operator
+    participant App as App
+    participant BR as Broker
+    participant Agent as Agent
+
+    Note over Op,BR: 1. One-time setup: operator registers app
+    Op->>BR: POST /v1/admin/apps<br/>{"name", "scopes", "token_ttl"}
+    BR-->>Op: {"app_id", "client_id", "client_secret"}
+
+    Note over App,BR: 2. App authenticates
+    App->>BR: POST /v1/app/auth<br/>{"client_id", "client_secret"}
+    BR-->>App: {"access_token": "app-jwt"}
+
+    Note over App,BR: 3. App creates launch token (app route)
+    App->>BR: POST /v1/app/launch-tokens<br/>Bearer: app-jwt<br/>{"agent_name", "allowed_scope", ...}
+    BR-->>App: {"launch_token": "64-hex-chars"}
+
+    Note over App,Agent: 4. App delivers launch token to agent
+
+    Note over Agent,BR: 5. Agent registers
+    Agent->>BR: GET /v1/challenge
+    BR-->>Agent: {"nonce": "64-hex-chars"}
+    Agent->>BR: POST /v1/register<br/>{"launch_token", "nonce", "public_key",<br/>"signature", "orch_id", "task_id", "requested_scope"}
+    BR-->>Agent: {"access_token": "agent-jwt", "agent_id"}
+```
+
+**Key difference:** The admin route (`/v1/admin/launch-tokens`) has no scope ceiling enforcement — the operator has unrestricted access. The app route (`/v1/app/launch-tokens`) enforces the app's registered scope ceiling — the app can only create launch tokens within the scopes it was registered with. Cross-calling is blocked: app tokens cannot use the admin route and admin tokens cannot use the app route.
 
 ---
 
@@ -503,6 +539,44 @@ curl -X POST http://localhost:8080/v1/admin/launch-tokens \
   }
 }
 ```
+
+---
+
+#### POST /v1/app/launch-tokens
+
+Create a launch token for an agent. This is the **app/runtime path** — used during normal application operations. The app can only create launch tokens within its registered scope ceiling.
+
+**Auth:** Bearer token with `app:launch-tokens:*` scope (from `POST /v1/app/auth`)
+
+**Request body:** Same as `POST /v1/admin/launch-tokens`.
+
+**Scope ceiling enforcement:** The broker checks that `allowed_scope` is a subset of the app's registered scope ceiling. If any requested scope exceeds the ceiling, the request is rejected with 403.
+
+**Response 201:** Same as `POST /v1/admin/launch-tokens`.
+
+**Error responses:**
+
+| Status | Type | Condition |
+|---|---|---|
+| 400 | `invalid_request` | Missing `agent_name` or empty `allowed_scope` |
+| 401 | `unauthorized` | Missing or invalid Bearer token |
+| 403 | `insufficient_scope` | Token lacks `app:launch-tokens:*` scope |
+| 403 | `forbidden` | Requested scopes exceed app's scope ceiling |
+| 500 | `internal_error` | Token creation failed |
+
+```bash
+curl -X POST http://localhost:8080/v1/app/launch-tokens \
+  -H "Authorization: Bearer <app-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_name": "data-reader",
+    "allowed_scope": ["read:data:*"],
+    "max_ttl": 300,
+    "ttl": 30
+  }'
+```
+
+> **Note:** Admin tokens cannot call this endpoint (403). Use `POST /v1/admin/launch-tokens` for operator/platform issuance.
 
 ---
 

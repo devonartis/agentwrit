@@ -23,8 +23,9 @@ Step-by-step instructions for AgentAuth workflows, organized by role.
 | Authenticate as Admin | `POST /v1/admin/auth` | Operator | Broker |
 | Register App | `POST /v1/admin/apps` | Operator | Broker |
 | List Apps | `GET /v1/admin/apps` | Operator | Broker |
-| Create Launch Token | `POST /v1/admin/launch-tokens` | Operator | Broker |
-| App Authentication | `POST /v1/app/auth` | Operator | Broker |
+| Create Launch Token (admin) | `POST /v1/admin/launch-tokens` | Operator | Broker |
+| App Authentication | `POST /v1/app/auth` | Developer | Broker |
+| Create Launch Token (app) | `POST /v1/app/launch-tokens` | Developer | Broker |
 | Revoke Tokens | `POST /v1/revoke` | Operator | Broker |
 | Query Audit Trail | `GET /v1/audit/events` | Operator | Broker |
 | Get Broker Metrics | `GET /v1/metrics` | Operator | Broker |

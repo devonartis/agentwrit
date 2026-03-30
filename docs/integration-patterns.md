@@ -1727,7 +1727,7 @@ sequenceDiagram
 
     Note over App: 2. Create launch token for agent
 
-    App->>Broker: POST /v1/admin/launch-tokens<br/>Bearer app_token<br/>{ agent_name, allowed_scope, max_ttl, ttl }
+    App->>Broker: POST /v1/app/launch-tokens<br/>Bearer app_token<br/>{ agent_name, allowed_scope, max_ttl, ttl }
 
     Broker-->>App: { launch_token, expires_at }
 
@@ -1838,7 +1838,7 @@ class OperatorLaunchTokenIssuer:
 
         try:
             headers = {"Authorization": f"Bearer {self.admin_token}"}
-            resp = requests.post(f"{self.broker}/v1/admin/launch-tokens", json={
+            resp = requests.post(f"{self.broker}/v1/app/launch-tokens", json={
                 "agent_name": agent_name,
                 "allowed_scope": allowed_scope.split(","),
                 "max_ttl": 300,

@@ -409,7 +409,8 @@ flowchart LR
 | `POST /v1/revoke` | RequestID -> Logging -> MaxBytesBody -> ValMw -> ValMw.RequireScope(`admin:revoke:*`) -> Handler |
 | `GET /v1/audit/events` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:audit:*`) -> Handler |
 | `POST /v1/admin/auth` | RequestID -> Logging -> RateLimiter(5/s, burst 10) -> Handler |
-| `POST /v1/admin/launch-tokens` | RequestID -> Logging -> ValMw -> ValMw.RequireAnyScope(`admin:launch-tokens:*`, `app:launch-tokens:*`) -> Handler |
+| `POST /v1/admin/launch-tokens` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
+| `POST /v1/app/launch-tokens` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`app:launch-tokens:*`) -> Handler |
 | `POST /v1/admin/apps` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
 | `GET /v1/admin/apps` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
 | `GET /v1/admin/apps/{id}` | RequestID -> Logging -> ValMw -> ValMw.RequireScope(`admin:launch-tokens:*`) -> Handler |
