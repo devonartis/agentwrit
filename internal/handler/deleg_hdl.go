@@ -5,10 +5,10 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/divineartis/agentauth/internal/authz"
-	"github.com/divineartis/agentauth/internal/deleg"
-	"github.com/divineartis/agentauth/internal/obs"
-	"github.com/divineartis/agentauth/internal/problemdetails"
+	"github.com/devonartis/agentauth/internal/authz"
+	"github.com/devonartis/agentauth/internal/deleg"
+	"github.com/devonartis/agentauth/internal/obs"
+	"github.com/devonartis/agentauth/internal/problemdetails"
 )
 
 // DelegHdl handles POST /v1/delegate — how an agent creates a sub-token for

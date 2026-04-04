@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/divineartis/agentauth/internal/cfg"
-	"github.com/divineartis/agentauth/internal/store"
-	"github.com/divineartis/agentauth/internal/token"
+	"github.com/devonartis/agentauth/internal/cfg"
+	"github.com/devonartis/agentauth/internal/store"
+	"github.com/devonartis/agentauth/internal/token"
 )
 
 // testSetup creates the shared infrastructure for handshake tests:

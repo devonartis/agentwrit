@@ -4,7 +4,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/divineartis/agentauth/internal/obs"
+	"github.com/devonartis/agentauth/internal/obs"
 )
 
 // Discovery errors.

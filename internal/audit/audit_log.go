@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/divineartis/agentauth/internal/obs"
+	"github.com/devonartis/agentauth/internal/obs"
 )
 
 // Event type constants for the audit trail. These are the security-relevant

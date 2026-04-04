@@ -8,12 +8,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/divineartis/agentauth/internal/audit"
-	"github.com/divineartis/agentauth/internal/authz"
-	"github.com/divineartis/agentauth/internal/obs"
-	"github.com/divineartis/agentauth/internal/problemdetails"
-	"github.com/divineartis/agentauth/internal/revoke"
-	"github.com/divineartis/agentauth/internal/store"
+	"github.com/devonartis/agentauth/internal/audit"
+	"github.com/devonartis/agentauth/internal/authz"
+	"github.com/devonartis/agentauth/internal/obs"
+	"github.com/devonartis/agentauth/internal/problemdetails"
+	"github.com/devonartis/agentauth/internal/revoke"
+	"github.com/devonartis/agentauth/internal/store"
 )
 
 const hdlCmp = "AdminHdl"

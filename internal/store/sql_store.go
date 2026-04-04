@@ -23,8 +23,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/divineartis/agentauth/internal/audit"
-	"github.com/divineartis/agentauth/internal/obs"
+	"github.com/devonartis/agentauth/internal/audit"
+	"github.com/devonartis/agentauth/internal/obs"
 	_ "modernc.org/sqlite" // register sqlite driver
 )
 

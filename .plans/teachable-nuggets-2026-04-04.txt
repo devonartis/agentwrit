@@ -1,0 +1,160 @@
+What 208 Sessions With an AI Coding Agent Actually Taught Me
+=============================================================
+Lessons from building a production security system with Claude Code.
+Not theory. Not vibes. What actually happened.
+
+
+1. COMMENTS ARE THE API BETWEEN YOU AND THE AGENT
+---------------------------------------------------
+Multiple agent sessions wrote, reviewed, and tested the same code without
+ever noticing that the role model was undocumented. Each session read the
+code, made its own assumptions, and moved on. The assumptions compounded.
+By session 5, the agent was building tests against the wrong user flow
+because nothing in the code said who was supposed to call what.
+
+The fix was comments. Not "this function returns a string" comments. Comments
+that say who calls this, why it exists, and what it's not responsible for.
+Once those were in place, the agent stopped guessing wrong.
+
+Takeaway: If you're working with AI agents across sessions, your code
+comments aren't documentation. They're the interface contract between
+your intent and every future agent that touches the code.
+
+
+2. THE AGENT WILL FILL SILENCE WITH ASSUMPTIONS
+-------------------------------------------------
+If you don't tell the agent what NOT to do, it will invent an approach and
+run with it. One session asked for a demo app. The agent built the entire
+thing with raw HTTP calls instead of using the project's own SDK, because
+nobody said "use the SDK." The whole feature branch got deleted.
+
+Takeaway: Constraints are more valuable than instructions. "Use the SDK,
+not raw HTTP" prevents more waste than "build a demo app" ever could.
+Front-load what NOT to do. The agent is eager. Channel that energy.
+
+
+3. PROCESS RULES THAT AREN'T LOUD GET IGNORED
+-----------------------------------------------
+Having rules in a config file isn't enough. The agent violated branch naming
+conventions, skipped mandatory test formats, used the wrong tools, and
+pushed code without permission, all while the rules existed in the project
+files. The rules were present. They weren't prominent.
+
+Takeaway: If a rule matters, make it impossible to miss. Put it at the top,
+not buried in a section. Better yet, automate enforcement with hooks or
+gates so the agent can't skip it even if it tries. Rules that depend on
+compliance will eventually be violated. Rules that depend on automation
+won't.
+
+
+4. DOCUMENTATION-FIRST IS A SUPERPOWER WITH AI AGENTS
+-------------------------------------------------------
+Writing specs before code, acceptance criteria before tests, and design docs
+before implementation sounds slow. With AI agents, it's the opposite. The
+agent executes faster and more accurately when it has a written target to
+hit. Without one, it freelances, and freelancing agents compound errors.
+
+The sessions with the highest success rate all started with a written plan
+the agent could reference. The sessions that went sideways started with
+"just build it."
+
+Takeaway: A 30-minute spec saves you a 3-hour correction session. The agent
+isn't slow at reading. It's slow at guessing what you meant.
+
+
+5. CATCH DRIFT EARLY OR PAY LATER
+-----------------------------------
+The pattern repeated across dozens of sessions: the agent starts well, drifts
+on step 3 or 4, and by the time you notice, it's built a whole structure on
+a wrong foundation. Only 20% of sessions were fully achieved. 40% were
+"mostly achieved," meaning the agent got close but drifted on details.
+
+The difference between the two was checkpoint frequency. Sessions where the
+agent was told "stop after this step and show me" before continuing had
+dramatically better outcomes than sessions with a big upfront prompt.
+
+Takeaway: Don't give the agent a 10-step plan and walk away. Give it step 1,
+review, then step 2. The cost of pausing is minutes. The cost of late
+correction is hours or a deleted branch.
+
+
+6. INSTITUTIONAL MEMORY IS A FIRST-CLASS ARTIFACT
+---------------------------------------------------
+Keeping structured memory files (what happened, what went wrong, what was
+decided and why) across sessions turned out to be one of the highest-value
+practices. When the agent reads last session's lessons before starting work,
+it avoids repeating last session's mistakes.
+
+Without it, every session starts from zero. The agent re-discovers the same
+gotchas, makes the same wrong assumptions, and you re-deliver the same
+corrections. That's not AI-assisted development. That's Groundhog Day.
+
+Takeaway: Treat your project's memory files like you treat your test suite.
+Update them every session. Make the agent read them first. Your future self
+(and every future agent session) will thank you.
+
+
+7. AUTOMATE THE GUARDRAILS, NOT JUST THE WORK
+-----------------------------------------------
+Most people think about AI automation as "agent writes code." The bigger
+leverage is automating the guardrails around the agent. Pre-commit hooks that
+check branch names. Gate scripts that run tests between steps. Validation
+that catches wrong file formats before they get committed.
+
+Manual enforcement doesn't scale, especially when the agent is fast and
+eager. It will happily commit to the wrong branch, push without asking,
+and skip your test format, not out of malice but because it's optimizing
+for speed and you didn't put a wall in the way.
+
+Takeaway: Every rule you enforce manually is a rule that will eventually
+be violated. Every rule you enforce with a hook or gate is a rule that
+holds even when you're not watching.
+
+
+8. STRONG OPINIONS, LOOSELY HELD DOESN'T WORK WITH AGENTS
+-----------------------------------------------------------
+Agents don't pick up on "loosely held." If you express a preference, the
+agent treats it as a hard requirement. If you express uncertainty, the agent
+fills the gap with its own judgment, which may not match yours.
+
+The most productive sessions were ones with clear, firm direction. "Do this.
+Don't do that. Stop here." The least productive were ones with open-ended
+exploration where the agent took a direction and ran too far before checking
+back.
+
+Takeaway: Be direct. Be specific. Be willing to say "stop." The agent isn't
+offended by bluntness. It's confused by ambiguity.
+
+
+9. CODE REVIEW IS NON-NEGOTIABLE, EVEN FOR DELETION
+-----------------------------------------------------
+Removing code feels safe. You're taking things out, not adding risk. But
+during a large cleanup (removing enterprise features from an open-source
+fork), the agent missed contamination in documentation files because the
+plan only covered source code. Code review caught it.
+
+Takeaway: Review everything the agent produces, including deletions. "It
+just removes stuff" is exactly the mindset that lets stale references,
+orphaned imports, and contaminated docs slip through.
+
+
+10. THE AGENT IS A JUNIOR DEV WHO NEVER GETS TIRED
+----------------------------------------------------
+It will do mechanical work all day without complaining. It will execute a
+15-step migration across 6 batches with gate testing between each one. It
+will find-and-replace across 40 files and run the test suite after.
+
+But it won't push back on a bad idea. It won't say "this doesn't make
+sense." It won't notice that the acceptance test is testing the wrong user
+role unless the code comments tell it which role is correct.
+
+Takeaway: Use the agent for what it's good at: tireless execution within
+clear boundaries. Supply the judgment, the intent, and the "why." The agent
+supplies the hands. That division of labor, consistently applied, is where
+the real productivity gains live.
+
+
+---
+Distilled from 208 Claude Code sessions, 2,970 messages, 404 hours
+Building AgentAuth: an open-source credential broker for AI agents
+March-April 2026

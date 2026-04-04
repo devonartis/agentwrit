@@ -18,10 +18,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/divineartis/agentauth/internal/audit"
-	"github.com/divineartis/agentauth/internal/obs"
-	"github.com/divineartis/agentauth/internal/store"
-	"github.com/divineartis/agentauth/internal/token"
+	"github.com/devonartis/agentauth/internal/audit"
+	"github.com/devonartis/agentauth/internal/obs"
+	"github.com/devonartis/agentauth/internal/store"
+	"github.com/devonartis/agentauth/internal/token"
 	"golang.org/x/crypto/bcrypt"
 )
 

@@ -116,6 +116,118 @@ This means admin can create launch tokens with ANY scopes, no ceiling, no AppID.
 
 ---
 
+## New — Post-Migration Repo Cleanup
+
+### TD-015: renew/release/delegate endpoints have no scope restriction
+
+**Severity: HIGH** — Security design question.
+
+`POST /v1/token/renew`, `POST /v1/token/release`, and `POST /v1/delegate` use `valMw.Wrap()` with no `RequireScope`. Any valid Bearer token (admin, app, or agent) can call them. Found by tracing `cmd/broker/main.go` lines 181-183.
+
+Question: is this intentional (any token holder should be able to self-manage) or should these require agent-specific scopes? Need to test and decide.
+
+### TD-016: Docker Compose file audit
+
+**Severity: MEDIUM** — Repo cleanup.
+
+Three docker-compose files exist. Need to verify which are still valid, which are used by tests, and which should ship with open-source:
+
+| File | Size | Last modified | Status |
+|------|------|---------------|--------|
+| `docker-compose.yml` | 1.3 KB | Mar 29 | Primary — used by `stack_up.sh` |
+| `docker-compose.tls.yml` | 520 B | Mar 29 (fork point) | Unknown — TLS mode. Test? Ship? |
+| `docker-compose.mtls.yml` | 634 B | Mar 29 (fork point) | Unknown — mTLS mode. Test? Ship? |
+
+TD-S11 noted these were "verified clean" (no sidecar refs), but never assessed whether they're functional, tested, or needed for open-source.
+
+### TD-017: Full repo artifact inventory — decide what ships open-source
+
+**Severity: MEDIUM** — Must resolve before public release.
+
+The repo has accumulated artifacts from migration, multiple agent sessions, and internal coordination. Need to classify everything as: ships with open-source, internal-only (remove before release), or archive.
+
+**Root markdown files (12):**
+
+| File | Verdict needed |
+|------|---------------|
+| `README.md` | Ships — needs update for open-source |
+| `CHANGELOG.md` | Ships |
+| `CONTRIBUTING.md` | Ships — review content |
+| `SECURITY.md` | Ships — review content |
+| `CLAUDE.md` | Internal — remove or move to `.claude/` |
+| `MEMORY.md` | Internal — remove before release |
+| `MEMORY_ARCHIVE.md` | Internal — remove before release |
+| `FLOW.md` | Internal — remove before release |
+| `TECH-DEBT.md` | Internal — remove or sanitize before release |
+| `KNOWN-ISSUES.md` | Ships or remove — review content |
+| `COWORK_SESSION.md` | Internal — remove before release |
+| `COWORK_DOCS_AUDIT.md` | Internal — remove before release |
+
+**docs/ (19 files + 2 subdirs):**
+
+| File | Origin | Verdict needed |
+|------|--------|---------------|
+| `api.md` | Legacy + updated | Ships — verify against code |
+| `api/openapi.yaml` | Legacy | Ships — TD-S14 says 51 stale sidecar refs |
+| `architecture.md` | Legacy + updated | Ships — verify |
+| `concepts.md` | Legacy + updated | Ships — verify |
+| `scenarios.md` | Legacy + updated | Ships — verify |
+| `implementation-map.md` | Legacy + updated | Ships — verify |
+| `getting-started-operator.md` | Legacy + updated | Ships — verify (TD-S08/S09 issues) |
+| `getting-started-developer.md` | Legacy | Ships — verify |
+| `getting-started-user.md` | Legacy | Ships — verify |
+| `aactl-reference.md` | Legacy | Ships — verify |
+| `common-tasks.md` | Legacy | Ships — 72 KB, verify |
+| `integration-patterns.md` | Legacy | Ships — 79 KB, verify |
+| `troubleshooting.md` | Legacy | Ships — verify |
+| `cc-foundations.md` | Today (Claude Code) | Draft — review before shipping |
+| `cc-scope-model.md` | Today (Claude Code) | Draft — review before shipping |
+| `cc-token-concept.md` | Today (Claude Code) | Draft — review before shipping |
+| `cc-design-decisions.md` | Today (Claude Code) | Draft — review before shipping |
+| `token-roles.md` | Today (other agent) | Draft — review before shipping |
+| `agentauth-explained.md` | Today (other agent) | Draft — review before shipping |
+| `diagrams/` | Legacy | Review contents |
+| `patent/` | Today | Internal — NEVER ship |
+
+**scripts/ (9 files):**
+
+| File | Verdict needed |
+|------|---------------|
+| `stack_up.sh` | Ships — primary Docker lifecycle |
+| `stack_down.sh` | Ships — primary Docker lifecycle |
+| `gates.sh` | Internal — CI/migration tool |
+| `test_batch.sh` | Internal — migration tool |
+| `live_test.sh` | Unclear — TD-S01 says stale sidecar refs |
+| `live_test_docker.sh` | Unclear — TD-S03 says stale sidecar refs |
+| `gen_test_certs.sh` | Ships if TLS docs ship — TD-S12 says sidecar cert gen |
+| `verify_compose.sh` | Internal — TD-S13 says stale sidecar refs |
+| `verify_dockerfile.sh` | Review |
+
+**tests/ (7 dirs + 2 files):**
+
+| Item | Verdict needed |
+|------|---------------|
+| `LIVE-TEST-TEMPLATE.md` | Ships — acceptance test methodology |
+| `FUCKING QUETIONS.MD` | Internal — remove before release |
+| `p0-production-foundations/` | Ships — acceptance evidence |
+| `p1-admin-secret/` | Ships — acceptance evidence |
+| `sec-l1/` | Ships — acceptance evidence |
+| `sec-l2a/` | Ships — acceptance evidence |
+| `sec-l2b/` | Ships — acceptance evidence |
+| `sec-a1/` | Ships — acceptance evidence |
+| `app-launch-tokens/` | Review — may be incomplete |
+
+**.plans/ (internal — entire directory should NOT ship):**
+
+| Item | Verdict |
+|------|---------|
+| `tracker.jsonl` | Internal |
+| `code-comments-audit.md` | Internal |
+| `cherry-pick/` | Internal |
+| `designs/` | Internal |
+
+---
+
 ## When to Fix
 
 Documentation and script drift items (TD-D*, TD-S*) should be resolved **after all cherry-pick batches are complete** (B0-B6). Doing them now risks conflicts with incoming commits. Schedule as a dedicated docs refresh phase post-migration.

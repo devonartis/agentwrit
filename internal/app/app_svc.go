@@ -17,10 +17,10 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/divineartis/agentauth/internal/audit"
-	"github.com/divineartis/agentauth/internal/authz"
-	"github.com/divineartis/agentauth/internal/store"
-	"github.com/divineartis/agentauth/internal/token"
+	"github.com/devonartis/agentauth/internal/audit"
+	"github.com/devonartis/agentauth/internal/authz"
+	"github.com/devonartis/agentauth/internal/store"
+	"github.com/devonartis/agentauth/internal/token"
 )
 
 const (

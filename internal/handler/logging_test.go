@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/divineartis/agentauth/internal/problemdetails"
+	"github.com/devonartis/agentauth/internal/problemdetails"
 )
 
 func TestLoggingMiddleware(t *testing.T) {

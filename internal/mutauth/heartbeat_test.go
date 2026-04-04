@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/divineartis/agentauth/internal/revoke"
-	"github.com/divineartis/agentauth/internal/token"
+	"github.com/devonartis/agentauth/internal/revoke"
+	"github.com/devonartis/agentauth/internal/token"
 )
 
 func TestHeartbeatRecordAndLiveness(t *testing.T) {

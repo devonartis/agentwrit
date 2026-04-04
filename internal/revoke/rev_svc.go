@@ -19,8 +19,8 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/divineartis/agentauth/internal/obs"
-	"github.com/divineartis/agentauth/internal/token"
+	"github.com/devonartis/agentauth/internal/obs"
+	"github.com/devonartis/agentauth/internal/token"
 )
 
 // RevocationStore is the optional persistence backend for revocations.

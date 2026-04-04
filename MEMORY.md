@@ -113,6 +113,51 @@ Each cherry-pick batch has acceptance tests in `tests/<batch-name>/`:
 
 ## Recent Lessons (last 3 sessions — older archived to MEMORY_ARCHIVE.md)
 
+### Python SDK v0.2.0 Session (2026-04-01) — extraction, cleanup, and live verification
+
+**What happened:**
+- Extracted Python SDK from monorepo via `git filter-repo`
+- Wrote spec and implementation plan for HITL removal + API alignment
+- Executed 12-task plan: removed HITLApprovalRequired class, approval_token parameter, HITL error parsing, HITL demo app, HITL docs/tests
+- Code review caught HITL contamination in docs/ (4 files) — not covered by original plan. Fixed.
+- Expanded contamination guard tests to scan docs/ and README in addition to src/
+- Live broker verification: 13 integration tests passed against broker v2.0.0
+- All API field names aligned — the known mismatches from MEMORY.md (token vs access_token, etc.) were already fixed during the monorepo phase
+- Merged to main as v0.2.0 (14 commits, 2416 lines removed, 164 added)
+
+**What we discovered:**
+- `examples/hitl-demo/` was a full FastAPI app with templates — not documented in the design doc. Discovered during implementation and added to the deletion plan.
+- API contract was already aligned from code inspection — live broker testing confirmed it. The "known mismatches" from the parent project were stale.
+- Code review is essential even for removal work — the plan missed docs/ contamination. The reviewer caught it.
+- Comments should explain intent, not restate code. User corrected this multiple times.
+
+**What's NOT done:**
+- No demo application (deleted HITL demo, clean replacement needed)
+- Not pushed to GitHub yet
+- No CI (GitHub Actions)
+- Not on PyPI
+
+**This repo (`agentauth-core`) tracks:** strategic decisions about the SDK (release strategy, repo model). The SDK repo (`~/proj/agentauth-python`) tracks its own implementation.
+
+### Release Strategy Session (2026-03-31) — architectural planning
+
+**What happened:**
+- Cloned and analyzed `devonartis/agentauth-clients` — monorepo with Python and TypeScript SDKs, built against the OLD broker (`authAgent2`) with HITL/OIDC baked in.
+- Researched how real open-source projects handle SDK placement: Model 1 (per-language repos — Stripe, Twilio, HashiCorp), Model 2 (multi-SDK monorepo — AWS), Model 3 (SDKs in server repo — small projects).
+- Decision: **Model 1 — separate per-language repos.** Aligns with open-core model, gives clean package identity, independent release cycles.
+- Wrote high-level release strategy at `.plans/release-strategy.md` covering 4 phases: repo cleanup/archive → SDK repo setup → SDK core update → future enterprise extensions. Each phase will break into its own devflow cycle.
+
+**What we discovered — golden information:**
+- **SDK placement is one of the most consequential repo-architecture decisions in open-source.** It determines release cadence coupling, contributor experience, and how consumers discover and trust your SDKs. Getting this wrong creates friction that compounds over time.
+- **The SDKs have enterprise contamination.** Both Python and TS SDKs have HITL baked in: `HITLApprovalRequired` exception, HITL retry logic in `get_token`, HITL demo app, HITL implementation guides, HITL integration tests. This mirrors the sidecar contamination we cleaned from the broker in B0 — same pattern, different layer.
+- **Most of the SDK endpoint calls DO exist in core.** 7/8 endpoints the SDKs call are in `agentauth-core`. Only the HITL retry with `approval_token` is missing. The update is surgical, not a rewrite.
+- **Three archives will exist:** `agentauth-internal` (golden history), `agentauth` (enterprise/HITL — becomes archive #2), `agentauth-clients` (current monorepo — becomes archive #3). Three active repos: `agentauth` (core broker), `agentauth-python`, `agentauth-ts`.
+- **The rename is the natural moment to restructure.** `agentauth-core` → `divineartis/agentauth` triggers Go module path changes anyway — might as well set up SDK repos at the same time.
+
+**Session thoughts:**
+- The SDK work is phases of work, each of which would break into its own brainstorm → spec → plan cycle via devflow. Phase 1-2 are repo operations (git/GitHub). Phase 3 is real development work that needs the full devflow treatment.
+- User was clear: high-level plan first, details later. Don't over-specify. Each phase becomes its own devflow cycle when we get to it.
+
 ### B6 Session (2026-03-30) — CRITICAL lessons learned
 
 **What went wrong — user corrections:**
@@ -138,25 +183,3 @@ Each cherry-pick batch has acceptance tests in `tests/<batch-name>/`:
 - **Regression unit tests belong BEFORE the gate suite**, not after. New Step 3 in cherrypick-devflow. The tests get included in G2 (unit tests gate), catching regressions before spending time on Docker builds and acceptance tests.
 - **Think through the test plan BEFORE writing code.** The agent kept jumping to curl commands, hitting wrong field names, wrong endpoints, wrong flows — all because it didn't verify the API contract first. Banner-first forces you to think about WHO does WHAT before typing a single command.
 
-### B5 Acceptance Testing (2026-03-30) — CRITICAL lessons
-
-- **Acceptance tests are NOT integration scripts.** `integration.sh` runs PASS/FAIL checks but cuts corners: no individual story files, no executive-readable banners, no proper personas. It's a CI smoke test. Real acceptance tests produce individual `story-*.md` files per the `LIVE-TEST-TEMPLATE.md`.
-- **Executives and QA testers read acceptance evidence.** Every banner (Who/What/Why/How/Expected) must make sense to a non-technical reader. Write for the executive, not the engineer.
-- **Personas must reflect production reality.** "Developer (curl)" is wrong when the real actor is an automated App. Ask: "Who does this in production?" App = automated software. Developer = human exploring. Operator = human managing. Security Reviewer = verifying controls.
-- **Ground every story in reality.** If using curl to emulate an app, say so: "We emulate what the app does in production." Don't describe testing mechanics — describe the real-world scenario.
-- **Legacy acceptance tests need deep adaptation.** The legacy `integration.sh` had: wrong response field names (`token` vs `access_token`), wrong request field names (`allowed_scopes` vs `allowed_scope`, missing `agent_name`), wrong registration flow (simple name+scopes vs challenge-response with Ed25519), wrong nonce encoding (base64 vs hex), OIDC endpoints that don't exist in core. Every field must be verified against actual handler structs.
-- **One story at a time, verdict earned.** Don't pre-write PASS. Run the story, see the output, then write the verdict based on what you actually observed.
-- **LIVE-TEST-TEMPLATE updated** with: "Who Reads These Tests?" section, App persona, "Ground Every Story in Reality" guidance, Bad/Good banner examples.
-
-### B5 Cherry-Pick (2026-03-30) — technical lessons
-
-- B5: Commit `247727c` was empty after conflict resolution — content already present from `e592acc`. Skipped safely.
-- B5: `e592acc` conflict in `main.go` contained OIDC routes and cloud handler. All dropped — add-on code.
-- B5: Missing `context` and `errors` imports in `handler_test.go` after cherry-pick. LSP diagnostics caught it.
-- B5: `curl -sI -X POST` returns empty headers for POST endpoints — use `curl -s -D - -o /dev/null` instead to dump headers on POST requests.
-- jcodemunch indexes code symbols only — not markdown docs. Use context-mode for doc analysis.
-- `settings.json` (project, committed) vs `settings.local.json` (personal, gitignored). Broad tool permissions go in project-level.
-- Post-merge doc verification caught 2 critical inaccuracies: middleware ordering was backwards in architecture.md (19 route rows + prose), MaxBytesBody attributed to wrong source file in implementation-map.md. Fixed. Always verify docs against actual code after sub-agent updates.
-- `cherrypick-devflow` skill updated: added Step 4 (Application Docs) and Step 5 (Acceptance Tests). Skill now has `references/acceptance-examples.md` with real bash examples showing how to create story evidence files.
-- Skills use `references/` directory for companion docs that get loaded on demand. Keeps SKILL.md lean (<500 lines) while providing examples and detailed guidance.
-- Next: B6 (SEC-A1 + Gates) — 2 commits, last batch. Then post-migration cleanup.

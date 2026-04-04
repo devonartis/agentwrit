@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/divineartis/agentauth/internal/token"
+	"github.com/devonartis/agentauth/internal/token"
 )
 
 // mockRevStore implements RevocationStore for testing.

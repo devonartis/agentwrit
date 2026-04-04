@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/divineartis/agentauth/internal/audit"
-	"github.com/divineartis/agentauth/internal/token"
+	"github.com/devonartis/agentauth/internal/audit"
+	"github.com/devonartis/agentauth/internal/token"
 )
 
 type mockVerifier struct {

@@ -12,10 +12,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/divineartis/agentauth/internal/authz"
-	"github.com/divineartis/agentauth/internal/obs"
-	"github.com/divineartis/agentauth/internal/problemdetails"
-	"github.com/divineartis/agentauth/internal/store"
+	"github.com/devonartis/agentauth/internal/authz"
+	"github.com/devonartis/agentauth/internal/obs"
+	"github.com/devonartis/agentauth/internal/problemdetails"
+	"github.com/devonartis/agentauth/internal/store"
 )
 
 const (

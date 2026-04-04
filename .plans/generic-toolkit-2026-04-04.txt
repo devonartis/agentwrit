@@ -1,0 +1,469 @@
+Prompts, Hooks, and Skills for AI-Assisted Development
+========================================================
+Derived from 208 real sessions. Everything here addresses a failure
+pattern that actually happened, not hypothetical best practices.
+
+
+========================================================================
+SECTION 1: PROMPTS
+========================================================================
+Copy-paste these. Adapt the bracketed parts to your project.
+
+
+PROMPT 1: CONSTRAINT-FIRST TASK PROMPT
+---------------------------------------
+Problem it solves: Agent picks the wrong approach because you told it
+WHAT to build but not HOW or what to avoid. (257 wrong-approach instances)
+
+---
+Task: [describe what you want]
+
+Constraints (read these before doing anything):
+- Use [specific tool/library/SDK], not [the thing it'll guess]
+- Output format: [code / plan / diagram / bash commands]
+- Scope: only touch [these files/dirs]. Do not modify anything else.
+- Do NOT [expand scope / add features / refactor surrounding code]
+- Stop and show me your approach before writing any code.
+---
+
+
+PROMPT 2: PHASE-GATED EXECUTION
+---------------------------------
+Problem it solves: Agent drifts on step 3+ of multi-step work. Only 20%
+of ambitious sessions fully succeeded. The ones with checkpoints did better.
+
+---
+We're doing this in phases. Do ONE phase at a time.
+
+Phase 1: [specific deliverable]
+When done, STOP. Show me the result. Do not start Phase 2.
+
+Phase 2: [specific deliverable]
+When done, STOP. Show me the result. Do not start Phase 3.
+
+Phase 3: [specific deliverable]
+
+If anything in Phase 1 changes the plan for Phase 2, tell me before
+proceeding.
+---
+
+
+PROMPT 3: RESEARCH BEFORE ACTION
+----------------------------------
+Problem it solves: Agent starts coding before understanding the codebase.
+Entire feature branches got deleted because the agent built against
+assumptions instead of reading existing code.
+
+---
+Before writing any code, do this first:
+
+1. Read [list the files/docs that define your project's conventions]
+2. Find the existing code that handles [related functionality]
+3. Write a 3-5 sentence summary of how it works TODAY
+4. Propose your approach and explain how it fits with what exists
+5. Wait for my approval before making any changes
+
+Do not skip steps. Do not combine steps. Show me each one.
+---
+
+
+PROMPT 4: EXPLICIT OUTPUT FORMAT
+----------------------------------
+Problem it solves: Agent confuses what you want. Gives you a code review
+when you wanted a plan. Writes rendered markdown when you wanted raw
+terminal output. (211 misunderstood-request instances)
+
+---
+I need a [PLAN / CODE / REVIEW / DOCUMENTATION / BASH COMMANDS].
+
+Format: [markdown with headers / raw terminal output / numbered list]
+Audience: [me as the developer / external stakeholders / future maintainers]
+Length: [one page / 5 bullets / as long as needed]
+
+Do NOT [write code / expand into a full spec / add explanations I didn't ask for].
+Only what I asked for.
+---
+
+
+PROMPT 5: CORRECTION ACKNOWLEDGMENT
+-------------------------------------
+Problem it solves: Agent gets corrected, says "you're right," then makes
+the same mistake two steps later. Corrections need to be internalized,
+not just acknowledged.
+
+---
+I just corrected you on [X]. Before continuing:
+
+1. Restate what you were doing wrong and why it's wrong
+2. Explain how it changes your approach for the rest of this task
+3. If this affects work you already did, identify what needs to be fixed
+
+Then continue.
+---
+
+
+PROMPT 6: MEMORY-FIRST SESSION START
+--------------------------------------
+Problem it solves: Every new session starts from zero. The agent
+re-discovers the same problems and you re-deliver the same corrections.
+
+---
+Before starting any work, read these files in order:
+- [your memory/context file]
+- [your decisions/flow log]
+- [your tech debt tracker or known issues]
+
+Summarize what you learned in 3-5 bullets, then tell me what you think
+the current state is and what's next. Do not start working until I
+confirm your understanding is correct.
+---
+
+
+PROMPT 7: COMMENT QUALITY CHECK
+---------------------------------
+Problem it solves: Agent writes comments that restate the code. Useless
+for humans and useless for future agent sessions.
+
+---
+Review the comments in [file or directory]. For each comment, ask:
+
+Does this tell me something I CANNOT learn from reading the code itself?
+
+Good comments explain: who calls this and why, what business rule it
+implements, what it's NOT responsible for, why a non-obvious choice was
+made.
+
+Bad comments restate what the code does. Delete those.
+
+If a function has no comments and a reader would need to check 2+ other
+files to understand its purpose, add a comment.
+---
+
+
+========================================================================
+SECTION 2: HOOKS
+========================================================================
+Add these to your Claude Code settings or equivalent CI system.
+They enforce rules automatically so you don't have to catch violations
+by eye.
+
+
+HOOK 1: BRANCH GUARD
+----------------------
+Problem it solves: Agent commits or pushes to main/master/develop
+directly. Multiple sessions had unauthorized pushes.
+
+// .claude/settings.json (Claude Code)
+// or adapt for .git/hooks/pre-commit
+{
+  "hooks": {
+    "PreCommit": [
+      {
+        "command": "bash -c 'BRANCH=$(git branch --show-current); PROTECTED=\"main master develop\"; for B in $PROTECTED; do if [ \"$BRANCH\" = \"$B\" ]; then echo \"BLOCKED: Do not commit directly to $BRANCH. Create a feature branch first.\" && exit 1; fi; done'"
+      }
+    ]
+  }
+}
+
+
+HOOK 2: NO PUSH WITHOUT PERMISSION
+------------------------------------
+Problem it solves: Agent pushes code to remote without asking. Once it's
+pushed, it's visible to everyone and hard to undo.
+
+// Block all git push commands unless user explicitly allows
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "command": "bash -c 'if echo \"$TOOL_INPUT\" | grep -qE \"git\\s+push\"; then echo \"BLOCKED: git push requires explicit user permission. Ask before pushing.\" && exit 1; fi'"
+      }
+    ]
+  }
+}
+
+
+HOOK 3: NO DESTRUCTIVE GIT OPERATIONS
+---------------------------------------
+Problem it solves: Agent runs force-push, reset --hard, branch -D, or
+other destructive operations that lose work.
+
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "command": "bash -c 'if echo \"$TOOL_INPUT\" | grep -qE \"git\\s+(push\\s+--force|reset\\s+--hard|branch\\s+-D|checkout\\s+--\\s+\\.|clean\\s+-f)\"; then echo \"BLOCKED: Destructive git operation. Confirm with user first.\" && exit 1; fi'"
+      }
+    ]
+  }
+}
+
+
+HOOK 4: BUILD CHECK AFTER EDITS
+---------------------------------
+Problem it solves: Agent edits code and moves on without verifying it
+compiles. Errors compound across multiple files before anyone notices.
+
+// Adapt the build command to your language
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit",
+        "command": "bash -c 'if echo \"$TOOL_INPUT\" | grep -qE \"\\.(go|ts|py|rs)$\"; then echo \"Reminder: run build/lint check before moving to next file.\"; fi'"
+      }
+    ]
+  }
+}
+
+
+HOOK 5: FILE PLACEMENT GUARD
+------------------------------
+Problem it solves: Agent creates files in wrong directories. Docs end up
+in src/, tests end up in docs/, plans end up scattered.
+
+// Customize the patterns to your project structure
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write",
+        "command": "bash -c 'FILE=\"$TOOL_INPUT\"; if echo \"$FILE\" | grep -qE \"\\.(md|txt)$\" && ! echo \"$FILE\" | grep -qE \"(docs/|plans/|\\.plans/|tests/|README)\"; then echo \"WARNING: Creating doc/text file outside standard directories. Intended location?\" && exit 1; fi'"
+      }
+    ]
+  }
+}
+
+
+========================================================================
+SECTION 3: SKILLS (REUSABLE PROMPT TEMPLATES)
+========================================================================
+Save these as markdown files in your project's skills directory.
+Invoke them as slash commands (/skillname) at the start of relevant work.
+
+
+SKILL 1: /research
+--------------------
+Problem it solves: Agent starts coding before understanding the codebase.
+Forces a read-first, propose-second, code-third workflow.
+
+---
+# /research
+
+## Instructions
+
+You are in RESEARCH MODE. You cannot edit or create files.
+
+1. Read the project's context files:
+   - README.md
+   - Any CLAUDE.md, MEMORY.md, or equivalent context files
+   - The most relevant source files for the current task
+
+2. Produce a FINDINGS document:
+   - What exists today (cite file paths and line numbers)
+   - How the current code handles the area you'll be working in
+   - What conventions the project follows (naming, structure, patterns)
+   - What constraints or gotchas you found
+
+3. Propose your approach in 3-5 sentences
+
+4. STOP. Wait for user approval before any implementation.
+
+Do not skip this process. Do not combine research with implementation.
+---
+
+
+SKILL 2: /checkpoint
+----------------------
+Problem it solves: Long sessions drift without the user noticing.
+Forces a pause-and-report at natural boundaries.
+
+---
+# /checkpoint
+
+## Instructions
+
+Pause your current work and report:
+
+1. DONE: What you've completed since the last checkpoint (bullet list)
+2. CURRENT STATE: Does everything build/pass? Any broken state?
+3. CHANGED: Files you modified (list them)
+4. NEXT: What you plan to do next (2-3 sentences)
+5. CONCERNS: Anything that surprised you or feels wrong
+
+Wait for user confirmation before continuing. If the user says
+"course correct," stop your current plan and discuss a new approach.
+---
+
+
+SKILL 3: /guard
+-----------------
+Problem it solves: Agent introduces code from adjacent projects,
+enterprise features, or dependencies that don't belong.
+
+---
+# /guard
+
+## Instructions
+
+Before committing or completing a task, run a contamination check:
+
+1. Search the codebase for terms that should NOT be present:
+   [LIST YOUR FORBIDDEN TERMS: e.g., enterprise feature names,
+   competitor libraries, deprecated patterns]
+
+2. Check new/modified files for:
+   - Imports that don't belong in this project
+   - References to internal/private systems
+   - Hardcoded credentials or secrets
+   - Dependencies not in the approved list
+
+3. Report findings. If anything is found, fix it before proceeding.
+
+This check is mandatory before any merge or PR.
+---
+
+
+SKILL 4: /evidence
+--------------------
+Problem it solves: Test evidence comes back as rendered markdown,
+AI-generated summaries, or incomplete output instead of actual
+terminal results that someone could verify.
+
+---
+# /evidence
+
+## Instructions
+
+You are recording test evidence. The output must be verifiable by
+someone who wasn't in the room.
+
+For each test:
+1. WHO: Which persona is running this (operator, developer, end user)
+2. WHAT: What they're doing, in plain English
+3. WHY: What breaks if this fails (make a non-technical person care)
+4. COMMAND: The exact command being run (copy-pasteable)
+5. OUTPUT: The actual terminal output (not a summary, not rendered)
+6. VERDICT: PASS or FAIL, based on what the output actually shows
+
+Rules:
+- Never write PASS before seeing output
+- Never summarize output. Include it verbatim.
+- Never use rendered markdown for terminal output. Use code blocks.
+- If a test fails, record the failure. Don't retry silently.
+---
+
+
+SKILL 5: /session-start
+-------------------------
+Problem it solves: Every session starts cold. The agent doesn't know
+what happened last time, what was decided, or what went wrong.
+
+---
+# /session-start
+
+## Instructions
+
+Before doing ANY work, load context:
+
+1. Read the project's memory/context files (MEMORY.md, FLOW.md, or
+   equivalent)
+2. Read any tech debt or known issues tracker
+3. Check git log for recent commits (last 10-15)
+4. Check git status for any uncommitted work
+
+Report back:
+- Current branch and its purpose
+- Last 3 decisions or actions from the log
+- Any known issues or tech debt relevant to today's work
+- Any uncommitted changes that need attention
+
+Do not start working until the user confirms your understanding.
+---
+
+
+SKILL 6: /session-end
+-----------------------
+Problem it solves: Sessions end without capturing what was learned.
+Next session repeats the same mistakes.
+
+---
+# /session-end
+
+## Instructions
+
+Before ending this session, update the project's memory:
+
+1. DECISIONS: What was decided and why (append to decision log)
+2. LESSONS: What went wrong, what was corrected, what was discovered
+   Write these honestly. "Agent did X wrong, user corrected with Y,
+   because Z." These are valuable for future sessions.
+3. STATE: Current branch, what's done, what's not done
+4. TECH DEBT: Anything deferred. Add to the tracker with severity.
+5. NEXT: What the next session should start with
+
+Do not skip lessons. If the user corrected you, write it down.
+If something surprising happened, write it down. This is how
+future sessions avoid repeating today's mistakes.
+---
+
+
+SKILL 7: /simplify
+--------------------
+Problem it solves: Agent over-engineers. Adds abstractions for one-time
+operations, creates helpers nobody asked for, wraps simple things in
+complex patterns.
+
+---
+# /simplify
+
+## Instructions
+
+Review the code you just wrote or modified. For each change, ask:
+
+1. Can this be done in fewer lines without losing clarity?
+2. Did I add any abstraction that's only used once? Remove it.
+3. Did I add error handling for scenarios that can't happen? Remove it.
+4. Did I add features, config options, or flexibility nobody asked for?
+   Remove them.
+5. Did I add comments that restate the code? Remove them.
+6. Three similar lines of code is better than a premature abstraction.
+
+The goal is the simplest code that does what was asked. Nothing more.
+---
+
+
+========================================================================
+SECTION 4: COMBINING THEM
+========================================================================
+Here's how these fit together in a typical workflow:
+
+  Session start:  /session-start (load context, confirm understanding)
+       |
+  Before coding:  /research (read codebase, propose approach, get approval)
+       |
+  During work:    /checkpoint every 3-5 changes (pause, report, confirm)
+       |
+  After coding:   /simplify (strip over-engineering)
+       |
+  Before merge:   /guard (contamination check) + /evidence (test proof)
+       |
+  Session end:    /session-end (capture decisions, lessons, state)
+
+Hooks run automatically throughout:
+  - Branch guard prevents commits to protected branches
+  - Push guard prevents unauthorized pushes
+  - Destructive ops guard prevents force-push / reset --hard
+  - Build check reminds you to verify after edits
+
+The hooks catch what you forget. The skills enforce the workflow.
+The prompts shape individual interactions. Together they turn an
+eager, assumption-prone agent into a disciplined collaborator.
+
+
+---
+Derived from 208 Claude Code sessions, 2,970 messages, 404 hours
+Patterns that actually failed in production use, with fixes that worked.
+March-April 2026

@@ -11,12 +11,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/divineartis/agentauth/internal/admin"
-	"github.com/divineartis/agentauth/internal/audit"
-	"github.com/divineartis/agentauth/internal/authz"
-	"github.com/divineartis/agentauth/internal/cfg"
-	"github.com/divineartis/agentauth/internal/store"
-	"github.com/divineartis/agentauth/internal/token"
+	"github.com/devonartis/agentauth/internal/admin"
+	"github.com/devonartis/agentauth/internal/audit"
+	"github.com/devonartis/agentauth/internal/authz"
+	"github.com/devonartis/agentauth/internal/cfg"
+	"github.com/devonartis/agentauth/internal/store"
+	"github.com/devonartis/agentauth/internal/token"
 	"golang.org/x/crypto/bcrypt"
 )
 

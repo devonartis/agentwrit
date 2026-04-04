@@ -3,11 +3,11 @@ package handler
 import (
 	"net/http"
 
-	"github.com/divineartis/agentauth/internal/audit"
-	"github.com/divineartis/agentauth/internal/authz"
-	"github.com/divineartis/agentauth/internal/obs"
-	"github.com/divineartis/agentauth/internal/problemdetails"
-	"github.com/divineartis/agentauth/internal/revoke"
+	"github.com/devonartis/agentauth/internal/audit"
+	"github.com/devonartis/agentauth/internal/authz"
+	"github.com/devonartis/agentauth/internal/obs"
+	"github.com/devonartis/agentauth/internal/problemdetails"
+	"github.com/devonartis/agentauth/internal/revoke"
 )
 
 // ReleaseHdl handles POST /v1/token/release. An authenticated agent

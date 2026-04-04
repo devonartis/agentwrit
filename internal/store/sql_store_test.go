@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/divineartis/agentauth/internal/audit"
+	"github.com/devonartis/agentauth/internal/audit"
 )
 
 // Keep errors import for upcoming cherry-pick tests (agent expiry sentinel checks).

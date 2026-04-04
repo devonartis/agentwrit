@@ -1,4 +1,4 @@
-module github.com/divineartis/agentauth
+module github.com/devonartis/agentauth
 
 go 1.24.0
 

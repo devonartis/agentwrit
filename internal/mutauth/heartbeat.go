@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/divineartis/agentauth/internal/obs"
-	"github.com/divineartis/agentauth/internal/revoke"
+	"github.com/devonartis/agentauth/internal/obs"
+	"github.com/devonartis/agentauth/internal/revoke"
 )
 
 const (

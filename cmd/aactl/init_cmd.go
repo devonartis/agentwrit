@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/divineartis/agentauth/internal/cfg"
+	"github.com/devonartis/agentauth/internal/cfg"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/bcrypt"
 )

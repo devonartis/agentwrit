@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/divineartis/agentauth/internal/obs"
-	"github.com/divineartis/agentauth/internal/problemdetails"
+	"github.com/devonartis/agentauth/internal/obs"
+	"github.com/devonartis/agentauth/internal/problemdetails"
 )
 
 // responseWriter is a wrapper around http.ResponseWriter that captures

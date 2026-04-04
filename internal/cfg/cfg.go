@@ -30,7 +30,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/divineartis/agentauth/internal/obs"
+	"github.com/devonartis/agentauth/internal/obs"
 
 	"golang.org/x/crypto/bcrypt"
 )

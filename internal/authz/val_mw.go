@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/divineartis/agentauth/internal/audit"
-	"github.com/divineartis/agentauth/internal/problemdetails"
-	"github.com/divineartis/agentauth/internal/token"
+	"github.com/devonartis/agentauth/internal/audit"
+	"github.com/devonartis/agentauth/internal/problemdetails"
+	"github.com/devonartis/agentauth/internal/token"
 )
 
 // contextKey is an unexported type for context keys in this package.

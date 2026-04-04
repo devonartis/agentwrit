@@ -213,3 +213,112 @@ Three phases, in order:
 3. **Repo strategy** — Once the codebase is properly documented and the role model is clear, come back to the three-repo question (archive, rename, extract enterprise modules). The documentation work may surface more design decisions that affect the repo strategy.
 
 Use `devflow` for this work.
+
+### Decision: Release strategy — Model 1 (separate per-language repos) (2026-03-31)
+
+Analyzed three models for SDK placement: per-language repos (Stripe/Twilio/HashiCorp), multi-SDK monorepo (AWS), SDKs inside server repo. Chose Model 1 — separate per-language repos.
+
+**Reasons:** Aligns with open-core model (core SDK open, enterprise HITL/OIDC extensions separate). Clean package identity (`pip install agentauth` from `agentauth-python`). Independent release cycles. Language-specific contributor experience.
+
+**Trade-off accepted:** API contract drift across N repos, mitigated by `docs/api.md` as single source of truth.
+
+### Decision: Release strategy is 4 phases (2026-03-31)
+
+High-level plan at `.plans/release-strategy.md`. Each phase breaks into its own devflow cycle (brainstorm → spec → plan → code → review → test → merge).
+
+1. **Phase 1: Repo cleanup & archive** — Archive old `divineartis/agentauth` as #2 archive. Rename `agentauth-core` → `divineartis/agentauth`. Clean artifacts per TD-017.
+2. **Phase 2: SDK repo setup** — Extract Python and TS from `agentauth-clients` monorepo into `divineartis/agentauth-python` and `divineartis/agentauth-ts`. Archive monorepo as #3 archive.
+3. **Phase 3: SDK core update** — Audit SDK calls against core API contract. Remove HITL/enterprise features. Integration test against core broker. Update SDK docs.
+4. **Phase 4: Enterprise SDK extensions** — Future. Not in scope now.
+
+**Analyzed `devonartis/agentauth-clients`:** Monorepo with Python SDK (6 modules, 122 unit tests, HITL baked in) and TypeScript SDK (6 modules, mirrored). Both built against old broker with HITL/OIDC. 7/8 endpoint calls exist in core — only HITL retry missing. Update is surgical, not a rewrite.
+
+### Status: Next work (2026-03-31)
+
+Remaining from previous decision (2026-03-30):
+1. ~~Code comments audit~~ — chunks 1-5 done per commit history
+2. **Public documentation update** — still pending (TD-012 roles doc, TD-014 code comments verification)
+3. **Release strategy** — high-level plan written, needs user review before breaking into specs
+
+**Next session:** Review `.plans/release-strategy.md`, decide sequencing (docs first vs repo cleanup first), then start Phase 1 of release strategy via devflow.
+
+### Decision: Python SDK repo first, then TypeScript (2026-04-01)
+
+Reviewed `.plans/release-strategy.md`. User chose to focus on SDK work first. Starting with Python SDK (`divineartis/agentauth-python`), TypeScript follows the same pattern after.
+
+**Approach:** `git filter-repo` extraction from `devonartis/agentauth-clients` monorepo — preserves commit history for the Python subdirectory. Fresh repo, not a copy.
+
+**Design approved:** `.plans/designs/2026-04-01-python-sdk-repo-design.md`
+
+Key decisions:
+- Separate per-language repos (Stripe/Twilio model)
+- `uv` as package manager (mandatory)
+- Strict type safety — every variable annotated, `mypy --strict` enforced
+- HITL contamination removal (same pattern as B0 sidecar removal)
+- API contract audit with live broker verification — not just doc review
+- Version starts at `v0.2.0` (continues from monorepo `v0.1.0`)
+
+### Status: Python SDK v0.2.0 COMPLETE (2026-04-01)
+
+**Done:** Python SDK extracted, HITL removed, API aligned, live-tested, merged to main.
+
+Details:
+- Repo: `~/proj/agentauth-python` (not yet pushed to GitHub as `divineartis/agentauth-python`)
+- 14 commits on `feature/hitl-removal`, merged to main
+- 2416 lines removed (HITL class, approval_token, demo app, docs, tests)
+- 119 unit tests + 13 integration tests passing against live broker v2.0.0
+- Contamination guard tests scan src/, tests/, docs/ — zero HITL/approval/OIDC
+- `/broker` slash command created for managing test broker from SDK repo
+- No demo application yet — deleted HITL demo, clean replacement needed
+
+**Sequence — what's next:**
+1. **Demo application** for Python SDK — runnable example showing core flow
+2. Push `agentauth-python` to GitHub as `divineartis/agentauth-python`
+3. TypeScript SDK — same extraction + cleanup process → `divineartis/agentauth-ts`
+4. Archive `devonartis/agentauth-clients` monorepo
+5. Phase 1 repo cleanup — archive old `divineartis/agentauth`, rename `agentauth-core` → `divineartis/agentauth`
+6. Public documentation update (TD-012, TD-014) — still pending from previous sessions
+
+### Decision: Focus on agentauth-core, defer SDK work (2026-04-04)
+
+User decided to focus on this repo (agentauth-core) before returning to SDK repos. Items 1-4 above (agentauth-python demo, GitHub push, TypeScript extraction, monorepo archive) are deferred. Next work is items 5-6: Phase 1 repo cleanup and public documentation update (TD-012, TD-014).
+
+### Decision: Repo rename strategy and enterprise code preservation (2026-04-04)
+
+**Plan:**
+1. Archive `divineartis/agentauth` on GitHub (rename to `agentauth-enterprise-archive` or similar)
+2. Rename `agentauth-core` → `divineartis/agentauth` so the open-source core gets the canonical name
+
+**Critical note — enterprise code in the old agentauth repo:**
+The archived `divineartis/agentauth` contains HITL approval flow and OIDC provider code that is NOT in agentauth-core. This code needs to be:
+- Extracted from the archive
+- Tested and built as the paid/enterprise binary
+- Plugged into core via the existing interface/extension points
+
+This is future work — the archive is NOT throwaway. It's the source for the enterprise modules (HITL, OIDC, cloud federation) that will become the paid product. Document what's in there before archiving so we know exactly what to extract later.
+
+**Next:** Review what cleanup this repo needs before the rename can happen (Go module path, docs, references, tech debt). Then brainstorm the full plan.
+
+### Decision: Cleanup plan finalized — CC v4 (2026-04-04)
+
+After 4 iterations (CC v1-v4) and 3 PI versions, converged on `CC-2026-04-04-repo-cleanup-plan-v4.md`. Key decisions:
+- Rename `divineartis/agentauth` → `agentauth-ENT` (private), rename `agentauth-core` → `agentauth` (private until review)
+- Development files (MEMORY.md, FLOW.md, etc.) live on `develop`, stripped on merge to `main`
+- `.gitignore` only blocks OS/tool junk, NOT development files
+- `scripts/strip_for_main.sh` handles develop → main cleanup
+- No enterprise extraction map (scope creep — code is in agentauth-ENT, catalog when needed)
+- Human review gate after every batch
+- Multi-agent review before going public
+
+### Action: Starting CC v4 execution — Phase 1 (2026-04-04)
+
+**Discovery:** GitHub org is `devonartis`, not `divineartis`. Plan had the wrong org. go.mod says `github.com/divineartis/agentauth` — needs updating to `github.com/devonartis/agentauth` (154 occurrences across 46 Go files). CC v4 plan updated with this fix.
+
+### Step 1.1: Rename enterprise repo — DONE (2026-04-04)
+
+- `devonartis/agentauth` → `devonartis/agentauth-ENT` via `gh api` ✓
+- Local folder: `~/proj/agentauth` → `~/proj/agentauth-ENT` (user renamed) ✓
+- Remote updated: `git remote set-url origin git@github.com:devonartis/agentauth-ENT.git` ✓
+- Discovered `fix/pre-modularize-security` branch with 184 unpushed commits (enterprise module boundary, SEC-A2/A3, cloud credentials, modularization). Pushed to remote. ✓
+
+**Next: Step 1.2 — rename `devonartis/agentauth-core` → `devonartis/agentauth`**

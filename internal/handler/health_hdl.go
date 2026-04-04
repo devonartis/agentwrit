@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/divineartis/agentauth/internal/audit"
-	"github.com/divineartis/agentauth/internal/obs"
+	"github.com/devonartis/agentauth/internal/audit"
+	"github.com/devonartis/agentauth/internal/obs"
 )
 
 // DBChecker reports whether a database connection is active. Implemented by
