@@ -4,6 +4,33 @@ Archived lessons and session history. See MEMORY.md for current context.
 
 ---
 
+### B6 Session (2026-03-30) — CRITICAL lessons learned
+
+**What went wrong — user corrections:**
+
+1. **Agent kept skipping banners on acceptance tests.** User had to stop me THREE times because I jumped straight to running curl commands without writing the Who/What/Why/How/Expected banner first. The template is non-negotiable. Banner goes IN the bash call, not as a separate step. Verdict comes AFTER seeing output, never pre-written.
+
+2. **Agent built the first acceptance test against the admin flow instead of the app flow.** User caught it: "why are we using launch-token from admin to check agents?" In production, APPS create launch tokens for agents, not admin. Admin registers apps, apps manage agents. The agent didn't know this because nothing in the code or docs explained the role model.
+
+3. **Agent called the handler ownership issue a "code smell" when it was actually a missing foundational document.** User walked me through why `admin:launch-tokens:*` exists (admin needs authority over launch tokens for revocation/oversight) and why admin creating agents is the wrong use of that scope. The agent kept downgrading the severity because it didn't understand the system's intent. User escalated: "you are writing code that you are not properly documenting the code nor giving app documentation."
+
+4. **Agent tried to fix test failures inline instead of running all tests first.** User corrected: "why are you not running acceptance tests all of them then we search on we fix afterwards it is a loop." Run everything, see what fails, then fix. Don't stop to debug after every failure.
+
+5. **Agent put tech debt in MEMORY.md.** User: "that is stupid we should have a TECH-DEBT.md." Then agent put it in `.plans/TECH-DEBT.md`. User: "that should be on the root not in the .plans folder." TECH-DEBT.md already existed at `.plans/` — agent didn't check first before trying to create a new file.
+
+6. **Agent wrote code comments that restated what the code does.** User corrected: "a person or agent can read the code by itself to know what it does." Comments must tell you what reading the code alone would NOT tell you: who calls it, why it exists, security boundaries, design history. If you have to read three other files to understand who can call a function, the comments are insufficient.
+
+**What we discovered — golden information:**
+
+- **Code comments are the interface between human intent and agent execution.** Multiple agent sessions wrote and reviewed code without flagging that the role model was undocumented. Each agent looked at the code, made assumptions, and moved on. Comments that explain roles and boundaries would have prevented every mistake in this session. Without them, agents compound wrong assumptions across sessions.
+- **If comments are strong, you can generate missing docs FROM the comments.** If comments are weak, you can't build docs, you can't build correct tests, and agents keep making the same mistakes. Strong comments → correct tests → correct docs. Weak comments → compounding errors.
+- **The three roles are: Admin (operator — manages apps, revokes, audits), App (software — manages its own agents within scope ceiling), Agent (does work with short-lived scoped tokens).** This was nowhere in the code or docs. Now in TECH-DEBT.md as TD-012 (CRITICAL) and partially in code comments on `tkn_svc.go`.
+- **`admin:launch-tokens:*` scope makes sense for oversight (list, inspect, revoke launch tokens) but the code lets admin CREATE launch tokens with no scope ceiling.** That's a design issue (TD-013), not a code smell. Admin-created agents have no AppID, no scope ceiling, no traceability.
+- **Regression unit tests belong BEFORE the gate suite**, not after. New Step 3 in cherrypick-devflow. The tests get included in G2 (unit tests gate), catching regressions before spending time on Docker builds and acceptance tests.
+- **Think through the test plan BEFORE writing code.** The agent kept jumping to curl commands, hitting wrong field names, wrong endpoints, wrong flows — all because it didn't verify the API contract first. Banner-first forces you to think about WHO does WHAT before typing a single command.
+
+---
+
 ### B5 Acceptance Testing (2026-03-30) — CRITICAL lessons
 
 - **Acceptance tests are NOT integration scripts.** `integration.sh` runs PASS/FAIL checks but cuts corners: no individual story files, no executive-readable banners, no proper personas. It's a CI smoke test. Real acceptance tests produce individual `story-*.md` files per the `LIVE-TEST-TEMPLATE.md`.
