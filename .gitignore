@@ -31,3 +31,6 @@ __pycache__/
 
 # Dolt database
 .dolt/
+
+# Per-user Claude Code permissions (personal, not shared)
+.claude/settings.local.json
