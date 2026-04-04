@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# pre-commit — blocks committing dev files to main.
+#
+# Purpose:
+#   Main must stay clean. This hook catches the forgotten strip step
+#   when merging develop → main. If dev files are staged on main,
+#   the commit is refused with a helpful message.
+#
+# Install (one-time, per clone):
+#   git config core.hooksPath .githooks
+#
+# The hook is a no-op on any branch other than main.
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+
+# Only enforce on main. Dev files are fine on develop (and feature branches).
+if [[ "$BRANCH" != "main" ]]; then
+  exit 0
+fi
+
+# Files/dirs that must NEVER land on main
+FORBIDDEN=(
+  "MEMORY.md"
+  "MEMORY_ARCHIVE.md"
+  "FLOW.md"
+  "TECH-DEBT.md"
+  "AGENTS.md"
+  "CLAUDE.md"
+  "COWORK_SESSION.md"
+  "COWORK_DOCS_AUDIT.md"
+  ".active_module"
+  ".plans"
+  ".claude"
+  ".agents"
+  "audit"
+  "generate_pdf.py"
+)
+
+# Collect forbidden paths in the staged index
+STAGED=$(git diff --cached --name-only --diff-filter=AM 2>/dev/null || true)
+[[ -z "$STAGED" ]] && exit 0
+
+VIOLATIONS=""
+for f in $STAGED; do
+  for bad in "${FORBIDDEN[@]}"; do
+    # Match exact file OR anything inside a forbidden directory
+    if [[ "$f" == "$bad" ]] || [[ "$f" == "$bad/"* ]]; then
+      VIOLATIONS="${VIOLATIONS}  ${f}\n"
+    fi
+  done
+done
+
+# Glob patterns
+for f in $STAGED; do
+  case "$f" in
+    AgentAuth_*.docx|docs/QA_REPORT_*.md|tests/*/evidence/DOC-AUDIT-REPORT.md)
+      VIOLATIONS="${VIOLATIONS}  ${f}\n"
+      ;;
+  esac
+done
+
+if [[ -n "$VIOLATIONS" ]]; then
+  echo ""
+  echo "ERROR: attempting to commit development files to 'main'."
+  echo ""
+  echo "These files are develop-only and must not reach main:"
+  echo -e "$VIOLATIONS"
+  echo "Fix: run ./scripts/strip_for_main.sh to remove them, then re-stage and commit."
+  echo ""
+  echo "(If you really meant to commit these to main, bypass with --no-verify —"
+  echo "but that is almost always a mistake.)"
+  exit 1
+fi
+
+exit 0

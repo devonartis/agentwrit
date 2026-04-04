@@ -9,25 +9,32 @@ set -euo pipefail
 #   during development but should never appear on `main`. This script
 #   removes them so `main` stays clean and presentable.
 #
-# Usage (from the develop branch, after merging into a main integration branch):
-#   git checkout main
-#   git merge develop --no-commit
-#   ./scripts/strip_for_main.sh
-#   git add -A
-#   git commit -m "merge: develop → main (stripped dev files)"
+# Usage:
+#   ./scripts/strip_for_main.sh [--dry-run]
 #
-# Or as a merge hook if you want it automatic.
+#   --dry-run   Print what would be removed without actually removing anything
+#
+# Safe merge flow (develop → main):
+#   1. Commit/push all work on develop
+#   2. git checkout main
+#   3. git merge develop --no-commit
+#   4. ./scripts/strip_for_main.sh
+#   5. git add -A
+#   6. git commit -m "merge: develop → main (stripped dev files)"
+#
+# Safety checks:
+#   - Refuses to run on the develop branch (must be on main or detached)
+#   - Refuses to run with uncommitted changes unless --dry-run
 #
 # What it removes:
 #   - Internal tracking: MEMORY.md, MEMORY_ARCHIVE.md, FLOW.md, TECH-DEBT.md,
-#     AGENTS.md, CLAUDE.md, CLEANUP_STATUS.md
+#     AGENTS.md, CLAUDE.md, COWORK_SESSION.md, COWORK_DOCS_AUDIT.md
 #   - Planning directory: .plans/
 #   - Agent configuration: .claude/, .agents/
 #   - Session state: .active_module
-#   - Coordination files: COWORK_SESSION.md, COWORK_DOCS_AUDIT.md
-#   - Internal docs: docs/QA_REPORT_*.md, /tests/*/evidence/DOC-AUDIT-REPORT.md
-#   - Internal reports: /audit/, /AgentAuth_*.docx
-#   - Utility scripts: /generate_pdf.py
+#   - Internal docs: docs/QA_REPORT_*.md, tests/*/evidence/DOC-AUDIT-REPORT.md
+#   - Internal reports: audit/, AgentAuth_*.docx
+#   - Utility scripts: generate_pdf.py
 #
 # What it keeps:
 #   - All code (cmd/, internal/, pkg/)
@@ -36,19 +43,51 @@ set -euo pipefail
 #   - Tests and test evidence (except DOC-AUDIT-REPORT.md)
 #   - Build/deploy files (Dockerfile, docker-compose*.yml, go.mod, scripts/)
 
+DRY_RUN=0
+if [[ "${1:-}" == "--dry-run" ]]; then
+  DRY_RUN=1
+  echo "=== strip_for_main.sh (DRY RUN) ==="
+  echo "No files will be removed."
+else
+  echo "=== strip_for_main.sh ==="
+fi
+echo ""
+
+# Safety: refuse real runs on develop (dry-run is fine — it doesn't touch files)
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+if [[ $DRY_RUN -eq 0 && "$BRANCH" == "develop" ]]; then
+  echo "ERROR: refusing to run on 'develop' branch."
+  echo "This script strips dev files — run it only on 'main' (or a detached HEAD for a"
+  echo "temporary test). On develop you'd lose your tracked dev files."
+  echo ""
+  echo "Safe flow: checkout main, merge develop --no-commit, then run this script."
+  echo "To preview from develop: ./scripts/strip_for_main.sh --dry-run"
+  exit 1
+fi
+
+# Safety: refuse real runs with uncommitted changes
+if [[ $DRY_RUN -eq 0 ]] && ! git diff --quiet HEAD -- 2>/dev/null; then
+  echo "ERROR: uncommitted changes detected. Commit or stash first."
+  echo "(Running the strip with dirty state would mix strips with other edits.)"
+  echo ""
+  echo "Override: pass --dry-run to preview without stripping."
+  exit 1
+fi
+
 STRIPPED=0
 
 strip_path() {
   local path="$1"
   if [[ -e "$path" ]]; then
-    rm -rf "$path"
-    echo "  removed: $path"
+    if [[ $DRY_RUN -eq 1 ]]; then
+      echo "  would remove: $path"
+    else
+      rm -rf "$path"
+      echo "  removed: $path"
+    fi
     STRIPPED=$((STRIPPED + 1))
   fi
 }
-
-echo "=== strip_for_main.sh ==="
-echo ""
 
 # Top-level internal tracking files
 strip_path "MEMORY.md"
@@ -65,6 +104,7 @@ strip_path ".active_module"
 strip_path ".plans"
 strip_path ".claude"
 strip_path ".agents"
+strip_path "audit"
 
 # Internal reports and utilities
 strip_path "generate_pdf.py"
@@ -80,10 +120,14 @@ for f in tests/*/evidence/DOC-AUDIT-REPORT.md; do
 done
 
 echo ""
-echo "=== stripped: $STRIPPED paths ==="
+if [[ $DRY_RUN -eq 1 ]]; then
+  echo "=== would strip: $STRIPPED paths ==="
+else
+  echo "=== stripped: $STRIPPED paths ==="
+fi
 
 # Guard: verify the build still passes after stripping
-if command -v go &>/dev/null; then
+if [[ $DRY_RUN -eq 0 ]] && command -v go &>/dev/null; then
   echo ""
   echo "=== verifying build ==="
   if go build ./... 2>&1; then
