@@ -285,8 +285,7 @@ func (s *TknSvc) Renew(tokenStr string) (*IssueResp, error) {
 }
 
 // PublicKey returns the Ed25519 public key so external services (resource
-// servers, federated brokers) can verify tokens without calling back to
-// the broker. Exposed via the OIDC discovery endpoint (/.well-known/jwks.json).
+// servers) can verify tokens without calling back to the broker.
 func (s *TknSvc) PublicKey() ed25519.PublicKey {
 	return s.pubKey
 }

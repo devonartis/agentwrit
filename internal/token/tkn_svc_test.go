@@ -520,7 +520,7 @@ func TestKidStableAcrossInstances(t *testing.T) {
 }
 
 // TestIssClaimMatchesConfig and TestVerifyRejectsWrongIssuer removed —
-// IssuerURL is not present in agentauth-core.
+// IssuerURL is not present in this build.
 
 func TestRenew_PreservesSid(t *testing.T) {
 	pub, priv := testKeyPair(t)
