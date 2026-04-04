@@ -325,27 +325,6 @@ After 4 iterations (CC v1-v4) and 3 PI versions, converged on `CC-2026-04-04-rep
 
 ### Action: CC v4 cleanup complete + develop → main merge (2026-04-04)
 
-All 8 batches of `.plans/designs/CC-2026-04-04-repo-cleanup-plan-v4.md` completed. Summary:
-
-- **Phase 1:** GitHub repos renamed (enterprise → `agentauth-ENT`, core → `agentauth`), remotes updated, stale remotes removed.
-- **Batch 1.5:** Go module path fixed: `divineartis` → `devonartis` (go.mod + 154 imports across 46 .go files).
-- **Batch 1:** Deleted sensitive/obsolete files (docs/patent/, COWORK_*.md, tests/FUCKING QUETIONS.MD).
-- **Batch 2:** TD-S08/S09/S14 verified resolved, added /v1/app/launch-tokens + single_use to OpenAPI, renamed token-roles.md → roles.md (TD-012).
-- **Batch 3:** v1.2→v1.3, 7→8 components across README + 3 docs.
-- **Batch 4:** Deleted 3 broken/obsolete scripts (test_batch.sh, live_test.sh, live_test_docker.sh).
-- **Batch 5:** Renamed 4 cc-*.md drafts, deleted KNOWN-ISSUES.md (all sidecar), rewrote CHANGELOG.md 732→128 lines.
-- **Batch 6:** Fixed clone URLs in README + getting-started-user.md.
-- **Batch 7:** Lean .gitignore + created scripts/strip_for_main.sh.
-- **Batch 8:** Final verification — all tests pass, zero contamination, docs consistent.
-- **Post-freeze:** Fixed 2 stale code comments (tkn_svc.go OIDC ref, tkn_svc_test.go repo name).
-- **Root cleanup:** Deleted Archive.zip, 2× .docx reports, bin/, audit-reports/, audit/. Moved CLEANUP_STATUS.md → .plans/ and SOUL.md → .claude/. Root: 34 → 28 items.
-- **.plans/ cleanup:** Deleted cherry-pick/, old plan iterations, redundant designs, migration artifacts. Archived 4 personal drafts. .plans/: 30 → 12 items.
-- **Infrastructure:** Added .githooks/pre-commit to block dev files on main. Added --dry-run + safety checks to strip_for_main.sh. Untracked .claude/settings.local.json (per-user).
-
-**Develop → main merge (2026-04-04):**
-- Merged develop into main (fast-forward), then ran strip_for_main.sh — 10 paths stripped.
-- Main commit: `df9b496 merge: develop → main for v2.0.0 release`
-- Main is now clean: 199 files, no dev tracking files, no .plans/, no .claude/, no agent configs.
-- Both `main` and `develop` pushed to `devonartis/agentauth` (private).
+CC v4 plan fully executed. Develop → main merge fast-forwarded, strip_for_main.sh ran, main clean at `df9b496`. Both branches pushed to `devonartis/agentauth` (private).
 
 **Next:** Phase 3 — multi-agent review before going public.
