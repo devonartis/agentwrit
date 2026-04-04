@@ -323,14 +323,49 @@ paths:
   /v1/admin/launch-tokens:
     post:
       tags: [Admin]
-      summary: Create a launch token
+      summary: Create a launch token (admin path)
       description: >
         Issues a single-use launch token that agents can present during registration.
         Scopes in the token are capped by the MaxTTL ceiling. Requires Bearer token
-        with admin:launch-tokens:* scope.
-      operationId: createLaunchToken
+        with admin:launch-tokens:* scope. Admin callers bypass the app scope ceiling
+        and can create tokens with any scopes — intended for bootstrapping and
+        break-glass scenarios.
+      operationId: createLaunchTokenAdmin
       security:
         - bearerAuth: ["admin:launch-tokens:*"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLaunchTokenRequest"
+      responses:
+        "201":
+          description: Launch token created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateLaunchTokenResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /v1/app/launch-tokens:
+    post:
+      tags: [App]
+      summary: Create a launch token (app path)
+      description: >
+        Issues a single-use launch token that the app's agents can present during
+        registration. Requires Bearer token with app:launch-tokens:* scope (obtained
+        via POST /v1/app/auth). The requested scopes must be a subset of the app's
+        scope ceiling — attempts to exceed the ceiling are rejected with 403.
+        Same handler as the admin path; the scope requirement determines trust level.
+      operationId: createLaunchTokenApp
+      security:
+        - bearerAuth: ["app:launch-tokens:*"]
       requestBody:
         required: true
         content:
@@ -941,6 +976,12 @@ components:
           description: >
             Maximum TTL ceiling for tokens issued with this launch token.
             Overrides AA_MAX_TTL if set.
+        single_use:
+          type: boolean
+          description: >
+            If true (default), the launch token can only be consumed once.
+            If false, the token can register multiple agents until it expires.
+            Omit to use the default (true).
 
     CreateLaunchTokenResponse:
       type: object

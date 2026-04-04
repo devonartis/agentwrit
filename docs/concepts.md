@@ -6,7 +6,7 @@
 >
 > **Prerequisites:** None — this is the starting point for understanding AgentAuth.
 >
-> **Purpose:** Understand the problem AgentAuth solves, the security pattern behind it, and how all 7 components work together.
+> **Purpose:** Understand the problem AgentAuth solves, the security pattern behind it, and how all 8 components work together.
 >
 > **Next steps:** [Getting Started](getting-started-user.md) | [Architecture](architecture.md) | [API Reference](api.md)
 

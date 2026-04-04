@@ -5,8 +5,11 @@ set -euo pipefail
 # Usage:
 #   ./scripts/stack_up.sh
 #
+# Required env:
+#   AA_ADMIN_SECRET   (no default — broker rejects weak/empty secrets at startup.
+#                     Use `aactl init` to generate, or export a strong value.)
+#
 # Optional env:
-#   AA_ADMIN_SECRET   (default: change-me-in-production)
 #   AA_HOST_PORT      (default: 8080)
 #   AA_SEED_TOKENS    (default: false)
 #   AA_LOG_LEVEL      (default: standard)

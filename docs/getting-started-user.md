@@ -71,8 +71,8 @@ Docker Compose is the easiest way to get started. It launches the broker in two 
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/divineartis/agentauth-core.git
-cd agentauth-core
+git clone https://github.com/devonartis/agentauth.git
+cd agentauth
 
 # 2. Set the admin secret (required -- broker exits without it)
 export AA_ADMIN_SECRET="$(openssl rand -hex 32)"
@@ -101,8 +101,8 @@ If you prefer to build and run locally without Docker:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/divineartis/agentauth-core.git
-cd agentauth-core
+git clone https://github.com/devonartis/agentauth.git
+cd agentauth
 
 # 2. Build the Go binaries
 go build ./...

@@ -1,7 +1,7 @@
 # AgentAuth
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/divineartis/agentauth.svg)](https://pkg.go.dev/github.com/divineartis/agentauth)
-[![Go Report Card](https://goreportcard.com/badge/github.com/divineartis/agentauth)](https://goreportcard.com/report/github.com/divineartis/agentauth)
+[![Go Reference](https://pkg.go.dev/badge/github.com/devonartis/agentauth.svg)](https://pkg.go.dev/github.com/devonartis/agentauth)
+[![Go Report Card](https://goreportcard.com/badge/github.com/devonartis/agentauth)](https://goreportcard.com/report/github.com/devonartis/agentauth)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Version](https://img.shields.io/badge/Go-1.24%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
@@ -13,7 +13,7 @@
 
 AgentAuth is a credential broker that issues short-lived, scope-attenuated tokens to AI agents. Each agent gets a unique [SPIFFE](https://spiffe.io/)-format identity and operates with only the permissions its task requires. Tokens are signed with Ed25519 (EdDSA), expire in minutes, and are revocable at four levels (token, agent, task, delegation chain). Every credential event is recorded in a tamper-evident audit trail.
 
-AgentAuth implements the [Ephemeral Agent Credentialing](https://github.com/devonartis/AI-Security-Blueprints/blob/main/patterns/ephemeral-agent-credentialing/versions/v1.2.md) security pattern — a 7-component architecture purpose-built for autonomous AI agents.
+AgentAuth implements the [Ephemeral Agent Credentialing](https://github.com/devonartis/AI-Security-Blueprints/blob/main/patterns/ephemeral-agent-credentialing/versions/v1.3.md) security pattern — an 8-component architecture purpose-built for autonomous AI agents.
 
 ---
 
@@ -41,8 +41,8 @@ Prerequisites: [Go 1.24+](https://go.dev/dl/), [Docker](https://docs.docker.com/
 
 ```bash
 # 1. Clone and enter the repo
-git clone https://github.com/divineartis/agentauth-core.git
-cd agentauth-core
+git clone https://github.com/devonartis/agentauth.git
+cd agentauth
 
 # 2. Set the admin secret (required — broker exits without it)
 export AA_ADMIN_SECRET="$(openssl rand -base64 32)"
@@ -284,9 +284,6 @@ curl -s http://localhost:8080/v1/health | jq .
 
 # Tear down (removes volumes)
 ./scripts/stack_down.sh
-
-# Run live E2E tests against the Docker stack
-./scripts/live_test.sh --docker
 ```
 
 The Docker Compose stack runs the broker on port 8080 (override with `AA_HOST_PORT`), persists data to a named volume (`broker-data`), and binds to `0.0.0.0` inside the container for port forwarding.
@@ -400,7 +397,7 @@ server {
 | [API Reference](docs/api.md) | Complete endpoint docs with request/response schemas and examples |
 | [OpenAPI Spec](docs/api/openapi.yaml) | Machine-readable API contract (OpenAPI 3.0.3) |
 | [Architecture](docs/architecture.md) | Component diagrams, data flows, middleware stack, design decisions |
-| [Concepts](docs/concepts.md) | Security pattern, threat model, 7-component breakdown |
+| [Concepts](docs/concepts.md) | Security pattern, threat model, 8-component breakdown |
 | [Common Tasks](docs/common-tasks.md) | Step-by-step workflows for developers and operators |
 | [Troubleshooting](docs/troubleshooting.md) | Error messages, diagnostic flowchart, fixes by role |
 

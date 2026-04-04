@@ -1,43 +1,33 @@
+# OS junk
 .DS_Store
+
+# Editor swap files
+*.swp
+*.swo
+
+# Go build artifacts
 *.test
-/agentauth-broker
-/broker
-/smoketest
-
-# Internal AI configuration
-CLAUDE.md
-AGENTS.md
-.claude/
-!.claude/skills/
-.active_module
-/.agents/
-
-# Internal QA reports
-docs/QA_REPORT_*.md
-/audit/
-/AgentAuth_*.docx
-/tests/*/evidence/DOC-AUDIT-REPORT.md
-
-# Python artifacts
-__pycache__/
-*.pyc
-.pytest_cache/
-*.egg-info/
-.worktrees/
-
-# Compiled binaries (rebuild via: go build ./cmd/aactl, go build ./cmd/broker)
 /aactl
+/broker
+/agentauth-broker
+/smoketest
+bin/
 
 # Database files
 *.db
 
-# Utility scripts
-/generate_pdf.py
-bin/
-
-# Dolt database files (added by bd init)
-.dolt/
-
 # Environment files (may contain secrets)
 .env
 .env.*
+
+# Python artifacts (tests may use Python)
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# Git worktrees
+.worktrees/
+
+# Dolt database
+.dolt/

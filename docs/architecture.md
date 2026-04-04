@@ -233,7 +233,7 @@ flowchart TD
 
 ## Pattern Components Mapped to Code
 
-The 7-component Ephemeral Agent Credentialing pattern maps directly to Go packages:
+The 8-component Ephemeral Agent Credentialing pattern maps directly to Go packages:
 
 | Pattern Component | Go Packages | Key Types | Key Functions |
 |---|---|---|---|

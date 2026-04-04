@@ -1,6 +1,6 @@
 # Token Roles — Who Holds What and Why
 
-> This document answers the question the codebase raises but doesn't say out loud: **which actor holds which token, what can they actually do with it, and why does the admin token have the ability to create agents?** Read this before `docs/token-concept.md`.
+> This document answers the question the codebase raises but doesn't say out loud: **which actor holds which token, what can they actually do with it, and why does the admin token have the ability to create agents?** Read this before `docs/credential-model.md`.
 
 ---
 
@@ -204,7 +204,7 @@ At every step, authority can only narrow. The admin defines what apps can do. Ap
 
 ## What to Read Next
 
-- **`docs/token-concept.md`** — the full technical walkthrough: every credential's claims, TTLs, and sequence diagrams
+- **`docs/credential-model.md`** — the full technical walkthrough: every credential's claims, TTLs, and sequence diagrams
 - **`docs/agentauth-explained.md`** — the plain-language version for sales and new team members
 
 

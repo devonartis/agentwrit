@@ -224,4 +224,4 @@ Nonces aren't really "tokens" in the authorization sense — they're part of the
 
 With tokens defined, scopes are what give tokens their meaning. A token without scopes is a proof of identity — it says who you are but not what you're allowed to do.
 
-See [Scope Model](cc-scope-model.md) for the complete scope deep dive: the format, the coverage rules, the four enforcement points, and how scopes flow through the attenuation chain.
+See [Scope Model](scope-model.md) for the complete scope deep dive: the format, the coverage rules, the four enforcement points, and how scopes flow through the attenuation chain.

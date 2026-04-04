@@ -4,7 +4,7 @@
 >
 > **Audience:** Platform Operator responsible for deploying and managing AgentAuth infrastructure.
 >
-> **Prerequisite:** Read [Concepts](concepts.md) to understand why AgentAuth exists and what the 7-component security pattern provides. If you are a developer integrating an agent, see [Getting Started: Developer](getting-started-developer.md).
+> **Prerequisite:** Read [Concepts](concepts.md) to understand why AgentAuth exists and what the 8-component security pattern provides. If you are a developer integrating an agent, see [Getting Started: Developer](getting-started-developer.md).
 >
 > **Next steps:** [Common Tasks: Operator](common-tasks.md#operator-tasks) | [Troubleshooting](troubleshooting.md#operator-errors) | [Architecture](architecture.md)
 
@@ -203,7 +203,43 @@ Clients without a valid certificate are rejected at the TLS handshake — they n
 
 ### Docker Compose with TLS
 
-Mount your certificates into the container and pass the env vars:
+Three compose files ship with the repo — a base plus two overlays:
+
+| File | Purpose |
+|------|---------|
+| `docker-compose.yml` | Base — broker on HTTP (no TLS). Used by `scripts/stack_up.sh`. |
+| `docker-compose.tls.yml` | Overlay — adds one-way TLS (broker serves HTTPS) |
+| `docker-compose.mtls.yml` | Overlay — adds mutual TLS (broker requires client cert) |
+
+The overlays expect certs in `/tmp/agentauth-certs/`. Generate them first:
+
+```bash
+./scripts/gen_test_certs.sh
+```
+
+This creates `broker.pem`, `broker-key.pem`, `ca.pem`, `client.pem`, `client-key.pem` using EC P-256 keys. **Test certs only** — use a proper CA in production.
+
+**One-way TLS (broker serves HTTPS):**
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
+```
+
+**Mutual TLS (broker requires client cert):**
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mtls.yml up -d
+```
+
+Stop with the matching overlays:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.tls.yml down -v
+```
+
+### Rolling your own TLS compose configuration
+
+If you need a custom cert layout (different paths, production CA, Kubernetes secret mounts), extend `docker-compose.yml` directly:
 
 ```yaml
 broker:
@@ -216,7 +252,7 @@ broker:
     - /etc/agentauth/certs:/certs:ro
 ```
 
-Then set env vars before bringing up the stack:
+Then export the env vars before bringing up the stack:
 
 ```bash
 export AA_TLS_MODE=tls
@@ -225,19 +261,7 @@ export AA_TLS_KEY=/certs/broker.key
 ./scripts/stack_up.sh
 ```
 
-### Generating a self-signed cert for testing
-
-```bash
-# Generate a self-signed cert valid for localhost
-openssl req -x509 -newkey rsa:2048 \
-  -keyout broker.key \
-  -out broker.crt \
-  -days 365 -nodes \
-  -subj "/CN=localhost" \
-  -addext "subjectAltName=IP:127.0.0.1,DNS:localhost"
-```
-
-> **Warning:** Self-signed certs are for development and testing only. Use a proper CA in production.
+> **Warning:** `scripts/gen_test_certs.sh` generates self-signed certs for development and testing only. Use a proper CA in production.
 
 ---
 
