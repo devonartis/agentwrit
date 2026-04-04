@@ -1,175 +1,108 @@
 # AGENTS.md
 
-**Last updated:** 2026-04-03
-**Purpose:** Short handoff note for the next conversation. This is a working-session summary, not a public product document.
+**Last updated:** 2026-04-04  
+**Purpose:** Handoff notes for the next agent session.
 
 ---
 
-## Current situation
+## Current State
 
-We did **not** start repo cleanup.
+**✅ Repo cleanup is COMPLETE.**
 
-We did strategy, competitive, and pre-cleanup assessment work only.
-
-The repo still needs a careful cleanup plan before any deletion, moving, or public-surface pruning happens.
-
----
-
-## Product framing clarified in this session
-
-### Canonical framing
-- **AgentAuth** is the product name.
-- This repo is the **OSS core** of AgentAuth.
-- The OSS core implements the **8 components** of **Ephemeral Agent Credentialing v1.3**.
-- Broader AgentAuth packaging / binaries may include:
-  - **OIDC**
-  - **HITL**
-  - **resource server**
-  - other enterprise or deployment-specific layers
-
-### Audit framing clarified
-- **Core audit** = credential lifecycle and security events
-  - issuance
-  - scope / allowed actions
-  - renew / revoke / release / expiry
-  - lineage / identity / task linkage
-- **Resource server / downstream logging** = what the agent actually did end-to-end
-- Docs should eventually explain how users can log:
-  - `agent_id`
-  - `task_id`
-  - delegation lineage / chain hash
-  into their own logging or resource server
+- 8 batches executed (go module rename, sensitive file removal, critical docs fixed, version drift fixed, scripts cleanup, cosmetic fixes, gitignore + strip script, final verification)
+- `develop` → `main` merge completed
+- `main` is clean: 199 files, no dev artifacts, ready for public release
+- Both branches pushed to `devonartis/agentauth` (private)
+- Strip script verified: 10 paths removed cleanly, build passes
 
 ---
 
-## What was created this session
+## What Was Done (Summary)
 
-### Competitive / strategy docs
-- `.plans/designs/2026-04-03-competitive-landscape-review.md`
-- `.plans/designs/2026-04-03-competitive-positioning.md`
-- `.plans/designs/2026-04-03-threat-model-competitive-matrix.md`
+See `FLOW.md` for **decisions only** — not full history. Key outcomes:
 
-These now reflect:
-- AgentAuth = product
-- this repo = OSS core
-- 8-component core framing
-- broader platform story
-- competitor analysis beyond OSS
-- threat-model-first comparison framing
-
-### Pre-cleanup review doc
-- `.plans/designs/2026-04-03-pre-cleanup-docs-public-surface-assessment.md`
-
-This is the key handoff document for cleanup planning.
-
-It contains:
-- code baseline used for review
-- doc/code drift findings
-- public/private surface findings
-- files likely not meant to ship publicly
-- planning-only cleanup workstreams
+1. **Repo renamed:** `agentauth-core` → `agentauth` (canonical name reserved for OSS core)
+2. **Enterprise repo:** `agentauth` → `agentauth-ENT` (private, contains HITL/OIDC for future extraction)
+3. **Go module:** Updated to `github.com/devonartis/agentauth` (154 occurrences, 46 files)
+4. **Dev files organized:** All session tracking (MEMORY, FLOW, TECH-DEBT, AGENTS, .claude/, .plans/) on `develop`, stripped from `main`
+5. **Public docs aligned:** v1.2→v1.3, 7→8 components, API contracts corrected
+6. **Dead code removed:** Sidecar references, obsolete scripts, duplicate templates
 
 ---
 
-## Important findings from the pre-cleanup assessment
+## Project Structure (Canonical)
 
-### Public docs drift found
-- `README.md` still says **v1.2** and **7-component**
-- some docs still say **7-component** while others imply **8 components**
-- public naming still uses **agentauth-core** in places
-- `docs/troubleshooting.md` still has stale `config.yaml` examples
-- some public docs reference internal artifacts like `TECH-DEBT.md`
+```
+devonartis/agentauth        ← This repo (OSS core, private until review)
+  main    → clean public release (199 files)
+  develop → full dev workspace (233 files)
 
-### Files likely not meant for the public repo surface
-Examples identified in the assessment:
-- `MEMORY.md`
-- `MEMORY_ARCHIVE.md`
-- `FLOW.md`
-- `TECH-DEBT.md` (likely sanitize/remove before release)
-- `COWORK_SESSION.md`
-- `COWORK_DOCS_AUDIT.md`
-- `CLAUDE.md`
-- `.claude/`
-- `docs/patent/`
-- `audit/` review artifacts
-- stray `.docx` files
-- `Archive.zip`
-- `tests/FUCKING QUETIONS.MD `
-- `.DS_Store` junk files
-
-**Nothing was removed.** These were only identified.
+devonartis/agentauth-ENT    ← Enterprise code (HITL, OIDC), private
+devonartis/agentauth-internal ← Golden history archive
+```
 
 ---
 
-## What NOT to do next without a plan
+## Next Phase: Multi-Agent Review
 
-Do **not**:
-- start deleting files ad hoc
-- merge/remove docs just because they look duplicated
-- remove internal files before classification
-- rewrite public docs without first deciding the canonical product story
-- assume the cleanup is just cosmetic
+**Before going public**, this repo needs review by multiple agents. Focus areas:
 
-The right order is:
-1. classify public vs internal
-2. decide canonical public story
-3. map docs to that story
-4. only then plan actual cleanup
+### 1. Security Review
+- Review `internal/token/` — JWT handling, Ed25519 signing, revocation
+- Review `internal/authz/` — scope enforcement, rate limiting
+- Review `internal/admin/` — bcrypt auth, admin secret handling
+- Check for any hardcoded secrets, weak defaults, or bypass paths
 
----
+### 2. Documentation Review
+- Read `README.md` as a first-time visitor — does it make sense?
+- Check `docs/` for any remaining "agentauth-core" or "v1.2" references
+- Verify all code examples work against the actual broker
+- Look for stale references to removed features (sidecar, HITL, OIDC)
 
-## Recommended next step
+### 3. Code Quality Review
+- Check Go comments — do they explain role/boundary/intent per `.claude/rules/golang.md`?
+- Look for missing error handling
+- Verify test coverage (run `go test ./... -cover`)
+- Check for any TODO/FIXME comments that should be resolved
 
-When we resume, the best next task is:
-
-### Build a cleanup plan, not execute cleanup
-That plan should include:
-- canonical public story
-- file classification matrix
-- public docs alignment list
-- internal/private removal or relocation list
-- sequence of safe cleanup batches
-
-Suggested output:
-- a dedicated `.plans/` cleanup plan or spec
-- grouped into small batches so nothing useful gets deleted by accident
+### 4. Public Surface Review
+- What files ship to `main`? (run `git ls-tree -r main --name-only`)
+- Any internal artifacts accidentally included?
+- Does `strip_for_main.sh` catch everything it should?
 
 ---
 
-## Important conversation constraint from this session
+## File Purposes (Don't Mix These Up)
 
-A path was mentioned and then explicitly **not** to be reviewed:
-- `/Users/divineartis/proj/claude_leaked/claude-code/study_code`
+| File | Purpose | Branch |
+|------|---------|--------|
+| `AGENTS.md` | **This file** — handoff notes for next session | develop |
+| `MEMORY.md` | Session context, lessons learned, current state | develop |
+| `FLOW.md` | **Decision log only** — what was decided and why | develop |
+| `TECH-DEBT.md` | Known issues, deferred work, severity tracking | develop |
+| `SOUL.md` | Project principles, philosophy | develop |
 
-Do **not** review that path unless the user explicitly asks again.
-
----
-
-## Session intent summary
-
-This session was about:
-- clarifying product framing
-- expanding competitive analysis beyond OSS
-- grounding comparisons in the 40-threat model
-- producing a pre-cleanup assessment so future cleanup can be planned safely
-
-This session was **not** about:
-- executing cleanup
-- deleting files
-- finalizing public docs
-- changing repo structure
+**Important:** FLOW.md is for **decisions**, not history dumps. When adding to FLOW.md:
+- Good: "Decision: Renamed repo to agentauth to reserve canonical name"
+- Bad: "Then I ran git status and saw 15 files changed so I checked the diff and..."
 
 ---
 
-## If resuming cold
+## If Resuming Cold
 
-Read these first:
-1. `SOUL.md`
-2. `AGENTS.md`
-3. `.plans/designs/2026-04-03-pre-cleanup-docs-public-surface-assessment.md`
-4. `.plans/designs/2026-04-03-competitive-positioning.md`
-5. `MEMORY.md`
-6. `FLOW.md`
-7. `.plans/tracker.jsonl`
+1. Read `MEMORY.md` — current state and recent lessons
+2. Read `FLOW.md` — key decisions (skim the headers)
+3. Read `README.md` — as if you're a new contributor
+4. Run `./scripts/gates.sh task` — verify build/tests pass
+5. Check `git log main -10` — what's on the public branch
 
-Then propose a **cleanup plan only** unless the user says to execute changes.
+Then start your work.
+
+---
+
+## Constraints
+
+- **Never** commit dev files (MEMORY, FLOW, AGENTS, .claude/, .plans/) to `main`
+- The `strip_for_main.sh` script enforces this — use it before any main commit
+- `develop` is private — `main` will eventually be public
+- Enterprise code (HITL, OIDC) is in `agentauth-ENT`, not this repo
