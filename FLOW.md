@@ -328,3 +328,23 @@ After 4 iterations (CC v1-v4) and 3 PI versions, converged on `CC-2026-04-04-rep
 CC v4 plan fully executed. Develop → main merge fast-forwarded, strip_for_main.sh ran, main clean at `df9b496`. Both branches pushed to `devonartis/agentauth` (private).
 
 **Next:** Phase 3 — multi-agent review before going public.
+
+---
+
+## 2026-04-08 — Public release readiness (documentation + license posture)
+
+### Decision: License switched from Apache 2.0 to AGPL-3.0 + CLA + enterprise (2026-04-08)
+
+**Choice:** AGPL-3.0 for open-source core. CLA grants maintainer commercial/proprietary rights for enterprise. ENTERPRISE_LICENSE.md summarizes commercial terms (non-binding until final contract).
+
+**Why AGPL-3.0:** Section 13 (“Remote Network Interaction”) requires anyone offering the software as a SaaS to release source code — this prevents unauthorized commercial hosting. Users can self-host and modify freely; commercial embedding or managed service requires a separate enterprise license.
+
+**Files changed:** `LICENSE`, `CLA.md` (new), `ENTERPRISE_LICENSE.md` (new), `CONTRIBUTING.md` (simplified + CLA reference), `README.md` (badge + license section). TD-PUB-001 and TD-018 resolved.
+
+**Remaining:** `docs/api/openapi.yaml` still says Apache 2.0 (fix with TD-S14 OpenAPI rewrite). Domain name needed for contact emails (TD-019). Source file AGPL headers (future).
+
+### Action: Public-facing contributor docs aligned (2026-04-08)
+
+- `CONTRIBUTING.md`: canonical clone URL `github.com/devonartis/agentauth`, accurate module import paths, project tree without obsolete `smoketest`, new **Branch model** note for develop vs `main` + strip script.
+- `SECURITY.md`: limitations corrected (persistent signing key, rate limiting on admin auth); removed broken `KNOWN-ISSUES.md` link.
+- `CODE_OF_CONDUCT.md`: added (Contributor Covenant 2.1) so CONTRIBUTING’s CoC link resolves.

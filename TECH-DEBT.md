@@ -6,6 +6,13 @@ Full details for each item live in the referenced file. This is the index.
 
 ---
 
+## Public release / licensing
+
+| ID | What | Severity | When to Fix | Reference |
+|----|------|----------|-------------|-----------|
+| TD-PUB-001 | ~~Apache 2.0 insufficient for SaaS/resale restrictions~~ | ~~Medium~~ | **RESOLVED 2026-04-08** — Switched to AGPL-3.0 + CLA + enterprise license summary | `LICENSE`, `CLA.md`, `ENTERPRISE_LICENSE.md` |
+| TD-019 | **Domain name decision needed** — all legal docs use placeholder `devon@agentauthdev._`. Also affects `security@agentauth.dev` (SECURITY.md), `conduct@agentauth.dev` (CODE_OF_CONDUCT.md). Pick a domain, register it, update all contact emails. | **HIGH** | Before going public | `CLA.md`, `ENTERPRISE_LICENSE.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md` |
+
 ## Carried Forward (from agentauth-internal)
 
 | ID | What | Severity | When to Fix | Reference |
@@ -228,35 +235,17 @@ The repo has accumulated artifacts from migration, multiple agent sessions, and 
 
 ---
 
-### TD-018: License decision — Apache 2.0 is NOT the final license
+### TD-018: License decision — RESOLVED (2026-04-08)
 
-**Severity: BLOCKING (before going public)** — Cannot make repo public under current license.
+**RESOLVED:** Switched from Apache 2.0 to AGPL-3.0 + CLA + enterprise license summary.
 
-**Current:** `LICENSE` is Apache 2.0. README badge shows Apache 2.0. `docs/api/openapi.yaml` references Apache 2.0.
+- `LICENSE` — replaced with AGPL-3.0 full text + copyright preamble
+- `CLA.md` — created (dual-license grant: AGPL-3.0 open-source + commercial rights to maintainer)
+- `ENTERPRISE_LICENSE.md` — created (non-binding commercial license summary)
+- `CONTRIBUTING.md` — updated (references AGPL-3.0 and CLA)
+- `README.md` — updated (AGPL-3.0 badge + license section)
 
-**Problem:** Apache 2.0 allows anyone to embed AgentAuth in a product they sell or offer as a SaaS. That contradicts the intended model — users should be able to run it in their own business, but NOT redistribute it commercially or offer it as a managed service.
-
-**Intent:**
-- ✅ Allow: production use in own business, self-hosting, internal modifications
-- ❌ Restrict: embedding in a commercial product, offering as SaaS/managed service, reselling
-
-**Candidate licenses:**
-
-| License | Converts to OSS? | Notes |
-|---------|-----------------|-------|
-| **BSL 1.1** (Business Source License) | Yes, usually after 4 years | Used by HashiCorp, MariaDB, CockroachDB. Requires writing "Additional Use Grant" to define restrictions. |
-| **FSL** (Functional Source License) | Yes, after 2 years | Used by Sentry. Cleaner modern version of BSL. Allows internal commercial use, bans competing products. |
-| **ELv2** (Elastic License 2.0) | No — restrictions forever | Used by Elasticsearch, Redis. Off-the-shelf text. Bans SaaS resale + license circumvention. |
-
-**Decision needed:** Pick one of the above (or alternative). Copyright holder (devonartis) can relicense future versions freely — start with any choice, change direction later if needed.
-
-**Fix when:** Before making `devonartis/agentauth` public on GitHub.
-
-**Files to update when decided:**
-- `LICENSE` — replace Apache 2.0 text
-- `README.md` — update license badge
-- `docs/api/openapi.yaml` — update `info.license.name` field
-- Any Go file headers that stamp Apache 2.0 (if any)
+**Remaining:** `docs/api/openapi.yaml` still references Apache 2.0 in `info.license.name` — update when touching OpenAPI spec (TD-S14).
 
 ---
 

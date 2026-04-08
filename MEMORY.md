@@ -1,5 +1,17 @@
 # MEMORY.md — agentauth-core
 
+## Recent Lessons (last 3 sessions — older archived to MEMORY_ARCHIVE.md)
+
+### Public release readiness session (2026-04-08)
+
+**What happened:** Implemented the “public release readiness” plan: created `.plans/release-readiness.md` (merge checklist, license tradeoffs Apache vs source-available), `.plans/reviews/public-release-review-2026-04-08.md` (structured review snapshot), updated `AGENTS.md` / `FLOW.md`, fixed `CONTRIBUTING.md` (wrong clone URL, wrong import path, obsolete `smoketest` in tree), fixed `SECURITY.md` (stale limitations + broken KNOWN-ISSUES link), added `CODE_OF_CONDUCT.md`.
+
+**Standing rule:** License is now AGPL-3.0 + CLA + enterprise summary. All four files (`LICENSE`, `CLA.md`, `ENTERPRISE_LICENSE.md`, `CONTRIBUTING.md`) must stay in sync on license references. Domain name decision (TD-019) blocks going public — all contact emails are placeholder.
+
+**What's NOT done:** Legal selection of a non-Apache license if product restrictions are required; GitHub public flip; external security audit.
+
+---
+
 ## Mission
 
 **Build the open-source core of AgentAuth** — a production-grade, pluggable credential broker for AI agents implementing the **[Ephemeral Agent Credentialing v1.3](https://github.com/devonartis/AI-Security-Blueprints/blob/main/patterns/ephemeral-agent-credentialing/versions/v1.3.md)** security pattern.
@@ -110,8 +122,6 @@ Each cherry-pick batch has acceptance tests in `tests/<batch-name>/`:
 ## Backburner Designs (review after migration is complete)
 
 - **Acceptance test automation + verification** — `.plans/designs/acceptance-test-automation.md`. Born during B5: how to automate story evidence creation while maintaining template compliance, and how to verify the agent followed the template with a deterministic hook. The `integration.sh` script is a CI smoke test — it does NOT produce proper evidence files. Three options captured: review hook, verify-evidence skill, or a runner script that produces template-compliant evidence. Review once B6 is merged.
-
-## Recent Lessons (last 3 sessions — older archived to MEMORY_ARCHIVE.md)
 
 ### CC v4 Cleanup + Rename Session (2026-04-04) — taking develop from scratch pad to release-ready
 

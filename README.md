@@ -2,7 +2,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/devonartis/agentauth.svg)](https://pkg.go.dev/github.com/devonartis/agentauth)
 [![Go Report Card](https://goreportcard.com/badge/github.com/devonartis/agentauth)](https://goreportcard.com/report/github.com/devonartis/agentauth)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Go Version](https://img.shields.io/badge/Go-1.24%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 [![Security Policy](https://img.shields.io/badge/Security-Policy-green?logo=shield)](SECURITY.md)
@@ -413,6 +413,7 @@ server {
 | Document | Description |
 |----------|-------------|
 | [Contributing](CONTRIBUTING.md) | Development setup, coding conventions, PR process |
+| [Code of Conduct](CODE_OF_CONDUCT.md) | Community standards for contributors |
 | [Security Policy](SECURITY.md) | Vulnerability reporting, security design principles |
 | [Changelog](CHANGELOG.md) | Release history |
 
@@ -420,4 +421,8 @@ server {
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+AgentAuth is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. See [LICENSE](LICENSE) for the full text.
+
+Substantial contributions require accepting the [Contributor License Agreement](CLA.md). See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+For commercial licensing (embedding in proprietary products, hosted/managed services without AGPL obligations), see [ENTERPRISE_LICENSE.md](ENTERPRISE_LICENSE.md).
