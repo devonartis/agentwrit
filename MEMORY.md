@@ -8,7 +8,12 @@
 
 **Standing rule:** License is now AGPL-3.0 + CLA + enterprise summary. All four files (`LICENSE`, `CLA.md`, `ENTERPRISE_LICENSE.md`, `CONTRIBUTING.md`) must stay in sync on license references. Domain name decision (TD-019) blocks going public — all contact emails are placeholder.
 
-**What's NOT done:** Legal selection of a non-Apache license if product restrictions are required; GitHub public flip; external security audit.
+**What's NOT done:** GitHub public flip; external security audit; domain name decision (TD-019); `docs/getting-started-developer.md` needs SDK link; OpenAPI spec still says Apache 2.0.
+
+**Pending review branches (2026-04-08):**
+- **Core:** `docs/readme-sdk-demo` — SDK section + MedAssist demo showcase in README
+- **Python SDK:** `docs/readme-license-cleanup` — MIT LICENSE file, pyproject fix, README rewrite with demo section
+- These depend on each other — core README links to SDK repo content. Review together.
 
 ---
 

@@ -343,8 +343,52 @@ CC v4 plan fully executed. Develop → main merge fast-forwarded, strip_for_main
 
 **Remaining:** `docs/api/openapi.yaml` still says Apache 2.0 (fix with TD-S14 OpenAPI rewrite). Domain name needed for contact emails (TD-019). Source file AGPL headers (future).
 
+### Action: Core README updated with SDK + demo sections (2026-04-08)
+
+**Branch:** `docs/readme-sdk-demo` off `develop` — NOT merged, awaiting user review.
+
+**What's on the branch:**
+- "SDKs" section after Quick Start — table (Python ready, TypeScript planned), code example
+- "See It In Action — MedAssist AI Demo" section — capabilities table, links to beginner + presenter guides
+- SDK table added to Documentation section
+
+**Depends on:** Python SDK `docs/readme-license-cleanup` branch (also pending review). Both branches should be reviewed together — core README links to SDK repo content.
+
+**Still needs doing:** `docs/getting-started-developer.md` should link to Python SDK. Core README links point to `main` of SDK repo — SDK branch must merge first.
+
 ### Action: Public-facing contributor docs aligned (2026-04-08)
 
 - `CONTRIBUTING.md`: canonical clone URL `github.com/devonartis/agentauth`, accurate module import paths, project tree without obsolete `smoketest`, new **Branch model** note for develop vs `main` + strip script.
 - `SECURITY.md`: limitations corrected (persistent signing key, rate limiting on admin auth); removed broken `KNOWN-ISSUES.md` link.
 - `CODE_OF_CONDUCT.md`: added (Contributor Covenant 2.1) so CONTRIBUTING’s CoC link resolves.
+
+---
+
+### What’s Next (2026-04-08)
+
+**Two branches awaiting review — review these first, everything else depends on them:**
+
+1. **Python SDK** `docs/readme-license-cleanup` (`~/proj/agentauth-python`)
+   - MIT LICENSE file (was missing), pyproject.toml fix (Apache-2.0 → MIT), full README rewrite with MedAssist demo section
+   - Review → merge to develop → merge to main (so core README links resolve)
+
+2. **Core** `docs/readme-sdk-demo` (`~/proj/agentauth-core`)
+   - SDK section + MedAssist demo showcase + SDK docs table entry in README
+   - Review → merge to develop → merge to main (strip dev files as usual)
+   - **Must merge AFTER SDK branch** — core README links to SDK repo `main`
+
+**After both branches merge:**
+
+3. **Domain name decision (TD-019, HIGH)** — pick a domain, register it, update all placeholder emails:
+   - `CLA.md` — `devon@agentauthdev._`
+   - `ENTERPRISE_LICENSE.md` — `devon@agentauthdev._`
+   - `SECURITY.md` — `security@agentauth.dev`
+   - `CODE_OF_CONDUCT.md` — `conduct@agentauth.dev`
+
+4. **`docs/getting-started-developer.md`** — add link to Python SDK (not done yet)
+
+5. **`docs/api/openapi.yaml`** — still says Apache 2.0 in `info.license.name` (fix with TD-S14 OpenAPI rewrite)
+
+6. **`demo/.env.example`** in SDK repo — has hardcoded vLLM URL (`spark-3171`), needs generic placeholder
+
+7. **GitHub public flip** — after domain, after all docs clean, after external security audit
