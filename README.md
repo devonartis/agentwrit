@@ -91,6 +91,59 @@ The typical workflow after setup is: create an app, issue a launch token for tha
 
 ---
 
+## SDKs
+
+| Language | Repo | Install | Status |
+|----------|------|---------|--------|
+| **Python** | [agentauth-python](https://github.com/devonartis/agentauth-python) | `pip install agentauth` | v0.3.0 — 15 acceptance tests passing |
+| **TypeScript** | Coming soon | — | Planned |
+
+The Python SDK wraps the broker's Ed25519 challenge-response flow into simple function calls:
+
+```python
+from agentauth import AgentAuthApp, validate
+
+app = AgentAuthApp(
+    broker_url="http://localhost:8080",
+    client_id=os.environ["AGENTAUTH_CLIENT_ID"],
+    client_secret=os.environ["AGENTAUTH_CLIENT_SECRET"],
+)
+
+# Create an agent with task-scoped credentials
+agent = app.create_agent(
+    orch_id="my-service",
+    task_id="read-customer-data",
+    requested_scope=["read:data:customers"],
+)
+
+# Use the token, then release when done
+response = httpx.get(url, headers=agent.bearer_header)
+agent.release()
+```
+
+See the [Python SDK documentation](https://github.com/devonartis/agentauth-python) for the full API reference, delegation patterns, and error handling.
+
+---
+
+## See It In Action — MedAssist AI Demo
+
+The Python SDK includes **MedAssist AI**, an interactive healthcare demo that showcases every AgentAuth capability against a live broker.
+
+A FastAPI web app where you enter a patient ID and a plain-language request. A local LLM chooses which tools to call. The app dynamically creates broker agents with only the scopes those tools need, for that specific patient. You see scope enforcement, cross-patient denial, delegation, token renewal, and release — all in a real-time execution trace.
+
+| Capability | How the demo shows it |
+|------------|----------------------|
+| **Dynamic agent creation** | Agents spawn on demand as the LLM selects tools — clinical, billing, prescription |
+| **Per-patient scope isolation** | Each agent's scopes are parameterized to one patient ID |
+| **Cross-patient denial** | LLM asks for another patient's records → `scope_denied` in the trace |
+| **Delegation** | Clinical agent delegates `write:prescriptions:{patient}` to the prescription agent |
+| **Token lifecycle** | Renewal and release shown at end of each encounter |
+| **Audit trail** | Dedicated audit tab showing hash-chained broker events |
+
+**Run it:** See the [MedAssist AI demo](https://github.com/devonartis/agentauth-python/tree/main/demo) in the Python SDK repo, including a [beginner's guide](https://github.com/devonartis/agentauth-python/blob/main/demo/BEGINNERS_GUIDE.md) with architecture diagrams and a [presenter's guide](https://github.com/devonartis/agentauth-python/blob/main/demo/PRESENTERS_GUIDE.md) for live demos.
+
+---
+
 ## Architecture
 
 AgentAuth is a single broker binary. Operators manage it with the `aactl` CLI. Developers and agents interact with it over HTTP.
@@ -400,6 +453,12 @@ server {
 | [Concepts](docs/concepts.md) | Security pattern, threat model, 8-component breakdown |
 | [Common Tasks](docs/common-tasks.md) | Step-by-step workflows for developers and operators |
 | [Troubleshooting](docs/troubleshooting.md) | Error messages, diagnostic flowchart, fixes by role |
+
+### SDKs
+
+| SDK | Description |
+|-----|-------------|
+| [Python SDK](https://github.com/devonartis/agentauth-python) | Full SDK with agent lifecycle, delegation, scope checking, and the MedAssist AI demo |
 
 ### Guides
 
