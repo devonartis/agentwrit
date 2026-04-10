@@ -71,7 +71,7 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 		if authHeader == "" {
 			if m.auditLog != nil {
 				m.auditLog.Record(audit.EventTokenAuthFailed, "", "", "", "missing authorization header | path="+r.URL.Path,
-				audit.WithOutcome("denied"), audit.WithResource(r.URL.Path))
+					audit.WithOutcome("denied"), audit.WithResource(r.URL.Path))
 			}
 			problemdetails.WriteProblem(r.Context(), w, 401, "unauthorized", "missing authorization header", r.URL.Path)
 			return
@@ -80,7 +80,7 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 		if !strings.HasPrefix(authHeader, "Bearer ") {
 			if m.auditLog != nil {
 				m.auditLog.Record(audit.EventTokenAuthFailed, "", "", "", "invalid authorization scheme | path="+r.URL.Path,
-				audit.WithOutcome("denied"), audit.WithResource(r.URL.Path))
+					audit.WithOutcome("denied"), audit.WithResource(r.URL.Path))
 			}
 			problemdetails.WriteProblem(r.Context(), w, 401, "unauthorized", "invalid authorization scheme", r.URL.Path)
 			return
@@ -91,7 +91,7 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 		if err != nil {
 			if m.auditLog != nil {
 				m.auditLog.Record(audit.EventTokenAuthFailed, "", "", "", "token verification failed: "+err.Error()+" | path="+r.URL.Path,
-				audit.WithOutcome("denied"), audit.WithResource(r.URL.Path))
+					audit.WithOutcome("denied"), audit.WithResource(r.URL.Path))
 			}
 			problemdetails.WriteProblem(r.Context(), w, 401, "unauthorized", "token verification failed", r.URL.Path)
 			return
@@ -100,7 +100,7 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 		if m.revSvc != nil && m.revSvc.IsRevoked(claims) {
 			if m.auditLog != nil {
 				m.auditLog.Record(audit.EventTokenRevokedAccess, claims.Sub, claims.TaskId, claims.OrchId, "revoked token used | path="+r.URL.Path,
-				audit.WithOutcome("denied"), audit.WithResource(r.URL.Path))
+					audit.WithOutcome("denied"), audit.WithResource(r.URL.Path))
 			}
 			problemdetails.WriteProblem(r.Context(), w, 403, "insufficient_scope", "token has been revoked", r.URL.Path)
 			return
@@ -111,7 +111,7 @@ func (m *ValMw) Wrap(next http.Handler) http.Handler {
 			if m.auditLog != nil {
 				m.auditLog.Record(audit.EventTokenAuthFailed, claims.Sub, claims.TaskId, claims.OrchId,
 					"audience mismatch | expected="+m.audience+" | path="+r.URL.Path,
-				audit.WithOutcome("denied"), audit.WithResource(r.URL.Path))
+					audit.WithOutcome("denied"), audit.WithResource(r.URL.Path))
 			}
 			problemdetails.WriteProblem(r.Context(), w, 401, "unauthorized", "token audience mismatch", r.URL.Path)
 			return
@@ -139,7 +139,7 @@ func (m *ValMw) RequireScope(scope string, next http.Handler) http.Handler {
 			if m.auditLog != nil {
 				m.auditLog.Record(audit.EventScopeViolation, claims.Sub, claims.TaskId, claims.OrchId,
 					"scope_violation | required="+scope+" | actual="+strings.Join(claims.Scope, ",")+" | path="+r.URL.Path,
-				audit.WithOutcome("denied"), audit.WithResource(r.URL.Path))
+					audit.WithOutcome("denied"), audit.WithResource(r.URL.Path))
 			}
 			problemdetails.WriteProblem(r.Context(), w, 403, "insufficient_scope", "token lacks required scope: "+scope, r.URL.Path)
 			return

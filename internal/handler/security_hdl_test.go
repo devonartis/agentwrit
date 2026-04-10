@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-
 func TestSecurityHeaders_BaseHeaders(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

@@ -1,0 +1,20 @@
+{
+  "_comment_format": "gosec expects JSON. The .yml extension is historical (matches other linter configs). DO NOT rewrite as YAML — gosec will refuse to load it.",
+  "_comment_policy": "No silent suppressions. Every globally-excluded rule below has a documented reason. Reviewers audit this file.",
+  "_comment_severity": "Block on MEDIUM and HIGH findings. LOW is advisory (typically unhandled errcheck findings that belong to the linter pipeline, not the security pipeline).",
+
+  "_comment_excluded_rules": {
+    "G117": "Marshaled struct field matching secret pattern. Excluded globally. A credential broker's API responses are required to return tokens and client secrets — every broker response DTO (AccessToken, ClientSecret, launch_token) trips this rule. The product's entire job is to return credentials. Product-incompatible.",
+    "G304": "File inclusion via variable. Excluded globally. Every broker file read comes from startup config (signing key path, config file path, TLS cert/key paths) — all operator-supplied, none from untrusted user input. Contamination grep + code review covers the path-injection class instead.",
+    "G101": "Hardcoded credentials (LOW confidence). Excluded globally. Gosec pattern-matches identifiers containing 'auth', 'token', 'secret' against known-credential heuristics. For a credential broker every domain identifier trips this — audit event names (token_auth_failed), DTO field names (access_token), error messages. False-positive rate is ~100%."
+  },
+
+  "global": {
+    "nosec": "false",
+    "audit": "false",
+    "exclude-dir": ["vendor", "tests"]
+  },
+
+  "severity": "medium",
+  "confidence": "medium"
+}

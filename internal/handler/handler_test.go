@@ -1361,7 +1361,7 @@ func TestRenew_DirectErrorMessageIsGeneric(t *testing.T) {
 // forcing tknSvc.Renew() to fail and exercising RenewHdl's error branch.
 type failingRevoker struct{}
 
-func (failingRevoker) RevokeByJTI(_ string) error  { return errors.New("simulated store failure") }
+func (failingRevoker) RevokeByJTI(_ string) error        { return errors.New("simulated store failure") }
 func (failingRevoker) IsRevoked(_ *token.TknClaims) bool { return false }
 
 // --- SEC-L2b H1/H7: Security headers present on all responses ---

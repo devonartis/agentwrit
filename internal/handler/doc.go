@@ -9,19 +9,19 @@
 //
 // Endpoints by audience:
 //
-//   Public (no auth):
-//   - ChallengeHdl:      GET  /v1/challenge          — nonce for agent registration
-//   - RegHdl:            POST /v1/register            — agent gets first credential
-//   - ValHdl:            POST /v1/token/validate      — apps verify agent tokens
-//   - HealthHdl:         GET  /v1/health              — liveness + readiness
-//   - MetricsHdl:        GET  /v1/metrics             — Prometheus scrape
+//	Public (no auth):
+//	- ChallengeHdl:      GET  /v1/challenge          — nonce for agent registration
+//	- RegHdl:            POST /v1/register            — agent gets first credential
+//	- ValHdl:            POST /v1/token/validate      — apps verify agent tokens
+//	- HealthHdl:         GET  /v1/health              — liveness + readiness
+//	- MetricsHdl:        GET  /v1/metrics             — Prometheus scrape
 //
-//   Agent (Bearer auth):
-//   - RenewHdl:          POST /v1/token/renew         — extend session
-//   - ReleaseHdl:        POST /v1/token/release       — self-revoke when done
-//   - DelegHdl:          POST /v1/delegate            — create sub-token for another agent
+//	Agent (Bearer auth):
+//	- RenewHdl:          POST /v1/token/renew         — extend session
+//	- ReleaseHdl:        POST /v1/token/release       — self-revoke when done
+//	- DelegHdl:          POST /v1/delegate            — create sub-token for another agent
 //
-//   Admin (Bearer + admin:* scope):
-//   - RevokeHdl:         POST /v1/revoke              — kill switch (4 levels)
-//   - AuditHdl:          GET  /v1/audit/events        — query tamper-evident trail
+//	Admin (Bearer + admin:* scope):
+//	- RevokeHdl:         POST /v1/revoke              — kill switch (4 levels)
+//	- AuditHdl:          GET  /v1/audit/events        — query tamper-evident trail
 package handler

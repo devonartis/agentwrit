@@ -28,19 +28,19 @@ import (
 // events that an auditor or SIEM would query. Auth failures and scope
 // violations are the ones that matter most for incident response.
 const (
-	EventAdminAuth               = "admin_auth"
-	EventAdminAuthFailed         = "admin_auth_failed"
-	EventLaunchTokenIssued       = "launch_token_issued"
-	EventLaunchTokenDenied       = "launch_token_denied"
-	EventAgentRegistered         = "agent_registered"
-	EventRegistrationViolation   = "registration_policy_violation"
-	EventTokenIssued             = "token_issued"
-	EventTokenRevoked            = "token_revoked"
-	EventTokenRenewed            = "token_renewed"
-	EventTokenReleased           = "token_released"
-	EventTokenRenewalFailed      = "token_renewal_failed"
-	EventDelegationCreated       = "delegation_created"
-	EventResourceAccessed         = "resource_accessed"
+	EventAdminAuth                      = "admin_auth"
+	EventAdminAuthFailed                = "admin_auth_failed"
+	EventLaunchTokenIssued              = "launch_token_issued"
+	EventLaunchTokenDenied              = "launch_token_denied"
+	EventAgentRegistered                = "agent_registered"
+	EventRegistrationViolation          = "registration_policy_violation"
+	EventTokenIssued                    = "token_issued"
+	EventTokenRevoked                   = "token_revoked"
+	EventTokenRenewed                   = "token_renewed"
+	EventTokenReleased                  = "token_released"
+	EventTokenRenewalFailed             = "token_renewal_failed"
+	EventDelegationCreated              = "delegation_created"
+	EventResourceAccessed               = "resource_accessed"
 	EventTokenAuthFailed                = "token_auth_failed"
 	EventTokenRevokedAccess             = "token_revoked_access"
 	EventScopeViolation                 = "scope_violation"
@@ -48,24 +48,24 @@ const (
 	EventDelegationAttenuationViolation = "delegation_attenuation_violation"
 	EventScopesCeilingUpdated           = "scopes_ceiling_updated"
 
-	EventAppRegistered   = "app_registered"
+	EventAppRegistered    = "app_registered"
 	EventAppAuthenticated = "app_authenticated"
-	EventAppAuthFailed   = "app_auth_failed"
-	EventAppUpdated      = "app_updated"
-	EventAppDeregistered = "app_deregistered"
-	EventAppRateLimited  = "app_rate_limited"
+	EventAppAuthFailed    = "app_auth_failed"
+	EventAppUpdated       = "app_updated"
+	EventAppDeregistered  = "app_deregistered"
+	EventAppRateLimited   = "app_rate_limited"
 )
 
 // AuditEvent is a single immutable entry in the audit trail. The Hash
 // field chains to PrevHash of the subsequent event, creating a
 // tamper-evident sequence.
 type AuditEvent struct {
-	ID        string    `json:"id"`
-	Timestamp time.Time `json:"timestamp"`
-	EventType string    `json:"event_type"`
-	AgentID   string    `json:"agent_id,omitempty"`
-	TaskID    string    `json:"task_id,omitempty"`
-	OrchID    string    `json:"orch_id,omitempty"`
+	ID               string    `json:"id"`
+	Timestamp        time.Time `json:"timestamp"`
+	EventType        string    `json:"event_type"`
+	AgentID          string    `json:"agent_id,omitempty"`
+	TaskID           string    `json:"task_id,omitempty"`
+	OrchID           string    `json:"orch_id,omitempty"`
 	Detail           string    `json:"detail"`
 	Resource         string    `json:"resource,omitempty"`
 	Outcome          string    `json:"outcome,omitempty"`

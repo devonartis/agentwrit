@@ -306,11 +306,11 @@ func TestIsBcryptHash_ValidHashes(t *testing.T) {
 
 func TestIsBcryptHash_InvalidHashes(t *testing.T) {
 	invalid := []string{
-		"$2a$",                                  // prefix only
-		"$2a$12$short",                          // too short
-		"plaintext-secret",                      // no prefix
-		"",                                      // empty
-		"$2a$12$" + strings.Repeat("a", 100),    // too long
+		"$2a$",                               // prefix only
+		"$2a$12$short",                       // too short
+		"plaintext-secret",                   // no prefix
+		"",                                   // empty
+		"$2a$12$" + strings.Repeat("a", 100), // too long
 	}
 	for _, h := range invalid {
 		if isBcryptHash(h) {

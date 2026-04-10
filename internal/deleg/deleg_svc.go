@@ -51,9 +51,9 @@ type DelegReq struct {
 // the newly issued token, its TTL, and the complete delegation chain
 // including the new entry.
 type DelegResp struct {
-	AccessToken     string               `json:"access_token"`
-	ExpiresIn       int                  `json:"expires_in"`
-	DelegationChain []token.DelegRecord  `json:"delegation_chain"`
+	AccessToken     string              `json:"access_token"`
+	ExpiresIn       int                 `json:"expires_in"`
+	DelegationChain []token.DelegRecord `json:"delegation_chain"`
 }
 
 // DelegSvc is the delegation service. It verifies scope attenuation,
@@ -111,7 +111,7 @@ func (s *DelegSvc) Delegate(delegatorClaims *token.TknClaims, req DelegReq) (*De
 				delegatorClaims.Sub, delegatorClaims.TaskId, delegatorClaims.OrchId,
 				fmt.Sprintf("delegation_attenuation_violation | delegator=%s | target=%s | requested=%v | allowed=%v",
 					delegatorClaims.Sub, req.DelegateTo, req.Scope, delegatorClaims.Scope),
-			audit.WithOutcome("denied"), audit.WithDelegDepth(currentDepth))
+				audit.WithOutcome("denied"), audit.WithDelegDepth(currentDepth))
 		}
 		return nil, ErrScopeViolation
 	}

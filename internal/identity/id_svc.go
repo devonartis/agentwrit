@@ -41,10 +41,10 @@ var (
 // RegisterReq contains the fields submitted by an agent in the
 // POST /v1/register request body. All fields are required.
 type RegisterReq struct {
-	LaunchToken    string   `json:"launch_token"`
-	Nonce          string   `json:"nonce"`
-	PublicKey      string   `json:"public_key"`       // base64-encoded Ed25519 public key
-	Signature      string   `json:"signature"`        // base64-encoded Ed25519 signature of nonce
+	LaunchToken string `json:"launch_token"`
+	Nonce       string `json:"nonce"`
+	PublicKey   string `json:"public_key"` // base64-encoded Ed25519 public key
+	Signature   string `json:"signature"`  // base64-encoded Ed25519 signature of nonce
 	// OrchID identifies the orchestrator that launched this agent.
 	OrchID string `json:"orch_id"`
 	// TaskID identifies the specific task this agent was created for.
@@ -59,7 +59,7 @@ type RegisterReq struct {
 type RegisterResp struct {
 	// AgentID is the SPIFFE URI assigned to the registered agent
 	// (format: spiffe://{trustDomain}/agent/{orchID}/{taskID}/{instanceID}).
-	AgentID string `json:"agent_id"`
+	AgentID     string `json:"agent_id"`
 	AccessToken string `json:"access_token"`
 	ExpiresIn   int    `json:"expires_in"`
 }
@@ -144,7 +144,7 @@ func (s *IdSvc) Register(req RegisterReq) (*RegisterResp, error) {
 		if s.auditLog != nil {
 			s.auditLog.Record("registration_policy_violation", "", req.TaskID, req.OrchID,
 				fmt.Sprintf("scope violation: requested %v exceeds allowed %v", req.RequestedScope, ltRec.AllowedScope),
-			audit.WithOutcome("denied"))
+				audit.WithOutcome("denied"))
 		}
 		obs.RegistrationsTotal.WithLabelValues("failure").Inc()
 		obs.Warn("IDENTITY", "Register", "scope violation",

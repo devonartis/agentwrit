@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	hdlMod      = "app"
-	hdlCmp      = "handler"
+	hdlMod       = "app"
+	hdlCmp       = "handler"
 	maxBodyBytes = int64(1 << 20) // 1 MB
 )
 

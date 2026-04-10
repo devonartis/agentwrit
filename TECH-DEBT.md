@@ -249,6 +249,50 @@ The repo has accumulated artifacts from migration, multiple agent sessions, and 
 
 ---
 
+## TD-VUL-005/006 — GHAS-gated workflows disabled (M-sec, 2026-04-10)
+
+Three GitHub security features require GitHub Advanced Security (GHAS)
+on private repos. `devonartis/agentauth` is currently private without
+GHAS, so all three fail on first run. All three become FREE when the
+repo flips public (Phase 4 of release strategy).
+
+| ID | Workflow / Feature | What it gives | Status |
+|----|-------------------|---------------|--------|
+| TD-VUL-005 | `dep-review` job in `ci.yml` | Dependency graph + license policy scanning on every PR | Job commented out |
+| TD-VUL-006a | `codeql.yml` (Go SAST) | Static analysis findings in Security tab, weekly scan | Workflow trigger changed to `workflow_dispatch` only |
+| TD-VUL-006b | `scorecard.yml` (OpenSSF Scorecard) | Supply-chain posture score (badge on README) | Workflow trigger changed to `workflow_dispatch` only |
+
+Remaining security coverage while these are disabled:
+  - `govulncheck` — stdlib + Go module CVEs (live, blocking)
+  - `gosec` — application-layer static analysis (live, blocking)
+  - `contamination` grep — enterprise-module references (live, blocking)
+
+**Fix sequence** when the repo flips public (no GHAS purchase needed):
+  1. `dep-review`: uncomment the job block in `.github/workflows/ci.yml`
+     and restore it to the `gates-passed` needs list if branch protection
+     requires it.
+  2. `codeql.yml`: revert the `on:` block header to `pull_request` +
+     `push` + `schedule` (see original block preserved in the comment).
+  3. `scorecard.yml`: same — restore the original `on:` block.
+  4. Add badges to `README.md` (Task 30 in the M-sec plan) — CodeQL
+     badge and Scorecard badge URLs are already in the plan draft.
+
+---
+
+## Go stdlib vulnerabilities (M-sec CI baseline, 2026-04-10) — RESOLVED
+
+`govulncheck ./...` run on the M-sec baseline surfaced 4 stdlib CVEs, all
+fixable by bumping the `toolchain` directive in `go.mod` from `go1.25.7`
+to `go1.25.9`. **Resolved 2026-04-10 in Task 23** — toolchain bumped,
+`govulncheck ./...` now returns "No vulnerabilities found."
+
+| ID | Advisory | Package | Fixed in | Status |
+|----|----------|---------|----------|--------|
+| TD-VUL-001 | GO-2026-4947 | `crypto/x509` | `go1.25.9` | RESOLVED |
+| TD-VUL-002 | GO-2026-4946 | `crypto/x509` | `go1.25.9` | RESOLVED |
+| TD-VUL-003 | GO-2026-4870 (TLS 1.3 KeyUpdate DoS) | `crypto/tls` | `go1.25.9` | RESOLVED |
+| TD-VUL-004 | GO-2026-4601 (IPv6 host literal parsing) | `net/url` | `go1.25.8` | RESOLVED |
+
 ## When to Fix
 
 Documentation and script drift items (TD-D*, TD-S*) should be resolved **after all cherry-pick batches are complete** (B0-B6). Doing them now risks conflicts with incoming commits. Schedule as a dedicated docs refresh phase post-migration.

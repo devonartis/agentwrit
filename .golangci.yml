@@ -1,0 +1,62 @@
+# .golangci.yml — golangci-lint configuration for agentauth-core
+#
+# M-sec linter set: security-aware defaults plus the core Go linters.
+#
+# Tuning notes:
+# - govet `fieldalignment` disabled: stylistic (struct memory layout), not a
+#   correctness check. Would force churn across every public DTO.
+# - govet `shadow` disabled: triggers on the idiomatic `if err := x(); err != nil`
+#   pattern inside functions that already have an outer `err`. Not a bug class
+#   we've seen in practice.
+# - errcheck excluded in `_test.go`: test code intentionally ignores returns
+#   from setup helpers (io.ReadAll in fixtures, json.Marshal on fixed inputs).
+#   Production code still runs the full check.
+# - gosec in tests: excluded (weak random, subprocess, etc. are legit in tests).
+
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck         # unchecked errors
+    - gosec            # security — also gated separately
+    - govet            # go vet
+    - ineffassign      # unused assignments
+    - staticcheck      # static analysis
+    - unused           # unused code
+    - gosimple         # code simplification
+    - bodyclose        # HTTP body close (critical for broker HTTP client)
+    - misspell         # typos in comments/strings
+    - gofmt            # formatting (also gated separately)
+    - goimports        # import ordering
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+  gosec:
+    config-file: .gosec.yml
+    excludes:
+      - G117  # see .gosec.yml — broker API returns tokens by design
+      - G304  # see .gosec.yml — file paths from operator config, not user input
+      - G101  # see .gosec.yml — domain identifiers trip credential-name heuristic
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment  # stylistic, not correctness
+      - shadow          # noisy on idiomatic err-scoped blocks
+  misspell:
+    locale: US
+
+issues:
+  exclude-dirs:
+    - vendor
+  exclude-rules:
+    # Test files: allow weak random/panic in fixtures and unchecked setup helpers.
+    - path: _test\.go
+      linters:
+        - gosec
+        - errcheck

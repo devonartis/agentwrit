@@ -1,0 +1,69 @@
+# Dependabot config for agentauth-core
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# Why each ecosystem is here:
+#   - github-actions: SHA pinning (Task 22) means Dependabot is the only
+#     thing that rotates actions. Without this block, pinned SHAs stale.
+#   - gomod: direct and indirect Go module updates. Groups by dependency
+#     type so 'chore(deps): bump direct deps' PRs are reviewable as a unit.
+#   - docker: Dockerfile base image updates. Separate limit because these
+#     PRs often touch runtime behavior and deserve individual review.
+
+version: 2
+updates:
+  # GitHub Actions — SHA maintenance for pinned workflow steps
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  # Go modules — direct and indirect dependencies
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      go-direct:
+        dependency-type: "direct"
+      go-indirect:
+        dependency-type: "indirect"
+    labels:
+      - "dependencies"
+      - "go"
+
+  # Docker base images
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "docker"

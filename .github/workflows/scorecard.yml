@@ -1,0 +1,48 @@
+name: Scorecard supply-chain security
+
+# DISABLED: OpenSSF Scorecard uploads SARIF to GitHub Code Scanning,
+# which requires GitHub Advanced Security (GHAS) on private repos.
+# devonartis/agentauth is currently private without GHAS. Also,
+# several Scorecard checks (branch protection settings, code review
+# policies) only signal meaningfully on public repos with a track
+# record — running it on a private solo-maintainer repo would flag
+# everything as low-score false negatives.
+#
+# Re-enable when the repo flips public (Phase 4). Scorecard is
+# precisely the kind of outside-in signal that becomes valuable
+# AT that moment — the first public run is the baseline score that
+# gets published on the badge (Task 30).
+#
+# Tracking: TD-VUL-006 in TECH-DEBT.md (same entry as CodeQL).
+
+on:
+  workflow_dispatch:  # manual trigger only until public flip
+
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      id-token: write
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a  # v2.4.3
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: SARIF file
+          path: results.sarif
+          retention-days: 5
+      - uses: github/codeql-action/upload-sarif@f94817b9f0deeb3871261446912ae8f854d1b675  # codeql-bundle-v2.25.1
+        with:
+          sarif_file: results.sarif

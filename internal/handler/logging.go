@@ -38,14 +38,14 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 func LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		
+
 		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
-		
+
 		next.ServeHTTP(rw, r)
-		
+
 		latency := time.Since(start)
 		id := problemdetails.GetRequestID(r.Context())
-		
+
 		obs.Ok("HTTP", "handler", "request completed",
 			fmt.Sprintf("method=%s", r.Method),
 			fmt.Sprintf("path=%s", r.URL.Path),

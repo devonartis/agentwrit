@@ -1,0 +1,113 @@
+name: Contribution Policy
+
+# SECURITY: This workflow uses pull_request_target, which runs in the base
+# branch context with write permissions. This is required to close PRs. The
+# workflow MUST NEVER check out the PR branch — checking out untrusted PR code
+# with write tokens is a supply-chain compromise vector (the "pwn-request"
+# attack class documented at https://securitylab.github.com/research/github-actions-preventing-pwn-requests/).
+#
+# This workflow only reads metadata (PR author, PR number) via the GitHub API.
+# It does NOT run actions/checkout.
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+  issues: write
+  contents: read
+
+jobs:
+  check-author:
+    name: Enforce contribution policy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR author against MAINTAINERS
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+            const author = pr.user.login;
+            const pr_number = pr.number;
+
+            // Always-exempt bots
+            const bot_exempt = ['dependabot[bot]', 'github-actions[bot]', 'renovate[bot]'];
+            if (bot_exempt.includes(author)) {
+              core.info(`Bot author ${author} exempt — no action`);
+              return;
+            }
+
+            // Check if author has write access to the repo
+            try {
+              const { data: perms } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner,
+                repo,
+                username: author,
+              });
+              if (['admin', 'maintain', 'write'].includes(perms.permission)) {
+                core.info(`Author ${author} has ${perms.permission} access — exempt`);
+                return;
+              }
+            } catch (e) {
+              // Not a collaborator — continue to MAINTAINERS check
+            }
+
+            // Read MAINTAINERS via GitHub API (NOT via checkout) — reading from
+            // the base ref so a PR can't alter its own allowlist.
+            let maintainers = [];
+            try {
+              const { data: file } = await github.rest.repos.getContent({
+                owner,
+                repo,
+                path: '.github/MAINTAINERS',
+                ref: context.payload.pull_request.base.ref,
+              });
+              const content = Buffer.from(file.content, 'base64').toString('utf-8');
+              maintainers = content
+                .split('\n')
+                .map(l => l.trim())
+                .filter(l => l && !l.startsWith('#'));
+            } catch (e) {
+              core.warning(`Could not read MAINTAINERS file: ${e.message}`);
+            }
+
+            if (maintainers.includes(author)) {
+              core.info(`Author ${author} in MAINTAINERS — exempt`);
+              return;
+            }
+
+            // Not exempt — enforce policy
+            core.info(`Author ${author} not exempt — closing PR per Decision 014`);
+
+            const policy_comment = [
+              `Hi @${author}, thank you for your interest in AgentAuth!`,
+              '',
+              'Per our contribution policy ([Decision 014](https://github.com/' + owner + '/' + repo + '/blob/develop/CONTRIBUTING.md)), AgentAuth does not accept external code contributions at this time — including bug fixes.',
+              '',
+              'We actively welcome:',
+              '- **Bug reports** — please [open an issue](https://github.com/' + owner + '/' + repo + '/issues/new)',
+              '- **Feature requests** — same place',
+              '- **Security vulnerabilities** — please see [SECURITY.md](https://github.com/' + owner + '/' + repo + '/blob/develop/SECURITY.md) for the responsible disclosure process',
+              '',
+              'This policy exists because we\'re still defining our contribution workflow (test plan, merge process, review gates). Opening to PRs before that\'s ready would mean every PR becomes a coaching session, which wouldn\'t be fair to you or to us. The policy will be revisited once the workflow is documented and tested.',
+              '',
+              'This PR will be closed automatically. Please don\'t take it personally — the bot is enforcing policy, not judging your work. We genuinely appreciate the interest.',
+              '',
+              '_Auto-enforced by `.github/workflows/contribution-policy.yml`_',
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: pr_number,
+              body: policy_comment,
+            });
+
+            await github.rest.pulls.update({
+              owner,
+              repo,
+              pull_number: pr_number,
+              state: 'closed',
+            });
