@@ -6,7 +6,7 @@
 
 **Prerequisites:**
 - Docker stack running: `./scripts/stack_up.sh`
-- aactl built: `go build -o ./bin/aactl ./cmd/aactl/`
+- awrit built: `go build -o ./bin/awrit ./cmd/awrit/`
 - Source env: `source ./tests/p0-production-foundations/env.sh`
 - Broker started with `AA_SEED_TOKENS=true` (default in docker-compose for dev)
 

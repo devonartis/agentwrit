@@ -952,7 +952,7 @@ Agent self-revocation. An authenticated agent surrenders its credential by revok
 | 401 | `unauthorized` | Missing or invalid Bearer token |
 | 403 | `insufficient_scope` | Token already revoked |
 
-**Idempotency:** Releasing an already-released token returns 403 (token already revoked via the ValMw middleware). The `aactl` CLI treats this as idempotent success.
+**Idempotency:** Releasing an already-released token returns 403 (token already revoked via the ValMw middleware). The `awrit` CLI treats this as idempotent success.
 
 **Audit event:** `token_released` with the agent's SPIFFE ID and JTI.
 
@@ -990,28 +990,28 @@ ADMIN_SECRET=$2a$12$...bcrypt-hash...
 | `MODE` | `development` or `production` (default: `development`) |
 | `ADMIN_SECRET` | Admin secret — plaintext (dev) or bcrypt hash (prod) |
 
-### `aactl init`
+### `awrit init`
 
 Generate a secure admin secret and write a config file:
 
 ```bash
 # Development mode: plaintext secret stored in config
-aactl init --mode=dev
+awrit init --mode=dev
 
 # Production mode: only bcrypt hash stored, plaintext shown once
-aactl init --mode=prod
+awrit init --mode=prod
 
 # Custom config path
-aactl init --mode=prod --config-path=/etc/agentauth/config
+awrit init --mode=prod --config-path=/etc/agentauth/config
 
 # Overwrite existing config
-aactl init --mode=dev --force
+awrit init --mode=dev --force
 ```
 
 ### Admin Secret Handling
 
 - **Development mode:** Plaintext secret stored in config file. Bcrypt hash derived at broker startup.
-- **Production mode:** Only the bcrypt hash is stored. The plaintext is shown once during `aactl init` and never saved to disk.
+- **Production mode:** Only the bcrypt hash is stored. The plaintext is shown once during `awrit init` and never saved to disk.
 - **Environment variable:** `AA_ADMIN_SECRET` continues to work (backward compatible). If set, it overrides the config file value.
 - **Authentication:** `POST /v1/admin/auth` always uses `bcrypt.CompareHashAndPassword` regardless of mode.
 

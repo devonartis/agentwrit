@@ -329,7 +329,7 @@ What's missing:
 
 The admin launch token path serves exactly two purposes:
 
-1. **Bootstrapping.** Before any apps are registered, someone needs to test the system. The operator creates a launch token, registers a test agent, verifies the flow works. This is the "aactl init → create launch token → test" development workflow.
+1. **Bootstrapping.** Before any apps are registered, someone needs to test the system. The operator creates a launch token, registers a test agent, verifies the flow works. This is the "awrit init → create launch token → test" development workflow.
 
 2. **Emergency/debugging.** If something is wrong with the app credential flow and you need to get an agent running immediately, the admin can bypass the app layer entirely.
 

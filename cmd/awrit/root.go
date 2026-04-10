@@ -13,9 +13,9 @@ var jsonOutput bool
 
 // rootCmd is the top-level cobra command that all subcommands are attached to.
 var rootCmd = &cobra.Command{
-	Use:   "aactl",
+	Use:   "awrit",
 	Short: "AgentAuth operator CLI",
-	Long:  "aactl is the operator CLI for managing the AgentAuth broker.",
+	Long:  "awrit is the operator CLI for managing the AgentAuth broker.",
 }
 
 func init() {

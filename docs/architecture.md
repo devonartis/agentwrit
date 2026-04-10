@@ -25,7 +25,7 @@ flowchart TB
 
     subgraph AgentAuth["AgentAuth System Boundary"]
         BROKER["Broker\ncmd/broker\nPort 8080"]
-        AACTL["aactl\ncmd/aactl\nOperator CLI"]
+        AACTL["awrit\ncmd/awrit\nOperator CLI"]
     end
 
     DEV -- "challenge-response\nregistration" --> BROKER
@@ -47,9 +47,9 @@ flowchart TB
 
 **Broker** (`cmd/broker`) -- The central authority. Loads or generates a persistent Ed25519 signing key (`internal/keystore`), issues EdDSA-signed JWTs, validates challenge-response registrations, manages scope attenuation, delegation, revocation, and maintains a hash-chained audit trail. All endpoints use `application/json` with RFC 7807 error responses.
 
-**App Service** (`internal/app`) -- Manages application registrations and app-level authentication. Operators register apps with `aactl app register`, which generates a client_id and client_secret. Apps authenticate with `POST /v1/app/auth` using those credentials to get scoped tokens.
+**App Service** (`internal/app`) -- Manages application registrations and app-level authentication. Operators register apps with `awrit app register`, which generates a client_id and client_secret. Apps authenticate with `POST /v1/app/auth` using those credentials to get scoped tokens.
 
-**aactl** (`cmd/aactl`) -- The operator CLI. Reads `AACTL_BROKER_URL` and `AACTL_ADMIN_SECRET` from environment variables and auto-authenticates. Provides table and JSON output for app management, token revocation, and audit trail queries. Intended for operators who prefer a CLI over hand-crafting curl + JWT.
+**awrit** (`cmd/awrit`) -- The operator CLI. Reads `AACTL_BROKER_URL` and `AACTL_ADMIN_SECRET` from environment variables and auto-authenticates. Provides table and JSON output for app management, token revocation, and audit trail queries. Intended for operators who prefer a CLI over hand-crafting curl + JWT.
 
 ---
 
@@ -104,7 +104,7 @@ agentauth/
 |-- cmd/
 |   |-- broker/
 |   |   +-- main.go              # Service wiring, route registration, startup
-|   |-- aactl/                   # Operator CLI (aactl binary)
+|   |-- awrit/                   # Operator CLI (awrit binary)
 |   |   |-- main.go              # Cobra root command, env var config
 |   |   |-- client.go            # HTTP client with auto-auth
 |   |   |-- apps.go              # app register / list
@@ -437,7 +437,7 @@ flowchart LR
 
 5. **Bcrypt secret comparison.** Admin authentication uses `bcrypt.CompareHashAndPassword` (cost 12) to prevent timing attacks on `AA_ADMIN_SECRET`. The plaintext secret is bcrypt-hashed at startup in `cfg.Load()` and the hash is stored in `Cfg.AdminSecretHash`. The plaintext is wiped from memory after hashing.
 
-6. **Apps as first-class entities.** Developer applications are registered with the broker via `aactl` and authenticate directly using client credentials (`POST /v1/app/auth`). Each app has its own scope ceiling and configurable JWT TTL (bounded by broker-wide min/max).
+6. **Apps as first-class entities.** Developer applications are registered with the broker via `awrit` and authenticate directly using client credentials (`POST /v1/app/auth`). Each app has its own scope ceiling and configurable JWT TTL (bounded by broker-wide min/max).
 
 7. **Mutual auth not HTTP-exposed.** `MutAuthHdl` in `internal/mutauth` provides a 3-step mutual authentication handshake, but it is not registered on any HTTP mux. It exists as a Go API only, tested in unit tests, intended for future HTTP exposure.
 

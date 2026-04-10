@@ -9,7 +9,7 @@ import (
 	"os"
 )
 
-// defaultHTTPClient returns the shared HTTP client for all aactl requests.
+// defaultHTTPClient returns the shared HTTP client for all awrit requests.
 func defaultHTTPClient() *http.Client {
 	return &http.Client{}
 }

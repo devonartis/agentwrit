@@ -258,7 +258,7 @@ Admin can create launch tokens via `POST /v1/admin/launch-tokens`. When admin cr
 
 ### Why This Exists
 
-**Bootstrapping.** Before any apps are registered, the operator needs to test the system. The flow is: authenticate → create launch token → register test agent → verify the flow works. This is the `aactl init → aactl token create-launch → test` development workflow.
+**Bootstrapping.** Before any apps are registered, the operator needs to test the system. The flow is: authenticate → create launch token → register test agent → verify the flow works. This is the `awrit init → awrit token create-launch → test` development workflow.
 
 ### Why It's a Problem in Production
 

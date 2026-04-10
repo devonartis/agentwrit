@@ -17,9 +17,9 @@ SEC-L1 made five changes to the **server startup path** only. No endpoint, handl
 
 **Before:** Any value accepted for `AA_ADMIN_SECRET`, including empty string and `change-me-in-production`.
 
-**After:** `Load()` rejects `change-me-in-production` and empty string with an error directing the operator to `aactl init`.
+**After:** `Load()` rejects `change-me-in-production` and empty string with an error directing the operator to `awrit init`.
 
-**Why this matters for regression:** The P0/P1/P2 test env.sh files all use `AACTL_ADMIN_SECRET=change-me-in-production`. The broker now refuses to start with this value. This is the **only breaking change** in SEC-L1. All regression tests must use a proper secret from `aactl init`.
+**Why this matters for regression:** The P0/P1/P2 test env.sh files all use `AACTL_ADMIN_SECRET=change-me-in-production`. The broker now refuses to start with this value. This is the **only breaking change** in SEC-L1. All regression tests must use a proper secret from `awrit init`.
 
 ### Change 2: Bind Address Default
 
@@ -73,14 +73,14 @@ Added `.env` and `.env.*` patterns. No runtime impact.
 
 ## Regression Test Matrix
 
-### Startup & Config (Operator Persona — aactl)
+### Startup & Config (Operator Persona — awrit)
 
 | ID | Test | Tool | Why This Specific Test |
 |----|------|------|----------------------|
 | S1 | Broker rejects `change-me-in-production` | broker binary | Denylist enforcement — the core security fix. Must prove the broker refuses to start. |
 | S2 | Broker rejects empty admin secret | broker binary | Denylist enforcement — empty string case. |
-| S3 | `aactl init` generates valid config | `aactl init` | Operators must use `aactl init` now. Must still work. |
-| S4 | Broker starts with `aactl init` config | broker binary | Proves the happy path works after denylist rejects weak secrets. |
+| S3 | `awrit init` generates valid config | `awrit init` | Operators must use `awrit init` now. Must still work. |
+| S4 | Broker starts with `awrit init` config | broker binary | Proves the happy path works after denylist rejects weak secrets. |
 | S5 | Startup log shows `127.0.0.1:8080` | broker startup output | Bind address default changed — verify it's visible in logs. |
 
 ### Core Flows (Proves timeouts/bind address don't break anything)
@@ -88,11 +88,11 @@ Added `.env` and `.env.*` patterns. No runtime impact.
 | ID | Test | Tool | Why This Specific Test |
 |----|------|------|----------------------|
 | C1 | Admin authentication | curl `POST /v1/admin/auth` | Root of bootstrap chain — if admin auth breaks, nothing works. |
-| C2 | App register | `aactl app register` | aactl auto-authenticates via admin token through ValMw. |
-| C3 | App list | `aactl app list` | Same auth path, different endpoint. |
+| C2 | App register | `awrit app register` | awrit auto-authenticates via admin token through ValMw. |
+| C3 | App list | `awrit app list` | Same auth path, different endpoint. |
 | C4 | Challenge + health | curl `GET /v1/challenge`, `GET /v1/health` | Public endpoints — confirms routing unaffected. |
 | C5 | OIDC Discovery + JWKS | curl `GET /.well-known/openid-configuration`, `GET /v1/jwks` | Public endpoints — confirms OIDC still works. |
-| C6 | App remove | `aactl app remove` | Cleanup + proves admin scope auth still works. |
+| C6 | App remove | `awrit app remove` | Cleanup + proves admin scope auth still works. |
 
 ### Negative Tests
 
@@ -106,7 +106,7 @@ Added `.env` and `.env.*` patterns. No runtime impact.
 ## Execution Order
 
 ```
-S1 (reject weak secret) → S2 (reject empty) → S3 (aactl init) → S4 (broker starts) → S5 (bind address log)
+S1 (reject weak secret) → S2 (reject empty) → S3 (awrit init) → S4 (broker starts) → S5 (bind address log)
                                                                        |
                                                                        +→ C1 (admin auth) → C2 (app register) → C3 (app list) → C6 (app remove)
                                                                        |
@@ -141,7 +141,7 @@ S3 generates the config. S4 starts the broker. All remaining tests run against t
 
 | Prerequisite | Purpose | Status |
 |-------------|---------|--------|
-| Go 1.22+ compiler | Build broker and aactl binaries | NOT VERIFIED |
+| Go 1.22+ compiler | Build broker and awrit binaries | NOT VERIFIED |
 | No external services needed | SEC-L1 tests run against localhost broker only | — |
 
 No Docker, no AWS, no ngrok, no Python required. All tests run in VPS mode against the local broker binary.

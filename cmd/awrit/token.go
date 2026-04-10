@@ -1,4 +1,4 @@
-// Command aactl token subcommand — token operations including release.
+// Command awrit token subcommand — token operations including release.
 package main
 
 import (

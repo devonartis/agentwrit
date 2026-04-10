@@ -26,7 +26,7 @@ A bank runs an AI pipeline that reads loan applications, extracts data, scores r
 
 ```bash
 # Operator registers the loan-processing app
-aactl app register \
+awrit app register \
   --name loan-pipeline \
   --scopes "read:documents:loans,read:data:credit,write:decisions:loans"
 
@@ -622,7 +622,7 @@ Only 5 direct dependencies, and none are in the token signing/verification path:
 | `modernc.org/sqlite` | Pure-Go SQLite (no CGO, no C) | Persistence only |
 | `github.com/spiffe/go-spiffe/v2` | SPIFFE ID format validation | Identity format only |
 | `github.com/prometheus/client_golang` | Metrics exposition | Observability only |
-| `github.com/spf13/cobra` | CLI framework (aactl) | CLI only — not broker |
+| `github.com/spf13/cobra` | CLI framework (awrit) | CLI only — not broker |
 
 **The Ed25519 signing, JWT encoding, signature verification, scope checking, revocation checking, and hash-chain audit trail use zero third-party code.**
 

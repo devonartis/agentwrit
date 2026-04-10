@@ -121,7 +121,7 @@ A live test runs against one of two deployment modes:
 - **Container mode proves the deployment works.** If VPS passes but Container fails, the bug is in Docker config, not in the application.
 - **Testing both catches different bugs.** Hardcoded container paths, Docker UID mapping issues, missing env var passthrough — these only surface when you run both ways.
 
-Each story's header must include a `**Mode:**` field indicating which modes it runs in (VPS, Container, or both). CLI-only stories (like `aactl init`) don't involve the broker and skip both modes.
+Each story's header must include a `**Mode:**` field indicating which modes it runs in (VPS, Container, or both). CLI-only stories (like `awrit init`) don't involve the broker and skip both modes.
 
 See `docs/internal/dev-qa-guide.md` for full details on building and running in each mode.
 
@@ -158,7 +158,7 @@ its activation token for a bearer token. It should no longer exist.
 ```
 
 **Personas and their tools — never mix these:**
-- **Operator** — uses `aactl` commands. Operators manage the broker, configure secrets, review audit trails. They don't hand-craft HTTP.
+- **Operator** — uses `awrit` commands. Operators manage the broker, configure secrets, review audit trails. They don't hand-craft HTTP.
 - **App** (or Application) — uses `curl` / HTTP client. An app is a registered software application that authenticates with client credentials, creates launch tokens, and manages its own agents. When a story is about an app authenticating, getting tokens, or registering agents — the persona is App, not Developer.
 - **Developer** — uses `curl` / HTTP client. A developer is a person building an integration. When a story is about a human exploring the API, testing endpoints, or debugging — the persona is Developer.
 - **Security Reviewer** — uses whichever tool proves the security property. The reviewer's job is to verify that security controls work: that errors don't leak, that revoked tokens are rejected, that headers are set.
@@ -171,7 +171,7 @@ its activation token for a bearer token. It should no longer exist.
 
 Before running any test:
 
-1. Build aactl to `./bin/aactl` — not `/tmp/`, not `go run`
+1. Build awrit to `./bin/awrit` — not `/tmp/`, not `go run`
 2. Run `./scripts/stack_up.sh` to bring up the Docker stack
 3. Verify the broker is healthy: `curl http://127.0.0.1:8080/v1/health`
 4. Source the environment file once: `source ./tests/<phase>/env.sh`
@@ -181,7 +181,7 @@ The env.sh file sets the broker URL and admin secret so you don't repeat them on
 ```bash
 #!/usr/bin/env bash
 export BROKER_URL=http://127.0.0.1:8080
-export AACTL=./bin/aactl
+export AACTL=./bin/awrit
 export AACTL_BROKER_URL=$BROKER_URL
 export AACTL_ADMIN_SECRET=change-me-in-production
 ```
@@ -238,7 +238,7 @@ After that runs, the agent reads the output and adds the verdict:
 echo "PASS — The broker returned 404. The old sidecar activate route is fully removed." >> "$F"
 ```
 
-**This is how a call looks for an aactl story:**
+**This is how a call looks for an awrit story:**
 
 ```bash
 F=tests/phase-0/evidence/story-R1-register-app.md
@@ -248,14 +248,14 @@ cat > "$F" << 'BANNER'
 Who: The operator.
 
 What: The operator registers a new app called cleanup-test on the broker
-using aactl. This is a regression test — app registration is the core
+using awrit. This is a regression test — app registration is the core
 Phase 1A feature. We need to confirm it still works after removing the
 sidecar routes and changing the admin login format in Phase 0.
 
 Why: If app registration broke during the Phase 0 cleanup, it means the
 cleanup damaged something it shouldn't have.
 
-How to run: Source the environment file. Then run aactl app register with
+How to run: Source the environment file. Then run awrit app register with
 the app name and scopes. Save the credentials — they're needed for R2, R3,
 and R4.
 
@@ -265,7 +265,7 @@ client_secret. The CLI warns to save the secret.
 ## Test Output
 
 BANNER
-source ./tests/phase-0/env.sh && ./bin/aactl app register \
+source ./tests/phase-0/env.sh && ./bin/awrit app register \
   --name cleanup-test --scopes "read:data:*,write:logs:*" >> "$F" 2>&1
 echo "" >> "$F"; echo "" >> "$F"
 echo "## Verdict" >> "$F"; echo "" >> "$F"
@@ -303,7 +303,7 @@ Why: If audit events are missing, the operator loses visibility into the system.
 If secrets appear in audit records, that's a security breach. Both would be
 serious regressions.
 
-How to run: Source the environment file. Then run aactl audit events. Look for
+How to run: Source the environment file. Then run awrit audit events. Look for
 app_registered and app_authenticated events. Check that no client_secret values
 appear anywhere.
 
@@ -397,7 +397,7 @@ The `evidence/README.md` summarizes all stories in one table:
 | Story | Description | Persona | Tool | Verdict |
 |-------|------------|---------|------|---------|
 | P0-S1 | Sidecar list endpoint is gone | Security | curl | PASS |
-| P0-R1 | Regression: register app | Operator | aactl | PASS |
+| P0-R1 | Regression: register app | Operator | awrit | PASS |
 
 ## Open Issues
 
@@ -409,9 +409,9 @@ None.
 ## Rules
 
 1. **VPS first, Container second.** Every broker story runs as a compiled binary first (VPS mode), then in Docker (Container mode). See "VPS First, Container Second" above.
-2. **Compiled binaries only.** Build to `./bin/broker` and `./bin/aactl`. Never use `go run` for live tests.
+2. **Compiled binaries only.** Build to `./bin/broker` and `./bin/awrit`. Never use `go run` for live tests.
 3. **Stories first.** Write user stories before writing any test code or running any command.
-4. **Personas matter.** Operator uses `aactl`. Developer uses `curl`. Never mix.
+4. **Personas matter.** Operator uses `awrit`. Developer uses `curl`. Never mix.
 5. **Banner is mandatory.** Every evidence file starts with who/what/why/how/expected in plain language.
 6. **Mode is mandatory.** Every story header includes `**Mode:**` — VPS, Container, both, or CLI-only.
 7. **Plain language.** An executive should be able to read the evidence and understand what happened. No jargon, no unexplained flags, no abbreviations.
