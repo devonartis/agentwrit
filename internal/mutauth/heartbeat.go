@@ -83,7 +83,7 @@ func (h *HeartbeatMgr) CheckLiveness(agentID string) (alive bool, missedCount in
 // StartMonitor runs a background goroutine that periodically checks all tracked
 // agents for missed heartbeats. Agents exceeding maxMiss are auto-revoked when
 // revSvc is configured, otherwise they are logged as warnings for investigation.
-// The goroutine exits when ctx is cancelled.
+// The goroutine exits when ctx is canceled.
 func (h *HeartbeatMgr) StartMonitor(ctx context.Context, interval time.Duration) {
 	if interval > 0 {
 		h.interval = interval
@@ -125,9 +125,17 @@ func (h *HeartbeatMgr) sweep() {
 
 		if s.missedCount >= h.maxMiss {
 			if h.revSvc != nil {
-				_, _ = h.revSvc.Revoke("agent", id)
-				obs.Warn("MUTAUTH", "Heartbeat.Sweep", "agent auto-revoked",
-					"agent_id="+id, "missed="+itoa(s.missedCount))
+				// Best-effort revocation. Failure is logged via obs rather than
+				// returned because sweep() runs in a background goroutine with
+				// no caller to handle an error. The agent stays tracked so the
+				// next sweep retries.
+				if _, err := h.revSvc.Revoke("agent", id); err != nil {
+					obs.Warn("MUTAUTH", "Heartbeat.Sweep", "agent auto-revoke failed",
+						"agent_id="+id, "err="+err.Error())
+				} else {
+					obs.Warn("MUTAUTH", "Heartbeat.Sweep", "agent auto-revoked",
+						"agent_id="+id, "missed="+itoa(s.missedCount))
+				}
 			} else {
 				obs.Warn("MUTAUTH", "Heartbeat.Sweep", "agent flagged for investigation",
 					"agent_id="+id, "missed="+itoa(s.missedCount))
