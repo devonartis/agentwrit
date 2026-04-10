@@ -62,16 +62,20 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      # v6.x is the last major compatible with golangci-lint v1.x config.
-      # version: pin to v1.64.8 explicitly — with 'version: latest' the v6
-      # action installs golangci-lint v2.x, which rejects our v1 schema.
-      # This matches the local developer version (see scripts/gates.sh).
-      # v8+ of the action requires golangci-lint v2 and a migrated config —
-      # migration tracked for a later cycle.
-      - uses: golangci/golangci-lint-action@8564da7cb3c6866ed1da648ca8f00a258ef0c802  # v6.5.2
-        with:
-          version: v1.64.8
-          args: --config .golangci.yml
+      # DO NOT use golangci/golangci-lint-action here. Its pre-built
+      # binaries are compiled against an older Go toolchain (≤ 1.23)
+      # and exit 3 on our code because the go.mod toolchain directive
+      # is 1.25.9 — the embedded linter can't parse 1.25 stdlib/SSA.
+      #
+      # Instead, `go install` golangci-lint from source. This compiles
+      # it with the CI runner's Go (matching our toolchain.go1.25.9)
+      # so it parses the same way as local developers' brew-installed
+      # binary. Migration to golangci-lint v2 (which fixes this) is
+      # tracked for a later cycle.
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+      - name: Run lint
+        run: golangci-lint run --config .golangci.yml ./...
 
   format:
     name: format
