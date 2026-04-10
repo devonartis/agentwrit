@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — M-sec README badges (Task 30)
+
+- **`README.md`** — added three CI-health badges ahead of the existing
+  language/license/tech row:
+  - **CI** — `ci.yml` workflow status on `main`
+  - **CodeQL** — `codeql.yml` SAST status on `main`
+  - **OpenSSF Scorecard** — supply-chain posture score
+  Badges will show as "not found" or broken while the repo is private
+  (CI badge requires viewer auth; CodeQL and Scorecard require public
+  repo access). They're added now so the moment the repo flips public
+  they light up without a README update — fire-and-forget. CodeQL
+  and Scorecard will ALSO need their workflow triggers re-enabled
+  per TD-VUL-006 fix sequence. A comment in the README notes this.
+
+### Fixed — `.vscode/` removed from tree and gitignored
+
+- **`.vscode/settings.json`** — was tracked on develop but carries
+  per-user editor settings (e.g. Snyk IDE prefs). Untracked via
+  `git rm` and added to `.gitignore` so it stays out of every branch.
+  This closes the loop on the leak that happened during the first
+  develop → main strip merge attempt: VSCode recreated the file between
+  `rm -rf` and `git commit`, so it landed in the merge commit. The
+  commit was amended to remove it (see `a72a959`), but the root cause
+  was that the file was tracked on develop at all. Now both the strip
+  script and .gitignore cooperate to keep it out.
+
 ### Fixed — strip_for_main.sh mid-merge support + two drift fixes
 
 - **`scripts/strip_for_main.sh`** — the documented `git merge develop
