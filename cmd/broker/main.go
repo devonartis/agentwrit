@@ -137,7 +137,7 @@ func main() {
 	}
 	idSvc := identity.NewIdSvc(sqlStore, tknSvc, c.TrustDomain, auditLog, c.Audience)
 	delegSvc := deleg.NewDelegSvc(tknSvc, sqlStore, auditLog, privKey)
-	adminSvc := admin.NewAdminSvc(c.AdminSecretHash, tknSvc, sqlStore, auditLog, c.Audience)
+	adminSvc := admin.NewAdminSvc(c.AdminSecretHash, tknSvc, sqlStore, auditLog, c.Audience, c.AdminTokenTTL)
 	appSvc := app.NewAppSvc(sqlStore, tknSvc, auditLog, c.Audience, c.AppTokenTTL)
 
 	// Seed tokens for development (AA_SEED_TOKENS=true)

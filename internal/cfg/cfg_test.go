@@ -94,6 +94,31 @@ func TestLoad_AudienceEmpty(t *testing.T) {
 	}
 }
 
+func TestLoad_AdminTokenTTLDefault(t *testing.T) {
+	t.Setenv("AA_ADMIN_SECRET", "test-cfg-secret")
+	os.Unsetenv("AA_ADMIN_TOKEN_TTL")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.AdminTokenTTL != 300 {
+		t.Fatalf("expected default AdminTokenTTL 300 (5 min), got %d", c.AdminTokenTTL)
+	}
+}
+
+func TestLoad_AdminTokenTTLCustom(t *testing.T) {
+	t.Setenv("AA_ADMIN_SECRET", "test-cfg-secret")
+	os.Setenv("AA_ADMIN_TOKEN_TTL", "600")
+	defer os.Unsetenv("AA_ADMIN_TOKEN_TTL")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.AdminTokenTTL != 600 {
+		t.Fatalf("expected AdminTokenTTL 600, got %d", c.AdminTokenTTL)
+	}
+}
+
 func TestLoad_AppTokenTTLDefault(t *testing.T) {
 	t.Setenv("AA_ADMIN_SECRET", "test-cfg-secret")
 	os.Unsetenv("AA_APP_TOKEN_TTL")

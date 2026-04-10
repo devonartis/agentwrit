@@ -21,7 +21,7 @@ Full details for each item live in the referenced file. This is the index.
 | TD-007 | Resilient logging — audit writes inline, no fallback on store failure | Medium | Future | `internal/audit/audit_log.go` |
 | TD-008 | Token predecessor not invalidated on renewal — two valid tokens exist | Medium | B1 (P0) may fix | `internal/token/tkn_svc.go` |
 | TD-009 | JTI blocklist never pruned — memory grows indefinitely | Medium | B1 (P0) may fix | `internal/store/sql_store.go` |
-| TD-010 | Admin JWT TTL hardcoded (`const adminTTL = 300`) — should be operator-configurable via `AA_ADMIN_TOKEN_TTL` | Low | Future | `internal/admin/admin_svc.go` |
+| TD-010 | ~~Admin JWT TTL hardcoded (`const adminTTL = 300`)~~ | ~~Low~~ | **RESOLVED 2026-04-10** — promoted to `cfg.AdminTokenTTL int` (seconds, env `AA_ADMIN_TOKEN_TTL`, default 300 named as `defaultAdminTokenTTL`). `NewAdminSvc` signature extended with `tokenTTL int`; all call sites updated. Branch `fix/td-010-admin-token-ttl-config`. | `internal/admin/admin_svc.go`, `internal/cfg/cfg.go`, `cmd/broker/main.go` |
 
 ## New — Documentation Drift (B0 Sidecar Removal)
 
