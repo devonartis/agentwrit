@@ -47,9 +47,12 @@ func (c *client) authenticate() error {
 	if c.token != "" {
 		return nil
 	}
-	body, _ := json.Marshal(map[string]string{
+	body, err := json.Marshal(map[string]string{
 		"secret": c.secret,
 	})
+	if err != nil {
+		return fmt.Errorf("marshal auth request: %w", err)
+	}
 	resp, err := c.http.Post(c.baseURL+"/v1/admin/auth", "application/json", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("auth request failed: %w", err)
@@ -57,7 +60,10 @@ func (c *client) authenticate() error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
+		b, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return fmt.Errorf("auth failed (HTTP %d): <unreadable body: %w>", resp.StatusCode, readErr)
+		}
 		return fmt.Errorf("auth failed (HTTP %d): %s", resp.StatusCode, string(b))
 	}
 
@@ -144,7 +150,10 @@ func (c *client) doPostWithToken(path, bearerToken string) (int, []byte, error) 
 		return 0, nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return resp.StatusCode, nil, fmt.Errorf("read response body: %w", err)
+	}
 	return resp.StatusCode, b, nil
 }
 
