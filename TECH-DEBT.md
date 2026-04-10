@@ -249,6 +249,24 @@ The repo has accumulated artifacts from migration, multiple agent sessions, and 
 
 ---
 
+## TD-VUL-005 — dep-review disabled on private repo (M-sec, 2026-04-10)
+
+`actions/dependency-review-action` fails on the first CI run because
+`devonartis/agentauth` is private without GitHub Advanced Security.
+The action needs the Dependency Graph API, which only runs on public
+repos (free) or private repos with GHAS (paid).
+
+Workaround: the `dep-review` job is commented out of `ci.yml`. The
+security coverage gap is partial — `govulncheck` still catches stdlib
+and Go module CVEs; dep-review would have added license policy and
+broader package metadata scanning.
+
+**Fix:** re-enable when either (a) the repo flips public (Phase 4 of
+the release strategy) or (b) GHAS is purchased. Revert the commented
+block in `.github/workflows/ci.yml`.
+
+---
+
 ## Go stdlib vulnerabilities (M-sec CI baseline, 2026-04-10) — RESOLVED
 
 `govulncheck ./...` run on the M-sec baseline surfaced 4 stdlib CVEs, all

@@ -62,7 +62,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20  # v9.2.0
+      # v6.x is the last major compatible with golangci-lint v1.x config.
+      # v8+ requires golangci-lint v2 and a migrated config schema —
+      # pin v6 until we migrate .golangci.yml.
+      - uses: golangci/golangci-lint-action@8564da7cb3c6866ed1da648ca8f00a258ef0c802  # v6.5.2
         with:
           version: latest
           args: --config .golangci.yml
@@ -215,15 +218,13 @@ jobs:
           path: sbom.spdx.json
           retention-days: 30
 
-  dep-review:
-    name: dep-review
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48  # v4.9.0
-        with:
-          fail-on-severity: moderate
+  # dep-review is removed temporarily: actions/dependency-review-action
+  # requires GitHub Advanced Security (GHAS) on private repos. devonartis/
+  # agentauth is private without GHAS, so the action fails with a 403
+  # from the Dependency Graph API on every PR. Re-enable when:
+  #   (a) the repo flips public (GHAS is free on public repos), OR
+  #   (b) GHAS is purchased for the private repo.
+  # Tracking: TD-VUL-005 in TECH-DEBT.md.
 
   changelog:
     name: changelog
