@@ -12,7 +12,7 @@ name: CI
 # - go-mod-verify
 # - unit-tests-race
 # - docker-build
-# - smoke-l2.5
+# - smoke-l25
 # - sbom
 # GATE_LIST_END
 
@@ -172,8 +172,8 @@ jobs:
       - name: Build image
         run: docker build -t agentauth-ci:${{ github.sha }} .
 
-  smoke-l2.5:
-    name: smoke-l2.5
+  smoke-l25:
+    name: smoke-l25
     runs-on: ubuntu-latest
     needs: [docker-build]
     env:
@@ -270,7 +270,7 @@ jobs:
       - govulncheck
       - go-mod-verify
       - docker-build
-      - smoke-l2.5
+      - smoke-l25
       - sbom
       - gate-parity
     if: always()

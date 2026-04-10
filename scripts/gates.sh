@@ -7,7 +7,7 @@ set -euo pipefail
 #   ./scripts/gates.sh task          Fast dev-loop gates (build/vet/lint/format/
 #                                    contamination/short tests/security)
 #   ./scripts/gates.sh full          Full CI-mirror gates (task + race tests +
-#                                    docker-build + smoke-l2.5 + sbom)
+#                                    docker-build + smoke-l25 + sbom)
 #   ./scripts/gates.sh regression    L4 full regression — iterate tests/*/regression.sh
 #   ./scripts/gates.sh --list-gates  Print gate IDs one-per-line for parity test
 #
@@ -36,7 +36,7 @@ GATES_FULL=(
   "${GATES_TASK[@]}"
   unit-tests-race
   docker-build
-  smoke-l2.5
+  smoke-l25
   sbom
 )
 
@@ -147,20 +147,23 @@ if [[ "$MODE" == "full" ]]; then
   fi
 
   # L2.5 smoke: core contract (issue/verify/revoke/deny)
+  # Honors BROKER_URL so an operator can point at an already-running
+  # broker on a non-default port (e.g. when 8080 is held by another
+  # project). Default matches scripts/stack_up.sh default mapping.
   SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  SMOKE_BROKER_URL="${BROKER_URL:-http://localhost:8080}"
   if [[ -x "$SCRIPT_DIR/smoke/core-contract.sh" ]]; then
     if docker info >/dev/null 2>&1; then
-      # Caller is responsible for bringing the broker up (stack_up.sh).
-      if curl -sf http://localhost:8080/v1/health >/dev/null 2>&1; then
-        run_gate "smoke-l2.5" "$SCRIPT_DIR/smoke/core-contract.sh"
+      if curl -sf "$SMOKE_BROKER_URL/v1/health" >/dev/null 2>&1; then
+        run_gate "smoke-l25" env BROKER_URL="$SMOKE_BROKER_URL" "$SCRIPT_DIR/smoke/core-contract.sh"
       else
-        skip_gate "smoke-l2.5" "broker not reachable at localhost:8080 — run scripts/stack_up.sh first"
+        skip_gate "smoke-l25" "broker not reachable at $SMOKE_BROKER_URL — run scripts/stack_up.sh first"
       fi
     else
-      skip_gate "smoke-l2.5" "Docker daemon not running"
+      skip_gate "smoke-l25" "Docker daemon not running"
     fi
   else
-    skip_gate "smoke-l2.5" "scripts/smoke/core-contract.sh not found or not executable"
+    skip_gate "smoke-l25" "scripts/smoke/core-contract.sh not found or not executable"
   fi
 
   # SBOM: syft SPDX output. `syft scan` replaced `syft packages` in 1.x.
