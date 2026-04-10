@@ -63,11 +63,14 @@ jobs:
           go-version-file: go.mod
           cache: true
       # v6.x is the last major compatible with golangci-lint v1.x config.
-      # v8+ requires golangci-lint v2 and a migrated config schema —
-      # pin v6 until we migrate .golangci.yml.
+      # version: pin to v1.64.8 explicitly — with 'version: latest' the v6
+      # action installs golangci-lint v2.x, which rejects our v1 schema.
+      # This matches the local developer version (see scripts/gates.sh).
+      # v8+ of the action requires golangci-lint v2 and a migrated config —
+      # migration tracked for a later cycle.
       - uses: golangci/golangci-lint-action@8564da7cb3c6866ed1da648ca8f00a258ef0c802  # v6.5.2
         with:
-          version: latest
+          version: v1.64.8
           args: --config .golangci.yml
 
   format:
