@@ -22,6 +22,7 @@
 //	AA_TLS_CLIENT_CA – path to client CA certificate PEM file (mtls only)
 //	AA_AUDIENCE      – expected token audience claim        (empty = skip — operator opt-in)
 //	AA_APP_TOKEN_TTL – app JWT TTL in seconds              (default 1800 / 30 min)
+//	AA_ADMIN_TOKEN_TTL – admin JWT TTL in seconds          (default 300 / 5 min)
 package cfg
 
 import (
@@ -40,6 +41,12 @@ import (
 // Cost 12 ≈ 250ms per hash on modern hardware — good balance of security and latency.
 const AdminBcryptCost = 12
 
+// defaultAdminTokenTTL is the default lifetime of an admin JWT in seconds.
+// 300s = 5 minutes — short enough to limit blast radius of a leaked admin
+// token, long enough for interactive operator workflows. Operators override
+// via AA_ADMIN_TOKEN_TTL. Named so no magic number leaks into Load().
+const defaultAdminTokenTTL = 300
+
 // Cfg holds the complete broker configuration derived from environment
 // variables. Use [Load] to create an instance with defaults applied.
 type Cfg struct {
@@ -50,6 +57,7 @@ type Cfg struct {
 	Issuer          string // AA_ISSUER: JWT iss claim — broker identity. Empty = skip issuer check on verify (mirrors Audience contract). Operators set this to a value that uniquely identifies their broker instance.
 	DefaultTTL      int    // AA_DEFAULT_TTL (default 300 seconds)
 	AppTokenTTL     int    // AA_APP_TOKEN_TTL (default 1800 seconds / 30 min)
+	AdminTokenTTL   int    // AA_ADMIN_TOKEN_TTL (default 300 seconds / 5 min)
 	AdminSecret     string // AA_ADMIN_SECRET (required for admin auth)
 	SeedTokens      bool   // AA_SEED_TOKENS (dev only, default false)
 	DBPath          string // AA_DB_PATH (default "./data.db")
@@ -80,6 +88,7 @@ func Load() (Cfg, error) {
 		Issuer:         os.Getenv("AA_ISSUER"),
 		DefaultTTL:     envIntOr("AA_DEFAULT_TTL", 300),
 		AppTokenTTL:    envIntOr("AA_APP_TOKEN_TTL", 1800),
+		AdminTokenTTL:  envIntOr("AA_ADMIN_TOKEN_TTL", defaultAdminTokenTTL),
 		AdminSecret:    os.Getenv("AA_ADMIN_SECRET"),
 		SeedTokens:     envOr("AA_SEED_TOKENS", "false") == "true",
 		DBPath:         envOr("AA_DB_PATH", "./data.db"),

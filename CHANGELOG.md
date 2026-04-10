@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Promoted `adminTTL` const to configurable `cfg.AdminTokenTTL` (TD-010)
+
+- **`internal/admin/admin_svc.go`** — deleted the magic-number const `adminTTL = 300`. Admin JWT TTL is now driven by `cfg.AdminTokenTTL` (seconds), wired through a new `tokenTTL` parameter on `NewAdminSvc`. Operators tune via `AA_ADMIN_TOKEN_TTL` (default 300 / 5 min).
+- **`internal/cfg/cfg.go`** — added `AdminTokenTTL int` field and a named const `defaultAdminTokenTTL = 300` (seconds; matches existing int-seconds convention for DefaultTTL, MaxTTL, AppTokenTTL so the cfg package stays internally consistent). Env var `AA_ADMIN_TOKEN_TTL` added to the inline doc comment.
+- **`cmd/broker/main.go`** — `NewAdminSvc` wiring updated to pass `c.AdminTokenTTL`.
+- **Tests** — `newTestAdminSvc` helpers and direct `NewAdminSvc` calls across `admin_svc_test.go`, `admin_hdl_test.go`, `app_hdl_test.go`, `handler/handler_test.go` now pass an explicit `testAdminTokenTTL = 300` fixture. Assertions that checked `resp.ExpiresIn != adminTTL` now check against the fixture value — the test drives cfg-to-claim TTL flow end-to-end inside the admin package, which is the unit-level equivalent of a config-matrix behavioral test for this field.
+- **Rationale for int seconds (not `time.Duration`)** — the existing TTL fields (`DefaultTTL`, `MaxTTL`, `AppTokenTTL`) all use int seconds. Adding one `time.Duration` field would create two conventions in the same cfg package and leak into every caller that passes the field through. A future cleanup can migrate all TTL fields to `time.Duration` together (proposed TD-CFG-003) — but mixing conventions in this PR would be worse than preserving the existing one.
+
 ### Removed hardcoded identity literals from cfg + token packages (TD-TOKEN-001, TD-TOKEN-002, TD-CFG-001, TD-CFG-002)
 
 - **`internal/token/tkn_svc.go`** — JWT `iss` claim is now driven by `cfg.Issuer` instead of the hardcoded literal `"agentauth"`. Issuer enforcement moved from `TknClaims.Validate()` (pure structural check) into `TknSvc.Verify()` where config is available. Empty `cfg.Issuer` skips the issuer check (mirrors the Audience contract — operator opt-in).

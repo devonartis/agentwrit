@@ -47,10 +47,10 @@ func newTestAppMux(t *testing.T) (*http.ServeMux, *AppSvc) {
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
-	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
+	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300, Issuer: "test-issuer", TrustDomain: "test.local"})
 	al := audit.NewAuditLog(nil)
 
-	adminSvc := admin.NewAdminSvc(testAdminSecretHash, tknSvc, st, al, "")
+	adminSvc := admin.NewAdminSvc(testAdminSecretHash, tknSvc, st, al, "", 300)
 	valMw := authz.NewValMw(tknSvc, nil, nil, "")
 
 	appSvc := NewAppSvc(st, tknSvc, al, "", 1800)

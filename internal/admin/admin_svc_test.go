@@ -14,7 +14,10 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const testSecret = "test-admin-secret-32bytes-long!"
+const (
+	testSecret        = "test-admin-secret-32bytes-long!"
+	testAdminTokenTTL = 300 // seconds — test-local value so tests don't depend on prod default
+)
 
 var testSecretHash string
 
@@ -34,7 +37,7 @@ func newTestAdminSvc(t *testing.T) *AdminSvc {
 	}
 	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300, Issuer: "test-issuer", TrustDomain: "test.local"})
 	st := store.NewSqlStore()
-	return NewAdminSvc(testSecretHash, tknSvc, st, nil, "")
+	return NewAdminSvc(testSecretHash, tknSvc, st, nil, "", testAdminTokenTTL)
 }
 
 func newTestAdminSvcWithAudit(t *testing.T) (*AdminSvc, *audit.AuditLog) {
@@ -46,7 +49,7 @@ func newTestAdminSvcWithAudit(t *testing.T) (*AdminSvc, *audit.AuditLog) {
 	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300, Issuer: "test-issuer", TrustDomain: "test.local"})
 	st := store.NewSqlStore()
 	al := audit.NewAuditLog(nil)
-	return NewAdminSvc(testSecretHash, tknSvc, st, al, ""), al
+	return NewAdminSvc(testSecretHash, tknSvc, st, al, "", testAdminTokenTTL), al
 }
 
 // --- Authenticate ---
@@ -64,8 +67,8 @@ func TestAuthenticate_Success(t *testing.T) {
 	if resp.AccessToken == "" {
 		t.Fatal("expected non-empty access_token")
 	}
-	if resp.ExpiresIn != adminTTL {
-		t.Errorf("expected expires_in=%d, got %d", adminTTL, resp.ExpiresIn)
+	if resp.ExpiresIn != testAdminTokenTTL {
+		t.Errorf("expected expires_in=%d, got %d", testAdminTokenTTL, resp.ExpiresIn)
 	}
 
 	// Verify the issued token has correct claims.

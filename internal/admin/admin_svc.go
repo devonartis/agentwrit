@@ -30,7 +30,6 @@ const (
 	cmp = "AdminSvc"
 
 	adminSub        = "admin"
-	adminTTL        = 300
 	defaultMaxTTL   = 300
 	defaultTokenTTL = 30
 
@@ -88,19 +87,23 @@ type AdminSvc struct {
 	store           *store.SqlStore
 	auditLog        *audit.AuditLog
 	audience        string
+	tokenTTL        int // seconds — admin JWT lifetime, from cfg.AdminTokenTTL (TD-010)
 }
 
 // NewAdminSvc creates a new admin service. The adminSecretHash is the
 // bcrypt hash of the admin secret, derived at config load time. The
 // auditLog parameter may be nil to disable audit recording. The audience
-// is populated into all issued tokens.
-func NewAdminSvc(adminSecretHash string, tknSvc *token.TknSvc, st *store.SqlStore, al *audit.AuditLog, audience string) *AdminSvc {
+// is populated into all issued tokens. tokenTTL is the admin JWT lifetime
+// in seconds, sourced from cfg.AdminTokenTTL — operators tune this via
+// AA_ADMIN_TOKEN_TTL (default 300s / 5 min). Previously hardcoded (TD-010).
+func NewAdminSvc(adminSecretHash string, tknSvc *token.TknSvc, st *store.SqlStore, al *audit.AuditLog, audience string, tokenTTL int) *AdminSvc {
 	return &AdminSvc{
 		adminSecretHash: []byte(adminSecretHash),
 		tknSvc:          tknSvc,
 		store:           st,
 		auditLog:        al,
 		audience:        audience,
+		tokenTTL:        tokenTTL,
 	}
 }
 
@@ -132,7 +135,7 @@ func (s *AdminSvc) Authenticate(secret string) (*token.IssueResp, error) {
 		Sub:   adminSub,
 		Aud:   s.audienceSlice(),
 		Scope: adminScope,
-		TTL:   adminTTL,
+		TTL:   s.tokenTTL,
 	})
 	if err != nil {
 		obs.Fail(mod, cmp, "failed to issue admin token", "err="+err.Error())
