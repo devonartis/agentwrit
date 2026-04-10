@@ -1,19 +1,28 @@
 # AGENTS.md
 
-**Last updated:** 2026-04-04  
+**Last updated:** 2026-04-08  
 **Purpose:** Handoff notes for the next agent session.
 
 ---
 
 ## Current State
 
-**✅ Repo cleanup is COMPLETE.**
+**✅ Repo cleanup is COMPLETE.** Public release preparation is **documented**; flip the repo public only after maintainer review of `.plans/reviews/public-release-review-2026-04-08.md` and license decision in `FLOW.md`.
 
 - 8 batches executed (go module rename, sensitive file removal, critical docs fixed, version drift fixed, scripts cleanup, cosmetic fixes, gitignore + strip script, final verification)
-- `develop` → `main` merge completed
-- `main` is clean: 199 files, no dev artifacts, ready for public release
-- Both branches pushed to `devonartis/agentauth` (private)
-- Strip script verified: 10 paths removed cleanly, build passes
+- `develop` → `main` merge completed (last merge: v2.0.0)
+- `main` is clean: ~199 files, no dev artifacts (MEMORY, FLOW, `.plans/`, etc. stripped)
+- Remote: `devonartis/agentauth` (private until you publish)
+- Strip script verified; build passes after strip
+
+### Public release readiness (develop-only artifacts)
+
+| Artifact | Purpose |
+|----------|---------|
+| `.plans/release-readiness.md` | Merge checklist, license options (Apache vs source-available), grep audits |
+| `.plans/reviews/public-release-review-2026-04-08.md` | Security / docs / surface-area review snapshot |
+
+**Rule:** Internal recommendations stay in stripped paths or `.plans/` — never only on `main` unless intentionally public (README, LICENSE, `docs/`).
 
 ---
 

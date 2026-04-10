@@ -64,12 +64,12 @@ AgentAuth is built on these core security principles:
 Users should be aware of these limitations when deploying AgentAuth:
 
 - **Single Broker Instance**: The broker is designed as a single instance within a secure network. It does not support clustering or horizontal scaling. High availability requires load balancer failover.
-- **Ephemeral Signing Keys**: The broker generates a fresh Ed25519 key pair on every startup. All previously issued tokens become invalid after a broker restart. Key persistence is not currently supported.
-- **Hybrid Persistence**: Critical state (audit events, revocations) persists to SQLite via `AA_DB_PATH`. Transient state (nonces, agent records, launch tokens) lives in memory and is cleared on restart.
+- **Signing Key Persistence**: The broker loads or creates an Ed25519 key at `AA_SIGNING_KEY_PATH` (default `./signing.key`). Persist this file across restarts so previously issued tokens remain valid; losing or rotating the key invalidates outstanding JWTs.
+- **Persistence Model**: Audit events, revocations, apps, agents, and related state persist to SQLite via `AA_DB_PATH`. Some operational details may still be reset on upgrade; see operator docs for your deployment.
 - **X-Forwarded-For Trust**: The broker trusts `X-Forwarded-For` headers for request attribution in audit logs. This requires proper reverse proxy configuration and should only be used in trusted networks.
-- **No Built-In Rate Limiting**: Rate limiting must be implemented at the load balancer or reverse proxy layer.
+- **Rate Limiting**: Selected endpoints (for example admin authentication) use built-in rate limiting. Additional throttling at the load balancer or reverse proxy is still recommended for production.
 
-See [KNOWN-ISSUES.md](KNOWN-ISSUES.md) for tracked security and operational issues with mitigations.
+For tracked operational issues and tech debt, see the project issue tracker on GitHub (this repository does not ship a separate `KNOWN-ISSUES.md` on `main`).
 
 ## Threat Model
 
@@ -77,13 +77,7 @@ For detailed information about AgentAuth's threat model, security assumptions, a
 
 ## Encrypted Communications
 
-For sensitive security correspondence, you may use PGP encryption. The project's PGP key is available at:
-```
-KEY_ID: [TO_BE_POPULATED]
-FINGERPRINT: [TO_BE_POPULATED]
-```
-
-Please request the current key from security@agentauth.dev if needed.
+For sensitive security correspondence, you may request a PGP key from **security@agentauth.dev** if you need end-to-end encrypted email.
 
 ## Security Updates
 

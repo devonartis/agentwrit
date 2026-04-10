@@ -38,10 +38,14 @@ set -euo pipefail
 #
 # What it keeps:
 #   - All code (cmd/, internal/, pkg/)
-#   - Public docs (docs/*.md that aren't internal)
+#   - Public docs (docs/*.md — anything meant for external readers)
 #   - CHANGELOG.md, README.md, CONTRIBUTING.md, SECURITY.md, LICENSE
 #   - Tests and test evidence (except DOC-AUDIT-REPORT.md)
 #   - Build/deploy files (Dockerfile, docker-compose*.yml, go.mod, scripts/)
+#
+# main is public-facing product only. All internal thinking — decisions,
+# architecture rationale, plans, memory — lives on develop. If a decision
+# needs to be shared publicly, write a version in docs/ intentionally.
 
 DRY_RUN=0
 if [[ "${1:-}" == "--dry-run" ]]; then
@@ -105,6 +109,7 @@ strip_path ".plans"
 strip_path ".claude"
 strip_path ".agents"
 strip_path "audit"
+strip_path "adr"
 
 # Internal reports and utilities
 strip_path "generate_pdf.py"
