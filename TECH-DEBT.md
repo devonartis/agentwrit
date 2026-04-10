@@ -336,8 +336,26 @@ Docusaurus, Hugo) if the structure warrants it.
 the first things a skeptical engineer reads; bad navigation is a trust-loss
 moment.
 
+## Hardcoded Identity Audit (2026-04-10)
+
+Audit triggered by discovery of hardcoded `iss: "agentauth"` in `internal/token/tkn_claims.go` during the rebrand inventory. Full audit + recommendations at `.plans/reviews/2026-04-10-hardcoded-identity-audit.md`. The root cause — that `IssuerURL` was stripped alongside the OIDC provider removal for the open-core split, treating a general JWT concern as OIDC-specific — is documented in the audit doc. Standing rule added to `~/.claude/CLAUDE.md` ("No Hardcoded Identity Values — Universal, Non-Negotiable") to prevent recurrence.
+
+| ID | What | Severity | When to Fix | Files Affected |
+|----|------|----------|-------------|----------------|
+| TD-TOKEN-001 | ~~**JWT `iss` claim hardcoded as literal `"agentauth"`**~~ | ~~CRITICAL~~ | **RESOLVED 2026-04-10** — `cfg.Issuer` field added (env `AA_ISSUER`), no default; empty = skip enforcement (mirrors Audience contract). Issuer check moved from `Validate()` (pure structural) into `Verify()` where cfg is available. Branch `fix/td-token-001-remove-issuer-hardcode`. | `internal/token/tkn_claims.go`, `internal/token/tkn_svc.go`, `internal/cfg/cfg.go` |
+| TD-TOKEN-002 | ~~**JWT `aud` claim default literal `"agentauth"`** violates the `cfg.go:22` contract~~ | ~~HIGH~~ | **RESOLVED 2026-04-10** — override at `cfg.go:96` deleted; `Audience` honors documented `empty = skip` contract. `cfg_test.go` `TestLoad_AudienceDefault` updated to assert empty-when-unset. Same branch as TD-TOKEN-001. | `internal/cfg/cfg.go`, `internal/cfg/cfg_test.go` |
+| TD-CFG-001 | ~~**Config defaults bake brand into binary** — `TrustDomain` and `DBPath`~~ | ~~HIGH~~ | **RESOLVED 2026-04-10** — `TrustDomain` default swapped `"agentauth.local"` → `"agentwrit.local"`; `DBPath` default swapped `"./agentauth.db"` → `"./data.db"` (neutral). Same branch as TD-TOKEN-001. | `internal/cfg/cfg.go` |
+| TD-CFG-002 | ~~**Hardcoded FHS search path `/etc/agentauth/config`**~~ | ~~CRITICAL~~ | **RESOLVED 2026-04-10** — config search paths updated: `/etc/agentauth/config` → `/etc/broker/config` and `~/.agentauth/config` → `~/.broker/config`. Generated config file header `# AgentAuth Configuration` → `# Broker Configuration`. Same branch as TD-TOKEN-001. | `internal/cfg/configfile.go` |
+| TD-TOKEN-003 | ~~**Tests lock the issuer hardcode in place** — 6 assertions across `tkn_svc_test.go` and `val_mw_test.go`~~ | ~~HIGH~~ | **RESOLVED 2026-04-10** — all 6 assertions and 3 `cfg.Cfg{}` literal constructions updated to drive from fixture `Issuer: "test-issuer"`. Same branch as TD-TOKEN-001. | `internal/token/tkn_svc_test.go`, `internal/authz/val_mw_test.go`, `internal/deleg/deleg_svc_test.go`, `internal/admin/admin_svc_test.go` |
+| TD-TEST-001 | ~~**Test SPIFFE fixtures leak `agentauth.local`**~~ | ~~MEDIUM~~ | **RESOLVED 2026-04-10** — all `agentauth.local` references in test files swept to `test.local` (mechanical sed across `admin_hdl_test.go`, `identity/id_svc_test.go`, `mutauth/{heartbeat,discovery,mut_auth_hdl}_test.go`, `token/tkn_svc_test.go`). Same branch as TD-TOKEN-001. | `internal/admin/admin_hdl_test.go`, `internal/identity/id_svc_test.go`, `internal/mutauth/heartbeat_test.go`, `internal/mutauth/discovery_test.go`, `internal/mutauth/mut_auth_hdl_test.go`, `internal/token/tkn_svc_test.go` |
+| TD-CLI-001 | **Binary name `aactl` → `awrit` rename** — 227 occurrences across `cmd/aactl/`, scripts, docs, tests, CHANGELOG. Mechanical. No logic change. | **MEDIUM** | PR 2 (can parallel PR 1) | `cmd/aactl/` (→ `cmd/awrit/`), `docs/aactl-reference.md`, scripts, tests |
+
+**Not creating a TD for env var prefix** — decided 2026-04-10 to keep `AA_*` indefinitely. Neutral enough (two letters), operator-facing, highest-friction change in the whole rebrand. Re-evaluate at 1.0 if ever.
+
 ## When to Fix
 
 Documentation and script drift items (TD-D*, TD-S*) should be resolved **after all cherry-pick batches are complete** (B0-B6). Doing them now risks conflicts with incoming commits. Schedule as a dedicated docs refresh phase post-migration.
 
 Exception: TD-S01/S02/S03 may need partial fixes during migration if they block Docker testing for a batch.
+
+**Hardcoded identity items (TD-TOKEN-*, TD-CFG-*, TD-TEST-001, TD-CLI-001)** — scheduled for PR 1 (correctness) and PR 2 (binary rename). These are prerequisites for the rebrand but also correctness fixes worth doing independently. See `.plans/reviews/2026-04-10-hardcoded-identity-audit.md` for full execution plan.

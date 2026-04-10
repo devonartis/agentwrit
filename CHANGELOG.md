@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed hardcoded identity literals from cfg + token packages (TD-TOKEN-001, TD-TOKEN-002, TD-CFG-001, TD-CFG-002)
+
+- **`internal/token/tkn_svc.go`** — JWT `iss` claim is now driven by `cfg.Issuer` instead of the hardcoded literal `"agentauth"`. Issuer enforcement moved from `TknClaims.Validate()` (pure structural check) into `TknSvc.Verify()` where config is available. Empty `cfg.Issuer` skips the issuer check (mirrors the Audience contract — operator opt-in).
+- **`internal/cfg/cfg.go`** — added `Issuer string` field, env var `AA_ISSUER`. No default; empty value means "skip issuer enforcement at verify time," matching the documented Audience pattern.
+- **`internal/cfg/cfg.go`** — `TrustDomain` default literal `"agentauth.local"` → `"agentwrit.local"` (no longer leaks the prior brand into source).
+- **`internal/cfg/cfg.go`** — `DBPath` default literal `"./agentauth.db"` → `"./data.db"` (neutral, no brand in source).
+- **`internal/cfg/cfg.go`** — `Audience` default override at line 96 deleted. The `cfg.go:22` doc comment said `"empty = skip"` but the code overrode unset → `"agentauth"`. Now `Audience` honors its documented contract: unset OR explicitly empty both skip audience validation. No brand-coupled default.
+- **`internal/cfg/configfile.go`** — config search paths `/etc/agentauth/config` → `/etc/broker/config` and `~/.agentauth/config` → `~/.broker/config`. Filesystem layout no longer encodes the brand. Header comment in generated config files updated from `# AgentAuth Configuration` → `# Broker Configuration`.
+- **`internal/token/tkn_claims.go`** — package doc comment updated to reflect that `iss` is operator-configured via `cfg.Issuer`, not "always 'agentauth'". `Validate()` is now a pure structural check (sub, jti, exp, nbf) — issuer enforcement is the service layer's job.
+- **Test surface** — test fixtures across `cfg/`, `token/`, `authz/`, `deleg/`, `admin/`, `identity/`, `mutauth/` updated to use brand-neutral test values (`test-issuer`, `test.local`, `spiffe://test.local/...`) instead of leaked `"agentauth"` and `agentauth.local` literals. Tests now drive issuer/audience expectations from fixture cfg, not hardcoded constants.
+- **Root cause:** `IssuerURL` was an OIDC-coupled config field stripped during the open-core split. The strip removed the field, the validation, AND the tests (tombstone preserved at `internal/token/tkn_svc_test.go:521`), but the validation was replaced with a hardcoded literal `"agentauth"` rather than left as configurable. The general JWT `iss` claim is independent of OIDC and core still needs it — this PR restores configurability without re-coupling to OIDC. Full audit at `.plans/reviews/2026-04-10-hardcoded-identity-audit.md`.
+- **Standing rule added:** `~/.claude/CLAUDE.md` now contains "No Hardcoded Identity Values — Universal, Non-Negotiable" as a global rule. Identity-shaped string literals in source code (brand names, issuers, trust domains, search paths) are non-negotiable findings going forward.
+
 ### Added — M-sec README badges (Task 30)
 
 - **`README.md`** — added three CI-health badges ahead of the existing

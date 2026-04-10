@@ -12,8 +12,8 @@ func TestLoad_DBPathDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.DBPath != "./agentauth.db" {
-		t.Fatalf("expected default ./agentauth.db, got %q", c.DBPath)
+	if c.DBPath != "./data.db" {
+		t.Fatalf("expected default ./data.db, got %q", c.DBPath)
 	}
 }
 
@@ -62,8 +62,9 @@ func TestLoad_AudienceDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Audience != "agentauth" {
-		t.Fatalf("expected default audience 'agentauth', got %q", c.Audience)
+	// Unset audience = empty = skip validation. No brand-coupled default.
+	if c.Audience != "" {
+		t.Fatalf("expected empty audience when unset (skip validation), got %q", c.Audience)
 	}
 }
 

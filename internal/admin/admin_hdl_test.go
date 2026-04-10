@@ -213,7 +213,7 @@ func TestHandleCreateLaunchToken_WrongScope(t *testing.T) {
 
 	// Issue a token with agent-level scope (not admin).
 	agentResp, err := tknSvc.Issue(token.IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/orch/task/inst",
+		Sub:   "spiffe://test.local/agent/orch/task/inst",
 		Scope: []string{"read:Customers:*"},
 		TTL:   300,
 	})
