@@ -22,7 +22,7 @@ func newTestDelegSvc(t *testing.T) (*DelegSvc, *token.TknSvc, *store.SqlStore) {
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
-	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
+	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300, Issuer: "test-issuer", TrustDomain: "test.local"})
 	st := store.NewSqlStore()
 	delegSvc := NewDelegSvc(tknSvc, st, nil, priv)
 	return delegSvc, tknSvc, st
@@ -439,7 +439,7 @@ func TestDelegate_ScopeViolation_AuditsEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
-	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
+	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300, Issuer: "test-issuer", TrustDomain: "test.local"})
 	st := store.NewSqlStore()
 	al := audit.NewAuditLog(nil)
 	delegSvc := NewDelegSvc(tknSvc, st, al, priv)

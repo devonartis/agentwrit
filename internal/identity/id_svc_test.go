@@ -27,12 +27,13 @@ func setupIdSvc(t *testing.T) (*IdSvc, *store.SqlStore, *audit.AuditLog) {
 	c := cfg.Cfg{
 		Port:        "8080",
 		LogLevel:    "quiet",
-		TrustDomain: "agentauth.local",
+		TrustDomain: "test.local",
+		Issuer:      "test-issuer",
 		DefaultTTL:  300,
 	}
 	tknSvc := token.NewTknSvc(priv, pub, c)
 	auditLog := audit.NewAuditLog(nil)
-	idSvc := NewIdSvc(sqlStore, tknSvc, "agentauth.local", auditLog, "")
+	idSvc := NewIdSvc(sqlStore, tknSvc, "test.local", auditLog, "")
 
 	return idSvc, sqlStore, auditLog
 }

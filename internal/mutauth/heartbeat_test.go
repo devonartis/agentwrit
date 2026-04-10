@@ -13,7 +13,7 @@ func TestHeartbeatRecordAndLiveness(t *testing.T) {
 	hb := NewHeartbeatMgr(nil)
 	hb.interval = 50 * time.Millisecond
 
-	agentID := "spiffe://agentauth.local/agent/orch-1/task-1/inst-a"
+	agentID := "spiffe://test.local/agent/orch-1/task-1/inst-a"
 	hb.RecordHeartbeat(agentID, "active")
 
 	alive, missed := hb.CheckLiveness(agentID)
@@ -29,7 +29,7 @@ func TestHeartbeatMissedAccumulates(t *testing.T) {
 	hb := NewHeartbeatMgr(nil)
 	hb.interval = 10 * time.Millisecond
 
-	agentID := "spiffe://agentauth.local/agent/orch-1/task-1/inst-a"
+	agentID := "spiffe://test.local/agent/orch-1/task-1/inst-a"
 	hb.RecordHeartbeat(agentID, "active")
 
 	// Wait long enough for several intervals to elapse.
@@ -54,7 +54,7 @@ func TestHeartbeatAutoRevocation(t *testing.T) {
 	hb.interval = 10 * time.Millisecond
 	hb.maxMiss = 2
 
-	agentID := "spiffe://agentauth.local/agent/orch-1/task-1/inst-a"
+	agentID := "spiffe://test.local/agent/orch-1/task-1/inst-a"
 	hb.RecordHeartbeat(agentID, "active")
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -75,7 +75,7 @@ func TestHeartbeatNoRevocationWithoutRevSvc(t *testing.T) {
 	hb.interval = 10 * time.Millisecond
 	hb.maxMiss = 2
 
-	agentID := "spiffe://agentauth.local/agent/orch-1/task-1/inst-a"
+	agentID := "spiffe://test.local/agent/orch-1/task-1/inst-a"
 	hb.RecordHeartbeat(agentID, "active")
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -101,7 +101,7 @@ func TestHeartbeatMonitorStopsOnCancel(t *testing.T) {
 
 func TestHeartbeatStateUpdate(t *testing.T) {
 	hb := NewHeartbeatMgr(nil)
-	agentID := "spiffe://agentauth.local/agent/orch-1/task-1/inst-a"
+	agentID := "spiffe://test.local/agent/orch-1/task-1/inst-a"
 
 	hb.RecordHeartbeat(agentID, "active")
 	hb.RecordHeartbeat(agentID, "idle")
@@ -118,7 +118,7 @@ func TestHeartbeatStateUpdate(t *testing.T) {
 
 func TestHeartbeatUnknownAgentLiveness(t *testing.T) {
 	hb := NewHeartbeatMgr(nil)
-	alive, missed := hb.CheckLiveness("spiffe://agentauth.local/agent/orch-1/task-1/unknown")
+	alive, missed := hb.CheckLiveness("spiffe://test.local/agent/orch-1/task-1/unknown")
 	if alive {
 		t.Fatal("unknown agent should not be alive")
 	}

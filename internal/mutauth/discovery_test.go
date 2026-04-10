@@ -7,7 +7,7 @@ import (
 
 func TestDiscoveryBindAndResolve(t *testing.T) {
 	dr := NewDiscoveryRegistry()
-	agentID := "spiffe://agentauth.local/agent/orch-1/task-1/inst-a"
+	agentID := "spiffe://test.local/agent/orch-1/task-1/inst-a"
 	endpoint := "https://agent-a.internal:8443"
 
 	if err := dr.Bind(agentID, endpoint); err != nil {
@@ -24,7 +24,7 @@ func TestDiscoveryBindAndResolve(t *testing.T) {
 
 func TestDiscoveryResolveUnknown(t *testing.T) {
 	dr := NewDiscoveryRegistry()
-	_, err := dr.Resolve("spiffe://agentauth.local/agent/orch-1/task-1/unknown")
+	_, err := dr.Resolve("spiffe://test.local/agent/orch-1/task-1/unknown")
 	if !errors.Is(err, ErrAgentNotBound) {
 		t.Fatalf("expected ErrAgentNotBound, got %v", err)
 	}
@@ -32,7 +32,7 @@ func TestDiscoveryResolveUnknown(t *testing.T) {
 
 func TestDiscoveryVerifyBindingMatch(t *testing.T) {
 	dr := NewDiscoveryRegistry()
-	agentID := "spiffe://agentauth.local/agent/orch-1/task-1/inst-a"
+	agentID := "spiffe://test.local/agent/orch-1/task-1/inst-a"
 	_ = dr.Bind(agentID, "https://agent-a.internal:8443")
 
 	ok, err := dr.VerifyBinding(agentID, agentID)
@@ -46,10 +46,10 @@ func TestDiscoveryVerifyBindingMatch(t *testing.T) {
 
 func TestDiscoveryVerifyBindingMismatch(t *testing.T) {
 	dr := NewDiscoveryRegistry()
-	agentID := "spiffe://agentauth.local/agent/orch-1/task-1/inst-a"
+	agentID := "spiffe://test.local/agent/orch-1/task-1/inst-a"
 	_ = dr.Bind(agentID, "https://agent-a.internal:8443")
 
-	impostor := "spiffe://agentauth.local/agent/orch-1/task-1/impostor"
+	impostor := "spiffe://test.local/agent/orch-1/task-1/impostor"
 	ok, err := dr.VerifyBinding(agentID, impostor)
 	if !errors.Is(err, ErrBindingMismatch) {
 		t.Fatalf("expected ErrBindingMismatch, got ok=%v err=%v", ok, err)
@@ -58,7 +58,7 @@ func TestDiscoveryVerifyBindingMismatch(t *testing.T) {
 
 func TestDiscoveryVerifyBindingNotBound(t *testing.T) {
 	dr := NewDiscoveryRegistry()
-	_, err := dr.VerifyBinding("spiffe://agentauth.local/agent/orch-1/task-1/unknown", "anything")
+	_, err := dr.VerifyBinding("spiffe://test.local/agent/orch-1/task-1/unknown", "anything")
 	if !errors.Is(err, ErrAgentNotBound) {
 		t.Fatalf("expected ErrAgentNotBound, got %v", err)
 	}
@@ -66,7 +66,7 @@ func TestDiscoveryVerifyBindingNotBound(t *testing.T) {
 
 func TestDiscoveryUnbind(t *testing.T) {
 	dr := NewDiscoveryRegistry()
-	agentID := "spiffe://agentauth.local/agent/orch-1/task-1/inst-a"
+	agentID := "spiffe://test.local/agent/orch-1/task-1/inst-a"
 	_ = dr.Bind(agentID, "https://agent-a.internal:8443")
 	dr.Unbind(agentID)
 

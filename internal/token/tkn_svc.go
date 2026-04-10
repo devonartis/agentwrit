@@ -138,7 +138,7 @@ func (s *TknSvc) Issue(req IssueReq) (*IssueResp, error) {
 	jti := randomJTI()
 
 	claims := &TknClaims{
-		Iss:        "agentauth",
+		Iss:        s.cfg.Issuer,
 		Sub:        req.Sub,
 		Aud:        req.Aud,
 		Exp:        now + int64(ttl),
@@ -226,6 +226,13 @@ func (s *TknSvc) Verify(tokenStr string) (*TknClaims, error) {
 
 	if err := claims.Validate(); err != nil {
 		return nil, err
+	}
+
+	// Issuer check (TD-TOKEN-001): driven by cfg.Issuer, not a hardcoded literal.
+	// Empty cfg.Issuer = skip the check (mirrors the Audience contract — operators
+	// who don't set AA_ISSUER opt out of issuer enforcement).
+	if s.cfg.Issuer != "" && claims.Iss != s.cfg.Issuer {
+		return nil, ErrInvalidIssuer
 	}
 
 	if s.revoker != nil && s.revoker.IsRevoked(&claims) {

@@ -27,15 +27,15 @@ func testSetup(t *testing.T) (
 	t.Helper()
 
 	pubBroker, privBroker, _ := ed25519.GenerateKey(nil)
-	tknSvc := token.NewTknSvc(privBroker, pubBroker, cfg.Cfg{TrustDomain: "agentauth.local", DefaultTTL: 300})
+	tknSvc := token.NewTknSvc(privBroker, pubBroker, cfg.Cfg{TrustDomain: "test.local", DefaultTTL: 300, Issuer: "test-issuer"})
 
 	st := store.NewSqlStore()
 
 	pubA, privA, _ := ed25519.GenerateKey(nil)
 	pubB, privB, _ := ed25519.GenerateKey(nil)
 
-	agentAID := "spiffe://agentauth.local/agent/orch-1/task-1/inst-a"
-	agentBID := "spiffe://agentauth.local/agent/orch-1/task-2/inst-b"
+	agentAID := "spiffe://test.local/agent/orch-1/task-1/inst-a"
+	agentBID := "spiffe://test.local/agent/orch-1/task-2/inst-b"
 
 	if err := st.SaveAgent(store.AgentRecord{
 		AgentID:      agentAID,
@@ -115,7 +115,7 @@ func TestHandshakeInvalidInitiatorToken(t *testing.T) {
 func TestHandshakeUnknownTargetAgent(t *testing.T) {
 	hdl, _, tokA, _, _, _, _, _, _ := testSetup(t)
 
-	_, err := hdl.InitiateHandshake(tokA, "spiffe://agentauth.local/agent/orch-1/task-99/unknown")
+	_, err := hdl.InitiateHandshake(tokA, "spiffe://test.local/agent/orch-1/task-99/unknown")
 	if !errors.Is(err, ErrHandshakeUnknownAgent) {
 		t.Fatalf("expected ErrHandshakeUnknownAgent, got %v", err)
 	}
@@ -124,18 +124,18 @@ func TestHandshakeUnknownTargetAgent(t *testing.T) {
 func TestHandshakeUnregisteredInitiator(t *testing.T) {
 	// Create an agent with a valid token but NOT registered in the store.
 	pubBroker, privBroker, _ := ed25519.GenerateKey(nil)
-	tknSvc := token.NewTknSvc(privBroker, pubBroker, cfg.Cfg{TrustDomain: "agentauth.local", DefaultTTL: 300})
+	tknSvc := token.NewTknSvc(privBroker, pubBroker, cfg.Cfg{TrustDomain: "test.local", DefaultTTL: 300, Issuer: "test-issuer"})
 	st := store.NewSqlStore()
 
 	// Register only the target, not the initiator.
-	targetID := "spiffe://agentauth.local/agent/orch-1/task-2/inst-b"
+	targetID := "spiffe://test.local/agent/orch-1/task-2/inst-b"
 	pubB, _, _ := ed25519.GenerateKey(nil)
 	_ = st.SaveAgent(store.AgentRecord{
 		AgentID: targetID, OrchID: "orch-1", TaskID: "task-2",
 		Scope: []string{"write:Data:*"}, RegisteredAt: time.Now().UTC(), PublicKey: pubB,
 	})
 
-	ghostID := "spiffe://agentauth.local/agent/orch-1/task-1/ghost"
+	ghostID := "spiffe://test.local/agent/orch-1/task-1/ghost"
 	tok, _ := tknSvc.Issue(token.IssueReq{
 		Sub: ghostID, OrchId: "orch-1", TaskId: "task-1", Scope: []string{"read:Data:*"},
 	})
@@ -211,7 +211,7 @@ func TestHandshakePeerMismatch(t *testing.T) {
 
 	// Register a third agent (C) — valid but not the intended handshake target.
 	pubC, privC, _ := ed25519.GenerateKey(nil)
-	agentCID := "spiffe://agentauth.local/agent/orch-1/task-3/inst-c"
+	agentCID := "spiffe://test.local/agent/orch-1/task-3/inst-c"
 	if err := st.SaveAgent(store.AgentRecord{
 		AgentID:      agentCID,
 		OrchID:       "orch-1",

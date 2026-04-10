@@ -9,17 +9,18 @@
 //
 //	AA_PORT          – HTTP listen port             (default "8080")
 //	AA_LOG_LEVEL     – quiet|standard|verbose|trace (default "verbose")
-//	AA_TRUST_DOMAIN  – SPIFFE trust domain          (default "agentauth.local")
+//	AA_TRUST_DOMAIN  – SPIFFE trust domain          (default "agentwrit.local")
+//	AA_ISSUER        – JWT iss claim — broker identity (empty = skip iss check on verify)
 //	AA_DEFAULT_TTL   – token TTL in seconds         (default 300)
 //	AA_ADMIN_SECRET  – shared secret for admin auth (required in production)
 //	AA_SEED_TOKENS   – print seed tokens on startup (default "false", dev only)
-//	AA_DB_PATH       – SQLite database file path    (default "./agentauth.db")
+//	AA_DB_PATH       – SQLite database file path    (default "./data.db")
 //	AA_SIGNING_KEY_PATH   – Ed25519 signing key file path     (default "./signing.key")
 //	AA_TLS_MODE      – none|tls|mtls               (default "none")
 //	AA_TLS_CERT      – path to TLS certificate PEM file
 //	AA_TLS_KEY       – path to TLS private key PEM file
 //	AA_TLS_CLIENT_CA – path to client CA certificate PEM file (mtls only)
-//	AA_AUDIENCE      – expected token audience claim        (default "agentauth", empty = skip)
+//	AA_AUDIENCE      – expected token audience claim        (empty = skip — operator opt-in)
 //	AA_APP_TOKEN_TTL – app JWT TTL in seconds              (default 1800 / 30 min)
 package cfg
 
@@ -45,18 +46,19 @@ type Cfg struct {
 	Port            string // AA_PORT (default "8080")
 	BindAddress     string // AA_BIND_ADDRESS (default "127.0.0.1")
 	LogLevel        string // AA_LOG_LEVEL (default "verbose")
-	TrustDomain     string // AA_TRUST_DOMAIN (default "agentauth.local")
+	TrustDomain     string // AA_TRUST_DOMAIN (default "agentwrit.local")
+	Issuer          string // AA_ISSUER: JWT iss claim — broker identity. Empty = skip issuer check on verify (mirrors Audience contract). Operators set this to a value that uniquely identifies their broker instance.
 	DefaultTTL      int    // AA_DEFAULT_TTL (default 300 seconds)
 	AppTokenTTL     int    // AA_APP_TOKEN_TTL (default 1800 seconds / 30 min)
 	AdminSecret     string // AA_ADMIN_SECRET (required for admin auth)
 	SeedTokens      bool   // AA_SEED_TOKENS (dev only, default false)
-	DBPath          string // AA_DB_PATH (default "./agentauth.db")
+	DBPath          string // AA_DB_PATH (default "./data.db")
 	SigningKeyPath  string // AA_SIGNING_KEY_PATH (default "./signing.key")
 	TLSMode         string // AA_TLS_MODE: none|tls|mtls (default "none")
 	TLSCert         string // AA_TLS_CERT: path to TLS certificate PEM file
 	TLSKey          string // AA_TLS_KEY: path to TLS private key PEM file
 	TLSClientCA     string // AA_TLS_CLIENT_CA: path to client CA PEM file (mtls only)
-	Audience        string // AA_AUDIENCE: expected token audience (default "agentauth", empty = skip)
+	Audience        string // AA_AUDIENCE: expected token audience (empty = skip — operator opt-in)
 	Mode            string // MODE: development|production (default "development")
 	AdminSecretHash string // bcrypt hash of admin secret (derived at load time)
 	ConfigPath      string // resolved config file path (empty if none found)
@@ -74,12 +76,13 @@ func Load() (Cfg, error) {
 		Port:           envOr("AA_PORT", "8080"),
 		BindAddress:    envOr("AA_BIND_ADDRESS", "127.0.0.1"),
 		LogLevel:       envOr("AA_LOG_LEVEL", "verbose"),
-		TrustDomain:    envOr("AA_TRUST_DOMAIN", "agentauth.local"),
+		TrustDomain:    envOr("AA_TRUST_DOMAIN", "agentwrit.local"),
+		Issuer:         os.Getenv("AA_ISSUER"),
 		DefaultTTL:     envIntOr("AA_DEFAULT_TTL", 300),
 		AppTokenTTL:    envIntOr("AA_APP_TOKEN_TTL", 1800),
 		AdminSecret:    os.Getenv("AA_ADMIN_SECRET"),
 		SeedTokens:     envOr("AA_SEED_TOKENS", "false") == "true",
-		DBPath:         envOr("AA_DB_PATH", "./agentauth.db"),
+		DBPath:         envOr("AA_DB_PATH", "./data.db"),
 		SigningKeyPath: envOr("AA_SIGNING_KEY_PATH", "./signing.key"),
 		TLSMode:        envOr("AA_TLS_MODE", "none"),
 		TLSCert:        os.Getenv("AA_TLS_CERT"),
@@ -88,13 +91,9 @@ func Load() (Cfg, error) {
 		ConfigPath:     cfgPath,
 		Mode:           "development",
 	}
-	// AA_AUDIENCE: LookupEnv distinguishes unset (→ default "agentauth")
-	// from explicitly empty (→ skip validation).
-	if v, ok := os.LookupEnv("AA_AUDIENCE"); ok {
-		c.Audience = v
-	} else {
-		c.Audience = "agentauth"
-	}
+	// AA_AUDIENCE: empty (unset OR explicitly empty) skips audience validation.
+	// Operators opt in by setting a value. No brand-coupled default.
+	c.Audience = os.Getenv("AA_AUDIENCE")
 
 	// Config file values are defaults; env vars override.
 	if c.AdminSecret == "" && cfgSecret != "" {

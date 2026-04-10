@@ -32,7 +32,7 @@ func newTestAdminSvc(t *testing.T) *AdminSvc {
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
-	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
+	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300, Issuer: "test-issuer", TrustDomain: "test.local"})
 	st := store.NewSqlStore()
 	return NewAdminSvc(testSecretHash, tknSvc, st, nil, "")
 }
@@ -43,7 +43,7 @@ func newTestAdminSvcWithAudit(t *testing.T) (*AdminSvc, *audit.AuditLog) {
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
-	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
+	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300, Issuer: "test-issuer", TrustDomain: "test.local"})
 	st := store.NewSqlStore()
 	al := audit.NewAuditLog(nil)
 	return NewAdminSvc(testSecretHash, tknSvc, st, al, ""), al

@@ -5,9 +5,10 @@
 // algorithm "EdDSA". Claims include standard fields (iss, sub, exp, nbf, iat,
 // jti) plus AgentAuth extensions (scope, task_id, orch_id, delegation_chain).
 //
-// The issuer is always "agentauth". Subjects are SPIFFE-format agent IDs
-// (see package identity). Scopes use the "action:resource:identifier" format
-// (see package authz).
+// The issuer (iss claim) is operator-configured via cfg.Issuer (env: AA_ISSUER).
+// Empty cfg.Issuer skips issuer enforcement on verify, mirroring the Audience
+// contract. Subjects are SPIFFE-format agent IDs (see package identity).
+// Scopes use the "action:resource:identifier" format (see package authz).
 package token
 
 import (
@@ -56,12 +57,11 @@ type DelegRecord struct {
 }
 
 // Validate checks structural integrity and temporal validity of the claims.
-// It returns an error if the issuer is not "agentauth", the subject or JTI
-// is empty, the token has expired, or the token is not yet valid (nbf).
+// It returns an error if the subject or JTI is empty, the token has expired,
+// or the token is not yet valid (nbf). Issuer enforcement happens at the
+// service layer (TknSvc.Verify) where cfg.Issuer is available — Validate
+// stays a pure structural check with no config dependency (TD-TOKEN-001).
 func (c *TknClaims) Validate() error {
-	if c.Iss != "agentauth" {
-		return ErrInvalidIssuer
-	}
 	if c.Sub == "" {
 		return ErrMissingSubject
 	}
