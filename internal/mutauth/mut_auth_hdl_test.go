@@ -43,7 +43,7 @@ func testSetup(t *testing.T) (
 		TaskID:       "task-1",
 		Scope:        []string{"read:Data:*"},
 		RegisteredAt: time.Now().UTC(),
-		PublicKey:     pubA,
+		PublicKey:    pubA,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func testSetup(t *testing.T) (
 		TaskID:       "task-2",
 		Scope:        []string{"write:Data:*"},
 		RegisteredAt: time.Now().UTC(),
-		PublicKey:     pubB,
+		PublicKey:    pubB,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestHandshakePeerMismatch(t *testing.T) {
 		TaskID:       "task-3",
 		Scope:        []string{"read:Data:*"},
 		RegisteredAt: time.Now().UTC(),
-		PublicKey:     pubC,
+		PublicKey:    pubC,
 	}); err != nil {
 		t.Fatal(err)
 	}

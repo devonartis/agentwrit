@@ -10,7 +10,7 @@ import (
 
 func TestRequestIDMiddleware(t *testing.T) {
 	// Red Phase: This test will fail because the middleware is not yet implemented.
-	
+
 	innerHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := problemdetails.GetRequestID(r.Context())
 		if id == "" {

@@ -46,9 +46,9 @@ var adminScope = []string{
 
 // Sentinel errors returned by admin operations.
 var (
-	ErrInvalidSecret           = errors.New("invalid client secret")
+	ErrInvalidSecret  = errors.New("invalid client secret")
 	ErrAgentNameEmpty = errors.New("agent_name is required")
-	ErrScopeEmpty    = errors.New("allowed_scope must not be empty")
+	ErrScopeEmpty     = errors.New("allowed_scope must not be empty")
 )
 
 // CreateLaunchTokenReq is the JSON request body for
@@ -252,4 +252,3 @@ func (s *AdminSvc) ConsumeLaunchToken(tokenStr string) error {
 	}
 	return s.store.ConsumeLaunchToken(tokenStr)
 }
-

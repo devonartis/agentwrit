@@ -40,7 +40,6 @@ import (
 	"time"
 
 	"github.com/devonartis/agentauth/internal/admin"
-	"github.com/devonartis/agentauth/internal/keystore"
 	"github.com/devonartis/agentauth/internal/app"
 	"github.com/devonartis/agentauth/internal/audit"
 	"github.com/devonartis/agentauth/internal/authz"
@@ -48,6 +47,7 @@ import (
 	"github.com/devonartis/agentauth/internal/deleg"
 	"github.com/devonartis/agentauth/internal/handler"
 	"github.com/devonartis/agentauth/internal/identity"
+	"github.com/devonartis/agentauth/internal/keystore"
 	"github.com/devonartis/agentauth/internal/obs"
 	"github.com/devonartis/agentauth/internal/problemdetails"
 	"github.com/devonartis/agentauth/internal/revoke"
