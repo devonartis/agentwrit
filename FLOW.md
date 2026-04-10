@@ -501,3 +501,34 @@ Why in Obsidian KB Decision 015. Council + acceptance tests bypassed for this in
 - `.plans/specs/2026-04-10-ci-build-gates-msec-plan.md` — 31 tasks across 4 phases
 
 ### Status: Ready to execute — next cuts `feature/ci-msec` (Task 1 of plan)
+
+---
+
+## 2026-04-10 — M-sec CI/build/gates v1 SHIPPED
+
+### Decision 016: Contribution policy — reasoning shift, not flip
+Updated Decision 014's reasoning after CI landed — "can't verify PRs safely without manual work" → "haven't accepted review cost." Policy unchanged. 9-item exit criteria list for reconsidering. Rationale in Obsidian KB Decision 016.
+
+### Action: Executed M-sec plan end-to-end, Phases A–D
+- PR #3 `feature/ci-msec` → develop (29 commits, main implementation)
+- PR #4 `fix/strip-script-mid-merge` → develop (strip script mid-merge support, unplanned detour)
+- PR #5 `docs/readme-badges-gitignore` → develop (README badges + `.vscode/` gitignore)
+- Two `develop → main` strip merges: `a72a959` and `4213cf8`
+- Both branches protected behind `gates-passed` (required check, strict, no force-push, no delete, conversations must resolve)
+- `go.mod` toolchain bumped `go1.25.7 → go1.25.9` resolving TD-VUL-001..004
+- CodeQL / Scorecard / `dep-review` parked as TD-VUL-005/006 until public flip (GHAS requirement)
+
+### Status: Phase D complete — Task 31 observation window running
+31/31 tasks done. 13 CI gates + `gates-passed` aggregator + `gate-parity` + `contribution-policy` + `smoke-l25` (L2.5 core contract smoke) live on both branches. First nightly regression fires 05:17 UTC tomorrow. First Dependabot run expected Monday.
+
+**Next:** pick one — TD-019 domain registration (blocks SECURITY.md contact + CLA legal text), `docs/` directory refactor (ToC + meta-tag cleanup — new tech debt entry), or AgentWrit rebrand execution (now unblocked by CI safety net).
+
+---
+
+## 2026-04-10 — Decision 017: AgentWrit public intro copy
+
+### Decision 017: Code-verified claims, no enterprise mention in OSS intro
+Rewrote the AgentWrit public intro copy for the rebrand (Layer 1 of Decision 013). Key moves: grounded every technical claim in actual code (hash-chain audit trail in `internal/audit/audit_log.go`, 24 event types emitted today), introduced the identity-plane vs data-plane split as the OSS/enterprise boundary, pulled the enterprise data-plane line out of the OSS intro to keep the story clean, landed the "writ" legal-grant metaphor in the lead paragraph. Full rationale in Obsidian KB Decision 017.
+
+### Status: Copy ready — apply on next agentauth-core session
+**Next:** apply the new intro to the website, core README, and any other location the old intro lives. Single source of truth in the decision file — no per-repo drift.

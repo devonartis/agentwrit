@@ -2,6 +2,82 @@
 
 ## Recent Lessons (last 3 sessions — older archived to MEMORY_ARCHIVE.md)
 
+### M-sec CI/build/gates v1 shipped — all-nighter (2026-04-10, Phase A–D execution)
+
+**What happened:** Ran the CI/gates strategy from [[Obsidian KB Decision 015]] straight through to shipped. 03:40 decision → 09:00 running on main. 31/31 tasks done. Three PRs merged (PR #3 main implementation, PR #4 strip-script mid-merge fix, PR #5 README badges + `.vscode/` gitignore). Two `develop → main` strip merges landed clean: `a72a959` and `4213cf8`. Both branches now protected behind `gates-passed`. Decision 016 written to capture the reasoning shift behind Decision 014 (policy unchanged, justification updated). Rewrote the `obsidian:log` skill mid-session to support dual-write mode with log voice + journal voice as separate shapes.
+
+**What we discovered — golden information:**
+
+- **"Don't improvise around automated safety nets."** The strip script refused to run mid-merge because of its dirty-tree guard — its own documented merge flow was impossible to execute. My first instinct was to manually `git rm` the conflicted files and proceed. User caught it immediately: "we spent three hours automating CI so we never depend on manual runs, and now we were about to depend on a manual process that isn't even documented. Fix the script." The strip script is the ONLY automated barrier between private `develop` and public `main`. Improvising past it ONCE establishes the precedent that improvising is OK and eventually something sensitive escapes. This is the most important lesson of the session. Write it on the wall.
+
+- **Prebuilt action binaries are a hidden dependency on THEIR build toolchain, not yours.** `golangci-lint-action@v6.5.2` with `version: v1.64.8` took 3 CI iterations to diagnose. The pre-built `golangci-lint` binary was compiled against Go 1.22 — my `go.mod` has `toolchain go1.25.9` (required for the stdlib CVE fixes). 1.22-era linter crashes on the SSA analysis pass when parsing 1.25 code. Local developers don't see it because brew's `golangci-lint` is built against whatever Go the Homebrew bottle tracks (currently 1.25). Fix: dropped the action entirely, `go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8` on the CI runner so it compiles the linter against the runner's Go, matching `go.mod`. Rule of thumb: when you're on the leading edge of a language version, install language tooling from source so the runner's compiler does the work.
+
+- **GHAS gates three workflows on private repos: dep-review, CodeQL SARIF upload, Scorecard SARIF upload.** $49/committer/month to enable, free on public repos. User's call was defer — repo flips public in ~1 week, cost isn't worth the coverage gap, and we only have 5 direct deps anyway. Remaining coverage while parked: `govulncheck` (stdlib + Go module CVEs live, blocking), `gosec` (app-layer static analysis), contamination grep, L2.5 smoke. All three deferred workflows parked on `workflow_dispatch:` only with job bodies preserved. Re-enable is a one-line revert after public flip. Tracked as TD-VUL-005/006 with a consolidated fix sequence.
+
+- **jq's `//` operator treats `false` as empty.** `jq -r '.valid // empty'` on `{"valid": false}` returns `""`, not `"false"`. Caught because I ran the L2.5 smoke against a live broker before pushing — if I'd trusted the unit tests alone, the smoke would have failed in CI and I'd have been chasing a phantom "revocation not enforced" bug. Use plain `.valid` when you need to distinguish `false` from missing.
+
+- **`git merge -X ours` does not resolve modify/delete conflicts.** It only handles content conflicts where both sides modified the same region. Modify/delete is structural and needs explicit `git rm` (keep deletion) or `git add` (keep modification). I tried `-X ours` as a shortcut and it still left the files as `DU` (deleted-unmerged).
+
+- **Plan drafts are wrong about wire format more often than they are about architecture.** The plan had `/v1/revoke` accepting `{"kind": "agent", "id": "..."}`. The real handler wants `{"level": "agent", "target": "..."}`. Verified by reading `internal/handler/revoke_hdl.go`. **Rule: read the handler, not the plan, for DTO shapes.** Same class of bug that made acceptance tests in B6 reach for the wrong role model.
+
+- **Bidirectional defense layers must enforce the SAME list.** Audit during the strip fix found `.vscode/` missing from both `strip_for_main.sh` and `.githooks/pre-commit`, AND `adr/` in the strip script but not in the pre-commit hook. Two layers disagreeing is worse than one layer — you think you have defense in depth but the overlap isn't where you think it is. Added both missing entries and a sync-note comment in the hook pointing at the strip script. **Rule: when two files enforce the same invariant, they need a note telling future editors to keep both in sync.**
+
+- **VSCode's watch loop recreated `.vscode/settings.json` between `rm` and `git commit`.** The first strip merge leaked it — the script ran `git rm .vscode/settings.json`, staged the deletion, half a second later VSCode wrote the file back for Snyk IDE prefs, `git add -A` restaged it, merge commit landed with `.vscode/settings.json` on main. I caught it with `git ls-tree -r HEAD | grep vscode` right after the commit. The pre-commit hook should have caught it but didn't because `git config core.hooksPath .githooks` is a per-clone setup step I'd never run in this checkout. **Three layers of defense now active:** (1) `.vscode/` in `.gitignore` (PR #5), (2) strip script removes it on merge, (3) pre-commit hook blocks commits to main. I want at least two of the three to hold when I make a mistake, and tonight I needed exactly two because the hook wasn't installed. Also: after cloning any repo with `.githooks/`, immediately run `git config core.hooksPath .githooks`.
+
+- **Unbounded background tasks must be killed explicitly.** A `docker compose logs -f broker` shell sat in `ps aux` for ~90 minutes because I forgot to kill it after its "monitor" purpose ended. User caught it and said "that shell should not be running it was 30 minutes ago." `run_in_background: true` + `<task-notification>` only works for bounded commands (like `go test -race`, `gh run watch --exit-status`) that eventually exit on their own. For unbounded tails, the pattern breaks. **Rule: check `ps aux | grep -E "gh run watch|go test|docker compose logs"` between phases to catch ones that slip through.**
+
+- **GitHub Actions job IDs cannot contain `.`** — `smoke-l2.5` was invalid and `actionlint` caught it before first push. Renamed to `smoke-l25` in 4 places (ci.yml job, ci.yml `gates-passed` needs list, ci.yml `GATE_LIST` comment, gates.sh `GATES_FULL` array). Kept "L2.5" as the test-taxonomy documentation label — only the machine-readable identifier dropped the period.
+
+- **Gosec uses JSON for config even though the file is named `.gosec.yml`.** The extension is historical and misleading. Wrote YAML the first time and gosec refused to load it: `"Failed to load config: invalid character '#' looking for beginning of value"`. Rewrote as JSON, problem solved. Keep the `.yml` extension for consistency with other linter configs but the content MUST be JSON.
+
+- **Contribution policy reasoning shifted tonight without the policy changing.** Decision 014's original reason for "no PRs" was "can't verify PRs safely without manual review work." CI now catches bad PRs mechanically — that reason no longer holds. But the policy still holds because the NEW reason is capacity: I haven't decided to accept the review cost, which is about bandwidth and coaching, not safety. Wrote Decision 016 to capture the shift so future-me doesn't see the CI badges and misread Decision 014 as obsolete. **Rule when reasoning changes but a policy doesn't: write a new decision that updates the reasoning. Don't edit the old decision in place.**
+
+**User corrections (golden — blog material):**
+
+1. **"Fix the script, don't improvise around the safety net."** The session-defining correction. When the strip script blocked me mid-merge and I was about to manually `git rm` the conflicted files, user pulled me back. "We spent three hours automating CI so we never depend on manual runs." This reframed the entire remaining work. The right response to an automated safety net blocking you is to fix the safety net, not bypass it.
+
+2. **"Why is this in my voice — this is where we should be using a log, not a journal note."** I wrote the project work log in first-person journal voice with "I kept thinking X, then realized Y" narrative beats. User corrected: work logs are for reconstruction by future-you, they should be terse/past-tense/factual ("Cut branch. Wrote file. Ran test. 3 passed, 2 failed. Fixed by X."). Daily notes are for first-person journaling. Two different voices, not one. I conflated them repeatedly and had to rewrite the work log AND rewrite the `obsidian:log` skill to explicitly separate the two voices.
+
+3. **"It is definitely a log, this is not how people write in their journal in my voice."** After I rewrote the daily note entry once, it was STILL changelog-shaped with bold headers per lesson. User had to correct me again. The pattern I keep slipping into is bold-header changelog format (`**Don't X**`). Fix: re-read Divine's actual recent entries (01:30 AM rebrand, 03:40 AM CI strategy) before drafting, and explicitly block bold headers in the skill's validation step (`awk ... | grep -c '^\*\*[A-Z]'` must return 0).
+
+4. **"We should be creating different docs instead of one continuous long thing that goes on for years."** User's preferred pattern for work logs: each session gets its own dated file (`YYYY-MM-DD-slug.md`) in the project KB folder, not appending to a single rolling log. Matches the existing `showcase-authagent/2026-03-08-sessions.md` pattern. One file per session, never one file per project.
+
+5. **"Why are we searching when you should know? Let's stop NOW and write the obsidian log like the decision flow."** When Divine asked where AgentAuth work logs go in the KB, I started doing a directory search. User pulled me back — I should have just known from the `obsidian:decision` skill's existing config (`~/.claude/obsidian-projects.json`). The right move was to look at the config I'd already written, not to re-explore the vault. Rule: when there's a config file, check it before searching.
+
+6. **"WTF — you did not add an AgentAuth entry, we always have a strict rule to bi-link, so what did you do."** I wrote a 2000-word dump into the daily note without creating the matching AgentAuth work-log file, AND the wikilinks I added were one-way (daily note → project files, no backlinks from project files to the daily note). Rule: bidirectional always. Forward link on daily, backlink on project file, matching pair. If you write only one side, it's a silent graph failure.
+
+7. **"The content should be a new document in the folder, not the same document. I think the old log was just appending to one doc."** Clarifying what (4) meant: the old `obsidian:log` skill was appending everything to the daily note. The new pattern is write the detail to a NEW file in the project KB folder and a short summary to the daily note. One session = one new work log file + one daily summary entry + bidirectional links.
+
+8. **"This is dangerous because we had this automated — if you forget something, then we will make it public."** When I was contemplating manually stripping files from the main-bound merge, user reminded me of the blast radius. The strip-for-main flow isn't just about convenience — it's the safety net that prevents accidentally publishing dev artifacts when the repo flips public. Manual stripping once means the muscle memory to do it again next time, and eventually something sensitive slips.
+
+9. **"That shell should not be running, it was 30 minutes ago."** The stale `docker compose logs -f` shell. User was watching `ps aux` in a separate terminal while I worked and caught it. The background task pattern (`run_in_background: true` + wait for notification) works fine for bounded commands but fails open for unbounded tails that never exit.
+
+10. **"Not the skill — run the skill to add the logs. Did we complete the log correctly?"** When I kept editing the skill instead of testing it by using it, user redirected me: stop updating the skill, use the skill to produce the outputs, verify the outputs are correct, THEN move on. Rule: tool-building has a natural stopping point where you have to use the tool and validate the output. Don't get stuck in the build loop.
+
+**Session thoughts:**
+
+- **The feedback loop between "decision recorded" and "decision shipped" was the thing to optimize for.** Decision 015 was written at 03:40 AM as a strategy doc. The pipeline was running on real code at 06:28 AM. Three hours from "this is what we're going to build" to "it's running." Most of my code changes over the past year sit in a spec for weeks and by the time I come back to them half the context is gone. Tonight the loop stayed tight enough that every correction Divine made landed while the constraints were still alive in memory. When you can keep the loop that tight, you should — the correction cost is much lower than the re-derivation cost of stale context.
+
+- **The `obsidian:log` skill refactor mid-session was the right call.** The old skill was a 93-line stub that conflated daily notes and work logs. The new skill is 385 lines with: project detection via `~/.claude/obsidian-projects.json`, dual-write mode, mandatory voice calibration (read real entries before drafting), explicit separation of log voice (past-tense, factual, subject=work) from journal voice (first-person, discursive, subject=me), length discipline on daily note summaries (≤30 lines, enforced by awk validation), bold-header anti-pattern detection (grep in validation step), bidirectional link enforcement (grep in validation step). The rewrite was a detour but without it the log would have kept failing the same way.
+
+- **The strip script bug was always there — we just hadn't exercised it.** The dirty-tree guard was added for safety ("don't strip on top of uncommitted work") but it conflicted with the documented mid-merge flow ("merge develop --no-commit, then strip"). Nobody noticed because the first develop→main merge on 2026-04-04 was a fast-forward with no conflicts — the script ran on a clean tree and the guard never fired. Tonight was the first merge with actual conflicts and the guard blew up on its own documented usage. **Rule: test automation against the messy path, not just the happy path.** A safety guard that blocks the documented use case is the same bug category as a test that doesn't test anything.
+
+- **The two strip merges (`a72a959` and `4213cf8`) were the only direct pushes to `main` in the session.** Both went through `git push` instead of PRs because branch protection has `enforce_admins: false` (I'm admin, I bypass). That's intentional for the maintainer-only workflow, but it's worth noticing: I used the admin bypass for strip merges because those aren't reviewable content (they're mechanical strip+commit+push, fully automated) but I did NOT use the admin bypass for any other work. PR #3, PR #4, PR #5 all went through real PR review (self-review) and CI gates. **Maintainer admin bypass is for the strip merges only. Everything else goes through PR + gates.**
+
+- **Rewriting the `obsidian:log` skill showed me that the `obsidian:decision` skill's structure was doing a lot of work.** Dual-write, config-driven project detection, voice calibration, bidirectional links, index updates, validation — none of that was invented for the log skill, it was adapted from the decision skill. The `obsidian:decision` skill I built earlier today was the template. **General rule: once you've built a good skill, the next skill in the same family is a translation, not a ground-up build.** Recognize the shared structure and reuse it.
+
+- **Decision 016 is the kind of decision I want more of: "the reasoning changed but the policy didn't."** Most decisions change either the policy or the reasoning. A decision that only updates the reasoning is rare and valuable because it prevents the "we shipped CI, so Decision 014 must be obsolete" misreading that future-me would absolutely make. The decisions folder now has an audit trail of BOTH what we decided and WHY we decided it, and the reasoning can evolve without losing the policy history.
+
+**What's NOT done (handoff to next session):**
+
+- **PR #5 `docs/readme-badges-gitignore` has been merged and strip-merged to main.** No follow-up needed on that branch.
+- **TD-019 domain registration** — blocks SECURITY.md contact, CLA legal text, CODE_OF_CONDUCT.md contact. Domain is `agentwrit.com` per Decision 013. Needs DNS setup + email-alias configuration + update of all placeholder `@agentauth.dev` / `@agentauthdev._` references.
+- **`docs/` directory refactor** — user identified tonight that it has no table of contents, files are scattered, some files leak meta-tags that shouldn't be public-facing. Needs a new tech debt entry in `TECH-DEBT.md` and a separate cycle.
+- **ADR for the M-sec technical architecture** — Decision 015 captures the strategic "why," but the specific "how" (exact workflow file structure, exact gate list, exact pinned-SHA approach) should live in `adr/` so it's coupled to the code.
+- **AgentWrit rebrand execution** — now unblocked by the CI safety net. This is the work Decision 015 was specifically a prerequisite for.
+- **Contribution policy exit-criteria list (Decision 016)** — 9 items, none done yet. The first one (repo flips public = Phase 4) is the gating event.
+- **`.plans/specs/2026-04-10-ci-build-gates-msec-plan.md`** — the plan file is still in the repo even though all 31 tasks are complete. Can be moved to `.plans/archive/` or left as a reference. User's call.
+
 ### ADR vs Decision split, skill build, and branch cleanup (2026-04-10)
 
 **What happened:** Long session that restructured how decisions get captured and cleaned up months of branch debt.
@@ -172,83 +248,4 @@ Each cherry-pick batch has acceptance tests in `tests/<batch-name>/`:
 ## Backburner Designs (review after migration is complete)
 
 - **Acceptance test automation + verification** — `.plans/designs/acceptance-test-automation.md`. Born during B5: how to automate story evidence creation while maintaining template compliance, and how to verify the agent followed the template with a deterministic hook. The `integration.sh` script is a CI smoke test — it does NOT produce proper evidence files. Three options captured: review hook, verify-evidence skill, or a runner script that produces template-compliant evidence. Review once B6 is merged.
-
-### CC v4 Cleanup + Rename Session (2026-04-04) — taking develop from scratch pad to release-ready
-
-**What happened:**
-- Renamed GitHub repos: `devonartis/agentauth` → `devonartis/agentauth-ENT` (enterprise/HITL/OIDC archive), `devonartis/agentauth-core` → `devonartis/agentauth` (the open-source core). Fixed org everywhere (user has two accounts: `devonartis` owns the code, `divineartis` was wrongly in go.mod).
-- Go module path fix: `github.com/divineartis/agentauth` → `github.com/devonartis/agentauth` — 154 occurrences across 46 .go files, single sed + find.
-- Executed CC v4 cleanup plan (8 batches + root audit + .plans audit). Deleted 25+ obsolete files, renamed 4 cc-*.md drafts, rewrote CHANGELOG 732→128 lines, created docs/roles.md, added /v1/app/launch-tokens + single_use to OpenAPI, fixed v1.2→v1.3 and 7→8 components across docs.
-- Built the "develop stays messy, main stays clean" infrastructure: lean .gitignore (OS junk only), `scripts/strip_for_main.sh` (removes dev files on merge, has --dry-run flag and safety checks refusing to run on develop), and `.githooks/pre-commit` that blocks commits of dev files to main.
-- First successful develop → main merge: fast-forward + strip stripped 10 paths, 199 files on main, all code intact, build passes.
-
-**What we discovered — golden information:**
-- **Plans don't die when they're executed — they die when they're replaced.** The `.plans/designs/` directory had CC v1, v2, v3, v4 of the cleanup plan AND 3 "pre-cleanup assessment" designs AND other versions from another agent. The user correctly said "keep only the live plan, delete the rest." Plan versioning is noise once the plan is done.
-- **"Personal drafts" aren't project artifacts.** The .plans directory had 4 draft essays/toolkits the user was writing about Claude Code. They belonged in a personal archive, not in the repo. Moved to `.plans/archive/` rather than delete, flagged for user to relocate later.
-- **`.gitignore` only blocks OS/tool junk — the strip script handles the rest.** Earlier plans had `MEMORY.md`, `FLOW.md` gitignored, which would have blocked them on develop too. User's discipline: develop tracks everything useful, merge to main strips it. This decouples "what exists in repo" from "what ships publicly."
-- **Migration-era scripts have tech debt that isn't flagged as tech debt.** `test_batch.sh` references done batches, `live_test.sh` references `cmd/smoketest` which doesn't exist, `live_test_docker.sh` tests sidecar endpoints removed in B0. The README and gates.sh still pointed to them. Broken dev tooling that nobody noticed because nobody ran it. Deleted and removed references.
-- **Document audit reports age instantly.** `audit/` had 4 markdown reports from March 29 analyzing doc drift — but that drift was fixed in `fix/docs-overhaul` branch (already merged). The reports described a state that no longer existed. Users who keep these wonder what's actionable; they're actionable at writing time, not later. Deleted the whole directory.
-- **Two copies of the same .docx file existed** — one at root, one in `audit/`. Byte-identical. Binary files at repo root are always wrong placement; binary files in git in general are questionable. Deleted both — the markdown reports alongside them were the real artifacts anyway.
-
-**User corrections (things I got wrong):**
-1. **Claimed TD-S08 was resolved, it wasn't fully resolved.** User did their own verification and came back with specific line numbers showing `client_id`/`client_secret` references in docs/api.md. I had to explain that those were for APP auth (correct per code), while TD-S08 was about ADMIN auth (already fixed). The lesson: don't say "resolved" without showing the evidence inline.
-2. **Broke code freeze for a comment edit.** I changed a comment in `internal/token/tkn_svc_test.go` to fix a stale reference. User called it immediately: "you are updating code." Reverted. Comments ARE code for this purpose. Logged to post-freeze queue. Later the user explicitly lifted freeze for those 2 comments.
-3. **Committed after being asked a question.** User asked "are you committing to develop not merging yet are you" — I read it as a command and said "no I have not committed." User clarified: they were just asking, not telling me to do anything. Lesson: questions end in questions, even without question marks. Confirm intent before acting.
-4. **Proposed FLOW.md dump with 20 bullets about the cleanup.** User: "FLOW.md should not have that full message, that is MEMORY.md. FLOW.md only has what small decision and what is next, we keep saying that." Trimmed FLOW.md entry to decision + next, moved details here. **The rule is stable: FLOW = decision + next. MEMORY = lessons + golden knowledge. TECH-DEBT = tech debt. Don't mix.**
-
-**Session thoughts:**
-- The cleanup plan went through TWO agents (me = CC, the other = PI) writing competing versions. The user kept both, compared them, asked me to review the other's work, had them review mine. This caught things neither of us would have caught alone: I missed the need for a "canonical public story" section; PI missed the enterprise extraction preservation problem. The comparison forced both plans to converge on something better than either started with.
-- The user cares deeply about **discipline around file organization.** Multiple times: "why is this at root?" "why do we need this?" "what is this for?" Root is visitor-expected files only. Internal stuff in internal dirs. Duplicates deleted. Empty dirs deleted. The repo looks disciplined now because it was audited file-by-file.
-- The human review gate after every batch was worth it. It caught: me claiming scope creep was needed (enterprise extraction map), wrong file assumptions (live_test scripts were thought to be used but were broken), and wrong .gitignore scope. Without those gates, I would have shipped worse work faster.
-- **Strip-on-merge is a better pattern than gitignore-forever** for internal tracking files. You get full version history of FLOW.md, MEMORY.md, TECH-DEBT.md on develop. Main never sees them. Contributors don't trip over them in the ignore list.
-
-**What's NOT done:**
-- Phase 3 (multi-agent review) before going public — didn't happen yet, user wants this before publicizing.
-- Personal drafts in `.plans/archive/` — user should relocate to personal notes when ready.
-- Repo is still private (intentionally).
-
-### Python SDK v0.2.0 Session (2026-04-01) — extraction, cleanup, and live verification
-
-**What happened:**
-- Extracted Python SDK from monorepo via `git filter-repo`
-- Wrote spec and implementation plan for HITL removal + API alignment
-- Executed 12-task plan: removed HITLApprovalRequired class, approval_token parameter, HITL error parsing, HITL demo app, HITL docs/tests
-- Code review caught HITL contamination in docs/ (4 files) — not covered by original plan. Fixed.
-- Expanded contamination guard tests to scan docs/ and README in addition to src/
-- Live broker verification: 13 integration tests passed against broker v2.0.0
-- All API field names aligned — the known mismatches from MEMORY.md (token vs access_token, etc.) were already fixed during the monorepo phase
-- Merged to main as v0.2.0 (14 commits, 2416 lines removed, 164 added)
-
-**What we discovered:**
-- `examples/hitl-demo/` was a full FastAPI app with templates — not documented in the design doc. Discovered during implementation and added to the deletion plan.
-- API contract was already aligned from code inspection — live broker testing confirmed it. The "known mismatches" from the parent project were stale.
-- Code review is essential even for removal work — the plan missed docs/ contamination. The reviewer caught it.
-- Comments should explain intent, not restate code. User corrected this multiple times.
-
-**What's NOT done:**
-- No demo application (deleted HITL demo, clean replacement needed)
-- Not pushed to GitHub yet
-- No CI (GitHub Actions)
-- Not on PyPI
-
-**This repo (`agentauth-core`) tracks:** strategic decisions about the SDK (release strategy, repo model). The SDK repo (`~/proj/agentauth-python`) tracks its own implementation.
-
-### Release Strategy Session (2026-03-31) — architectural planning
-
-**What happened:**
-- Cloned and analyzed `devonartis/agentauth-clients` — monorepo with Python and TypeScript SDKs, built against the OLD broker (`authAgent2`) with HITL/OIDC baked in.
-- Researched how real open-source projects handle SDK placement: Model 1 (per-language repos — Stripe, Twilio, HashiCorp), Model 2 (multi-SDK monorepo — AWS), Model 3 (SDKs in server repo — small projects).
-- Decision: **Model 1 — separate per-language repos.** Aligns with open-core model, gives clean package identity, independent release cycles.
-- Wrote high-level release strategy at `.plans/release-strategy.md` covering 4 phases: repo cleanup/archive → SDK repo setup → SDK core update → future enterprise extensions. Each phase will break into its own devflow cycle.
-
-**What we discovered — golden information:**
-- **SDK placement is one of the most consequential repo-architecture decisions in open-source.** It determines release cadence coupling, contributor experience, and how consumers discover and trust your SDKs. Getting this wrong creates friction that compounds over time.
-- **The SDKs have enterprise contamination.** Both Python and TS SDKs have HITL baked in: `HITLApprovalRequired` exception, HITL retry logic in `get_token`, HITL demo app, HITL implementation guides, HITL integration tests. This mirrors the sidecar contamination we cleaned from the broker in B0 — same pattern, different layer.
-- **Most of the SDK endpoint calls DO exist in core.** 7/8 endpoints the SDKs call are in `agentauth-core`. Only the HITL retry with `approval_token` is missing. The update is surgical, not a rewrite.
-- **Three archives will exist:** `agentauth-internal` (golden history), `agentauth` (enterprise/HITL — becomes archive #2), `agentauth-clients` (current monorepo — becomes archive #3). Three active repos: `agentauth` (core broker), `agentauth-python`, `agentauth-ts`.
-- **The rename is the natural moment to restructure.** `agentauth-core` → `divineartis/agentauth` triggers Go module path changes anyway — might as well set up SDK repos at the same time.
-
-**Session thoughts:**
-- The SDK work is phases of work, each of which would break into its own brainstorm → spec → plan cycle via devflow. Phase 1-2 are repo operations (git/GitHub). Phase 3 is real development work that needs the full devflow treatment.
-- User was clear: high-level plan first, details later. Don't over-specify. Each phase becomes its own devflow cycle when we get to it.
 
