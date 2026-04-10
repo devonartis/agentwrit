@@ -486,3 +486,65 @@ The repo needs a real CI/build/gates setup before any public work. Current gates
 - `docs/getting-started-developer.md` SDK link
 
 **First concrete action next session:** devflow → brainstorm CI/build/gates scope → spec → plan → execute. This is a feature, not cleanup, so the full devflow cycle applies.
+
+---
+
+## 2026-04-10 — M-sec CI/build/gates brainstorm + design + plan
+
+### Decision: CI before rebrand, M-sec scope (not generic M)
+
+Brainstormed the CI/build/gates work end-to-end in one session. Locked sequencing (CI first, rebrand second) and scope (M-sec — security-product-grade, not generic Go-project CI). Strategic layer captured as Obsidian KB **Decision 015** ("CI/Gates Strategy — Security-First, Rebrand-Resilient") at `10-Projects/AgentAuth/decisions/015-ci-gates-security-first.md`. Cross-linked to Decisions 013 (rebrand), 014 (no external contributions), 010 (release strategy), 006 (AGPL), 002 (open-core), and ADR 009 (acceptance tests).
+
+**Core reasoning:** A credential broker's value is evidence of trustworthiness, not just compiling code. Generic Go CI (build/test/lint/coverage) doesn't produce the signals evaluators look for on a security product. M-sec adds CodeQL SAST, OpenSSF Scorecard, SBOM via syft, Dependency Review action, pinned action SHAs with Dependabot, `go mod verify`, `gosec` with explicit config, and `govulncheck` as a **blocking** gate. Coverage demoted from gated to informational (weak proxy for security).
+
+### Decision: Option B architecture — parallel CI jobs + `gates.sh` local mirror + parity test
+
+Three architectures considered. Option A (CI calls `gates.sh`) is sequential and slow. Option C (independent local + CI) has max drift risk and fails the "gate consistency as a security property" test. **Option B wins:** parallel per-gate jobs in `ci.yml` for fast CI, `scripts/gates.sh` as the local-dev mirror, and a `scripts/test-gate-parity.sh` that fails CI if the two lists drift. 20 lines of enforcement makes drift impossible without a visible failure.
+
+### Decision: L2.5 core contract smoke blocking on PR + L4 nightly full regression informational
+
+L1 health-check smoke is worse than useless for a credential broker (a running `/v1/health` endpoint proves nothing about whether the broker issues/verifies/revokes correctly). L2.5 = nine deterministic steps verifying admin auth → app registration → launch token → agent token exchange → JWT structure → verify → revoke → revoke-enforced → out-of-scope-denied. Runs ≤ 4 minutes on every PR against a `stack_up.sh` broker. L4 full regression (all `tests/*/regression.sh`) runs nightly on schedule against develop, opens a GitHub issue on failure, does NOT block in-flight PRs.
+
+### Decision: Companion infrastructure — Dependabot yes, contribution gate yes, CHANGELOG gate yes, pre-commit deferred
+
+- **Dependabot** (`.github/dependabot.yml`): weekly PRs for `github-actions`, `gomod`, `docker` ecosystems. Maintains pinned SHAs. Required because pinning without Dependabot accumulates supply chain debt.
+- **Contribution policy** (`.github/workflows/contribution-policy.yml`): mechanically enforces Decision 014. Uses `pull_request_target` with **zero PR-branch checkout** — reads author metadata via GitHub API only. Auto-closes PRs from non-maintainers with a templated comment. Exempts Dependabot, github-actions bot, anyone in `.github/MAINTAINERS`, anyone with write access.
+- **CHANGELOG gate**: diff check on PRs, fails if `CHANGELOG.md` not touched, `skip-changelog` label bypasses for docs/tests-only PRs. Audit-visible escape hatch.
+- **Pre-commit hooks**: deferred to a separate smaller cycle. Dev convenience, not audit evidence.
+
+### Decision: Devflow doesn't cleanly apply to infrastructure cycles
+
+User feedback during this session: "did not see much benefit from the council" and "not sure we need acceptance plan the devflow did not really apply." Bypassed council (Steps 2.5 + 4.5 — council being removed from devflow later). Skipped acceptance tests (Step 4) — the CI pipeline IS the verification; the rollout (push + watch workflows) IS the live test. Feedback captured as auto-memory `feedback_devflow_not_universal.md`. Rule: decide which devflow steps apply per cycle type (feature vs. infrastructure vs. cleanup vs. migration) at the *start* of the cycle, don't default to the full table.
+
+### Action: Design doc + implementation plan written
+
+Two artifacts produced this session:
+
+1. **Design doc** (~650 lines): `.plans/designs/2026-04-10-ci-build-gates-msec-design.md`. Implementation-level architecture — file structure, workflow triggers, gate-by-gate table, L2.5 smoke contract, pinned SHA strategy, rollout plan with branch-protection sequencing.
+2. **Implementation plan** (~1500 lines): `.plans/specs/2026-04-10-ci-build-gates-msec-plan.md`. 31 tasks across 4 phases (A: local infrastructure, B: GitHub Actions workflows, C: pin SHAs + push + iterate, D: merge + protect + observe). Each task has exact file paths, complete code/YAML, verification steps, and commit messages.
+
+### Status: Ready to execute — next session cuts `feature/ci-msec`
+
+**Where to start next session** (whether or not this session's context carries over):
+
+1. **Read in order:**
+   - Obsidian KB Decision 015 for the strategic why
+   - `.plans/designs/2026-04-10-ci-build-gates-msec-design.md` for architecture
+   - `.plans/specs/2026-04-10-ci-build-gates-msec-plan.md` for task-by-task execution
+
+2. **First concrete action:** Task 1 of the implementation plan — cut `feature/ci-msec` off `develop`, then work through Tasks 2-31 in order.
+
+3. **Tool usage for coding phase:** `Write`/`Edit`/`Bash` for the workflow/script creation work. jCodeMunch is NOT needed for writing the CI infrastructure itself. Reach for `search_symbols` / `get_symbol_source` only when a gate fails against the existing Go code and you need to investigate (e.g., `gosec` finding, wrong endpoint path in the L2.5 smoke). At session start of the coding phase: `check_freshness` + `index_folder(incremental=true)` if stale, so the index is ready for gate-failure diagnosis.
+
+4. **Do NOT re-brainstorm.** The scope, architecture, smoke strategy, and companion infra are all locked in Decision 015 + the design doc. If a choice seems odd while executing, check Decision 015 first — don't re-debate strategy.
+
+5. **Do NOT run devflow ceremony steps that don't apply.** Skip Step 2.5 (council), skip Step 4 (acceptance tests), skip Step 4.5 (council again). Step 8 (live test) is folded into rollout phase R4-R5 of the plan — pushing `feature/ci-msec` and watching CI run IS the live test. See auto-memory `feedback_devflow_not_universal.md`.
+
+6. **Rebrand is blocked on this cycle.** The AgentWrit rebrand (Decision 013, Layer 1 across all repos) will not ship until CI exists as its safety net. Don't start rebrand work until M-sec is merged and branch protection is active.
+
+**Carried forward from earlier (still pending, lower priority than M-sec CI):**
+- CONTRIBUTING.md update per Decision 014 (current version still encourages PRs — inconsistent)
+- README SDK section decision (user skeptical of its value)
+- Domain placeholder emails (Decision 013 → `agentwrit.com`) in `CLA.md`, `ENTERPRISE_LICENSE.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`
+- `docs/api/openapi.yaml` license still says Apache 2.0
+- `docs/getting-started-developer.md` SDK link
