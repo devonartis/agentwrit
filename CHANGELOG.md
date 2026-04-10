@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Renamed CLI binary `aactl` → `awrit` (TD-CLI-001)
+
+- **`cmd/aactl/` → `cmd/awrit/`** — directory renamed. Cobra command name changed (`Use: "aactl"` → `Use: "awrit"`). All internal CLI output, help text, and error messages updated.
+- **`docs/aactl-reference.md` → `docs/awrit-reference.md`** — reference doc renamed. All example commands in the doc rewritten to use `awrit`.
+- **Docs, scripts, tests, README, CONTRIBUTING, docker-compose.yml, .github/workflows/ci.yml, .gitignore** — every `aactl` reference in ship-to-main files rewritten to `awrit`. Evidence files under `tests/*/evidence/*.md` intentionally preserved as-is because they are historical records of past test runs (rewriting history would misrepresent what happened at the time).
+- **`cmd/broker/main.go`** — error message `"Run 'aactl init'..."` → `"Run 'awrit init'..."`.
+- **`.gitignore`** — both `/awrit` and `/aactl` listed so accidentally-built binaries under either name stay untracked during the transition.
+- **`internal/cfg/configfile.go`** — user-visible references in the env var comment block updated to `awrit`.
+
+Scope: ~36 files touched plus directory + file renames. No production logic changes — pure mechanical rename. The `github.com/devonartis/agentauth` Go module path is NOT changed (that's gated on the GitHub repo rename, separate work).
+
 ### Promoted `adminTTL` const to configurable `cfg.AdminTokenTTL` (TD-010)
 
 - **`internal/admin/admin_svc.go`** — deleted the magic-number const `adminTTL = 300`. Admin JWT TTL is now driven by `cfg.AdminTokenTTL` (seconds), wired through a new `tokenTTL` parameter on `NewAdminSvc`. Operators tune via `AA_ADMIN_TOKEN_TTL` (default 300 / 5 min).

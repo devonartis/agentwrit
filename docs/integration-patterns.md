@@ -585,7 +585,7 @@ if __name__ == "__main__":
 
 2. **Service Isolation:** A compromised payment service cannot escalate to access PII. The scope boundary is cryptographic and enforced at the broker level.
 
-3. **Operator Control:** The operator registers apps and sets scope ceilings via `aactl app register`. Services inherit these restrictions automatically.
+3. **Operator Control:** The operator registers apps and sets scope ceilings via `awrit app register`. Services inherit these restrictions automatically.
 
 4. **Short-Lived Tokens:** App tokens have short TTLs (configurable, default 30 minutes), reducing damage window from a compromise.
 

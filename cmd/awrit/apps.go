@@ -1,12 +1,12 @@
-// Package main — aactl app subcommands for managing registered apps.
+// Package main — awrit app subcommands for managing registered apps.
 //
 // Commands:
 //
-//	aactl app register --name NAME --scopes SCOPE_CSV [--token-ttl N]
-//	aactl app list [--json]
-//	aactl app get APP_ID
-//	aactl app update --id APP_ID [--scopes SCOPE_CSV] [--token-ttl N]
-//	aactl app remove --id APP_ID
+//	awrit app register --name NAME --scopes SCOPE_CSV [--token-ttl N]
+//	awrit app list [--json]
+//	awrit app get APP_ID
+//	awrit app update --id APP_ID [--scopes SCOPE_CSV] [--token-ttl N]
+//	awrit app remove --id APP_ID
 package main
 
 import (
@@ -19,21 +19,21 @@ import (
 )
 
 // appCmd is the parent command grouping all app-related subcommands
-// under "aactl app".
+// under "awrit app".
 var appCmd = &cobra.Command{
 	Use:   "app",
 	Short: "Manage registered apps",
 }
 
 // appRegisterName, appRegisterScopes, and appRegisterTokenTTL hold flag values
-// for "aactl app register".
+// for "awrit app register".
 var (
 	appRegisterName     string
 	appRegisterScopes   string
 	appRegisterTokenTTL int
 )
 
-// appRegisterCmd implements "aactl app register", creating a new app registration
+// appRegisterCmd implements "awrit app register", creating a new app registration
 // and printing the generated client_id and client_secret.
 var appRegisterCmd = &cobra.Command{
 	Use:   "register",
@@ -92,7 +92,7 @@ var appRegisterCmd = &cobra.Command{
 	},
 }
 
-// appListCmd implements "aactl app list", printing all registered apps.
+// appListCmd implements "awrit app list", printing all registered apps.
 var appListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all registered apps",
@@ -144,7 +144,7 @@ var appListCmd = &cobra.Command{
 	},
 }
 
-// appGetCmd implements "aactl app get APP_ID", printing full details for one app.
+// appGetCmd implements "awrit app get APP_ID", printing full details for one app.
 var appGetCmd = &cobra.Command{
 	Use:   "get APP_ID",
 	Short: "Get details of a specific app",
@@ -195,14 +195,14 @@ var appGetCmd = &cobra.Command{
 }
 
 // appUpdateID, appUpdateScopes, and appUpdateTokenTTL hold flag values
-// for "aactl app update".
+// for "awrit app update".
 var (
 	appUpdateID       string
 	appUpdateScopes   string
 	appUpdateTokenTTL int
 )
 
-// appUpdateCmd implements "aactl app update --id APP_ID [--scopes SCOPE_CSV] [--token-ttl N]",
+// appUpdateCmd implements "awrit app update --id APP_ID [--scopes SCOPE_CSV] [--token-ttl N]",
 // updating scope ceiling and/or token TTL for an existing app.
 var appUpdateCmd = &cobra.Command{
 	Use:   "update",
@@ -252,10 +252,10 @@ var appUpdateCmd = &cobra.Command{
 	},
 }
 
-// appRemoveID holds the --id flag value for "aactl app remove".
+// appRemoveID holds the --id flag value for "awrit app remove".
 var appRemoveID string
 
-// appRemoveCmd implements "aactl app remove --id APP_ID", deregistering an app
+// appRemoveCmd implements "awrit app remove --id APP_ID", deregistering an app
 // (soft delete — credentials stop working but record is retained).
 var appRemoveCmd = &cobra.Command{
 	Use:   "remove",

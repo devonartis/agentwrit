@@ -1,4 +1,4 @@
-# aactl CLI Reference
+# awrit CLI Reference
 
 > **Document Version:** 3.0 | **Last Updated:** March 2026 | **Status:** Current
 >
@@ -12,17 +12,17 @@
 
 ## Overview
 
-**aactl** is the operator CLI for the AgentAuth broker. It provides full control over token lifecycle, revocation, app management, and audit trail inspection via a set of commands backed by the broker's admin API.
+**awrit** is the operator CLI for the AgentAuth broker. It provides full control over token lifecycle, revocation, app management, and audit trail inspection via a set of commands backed by the broker's admin API.
 
-aactl uses the Cobra command framework and outputs formatted tables by default, with optional JSON output for scripting.
+awrit uses the Cobra command framework and outputs formatted tables by default, with optional JSON output for scripting.
 
 ### Installation
 
-Build aactl from source:
+Build awrit from source:
 
 ```bash
 cd /path/to/agentauth
-go build -o aactl ./cmd/aactl
+go build -o awrit ./cmd/awrit
 ```
 
 Or use the pre-built binary if already available in your AgentAuth distribution.
@@ -39,13 +39,13 @@ export AACTL_ADMIN_SECRET="your-admin-secret-here"
 Run a command:
 
 ```bash
-aactl audit events
+awrit audit events
 ```
 
 Output defaults to formatted tables. Add `--json` to any command for raw JSON:
 
 ```bash
-aactl audit events --json
+awrit audit events --json
 ```
 
 ---
@@ -61,10 +61,10 @@ aactl audit events --json
 
 ### Authentication Flow
 
-1. aactl reads `AACTL_ADMIN_SECRET` from the environment
+1. awrit reads `AACTL_ADMIN_SECRET` from the environment
 2. On first command invocation, it sends a POST to `/v1/admin/auth` with `{"secret": "..."}`
 3. The broker returns a short-lived JWT (`access_token`)
-4. aactl caches the token for the session and uses Bearer auth for all subsequent requests
+4. awrit caches the token for the session and uses Bearer auth for all subsequent requests
 5. Token is automatically refreshed if it expires during command execution (transparent to the user)
 
 ### Security Notes
@@ -86,7 +86,7 @@ All commands support the following global flag:
 
 Example:
 ```bash
-aactl --json audit events
+awrit --json audit events
 ```
 
 ---
@@ -97,7 +97,7 @@ aactl --json audit events
 
 **Synopsis:**
 ```
-aactl audit events [flags]
+awrit audit events [flags]
 ```
 
 **Description:**
@@ -152,28 +152,28 @@ Query the broker's audit trail. Events record all meaningful actions: token issu
 
 List all events (last 100):
 ```bash
-aactl audit events
+awrit audit events
 ```
 
 Find all token revocation events in the last hour:
 ```bash
-aactl audit events --event-type token_revoked --since 2026-02-27T14:32:10Z
+awrit audit events --event-type token_revoked --since 2026-02-27T14:32:10Z
 ```
 
 Show all failed authorization attempts:
 ```bash
-aactl audit events --outcome denied
+awrit audit events --outcome denied
 ```
 
 Audit a specific agent (with JSON output for parsing):
 ```bash
-aactl audit events --agent-id spiffe://example.com/agent/crawler --json
+awrit audit events --agent-id spiffe://example.com/agent/crawler --json
 ```
 
 Paginate through 1000 events in batches of 100:
 ```bash
-aactl audit events --limit 100 --offset 0
-aactl audit events --limit 100 --offset 100
+awrit audit events --limit 100 --offset 0
+awrit audit events --limit 100 --offset 100
 ```
 
 **API Endpoint:**
@@ -186,7 +186,7 @@ aactl audit events --limit 100 --offset 100
 
 **Synopsis:**
 ```
-aactl token release --token <jwt>
+awrit token release --token <jwt>
 ```
 
 **Description:**
@@ -224,12 +224,12 @@ JSON output mode is not applicable to this command. The response is a simple HTT
 Release a token (stored in an environment variable):
 ```bash
 AGENT_TOKEN="eyJhbGciOiJFZDI1NTE5IiwidHlwIjoiSldUIn0.eyJzY29wZXMi..."
-aactl token release --token "$AGENT_TOKEN"
+awrit token release --token "$AGENT_TOKEN"
 ```
 
 Release a token hardcoded in a script (not recommended for production):
 ```bash
-aactl token release --token "eyJhbGciOiJFZDI1NTE5IiwidHlwIjoiSldUIn0...."
+awrit token release --token "eyJhbGciOiJFZDI1NTE5IiwidHlwIjoiSldUIn0...."
 ```
 
 **API Endpoint:**
@@ -238,7 +238,7 @@ aactl token release --token "eyJhbGciOiJFZDI1NTE5IiwidHlwIjoiSldUIn0...."
 
 **Authentication:**
 
-This endpoint uses the token being released as its credential (Bearer auth). Unlike other aactl commands, it does not use the admin secret. This allows agents to revoke their own tokens or operators to test revocation with an agent's token.
+This endpoint uses the token being released as its credential (Bearer auth). Unlike other awrit commands, it does not use the admin secret. This allows agents to revoke their own tokens or operators to test revocation with an agent's token.
 
 **Status Codes:**
 
@@ -252,7 +252,7 @@ This endpoint uses the token being released as its credential (Bearer auth). Unl
 
 **Synopsis:**
 ```
-aactl revoke --level <level> --target <target>
+awrit revoke --level <level> --target <target>
 ```
 
 **Description:**
@@ -297,27 +297,27 @@ Revocation is idempotent: revoking already-revoked tokens or targets returns suc
 
 Revoke a specific token by JTI:
 ```bash
-aactl revoke --level token --target "jti-abc123"
+awrit revoke --level token --target "jti-abc123"
 ```
 
 Revoke all tokens issued to an agent (e.g., after compromise):
 ```bash
-aactl revoke --level agent --target "spiffe://example.com/agent/crawler"
+awrit revoke --level agent --target "spiffe://example.com/agent/crawler"
 ```
 
 Revoke all tokens for a specific delegated task:
 ```bash
-aactl revoke --level task --target "task-456"
+awrit revoke --level task --target "task-456"
 ```
 
 Revoke an entire delegation chain (agent + all delegates):
 ```bash
-aactl revoke --level chain --target "spiffe://example.com/agent/root-agent"
+awrit revoke --level chain --target "spiffe://example.com/agent/root-agent"
 ```
 
 Revoke and check the result in JSON:
 ```bash
-aactl revoke --level agent --target "spiffe://example.com/agent/crawler" --json
+awrit revoke --level agent --target "spiffe://example.com/agent/crawler" --json
 ```
 
 **API Endpoint:**
@@ -345,7 +345,7 @@ aactl revoke --level agent --target "spiffe://example.com/agent/crawler" --json
 
 **Synopsis:**
 ```
-aactl app register --name <name> --scopes <scope1>,<scope2>,... [--token-ttl N]
+awrit app register --name <name> --scopes <scope1>,<scope2>,... [--token-ttl N]
 ```
 
 **Description:**
@@ -388,17 +388,17 @@ The scope ceiling defines the maximum set of scopes that app's agents can reques
 
 Register an app with read-only scopes:
 ```bash
-aactl app register --name "crawler" --scopes read
+awrit app register --name "crawler" --scopes read
 ```
 
 Register an app with admin scopes and custom TTL:
 ```bash
-aactl app register --name "admin-tool" --scopes "admin:read,admin:write,read" --token-ttl 3600
+awrit app register --name "admin-tool" --scopes "admin:read,admin:write,read" --token-ttl 3600
 ```
 
 Get the result as JSON:
 ```bash
-aactl app register --name "webhook" --scopes "write" --json
+awrit app register --name "webhook" --scopes "write" --json
 ```
 
 **API Endpoint:**
@@ -421,7 +421,7 @@ aactl app register --name "webhook" --scopes "write" --json
 
 **Synopsis:**
 ```
-aactl app list
+awrit app list
 ```
 
 **Description:**
@@ -467,12 +467,12 @@ None specific to this command. Supports global `--json` flag.
 
 List all apps:
 ```bash
-aactl app list
+awrit app list
 ```
 
 Count registered apps:
 ```bash
-aactl app list --json | jq '.total'
+awrit app list --json | jq '.total'
 ```
 
 **API Endpoint:**
@@ -485,7 +485,7 @@ aactl app list --json | jq '.total'
 
 **Synopsis:**
 ```
-aactl app get <app-id>
+awrit app get <app-id>
 ```
 
 **Description:**
@@ -534,7 +534,7 @@ None specific to this command. Supports global `--json` flag.
 
 Get app details:
 ```bash
-aactl app get app-12345
+awrit app get app-12345
 ```
 
 **API Endpoint:**
@@ -547,14 +547,14 @@ aactl app get app-12345
 
 **Synopsis:**
 ```
-aactl app update --id <app-id> [--scopes <scope1>,<scope2>,...] [--token-ttl N]
+awrit app update --id <app-id> [--scopes <scope1>,<scope2>,...] [--token-ttl N]
 ```
 
 **Description:**
 
 Update an app's scope ceiling and/or token TTL. At least one of `--scopes` or `--token-ttl` is required.
 
-If scopes are narrowed (removed), any tokens that exceed the new ceiling are not automatically revoked — they remain valid until expiration. Use `aactl revoke` separately if immediate revocation is needed.
+If scopes are narrowed (removed), any tokens that exceed the new ceiling are not automatically revoked — they remain valid until expiration. Use `awrit revoke` separately if immediate revocation is needed.
 
 **Flags:**
 
@@ -588,17 +588,17 @@ If scopes are narrowed (removed), any tokens that exceed the new ceiling are not
 
 Widen scope ceiling:
 ```bash
-aactl app update --id app-12345 --scopes "admin:read,admin:write,read"
+awrit app update --id app-12345 --scopes "admin:read,admin:write,read"
 ```
 
 Update TTL only:
 ```bash
-aactl app update --id app-12345 --token-ttl 7200
+awrit app update --id app-12345 --token-ttl 7200
 ```
 
 Narrow both scopes and TTL:
 ```bash
-aactl app update --id app-12345 --scopes "read" --token-ttl 1800
+awrit app update --id app-12345 --scopes "read" --token-ttl 1800
 ```
 
 **API Endpoint:**
@@ -620,14 +620,14 @@ aactl app update --id app-12345 --scopes "read" --token-ttl 1800
 
 **Synopsis:**
 ```
-aactl app remove --id <app-id>
+awrit app remove --id <app-id>
 ```
 
 **Description:**
 
 Deregister an app (soft delete). The app record is retained for audit purposes, but credentials are revoked and the app can no longer authenticate.
 
-Existing agent tokens issued by this app remain valid until expiration; use `aactl revoke` if immediate token revocation is needed.
+Existing agent tokens issued by this app remain valid until expiration; use `awrit revoke` if immediate token revocation is needed.
 
 **Flags:**
 
@@ -657,7 +657,7 @@ Existing agent tokens issued by this app remain valid until expiration; use `aac
 
 Deregister an app:
 ```bash
-aactl app remove --id app-12345
+awrit app remove --id app-12345
 ```
 
 **API Endpoint:**
@@ -670,7 +670,7 @@ aactl app remove --id app-12345
 
 **Synopsis:**
 ```
-aactl init [--mode {dev|prod}] [--config-path PATH] [--force]
+awrit init [--mode {dev|prod}] [--config-path PATH] [--force]
 ```
 
 **Description:**
@@ -679,7 +679,7 @@ Initialize AgentAuth by generating a cryptographically secure admin secret and w
 
 In **dev mode**, the plaintext secret is stored in the config file for easy retrieval during development. In **prod mode**, only the bcrypt hash is stored — the plaintext is shown once on stdout and never saved to disk.
 
-Use the generated secret to set `AACTL_ADMIN_SECRET` for subsequent aactl commands.
+Use the generated secret to set `AACTL_ADMIN_SECRET` for subsequent awrit commands.
 
 **Flags:**
 
@@ -714,17 +714,17 @@ Store it in your secrets manager (Vault, AWS Secrets Manager, etc.).
 
 Initialize in dev mode (default):
 ```bash
-aactl init
+awrit init
 ```
 
 Initialize in prod mode with explicit path:
 ```bash
-aactl init --mode prod --config-path /etc/agentauth/config
+awrit init --mode prod --config-path /etc/agentauth/config
 ```
 
 Reinitialize with force:
 ```bash
-aactl init --force
+awrit init --force
 ```
 
 **Output File Format:**
@@ -755,19 +755,19 @@ admin_secret: $2a$12$...bcrypt.hash.here...
 
 1. **Audit the agent's recent activity:**
    ```bash
-   aactl audit events --agent-id "spiffe://example.com/agent/crawler" --since 2026-02-27T10:00:00Z
+   awrit audit events --agent-id "spiffe://example.com/agent/crawler" --since 2026-02-27T10:00:00Z
    ```
    Review the event detail column for suspicious operations (e.g., unexpected scopes requested, denials).
 
 2. **Revoke all tokens for the agent:**
    ```bash
-   aactl revoke --level agent --target "spiffe://example.com/agent/crawler"
+   awrit revoke --level agent --target "spiffe://example.com/agent/crawler"
    ```
    This immediately invalidates the agent's tokens and forces re-authentication.
 
 3. **Verify revocation by checking recent events:**
    ```bash
-   aactl audit events --agent-id "spiffe://example.com/agent/crawler" --event-type token_revoked
+   awrit audit events --agent-id "spiffe://example.com/agent/crawler" --event-type token_revoked
    ```
    Confirm that revocation events appear in the audit trail.
 
@@ -782,22 +782,22 @@ admin_secret: $2a$12$...bcrypt.hash.here...
 
 1. **Count all tokens issued today:**
    ```bash
-   aactl audit events --event-type token_issued --since 2026-02-27T00:00:00Z --limit 1000 --json | jq '.total'
+   awrit audit events --event-type token_issued --since 2026-02-27T00:00:00Z --limit 1000 --json | jq '.total'
    ```
 
 2. **Find revocation events by outcome:**
    ```bash
-   aactl audit events --event-type token_revoked --outcome success --limit 100
+   awrit audit events --event-type token_revoked --outcome success --limit 100
    ```
 
 3. **Identify failed token requests:**
    ```bash
-   aactl audit events --event-type token_issue_failed --outcome denied --limit 100
+   awrit audit events --event-type token_issue_failed --outcome denied --limit 100
    ```
 
 4. **Export audit data for external analysis:**
    ```bash
-   aactl audit events --limit 1000 --json > audit_export.json
+   awrit audit events --limit 1000 --json > audit_export.json
    ```
    Process the JSON with external tools (jq, Python, etc.) for further analysis.
 
@@ -810,7 +810,7 @@ admin_secret: $2a$12$...bcrypt.hash.here...
 | 0 | Command succeeded | Token released successfully, events listed |
 | 1 | Command failed | Missing required flag, invalid broker URL, network error, HTTP 4xx/5xx response |
 
-On error, aactl prints a descriptive message to stderr and exits with code 1.
+On error, awrit prints a descriptive message to stderr and exits with code 1.
 
 ---
 
@@ -869,7 +869,7 @@ Use positive integers only. Default limit is 100 if not specified.
 Human-readable formatted tables with tab-separated columns:
 
 ```bash
-aactl audit events
+awrit audit events
 ```
 
 Output:
@@ -892,7 +892,7 @@ ID                                    TIMESTAMP              EVENT TYPE      AGE
 Structured JSON output suitable for scripting and automation:
 
 ```bash
-aactl audit events --json
+awrit audit events --json
 ```
 
 Output:
@@ -928,22 +928,22 @@ Output:
 
 **Count events:**
 ```bash
-aactl audit events --json | jq '.total'
+awrit audit events --json | jq '.total'
 ```
 
 **Filter by outcome:**
 ```bash
-aactl audit events --json | jq '.events[] | select(.outcome == "denied")'
+awrit audit events --json | jq '.events[] | select(.outcome == "denied")'
 ```
 
 **Extract agent IDs:**
 ```bash
-aactl audit events --json | jq '.events[].agent_id' | sort | uniq
+awrit audit events --json | jq '.events[].agent_id' | sort | uniq
 ```
 
 **Export to CSV (using jq):**
 ```bash
-aactl audit events --json | jq -r '.events[] | [.id, .timestamp, .event_type, .agent_id, .outcome] | @csv' > audit.csv
+awrit audit events --json | jq -r '.events[] | [.id, .timestamp, .event_type, .agent_id, .outcome] | @csv' > audit.csv
 ```
 
 ---
@@ -963,7 +963,7 @@ aactl audit events --json | jq -r '.events[] | [.id, .timestamp, .event_type, .a
 1. **Never log or display agent tokens** in full unless necessary for debugging.
 2. **Use `--token` with environment variables**, not hardcoded strings:
    ```bash
-   aactl token release --token "$AGENT_TOKEN"
+   awrit token release --token "$AGENT_TOKEN"
    ```
 3. **Revoke tokens immediately** if accidentally exposed.
 4. **Test revocation** in staging before using in production.
@@ -973,7 +973,7 @@ aactl audit events --json | jq -r '.events[] | [.id, .timestamp, .event_type, .a
 1. **Review audit events regularly** for suspicious patterns (failed auth, unusual revocations).
 2. **Export and archive audit logs** for compliance and forensic analysis.
 3. **Set up alerts** for high-risk events (e.g., mass revocations, failed auth attempts).
-4. **Correlate aactl operations** with application logs to understand impact.
+4. **Correlate awrit operations** with application logs to understand impact.
 
 ---
 
@@ -984,7 +984,7 @@ aactl audit events --json | jq -r '.events[] | [.id, .timestamp, .event_type, .a
 Export recent denied events to a monitoring system:
 
 ```bash
-aactl audit events --outcome denied --limit 100 --json | jq '.events' | \
+awrit audit events --outcome denied --limit 100 --json | jq '.events' | \
   curl -X POST \
     -H "Content-Type: application/json" \
     -d @- \
@@ -997,7 +997,7 @@ Revoke all tokens for multiple agents from a list:
 
 ```bash
 cat agents.txt | while read agent_id; do
-  aactl revoke --level agent --target "$agent_id"
+  awrit revoke --level agent --target "$agent_id"
 done
 ```
 
@@ -1007,7 +1007,7 @@ done
 
 ### Slow Audit Queries
 
-**Problem:** `aactl audit events` takes a long time to return.
+**Problem:** `awrit audit events` takes a long time to return.
 
 **Solutions:**
 - Reduce the `--limit` (default 100, but 1000+ can be slow).
@@ -1020,7 +1020,7 @@ done
 **Problem:** Agents still authenticate after revocation.
 
 **Solutions:**
-- Confirm the revocation succeeded: `aactl audit events --event-type token_revoked` should show a recent event.
+- Confirm the revocation succeeded: `awrit audit events --event-type token_revoked` should show a recent event.
 - Check broker logs for errors during revocation.
 - Verify agents are reading the revocation list (not caching tokens locally).
 - Confirm the broker is running and connected to the revocation backend (Redis, SQLite, etc.).
@@ -1030,42 +1030,42 @@ done
 ## Related Documentation
 
 - **[Concepts](concepts.md)** — Understand agents, tokens, scopes, and delegation.
-- **[Getting Started: Operator](getting-started-operator.md)** — Initial broker setup and aactl configuration.
+- **[Getting Started: Operator](getting-started-operator.md)** — Initial broker setup and awrit configuration.
 - **[Common Tasks](common-tasks.md)** — Step-by-step guides for operations.
-- **[API Reference](api.md)** — Full HTTP API specification (what aactl uses under the hood).
+- **[API Reference](api.md)** — Full HTTP API specification (what awrit uses under the hood).
 - **[Troubleshooting](troubleshooting.md)** — Resolve broker issues.
 
 ---
 
 ## FAQ
 
-**Q: Can aactl be used remotely?**
+**Q: Can awrit be used remotely?**
 
 A: Yes. Set `AACTL_BROKER_URL` to any reachable broker URL (e.g., `https://broker.example.com:9443`). The broker must have network access from your machine.
 
-**Q: Can I run aactl commands in a container or CI/CD pipeline?**
+**Q: Can I run awrit commands in a container or CI/CD pipeline?**
 
 A: Yes. Pass `AACTL_BROKER_URL` and `AACTL_ADMIN_SECRET` as environment variables. Use JSON output (`--json`) for reliable parsing.
 
 **Q: What happens if the broker is down?**
 
-A: aactl will fail with a network error. Retry after the broker recovers.
+A: awrit will fail with a network error. Retry after the broker recovers.
 
 **Q: Can I revoke all tokens at once?**
 
-A: Use `aactl revoke --level agent --target <agent-id>` to revoke all tokens for an agent, or `--level chain` for an entire delegation tree. There is no global "revoke all" command by design (safety).
+A: Use `awrit revoke --level agent --target <agent-id>` to revoke all tokens for an agent, or `--level chain` for an entire delegation tree. There is no global "revoke all" command by design (safety).
 
 **Q: How do I rotate the admin secret?**
 
-A: See the broker deployment documentation. Once rotated, update `AACTL_ADMIN_SECRET` in your environment before running aactl again.
+A: See the broker deployment documentation. Once rotated, update `AACTL_ADMIN_SECRET` in your environment before running awrit again.
 
-**Q: Can aactl run without the broker's admin secret?**
+**Q: Can awrit run without the broker's admin secret?**
 
-A: No. Admin operations (audit, revoke, app management) require authentication. Agent operations like `aactl token release` require the agent's own token, not the admin secret.
+A: No. Admin operations (audit, revoke, app management) require authentication. Agent operations like `awrit token release` require the agent's own token, not the admin secret.
 
 **Q: How do I automate daily audit exports?**
 
 A: Use cron or systemd timer to run:
    ```bash
-   aactl audit events --limit 10000 --json > "/backups/audit-$(date +%Y-%m-%d).json"
+   awrit audit events --limit 10000 --json > "/backups/audit-$(date +%Y-%m-%d).json"
    ```

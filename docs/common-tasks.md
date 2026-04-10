@@ -29,10 +29,10 @@ Step-by-step instructions for AgentAuth workflows, organized by role.
 | Revoke Tokens | `POST /v1/revoke` | Operator | Broker |
 | Query Audit Trail | `GET /v1/audit/events` | Operator | Broker |
 | Get Broker Metrics | `GET /v1/metrics` | Operator | Broker |
-| Register App (aactl) | `aactl app register --name NAME --scopes SCOPES` | Operator | CLI |
-| List Apps (aactl) | `aactl app list` | Operator | CLI |
-| Revoke Tokens (aactl) | `aactl revoke --level <level> --target <target>` | Operator | CLI |
-| Query Audit Trail (aactl) | `aactl audit events [--filters]` | Operator | CLI |
+| Register App (awrit) | `awrit app register --name NAME --scopes SCOPES` | Operator | CLI |
+| List Apps (awrit) | `awrit app list` | Operator | CLI |
+| Revoke Tokens (awrit) | `awrit revoke --level <level> --target <target>` | Operator | CLI |
+| Query Audit Trail (awrit) | `awrit audit events [--filters]` | Operator | CLI |
 
 ---
 
@@ -1070,16 +1070,16 @@ Every admin operation requires a Bearer token obtained from the admin auth endpo
 
 **What's happening:** Admin authentication is separate from agent authentication. You provide your admin secret, get back a short-lived admin token, and use that Bearer token for all subsequent admin operations. Cache and reuse the token within its TTL.
 
-**Using aactl (recommended):**
+**Using awrit (recommended):**
 
-aactl reads `AACTL_ADMIN_SECRET` and `AACTL_BROKER_URL` from environment variables and authenticates automatically before every command. No explicit login step is needed:
+awrit reads `AACTL_ADMIN_SECRET` and `AACTL_BROKER_URL` from environment variables and authenticates automatically before every command. No explicit login step is needed:
 
 ```bash
 export AACTL_BROKER_URL=http://localhost:8080
 export AACTL_ADMIN_SECRET=my-secure-admin-secret-here
 
-# aactl then auto-authenticates on each invocation
-aactl app list
+# awrit then auto-authenticates on each invocation
+awrit app list
 ```
 
 **Bash/curl example:**
@@ -1326,22 +1326,22 @@ AgentAuth provides four revocation levels, each with a different blast radius. U
 
 **What's happening:** Revocation is cryptographically verified: revoked tokens are immediately rejected on the next validation. The four levels allow you to target the exact scope of compromise—single token, all tokens for one agent, all tokens for one task, or an entire delegation chain.
 
-**Using aactl (recommended):**
+**Using awrit (recommended):**
 
-> **Note:** aactl authenticates using `AACTL_ADMIN_SECRET` against the broker's admin auth endpoint. Set `AACTL_BROKER_URL` and `AACTL_ADMIN_SECRET` before use.
+> **Note:** awrit authenticates using `AACTL_ADMIN_SECRET` against the broker's admin auth endpoint. Set `AACTL_BROKER_URL` and `AACTL_ADMIN_SECRET` before use.
 
 ```bash
 # Token-level: revoke a single token by JTI
-aactl revoke --level token --target a1b2c3d4e5f6...
+awrit revoke --level token --target a1b2c3d4e5f6...
 
 # Agent-level: revoke all tokens for one agent
-aactl revoke --level agent --target spiffe://agentauth.local/agent/orch/task/instance
+awrit revoke --level agent --target spiffe://agentauth.local/agent/orch/task/instance
 
 # Task-level: revoke all tokens for a task
-aactl revoke --level task --target task-001
+awrit revoke --level task --target task-001
 
 # Chain-level: revoke an entire delegation chain
-aactl revoke --level chain --target spiffe://agentauth.local/agent/orch/task/instance
+awrit revoke --level chain --target spiffe://agentauth.local/agent/orch/task/instance
 ```
 
 **Bash/curl example (token-level revocation):**
@@ -1565,25 +1565,25 @@ The audit trail is an append-only, hash-chained log of every significant operati
 
 **What's happening:** Every token acquisition, revocation, delegation, and admin action is logged with a cryptographic hash chain. You can query by agent, task, time range, or event type. Hash chaining allows you to detect if any audit record has been tampered with.
 
-**Using aactl (recommended):**
+**Using awrit (recommended):**
 
-> **Note:** aactl authenticates using `AACTL_ADMIN_SECRET` against the broker's admin auth endpoint. Set `AACTL_BROKER_URL` and `AACTL_ADMIN_SECRET` before use.
+> **Note:** awrit authenticates using `AACTL_ADMIN_SECRET` against the broker's admin auth endpoint. Set `AACTL_BROKER_URL` and `AACTL_ADMIN_SECRET` before use.
 
 ```bash
 # All events (table output)
-aactl audit events
+awrit audit events
 
 # Filter by event type
-aactl audit events --event-type token_revoked
+awrit audit events --event-type token_revoked
 
 # Filter by agent
-aactl audit events --agent-id spiffe://agentauth.local/agent/orch/task/instance
+awrit audit events --agent-id spiffe://agentauth.local/agent/orch/task/instance
 
 # Filter by time range with limit
-aactl audit events --since 2026-02-19T00:00:00Z --limit 50
+awrit audit events --since 2026-02-19T00:00:00Z --limit 50
 
 # Raw JSON output
-aactl audit events --json
+awrit audit events --json
 ```
 
 **Bash/curl examples:**
@@ -1821,23 +1821,23 @@ Apps are third-party services that call AgentAuth to create launch tokens and ma
 
 **What's happening:** Each app gets a `client_id` and `client_secret` for API authentication. The app can then authenticate to the broker via `POST /v1/app/auth`, which returns an app token with restricted scopes. The app can use this token to create launch tokens for agents it manages. The broker enforces a scope ceiling—the app cannot request scopes beyond the scope ceiling assigned during app registration.
 
-**Using aactl (recommended):**
+**Using awrit (recommended):**
 
 ```bash
 # Register a new app with specific scope ceiling
-aactl app register --name "my-pipeline" --scopes "read:data:*,write:results:*"
+awrit app register --name "my-pipeline" --scopes "read:data:*,write:results:*"
 
 # List all registered apps
-aactl app list
+awrit app list
 
 # Get details of a specific app
-aactl app get my-app-id
+awrit app get my-app-id
 
 # Update an app's scopes
-aactl app update --id my-app-id --scopes "read:data:reports"
+awrit app update --id my-app-id --scopes "read:data:reports"
 
 # Deregister an app
-aactl app remove --id my-app-id
+awrit app remove --id my-app-id
 ```
 
 **Bash/curl example for app authentication:**

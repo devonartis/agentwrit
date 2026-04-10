@@ -68,7 +68,7 @@ func main() {
 
 	// P1: Fail fast if admin secret is not configured.
 	if c.AdminSecretHash == "" {
-		fmt.Fprintln(os.Stderr, "FATAL: No admin secret configured. Run 'aactl init' or set the AA_ADMIN_SECRET environment variable.")
+		fmt.Fprintln(os.Stderr, "FATAL: No admin secret configured. Run 'awrit init' or set the AA_ADMIN_SECRET environment variable.")
 		os.Exit(1)
 	}
 

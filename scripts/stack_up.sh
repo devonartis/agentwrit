@@ -7,7 +7,7 @@ set -euo pipefail
 #
 # Required env:
 #   AA_ADMIN_SECRET   (no default — broker rejects weak/empty secrets at startup.
-#                     Use `aactl init` to generate, or export a strong value.)
+#                     Use `awrit init` to generate, or export a strong value.)
 #
 # Optional env:
 #   AA_HOST_PORT      (default: 8080)

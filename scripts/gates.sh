@@ -95,7 +95,7 @@ GOSEC_EXCLUDE="G117,G304,G101"
 
 # --- TASK gates ---
 
-run_gate "build" go build ./cmd/broker ./cmd/aactl
+run_gate "build" go build ./cmd/broker ./cmd/awrit
 
 run_gate "vet" go vet ./...
 

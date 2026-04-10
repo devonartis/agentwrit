@@ -1,4 +1,4 @@
-# P1: Admin Secret (Bcrypt + `aactl init`) — User Stories
+# P1: Admin Secret (Bcrypt + `awrit init`) — User Stories
 
 **Spec:** `.plans/specs/2026-03-17-p1-admin-secret-spec.md`
 **Plan:** `.plans/2026-03-17-p1-admin-secret-plan.md`
@@ -63,7 +63,7 @@ or the volume mount — not in the application.
 
 | Stories | Mode | Why |
 |---------|------|-----|
-| S1–S4 | CLI only | Tests `aactl init` — no broker involved |
+| S1–S4 | CLI only | Tests `awrit init` — no broker involved |
 | S5 | VPS + Container | Config file boot — must work in both |
 | S6 | VPS + Container | Env var backward compat — must work in both |
 | S7 | VPS + Container | Env override precedence — must work in both |
@@ -77,10 +77,10 @@ or the volume mount — not in the application.
 **Tracker:** p1-s1
 **Plan tasks:** Task 5
 **Persona:** Operator
-**Tool:** aactl
+**Tool:** awrit
 
 The operator is setting up AgentAuth on their laptop for the first time.
-They run `aactl init` with no flags. Dev mode is the default because most
+They run `awrit init` with no flags. Dev mode is the default because most
 first-time users are experimenting locally, not deploying to production.
 The command generates a strong random secret, writes it to a config file,
 and prints it so the operator can copy it to their environment.
@@ -93,7 +93,7 @@ not a production server.
 **Route:** N/A (local CLI command)
 **Steps:**
 1. Clean any previous test config: `rm -rf /tmp/aa-test-p1-dev`
-2. Run `aactl init --config-path /tmp/aa-test-p1-dev/config`
+2. Run `awrit init --config-path /tmp/aa-test-p1-dev/config`
 3. Check the printed output for the secret
 4. Read the config file and verify it contains `MODE=development`
 5. Verify the config file contains the same plaintext secret that was printed
@@ -110,7 +110,7 @@ not a production server.
 **Test command:**
 ```bash
 rm -rf /tmp/aa-test-p1-dev
-./bin/aactl init --config-path /tmp/aa-test-p1-dev/config
+./bin/awrit init --config-path /tmp/aa-test-p1-dev/config
 echo "---"
 cat /tmp/aa-test-p1-dev/config
 echo "---"
@@ -125,13 +125,13 @@ ls -ld /tmp/aa-test-p1-dev/
 **Tracker:** p1-s2
 **Plan tasks:** Task 5
 **Persona:** Operator
-**Tool:** aactl
+**Tool:** awrit
 
 The operator is deploying AgentAuth to a production VPS. They run
-`aactl init --mode=prod`. The command generates the same strong random
+`awrit init --mode=prod`. The command generates the same strong random
 secret, but this time it only stores the bcrypt hash on disk. The
 plaintext is printed once with a clear warning — if the operator loses
-it, they must re-run `aactl init --force` to reset everything.
+it, they must re-run `awrit init --force` to reset everything.
 
 This is the HashiCorp Vault pattern: `vault operator init` shows the
 unseal keys once and never again. The operator is responsible for storing
@@ -140,7 +140,7 @@ the secret in their own secrets manager.
 **Route:** N/A (local CLI command)
 **Steps:**
 1. Clean any previous test config: `rm -rf /tmp/aa-test-p1-prod`
-2. Run `aactl init --mode=prod --config-path /tmp/aa-test-p1-prod/config`
+2. Run `awrit init --mode=prod --config-path /tmp/aa-test-p1-prod/config`
 3. Check the printed output for the secret and the "save now" warning
 4. Read the config file and verify it contains `MODE=production`
 5. Verify the config file contains a bcrypt hash (`$2a$12$...`), NOT the plaintext
@@ -158,7 +158,7 @@ the secret in their own secrets manager.
 **Test command:**
 ```bash
 rm -rf /tmp/aa-test-p1-prod
-./bin/aactl init --mode=prod --config-path /tmp/aa-test-p1-prod/config
+./bin/awrit init --mode=prod --config-path /tmp/aa-test-p1-prod/config
 echo "---"
 cat /tmp/aa-test-p1-prod/config
 echo "---"
@@ -172,10 +172,10 @@ ls -la /tmp/aa-test-p1-prod/config
 **Tracker:** p1-s3
 **Plan tasks:** Task 5
 **Persona:** Operator
-**Tool:** aactl
+**Tool:** awrit
 
-The operator has already run `aactl init` and has a working config file
-from S1. They accidentally run `aactl init` again — maybe they forgot
+The operator has already run `awrit init` and has a working config file
+from S1. They accidentally run `awrit init` again — maybe they forgot
 they already set it up, or they're running a setup script that calls
 init unconditionally. The command must refuse to overwrite, because
 doing so would generate a new secret, invalidate the old one, and lock
@@ -184,7 +184,7 @@ the operator out of the broker with no way to recover.
 **Route:** N/A (local CLI command)
 **Steps:**
 1. Confirm the config file from S1 still exists
-2. Run `aactl init --config-path /tmp/aa-test-p1-dev/config` (same path as S1)
+2. Run `awrit init --config-path /tmp/aa-test-p1-dev/config` (same path as S1)
 3. Verify the command fails with a clear error
 4. Verify the original config file is unchanged
 
@@ -199,7 +199,7 @@ the operator out of the broker with no way to recover.
 # Save original for comparison
 cp /tmp/aa-test-p1-dev/config /tmp/aa-test-p1-dev/config.before
 # Try to overwrite
-./bin/aactl init --config-path /tmp/aa-test-p1-dev/config 2>&1; echo "exit=$?"
+./bin/awrit init --config-path /tmp/aa-test-p1-dev/config 2>&1; echo "exit=$?"
 # Verify unchanged
 diff /tmp/aa-test-p1-dev/config /tmp/aa-test-p1-dev/config.before
 ```
@@ -211,17 +211,17 @@ diff /tmp/aa-test-p1-dev/config /tmp/aa-test-p1-dev/config.before
 **Tracker:** p1-s4
 **Plan tasks:** Task 5
 **Persona:** Operator
-**Tool:** aactl
+**Tool:** awrit
 
 After S3, the operator decides they actually do want a new secret —
 maybe the old one was compromised, or they're rotating credentials
-manually. They run `aactl init --force` to deliberately reset it.
+manually. They run `awrit init --force` to deliberately reset it.
 The old secret is gone forever. This is the recovery path.
 
 **Route:** N/A (local CLI command)
 **Steps:**
 1. Note the current secret from the config file
-2. Run `aactl init --force --config-path /tmp/aa-test-p1-dev/config`
+2. Run `awrit init --force --config-path /tmp/aa-test-p1-dev/config`
 3. Verify the command succeeds
 4. Verify the new secret is different from the old one
 5. Verify the config file was overwritten with the new secret
@@ -235,7 +235,7 @@ The old secret is gone forever. This is the recovery path.
 **Test command:**
 ```bash
 OLD_SECRET=$(grep ADMIN_SECRET /tmp/aa-test-p1-dev/config | cut -d= -f2)
-./bin/aactl init --force --config-path /tmp/aa-test-p1-dev/config
+./bin/awrit init --force --config-path /tmp/aa-test-p1-dev/config
 echo "---"
 NEW_SECRET=$(grep ADMIN_SECRET /tmp/aa-test-p1-dev/config | cut -d= -f2)
 echo "Old: $OLD_SECRET"
@@ -250,11 +250,11 @@ echo "New: $NEW_SECRET"
 **Tracker:** p1-s5
 **Plan tasks:** Task 1, Task 2, Task 4
 **Persona:** Operator
-**Tool:** aactl + broker binary (VPS)
+**Tool:** awrit + broker binary (VPS)
 **Mode:** VPS (binary on host) — runs FIRST
 
 The operator deploys AgentAuth on a VPS (bare-metal server, EC2 instance,
-etc.). They ran `aactl init --mode=prod` to generate a config file with a
+etc.). They ran `awrit init --mode=prod` to generate a config file with a
 bcrypt hash. Now they start the broker binary directly — no Docker, no
 containers. The binary reads `AA_CONFIG_PATH` from the environment and loads
 the admin secret hash from the config file. The operator does NOT set
@@ -264,27 +264,27 @@ This is the simplest production deployment: a compiled binary on a server
 reading a config file from disk, exactly like PostgreSQL, Nginx, or any
 other server process.
 
-**Route:** GET /v1/health (via curl), admin auth via aactl
+**Route:** GET /v1/health (via curl), admin auth via awrit
 **Steps:**
-1. Generate a prod config file with `aactl init --mode=prod`
+1. Generate a prod config file with `awrit init --mode=prod`
 2. Note the printed secret
 3. Start the broker binary with `AA_CONFIG_PATH` pointing to the config
    file, `AA_ADMIN_SECRET` unset, and a temp DB + key path
 4. Check that the broker is healthy (curl health endpoint)
-5. Set `AACTL_ADMIN_SECRET` to the correct secret and run `aactl app list`
-6. Set `AACTL_ADMIN_SECRET` to a wrong secret and run `aactl app list`
+5. Set `AACTL_ADMIN_SECRET` to the correct secret and run `awrit app list`
+6. Set `AACTL_ADMIN_SECRET` to a wrong secret and run `awrit app list`
 7. Stop the broker
 
 **Expected:**
 - Broker starts and health check returns 200
-- `aactl app list` with the correct secret succeeds
-- `aactl app list` with a wrong secret fails with an auth error
+- `awrit app list` with the correct secret succeeds
+- `awrit app list` with a wrong secret fails with an auth error
 
 **Test command:**
 ```bash
 # Step 1-2: Generate config
 rm -rf /tmp/aa-test-p1-vps
-./bin/aactl init --mode=prod --config-path /tmp/aa-test-p1-vps/config
+./bin/awrit init --mode=prod --config-path /tmp/aa-test-p1-vps/config
 # (note the secret from output)
 
 # Step 3: Start broker binary directly (VPS mode)
@@ -299,15 +299,15 @@ sleep 2
 # Step 4: Health check
 curl -s http://127.0.0.1:8080/v1/health
 
-# Step 5: Auth with correct secret via aactl
+# Step 5: Auth with correct secret via awrit
 AACTL_BROKER_URL=http://127.0.0.1:8080 \
   AACTL_ADMIN_SECRET="<SECRET_FROM_STEP_1>" \
-  ./bin/aactl app list
+  ./bin/awrit app list
 
-# Step 6: Auth with wrong secret via aactl
+# Step 6: Auth with wrong secret via awrit
 AACTL_BROKER_URL=http://127.0.0.1:8080 \
   AACTL_ADMIN_SECRET="wrong-secret" \
-  ./bin/aactl app list 2>&1; echo "exit=$?"
+  ./bin/awrit app list 2>&1; echo "exit=$?"
 
 # Step 7: Cleanup
 kill $BROKER_PID
@@ -320,12 +320,12 @@ kill $BROKER_PID
 **Tracker:** p1-s5
 **Plan tasks:** Task 1, Task 2, Task 4
 **Persona:** Operator
-**Tool:** aactl + Docker
+**Tool:** awrit + Docker
 **Mode:** Container (docker run) — runs SECOND, only after S5a passes
 
 The operator deploys AgentAuth as a Docker container (Kubernetes, ECS,
 Docker Compose, etc.). The config file was generated on the host by
-`aactl init --mode=prod` and is mounted into the container as a read-only
+`awrit init --mode=prod` and is mounted into the container as a read-only
 volume. The container reads `AA_CONFIG_PATH` which points to the mounted
 file inside the container's filesystem.
 
@@ -334,20 +334,20 @@ filesystem boundary (host → container volume mount). If S5a passes but
 this fails, the bug is in the Docker image, the volume mount, or the
 path mapping — not in the application.
 
-**Route:** GET /v1/health (via curl), admin auth via aactl
+**Route:** GET /v1/health (via curl), admin auth via awrit
 **Steps:**
 1. Reuse the config file from S5a (or generate a new one)
 2. Start a Docker container with the config directory mounted and
    `AA_CONFIG_PATH` pointing to the container-internal path
 3. Check that the broker is healthy
-4. Run `aactl app list` with the correct secret
-5. Run `aactl app list` with a wrong secret
+4. Run `awrit app list` with the correct secret
+5. Run `awrit app list` with a wrong secret
 6. Stop and remove the container
 
 **Expected:**
 - Broker starts and health check returns 200
-- `aactl app list` with the correct secret succeeds
-- `aactl app list` with a wrong secret fails with an auth error
+- `awrit app list` with the correct secret succeeds
+- `awrit app list` with a wrong secret fails with an auth error
 - Identical behavior to S5a (VPS mode)
 
 **Test command:**
@@ -369,15 +369,15 @@ sleep 3
 # Step 3: Health check
 curl -s http://127.0.0.1:8080/v1/health
 
-# Step 4: Auth with correct secret via aactl
+# Step 4: Auth with correct secret via awrit
 AACTL_BROKER_URL=http://127.0.0.1:8080 \
   AACTL_ADMIN_SECRET="<SECRET_FROM_S5A>" \
-  ./bin/aactl app list
+  ./bin/awrit app list
 
-# Step 5: Auth with wrong secret via aactl
+# Step 5: Auth with wrong secret via awrit
 AACTL_BROKER_URL=http://127.0.0.1:8080 \
   AACTL_ADMIN_SECRET="wrong-secret" \
-  ./bin/aactl app list 2>&1; echo "exit=$?"
+  ./bin/awrit app list 2>&1; echo "exit=$?"
 
 # Step 6: Cleanup
 docker stop aa-p1-container && docker rm aa-p1-container
@@ -395,7 +395,7 @@ docker stop aa-p1-container && docker rm aa-p1-container
 
 The developer has an existing setup that sets
 `AA_ADMIN_SECRET=change-me-in-production` as an environment variable.
-They have no config file and have never run `aactl init`. This is
+They have no config file and have never run `awrit init`. This is
 the workflow that existed before P1. Everything must work exactly as
 before — same env var, same curl commands, same 200 response.
 
@@ -482,7 +482,7 @@ curl -s -X POST "$BROKER_URL/v1/admin/auth" \
 
 The developer has both a config file and the `AA_ADMIN_SECRET` env var
 set to different values. This happens when the operator generates a config
-file with `aactl init` but then overrides the secret via an environment
+file with `awrit init` but then overrides the secret via an environment
 variable (on a VPS via systemd override, or in Kubernetes via a Secret
 mounted as an env var). The env var must win — this is the standard
 override pattern (env > file > defaults).
@@ -505,7 +505,7 @@ modifying the config file, which breaks environment-based configuration.
 **Test command:**
 ```bash
 rm -rf /tmp/aa-test-p1-s7-vps
-./bin/aactl init --config-path /tmp/aa-test-p1-s7-vps/config
+./bin/awrit init --config-path /tmp/aa-test-p1-s7-vps/config
 CONFIG_SECRET=$(grep ADMIN_SECRET /tmp/aa-test-p1-s7-vps/config | cut -d= -f2)
 ENV_SECRET="env-override-secret-for-testing"
 
@@ -607,7 +607,7 @@ or any process manager captures into the journal.
 **Test command:**
 ```bash
 rm -rf /tmp/aa-test-p1-s8-vps
-./bin/aactl init --config-path /tmp/aa-test-p1-s8-vps/config
+./bin/awrit init --config-path /tmp/aa-test-p1-s8-vps/config
 
 AA_CONFIG_PATH=/tmp/aa-test-p1-s8-vps/config \
 AA_DB_PATH=/tmp/aa-test-p1-s8-vps/agentauth.db \

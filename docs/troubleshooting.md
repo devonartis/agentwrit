@@ -61,7 +61,7 @@ flowchart TD
     A4 --> A4WEAK["admin secret<br/>rejected (weak)"]
 
     A4CREDS --> A4CREDSF["Fix: Check<br/>AA_ADMIN_SECRET"]
-    A4WEAK --> A4WEAKF["Fix: Use aactl init<br/>to set strong secret"]
+    A4WEAK --> A4WEAKF["Fix: Use awrit init<br/>to set strong secret"]
 
     S403 --> F1{"Error code?"}
     F1 --> F1SV["scope_violation"]
@@ -419,12 +419,12 @@ Or:
 
 **Fix:**
 
-1. If the secret is weak, use `aactl init` to generate a strong secret with bcrypt hashing:
+1. If the secret is weak, use `awrit init` to generate a strong secret with bcrypt hashing:
 
 ```bash
-aactl init --mode dev
+awrit init --mode dev
 # or
-aactl init --mode prod --config-path /path/to/config.yaml
+awrit init --mode prod --config-path /path/to/config.yaml
 ```
 
 This creates a configuration file with a bcrypt-hashed admin secret. Set `AA_CONFIG_PATH` to point to this file:
@@ -546,7 +546,7 @@ broker:
 
 ---
 
-### Broker Config File Issues: aactl init
+### Broker Config File Issues: awrit init
 
 **Symptom:**
 
@@ -571,14 +571,14 @@ FATAL: admin secret rejected: does not meet security requirements
 
 **Fix:**
 
-1. **Generate a config file using aactl init:**
+1. **Generate a config file using awrit init:**
 
 ```bash
 # Development mode (shorter TTLs, simpler config)
-aactl init --mode dev
+awrit init --mode dev
 
 # Production mode (longer TTLs, bcrypt-hashed admin secret, config file)
-aactl init --mode prod --config-path /etc/agentauth/config.yaml
+awrit init --mode prod --config-path /etc/agentauth/config.yaml
 ```
 
 2. **For development, use environment variables instead of a config file:**
