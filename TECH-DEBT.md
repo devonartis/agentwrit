@@ -249,23 +249,19 @@ The repo has accumulated artifacts from migration, multiple agent sessions, and 
 
 ---
 
-## Go stdlib vulnerabilities (M-sec CI baseline, 2026-04-10)
+## Go stdlib vulnerabilities (M-sec CI baseline, 2026-04-10) — RESOLVED
 
 `govulncheck ./...` run on the M-sec baseline surfaced 4 stdlib CVEs, all
 fixable by bumping the `toolchain` directive in `go.mod` from `go1.25.7`
-to `go1.25.9`. The local `gates.sh full` govulncheck gate will stay RED
-on this branch until the bump lands.
+to `go1.25.9`. **Resolved 2026-04-10 in Task 23** — toolchain bumped,
+`govulncheck ./...` now returns "No vulnerabilities found."
 
-| ID | Advisory | Package | Fixed in |
-|----|----------|---------|----------|
-| TD-VUL-001 | GO-2026-4947 | `crypto/x509` | `go1.25.9` |
-| TD-VUL-002 | GO-2026-4946 | `crypto/x509` | `go1.25.9` |
-| TD-VUL-003 | GO-2026-4870 (TLS 1.3 KeyUpdate DoS) | `crypto/tls` | `go1.25.9` |
-| TD-VUL-004 | GO-2026-4601 (IPv6 host literal parsing) | `net/url` | `go1.25.8` |
-
-**Fix:** one-line edit to `go.mod` (`toolchain go1.25.9`) plus re-running
-`go mod tidy`. Scheduled for Task 23 (immediately before first CI push)
-so Dependabot doesn't land a competing bump mid-rollout.
+| ID | Advisory | Package | Fixed in | Status |
+|----|----------|---------|----------|--------|
+| TD-VUL-001 | GO-2026-4947 | `crypto/x509` | `go1.25.9` | RESOLVED |
+| TD-VUL-002 | GO-2026-4946 | `crypto/x509` | `go1.25.9` | RESOLVED |
+| TD-VUL-003 | GO-2026-4870 (TLS 1.3 KeyUpdate DoS) | `crypto/tls` | `go1.25.9` | RESOLVED |
+| TD-VUL-004 | GO-2026-4601 (IPv6 host literal parsing) | `net/url` | `go1.25.8` | RESOLVED |
 
 ## When to Fix
 
