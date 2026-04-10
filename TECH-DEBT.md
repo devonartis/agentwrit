@@ -293,6 +293,49 @@ to `go1.25.9`. **Resolved 2026-04-10 in Task 23** — toolchain bumped,
 | TD-VUL-003 | GO-2026-4870 (TLS 1.3 KeyUpdate DoS) | `crypto/tls` | `go1.25.9` | RESOLVED |
 | TD-VUL-004 | GO-2026-4601 (IPv6 host literal parsing) | `net/url` | `go1.25.8` | RESOLVED |
 
+## TD-CI-001 — Path-filter ci.yml for docs-only PRs (M-sec, 2026-04-10)
+
+Full 13-gate pipeline runs on every PR regardless of whether any Go code
+changed. A pure docs PR still triggers build, vet, lint, unit-tests,
+unit-tests-race, gosec, govulncheck, go-mod-verify, docker-build, smoke-l25,
+sbom — ~6-8 minutes of wasted compute per docs-only PR.
+
+Maintainers (admins) can direct-push dev-file-only changes to develop today via
+the "Direct push vs PR — strip-list test" Standing Rule in MEMORY.md. Non-admin
+contributors will have no such escape hatch once Decision 016's exit criteria
+are met and contributions open.
+
+**Fix:** add `paths:` / `paths-ignore:` to `ci.yml`'s `on: pull_request` and
+`on: push` triggers so the workflow doesn't fire on `**.md`, `docs/**`,
+`.plans/**`, `adr/**`, or the stripped top-level markdown files. Keep the small
+fast gates (`format`, `contamination`, `changelog`, `gate-parity`, `gates-passed`)
+running in a lightweight `ci-docs.yml` workflow OR use `dorny/paths-filter`
+per-job skipping so `gates-passed` still reports `success` on docs-only PRs
+(branch protection requires it).
+
+**Validate:** after the change, open a docs-only PR and verify the heavy gates
+skip while `gates-passed` still reports success. Do not break the branch-protection
+contract.
+
+**When to fix:** before external contributions open. Not urgent while private +
+no-contribs, but MUST be done before Decision 016's exit criteria are met.
+
+## TD-DOCS-001 — `docs/` directory refactor (M-sec, 2026-04-10)
+
+Flagged during the M-sec session: `docs/` has no table of contents, files are
+scattered, some leak meta-tags / internal tooling artifacts that shouldn't be
+public-facing.
+
+**Fix:** audit every file in `docs/`, categorize (getting-started / concepts /
+reference / examples / operations), write a `docs/README.md` as the navigational
+root, remove or rewrite anything that shouldn't ship publicly, normalize
+frontmatter to exclude internal tags. Consider a static-site generator (mdBook,
+Docusaurus, Hugo) if the structure warrants it.
+
+**When to fix:** before the repo flips public. Public-facing docs are one of
+the first things a skeptical engineer reads; bad navigation is a trust-loss
+moment.
+
 ## When to Fix
 
 Documentation and script drift items (TD-D*, TD-S*) should be resolved **after all cherry-pick batches are complete** (B0-B6). Doing them now risks conflicts with incoming commits. Schedule as a dedicated docs refresh phase post-migration.
