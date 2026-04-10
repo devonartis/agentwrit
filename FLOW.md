@@ -392,3 +392,97 @@ CC v4 plan fully executed. Develop → main merge fast-forwarded, strip_for_main
 6. **`demo/.env.example`** in SDK repo — has hardcoded vLLM URL (`spark-3171`), needs generic placeholder
 
 7. **GitHub public flip** — after domain, after all docs clean, after external security audit
+
+---
+
+## 2026-04-10 — ADR/Decision split, skill build, branch cleanup, merge to develop
+
+### Decision: Split technical ADRs from non-technical Decisions
+
+ADRs (code-level) live in repo `adr/` on develop, stripped from main. Non-technical decisions (business, marketing, licensing, strategy, rebrand, tooling) live in Obsidian KB only at parent-project level. Classification principle: **if the deployed code changes because of this decision, it's an ADR. If not, it's a Decision.** Rebrands, licensing, release strategy, repo renames → always Decision. Fork points, code standards, acceptance tests, gitflow → always ADR.
+
+### Action: Restructured repo decisions/ → adr/
+
+- Repo `decisions/` renamed to `adr/`
+- 6 ADRs kept in repo: 001 Fork point, 003 GitFlow, 004 Clone not copy, 007 Code comments, 009 Acceptance tests, 011 Develop/main discipline
+- 6 non-ADR files removed from repo (002, 005, 006, 008, 010, 012) — they live in Obsidian KB only
+- `strip_for_main.sh` updated: `adr/` now stripped from main merge
+- Gaps in numbering (002, 005, 006...) are meaningful — indicate which type went where
+
+### Action: Built `/obsidian:decision` skill
+
+Records decisions to repo (ADRs) or Obsidian KB (Decisions) with wikilinks, backlinks, scope tracking, daily note journal entry. Three iterations: first draft, skill-creator audit, rewrite with "Why these rules exist" framing + validation step. Config at `~/.claude/obsidian-projects.json` maps 4 AgentAuth repos to KB paths. Installed `obsidian-agent` globally (44 tools) for vault diagnostics (search, backlinks, broken-links).
+
+### Decision: smart-search is the first tool for vault queries
+
+Added 2-line pointer in global `~/.claude/CLAUDE.md` with full reference at `~/.claude/skills/obsidian:decision/references/obsidian-agent-commands.md`. `smart-search` is the BM25-ranked default, falls back to grep only when MCP tool unavailable.
+
+### Decision 014: No external contributions, bug reports only (project-wide)
+
+All AgentAuth repos accept no external code contributions. No PRs, not even bug fixes. External people can file bug reports and feature requests as issues. Public visibility and accepting contributions are separate decisions — the repo may go public under AGPL without opening to PRs. Exit criteria: documented test plan + merge plan + contribution guide tested with at least one non-maintainer. Decision file at `KB/10-Projects/AgentAuth/decisions/014-no-external-contributions.md`.
+
+### Action: Root cleanup — deleted 7 stray files/folders
+
+Deleted `DEVELOPMENT_STANDARDS.md`, `MiniMaxPythonSDK_REVIEW.md`, `SDK_BLUEPRINT.md`, `GeminiReview/`, `docs/python-sdk-design.md`, `docs/python-sdk-design-v2.md`, `docs/python-sdk-design-final.md`. All were April 5-6 scratch files that ended up in the wrong repo.
+
+### Action: Merged docs/readme-sdk-demo to develop
+
+Merge commit `511dde6`. Includes: README SDK section (pending re-review — user skeptical of value), CONTRIBUTING rewrite (now inconsistent with Decision 014 — needs follow-up), ADR directory structure, SECURITY.md corrections, CODE_OF_CONDUCT.md, root cleanup, scripts/strip_for_main.sh update. Pushed to origin.
+
+### Action: Branch cleanup — 15 branches deleted
+
+All B0-B6 migration cherry-pick branches deleted (sidecar-removal, p0-persistent-key, p1-admin-secret, sec-l1, sec-l2a, sec-l2b, sec-a1), plus docs/readme-sdk-demo (merged), develop-harness-backup (already cherry-picked), devin/1775212397-add-wiki-pages (Devin PR, duplicated existing docs, bad job), whitesource/configure (auto-scanner branch), fix/app-launch-tokens-endpoint and fix/docs-overhaul (merged weeks ago). Repo now: develop + main only, locally and remotely.
+
+### Status: develop ahead of main
+
+`511dde6` on develop, not yet merged to main. Strip script will remove `adr/` on next develop → main merge.
+
+---
+
+### What's Next (2026-04-10)
+
+**Priority: CI, build, and gates — done professionally.**
+
+The repo needs a real CI/build/gates setup before any public work. Current gates (`scripts/gates.sh`) are local-only and not wired into CI. Next session, brainstorm and spec this out via devflow:
+
+**CI pipeline (GitHub Actions, runs on every push to develop):**
+- **Build** — `go build ./...` both binaries (broker + aactl)
+- **Unit tests** — `go test ./... -race`
+- **Lint** — `golangci-lint` (staticcheck, errcheck, gosec, revive minimum)
+- **Formatting** — `gofmt -l` must return empty
+- **Contamination check** — grep `hitl|approval|oidc|federation|cloud|sidecar` in `internal/` and `cmd/` must return nothing
+- **Security scan** — `gosec` + `govulncheck` against go.mod
+- **Docker build** — multi-stage build, image builds cleanly
+- **Acceptance smoke** — at least one acceptance story per feature runs against Docker
+- **SBOM generation** — `syft` SPDX output as artifact
+
+**Gates (local `scripts/gates.sh` extended, mirrored in CI):**
+- G1 Build, G2 Unit tests, G3 Contamination, G4 Docker build, G5 Lint, G6 Smoke, G7 Security scan
+- Each gate a separate step, so CI shows which gate failed
+- `./scripts/gates.sh task` runs fast gates (G1-G3, G5) for dev iteration
+- `./scripts/gates.sh full` runs everything including Docker and smoke
+
+**Release automation:**
+- Tagged releases trigger release workflow
+- Automated `CHANGELOG.md` section from commit messages since previous tag
+- Multi-arch Docker image publish to GHCR (amd64 + arm64)
+- SBOM attached to release
+- GitHub Release notes auto-generated
+
+**Contribution gate (per Decision 014):**
+- PRs from non-maintainers get auto-closed with a comment pointing to the issues-only policy
+- Issue templates for bug reports and feature requests
+- No "good first issue" or "help wanted" labels yet
+
+**Pre-commit hooks (develop-side):**
+- Extend existing `.githooks/pre-commit` to run `gofmt -l`, `go vet`, contamination grep
+- Fast-fail before the commit lands
+
+**Still carried over from 2026-04-08 (lower priority than CI):**
+- CONTRIBUTING.md update per Decision 014
+- README SDK section decision
+- Domain placeholder emails (per Decision 013 → agentwrit.com)
+- `docs/api/openapi.yaml` license fix
+- `docs/getting-started-developer.md` SDK link
+
+**First concrete action next session:** devflow → brainstorm CI/build/gates scope → spec → plan → execute. This is a feature, not cleanup, so the full devflow cycle applies.
