@@ -1,5 +1,8 @@
 # AgentAuth
 
+[![CI](https://github.com/devonartis/agentauth/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/devonartis/agentauth/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/devonartis/agentauth/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/devonartis/agentauth/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/devonartis/agentauth/badge)](https://securityscorecards.dev/viewer/?uri=github.com/devonartis/agentauth)
 [![Go Reference](https://pkg.go.dev/badge/github.com/devonartis/agentauth.svg)](https://pkg.go.dev/github.com/devonartis/agentauth)
 [![Go Report Card](https://goreportcard.com/badge/github.com/devonartis/agentauth)](https://goreportcard.com/report/github.com/devonartis/agentauth)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
@@ -8,6 +11,15 @@
 [![Security Policy](https://img.shields.io/badge/Security-Policy-green?logo=shield)](SECURITY.md)
 [![EdDSA](https://img.shields.io/badge/Signing-Ed25519%20EdDSA-8B5CF6)](https://ed25519.cr.yp.to/)
 [![SPIFFE](https://img.shields.io/badge/Identity-SPIFFE-0F9D58)](https://spiffe.io/)
+
+<!--
+Badge note: CI, CodeQL, and OpenSSF Scorecard badges will show as "not found"
+or broken while this repo is private — those badges require public repo visibility
+(and for CodeQL/Scorecard, the workflows must be re-enabled, see TD-VUL-006).
+They're added now so the moment the repo flips public, they light up without
+needing a README update. Fire-and-forget.
+-->
+
 
 **Ephemeral agent credentialing for AI systems.**
 
