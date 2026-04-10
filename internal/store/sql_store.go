@@ -36,8 +36,8 @@ var (
 	ErrTokenNotFound = errors.New("launch token not found")
 	ErrTokenExpired  = errors.New("launch token expired")
 	ErrTokenConsumed = errors.New("launch token already consumed")
-	ErrAgentNotFound   = errors.New("agent not found")
-	ErrAppNotFound     = errors.New("app not found")
+	ErrAgentNotFound = errors.New("agent not found")
+	ErrAppNotFound   = errors.New("app not found")
 )
 
 // LaunchTokenRecord represents a pre-authorized launch token created by an
@@ -86,7 +86,7 @@ type AgentRecord struct {
 	TaskID string
 	// Scope is the set of permissions granted at registration, always a
 	// subset of the launch token's AllowedScope.
-	Scope []string
+	Scope        []string
 	RegisteredAt time.Time
 	LastSeen     time.Time
 	ExpiresAt    time.Time
@@ -569,6 +569,9 @@ func (s *SqlStore) QueryAuditEvents(filters audit.QueryFilters) ([]audit.AuditEv
 		offset = 0
 	}
 
+	// #nosec G202 -- `where` is assembled from fixed-template fragments built
+	// above (see whereClauses); every user-supplied value is a `?` placeholder
+	// bound through queryArgs. No untrusted strings enter the SQL text.
 	selectQ := "SELECT id, timestamp, event_type, agent_id, task_id, orch_id, detail, " +
 		"resource, outcome, deleg_depth, deleg_chain_hash, bytes_transferred, " +
 		"hash, prev_hash FROM audit_events" +
@@ -630,13 +633,13 @@ func (s *SqlStore) QueryAuditEvents(filters audit.QueryFilters) ([]audit.AuditEv
 // launch tokens within their scope ceiling. The secret hash is never returned
 // in API responses.
 type AppRecord struct {
-	AppID            string    // "app-{name}-{random6hex}"
-	Name             string    // Human-readable, unique
-	ClientID         string    // "{abbrev}-{random12hex}"
-	ClientSecretHash string    // bcrypt hash of the client secret (never returned)
-	ScopeCeiling     []string  // Scope ceiling; JSON-marshaled in DB
-	TokenTTL         int       // JWT TTL in seconds (default 1800)
-	Status           string    // "active" | "inactive"
+	AppID            string   // "app-{name}-{random6hex}"
+	Name             string   // Human-readable, unique
+	ClientID         string   // "{abbrev}-{random12hex}"
+	ClientSecretHash string   // bcrypt hash of the client secret (never returned)
+	ScopeCeiling     []string // Scope ceiling; JSON-marshaled in DB
+	TokenTTL         int      // JWT TTL in seconds (default 1800)
+	Status           string   // "active" | "inactive"
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	CreatedBy        string
