@@ -20,7 +20,12 @@ if [[ "$BRANCH" != "main" ]]; then
   exit 0
 fi
 
-# Files/dirs that must NEVER land on main
+# Files/dirs that must NEVER land on main.
+# Keep this list in sync with the strip_path calls in scripts/strip_for_main.sh.
+# The two lists exist for defense in depth:
+#   - strip_for_main.sh is the automated pre-merge step (runs once per merge)
+#   - this hook is the last-chance safety net (runs on every commit to main)
+# If either catches a stray dev file, the other should too.
 FORBIDDEN=(
   "MEMORY.md"
   "MEMORY_ARCHIVE.md"
@@ -35,6 +40,8 @@ FORBIDDEN=(
   ".claude"
   ".agents"
   "audit"
+  "adr"
+  ".vscode"
   "generate_pdf.py"
 )
 

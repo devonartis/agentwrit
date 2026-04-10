@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — strip_for_main.sh mid-merge support + two drift fixes
+
+- **`scripts/strip_for_main.sh`** — the documented `git merge develop
+  --no-commit` → strip flow could never actually work because the
+  script's dirty-tree guard refused to run mid-merge. Added merge-state
+  detection (`$GIT_DIR/MERGE_HEAD` presence); when mid-merge the strip
+  uses `git rm -rf --ignore-unmatch` so modify/delete conflicts get
+  deleted AND staged as resolved in one step. The "absolute refusal to
+  run on develop" guard is preserved regardless of merge state.
+- **`scripts/strip_for_main.sh` + `.githooks/pre-commit`** — added
+  `.vscode/` (editor settings, often carry per-user Snyk / IDE prefs)
+  to both strip lists, and `adr/` to the pre-commit FORBIDDEN list
+  (it was already in the strip script). The two defense layers now
+  agree. A note in pre-commit tells future editors to keep both lists
+  in sync.
+
 ### Added — CI/build/gates (M-sec v1)
 
 - **`.gosec.yml`** — explicit gosec configuration with documented rule
