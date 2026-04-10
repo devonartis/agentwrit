@@ -163,9 +163,9 @@ if [[ "$MODE" == "full" ]]; then
     skip_gate "smoke-l2.5" "scripts/smoke/core-contract.sh not found or not executable"
   fi
 
-  # SBOM: syft SPDX output
+  # SBOM: syft SPDX output. `syft scan` replaced `syft packages` in 1.x.
   if command -v syft &>/dev/null; then
-    run_gate "sbom" syft packages dir:. -o spdx-json=sbom.spdx.json --quiet
+    run_gate "sbom" syft scan dir:. -o spdx-json=sbom.spdx.json --quiet
   else
     skip_gate "sbom" "syft not installed — brew install syft or https://github.com/anchore/syft"
   fi
