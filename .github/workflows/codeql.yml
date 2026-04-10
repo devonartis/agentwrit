@@ -1,12 +1,24 @@
 name: CodeQL
 
+# DISABLED: CodeQL requires GitHub Code Scanning, which is a GitHub
+# Advanced Security (GHAS) feature on private repos. devonartis/agentauth
+# is currently private without GHAS, so github/codeql-action/analyze
+# fails at the SARIF upload step.
+#
+# Re-enable when:
+#   (a) the repo flips public (Phase 4 of release strategy — GHAS is
+#       free on public repos), OR
+#   (b) GHAS is purchased for the private repo (~$49/committer/mo).
+#
+# Tracking: TD-VUL-006 in TECH-DEBT.md.
+#
+# The file is kept (not deleted) so the re-enable is a simple trigger
+# swap — uncomment the `on:` block below, delete this comment header,
+# and push.
+
 on:
-  pull_request:
-    branches: [develop]
-  push:
-    branches: [develop, main]
-  schedule:
-    - cron: '31 7 * * 1'  # weekly Monday 07:31 UTC
+  # Disabled until public flip — see header comment.
+  workflow_dispatch:
 
 permissions:
   actions: read

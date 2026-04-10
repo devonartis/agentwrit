@@ -249,21 +249,33 @@ The repo has accumulated artifacts from migration, multiple agent sessions, and 
 
 ---
 
-## TD-VUL-005 — dep-review disabled on private repo (M-sec, 2026-04-10)
+## TD-VUL-005/006 — GHAS-gated workflows disabled (M-sec, 2026-04-10)
 
-`actions/dependency-review-action` fails on the first CI run because
-`devonartis/agentauth` is private without GitHub Advanced Security.
-The action needs the Dependency Graph API, which only runs on public
-repos (free) or private repos with GHAS (paid).
+Three GitHub security features require GitHub Advanced Security (GHAS)
+on private repos. `devonartis/agentauth` is currently private without
+GHAS, so all three fail on first run. All three become FREE when the
+repo flips public (Phase 4 of release strategy).
 
-Workaround: the `dep-review` job is commented out of `ci.yml`. The
-security coverage gap is partial — `govulncheck` still catches stdlib
-and Go module CVEs; dep-review would have added license policy and
-broader package metadata scanning.
+| ID | Workflow / Feature | What it gives | Status |
+|----|-------------------|---------------|--------|
+| TD-VUL-005 | `dep-review` job in `ci.yml` | Dependency graph + license policy scanning on every PR | Job commented out |
+| TD-VUL-006a | `codeql.yml` (Go SAST) | Static analysis findings in Security tab, weekly scan | Workflow trigger changed to `workflow_dispatch` only |
+| TD-VUL-006b | `scorecard.yml` (OpenSSF Scorecard) | Supply-chain posture score (badge on README) | Workflow trigger changed to `workflow_dispatch` only |
 
-**Fix:** re-enable when either (a) the repo flips public (Phase 4 of
-the release strategy) or (b) GHAS is purchased. Revert the commented
-block in `.github/workflows/ci.yml`.
+Remaining security coverage while these are disabled:
+  - `govulncheck` — stdlib + Go module CVEs (live, blocking)
+  - `gosec` — application-layer static analysis (live, blocking)
+  - `contamination` grep — enterprise-module references (live, blocking)
+
+**Fix sequence** when the repo flips public (no GHAS purchase needed):
+  1. `dep-review`: uncomment the job block in `.github/workflows/ci.yml`
+     and restore it to the `gates-passed` needs list if branch protection
+     requires it.
+  2. `codeql.yml`: revert the `on:` block header to `pull_request` +
+     `push` + `schedule` (see original block preserved in the comment).
+  3. `scorecard.yml`: same — restore the original `on:` block.
+  4. Add badges to `README.md` (Task 30 in the M-sec plan) — CodeQL
+     badge and Scorecard badge URLs are already in the plan draft.
 
 ---
 
