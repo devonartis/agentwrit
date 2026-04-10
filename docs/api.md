@@ -12,13 +12,13 @@
 
 ## Overview
 
-AgentAuth exposes a JSON HTTP API. All request and response bodies use `Content-Type: application/json`. The broker listens on port 8080 by default (`AA_PORT`).
+AgentWrit exposes a JSON HTTP API. All request and response bodies use `Content-Type: application/json`. The broker listens on port 8080 by default (`AA_PORT`).
 
 All error responses use RFC 7807 `application/problem+json` format:
 
 ```json
 {
-  "type": "urn:agentauth:error:{errType}",
+  "type": "urn:agentwrit:error:{errType}",
   "title": "HTTP Status Text",
   "status": 400,
   "detail": "human-readable description",
@@ -216,8 +216,8 @@ Verify a token and return its claims. Also checks revocation status.
 {
   "valid": true,
   "claims": {
-    "iss": "agentauth",
-    "sub": "spiffe://agentauth.local/agent/orch/task/instance",
+    "iss": "agentwrit",
+    "sub": "spiffe://agentwrit.local/agent/orch/task/instance",
     "exp": 1707600000,
     "nbf": 1707599700,
     "iat": 1707599700,
@@ -355,7 +355,7 @@ curl -X POST http://localhost:8080/v1/register \
 
 ```json
 {
-  "agent_id": "spiffe://agentauth.local/agent/my-orchestrator/task-001/a1b2c3d4e5f6",
+  "agent_id": "spiffe://agentwrit.local/agent/my-orchestrator/task-001/a1b2c3d4e5f6",
   "access_token": "eyJ...",
   "expires_in": 300
 }
@@ -461,7 +461,7 @@ curl -X POST http://localhost:8080/v1/delegate \
   -H "Authorization: Bearer <delegator-token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "delegate_to": "spiffe://agentauth.local/agent/orch/task/instance2",
+    "delegate_to": "spiffe://agentwrit.local/agent/orch/task/instance2",
     "scope": ["read:data:*"],
     "ttl": 60
   }'
@@ -473,7 +473,7 @@ curl -X POST http://localhost:8080/v1/delegate \
   "expires_in": 60,
   "delegation_chain": [
     {
-      "agent": "spiffe://agentauth.local/agent/orch/task/instance1",
+      "agent": "spiffe://agentwrit.local/agent/orch/task/instance1",
       "scope": ["read:data:*", "write:data:*"],
       "delegated_at": "2026-02-15T12:00:00Z",
       "signature": "a1b2c3..."
@@ -711,7 +711,7 @@ curl "http://localhost:8080/v1/audit/events?event_type=agent_registered&limit=10
       "id": "evt-000001",
       "timestamp": "2026-02-15T12:00:00Z",
       "event_type": "agent_registered",
-      "agent_id": "spiffe://agentauth.local/agent/orch/task/instance",
+      "agent_id": "spiffe://agentwrit.local/agent/orch/task/instance",
       "task_id": "task-001",
       "orch_id": "my-orchestrator",
       "detail": "Agent registered with scope [read:data:*]",
@@ -972,13 +972,13 @@ The broker reads configuration from a config file and environment variables. Env
 **Config file location priority:**
 
 1. `AA_CONFIG_PATH` environment variable (explicit path)
-2. `/etc/agentauth/config` (system-wide)
-3. `~/.agentauth/config` (user-local)
+2. `/etc/broker/config` (system-wide)
+3. `~/.broker/config` (user-local)
 
 **Config file format:** Simple KEY=VALUE, one per line. Comments (`#`) and blank lines are ignored.
 
 ```
-# AgentAuth Configuration
+# AgentWrit Configuration
 MODE=production
 ADMIN_SECRET=$2a$12$...bcrypt-hash...
 ```
@@ -1002,7 +1002,7 @@ awrit init --mode=dev
 awrit init --mode=prod
 
 # Custom config path
-awrit init --mode=prod --config-path=/etc/agentauth/config
+awrit init --mode=prod --config-path=/etc/broker/config
 
 # Overwrite existing config
 awrit init --mode=dev --force
@@ -1054,13 +1054,13 @@ Scopes can only narrow, never expand. This is enforced at two points:
 
 ## JWT Claims
 
-All tokens issued by AgentAuth use EdDSA (Ed25519) signing with compact JWT serialization.
+All tokens issued by AgentWrit use EdDSA (Ed25519) signing with compact JWT serialization.
 
 ### TknClaims Fields
 
 | Field | JSON Key | Type | Description |
 |---|---|---|---|
-| `Iss` | `iss` | string | Always `"agentauth"` |
+| `Iss` | `iss` | string | Always `"agentwrit"` |
 | `Sub` | `sub` | string | SPIFFE agent ID, `"admin"`, or `"app:{client_id}"` |
 | `Aud` | `aud` | string[] | Audience (optional) |
 | `Exp` | `exp` | int64 | Expiration timestamp (Unix seconds) |
@@ -1121,11 +1121,11 @@ Applied to `POST /v1/admin/auth` and `POST /v1/app/auth`:
 
 | Metric | Type | Labels | Description |
 |---|---|---|---|
-| `agentauth_tokens_issued_total` | CounterVec | `scope` | Tokens issued by primary scope |
-| `agentauth_tokens_revoked_total` | CounterVec | `level` | Revocations by level |
-| `agentauth_registrations_total` | CounterVec | `status` | Registration attempts (success/failure) |
-| `agentauth_admin_auth_total` | CounterVec | `status` | Admin auth attempts (success/failure) |
-| `agentauth_launch_tokens_created_total` | Counter | -- | Launch tokens created |
-| `agentauth_active_agents` | Gauge | -- | Currently registered agents |
-| `agentauth_request_duration_seconds` | HistogramVec | `endpoint` | Request latency |
-| `agentauth_clock_skew_total` | Counter | -- | Clock skew events |
+| `agentwrit_tokens_issued_total` | CounterVec | `scope` | Tokens issued by primary scope |
+| `agentwrit_tokens_revoked_total` | CounterVec | `level` | Revocations by level |
+| `agentwrit_registrations_total` | CounterVec | `status` | Registration attempts (success/failure) |
+| `agentwrit_admin_auth_total` | CounterVec | `status` | Admin auth attempts (success/failure) |
+| `agentwrit_launch_tokens_created_total` | Counter | -- | Launch tokens created |
+| `agentwrit_active_agents` | Gauge | -- | Currently registered agents |
+| `agentwrit_request_duration_seconds` | HistogramVec | `endpoint` | Request latency |
+| `agentwrit_clock_skew_total` | Counter | -- | Clock skew events |

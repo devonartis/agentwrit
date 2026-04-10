@@ -205,6 +205,6 @@ At every step, authority can only narrow. The admin defines what apps can do. Ap
 ## What to Read Next
 
 - **`docs/credential-model.md`** — the full technical walkthrough: every credential's claims, TTLs, and sequence diagrams
-- **`docs/agentauth-explained.md`** — the plain-language version for sales and new team members
+- **`docs/agentwrit-explained.md`** — the plain-language version for sales and new team members
 
 

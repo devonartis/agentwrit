@@ -2,13 +2,13 @@
 
 > **Document Version:** 3.0 | **Last Updated:** March 2026 | **Status:** Current
 >
-> **Audience:** Platform Operator responsible for deploying and managing AgentAuth infrastructure.
+> **Audience:** Platform Operator responsible for deploying and managing AgentWrit infrastructure.
 >
-> **Prerequisite:** Read [Concepts](concepts.md) to understand why AgentAuth exists and what the 8-component security pattern provides. If you are a developer integrating an agent, see [Getting Started: Developer](getting-started-developer.md).
+> **Prerequisite:** Read [Concepts](concepts.md) to understand why AgentWrit exists and what the 8-component security pattern provides. If you are a developer integrating an agent, see [Getting Started: Developer](getting-started-developer.md).
 >
 > **Next steps:** [Common Tasks: Operator](common-tasks.md#operator-tasks) | [Troubleshooting](troubleshooting.md#operator-errors) | [Architecture](architecture.md)
 
-This guide walks you through deploying the AgentAuth broker, configuring it, creating launch tokens for developers, and monitoring the system.
+This guide walks you through deploying the AgentWrit broker, configuring it, creating launch tokens for developers, and monitoring the system.
 
 ---
 
@@ -38,7 +38,7 @@ To tear down the stack:
 
 ```mermaid
 flowchart LR
-    subgraph "Docker: agentauth-net (bridge)"
+    subgraph "Docker: agentwrit-net (bridge)"
         B["Broker<br/>:8080"]
     end
     Dev["Developer App"] -- "http://localhost:8080" --> B
@@ -54,13 +54,13 @@ flowchart LR
     class Prom obs
 ```
 
-The `docker-compose.yml` defines the broker service on a bridge network (`agentauth-net`). The image uses a multi-stage Alpine build (golang:1.24 builder, alpine:3.18 runtime).
+The `docker-compose.yml` defines the broker service on a bridge network (`agentwrit-net`). The image uses a multi-stage Alpine build (golang:1.24 builder, alpine:3.18 runtime).
 
 ---
 
 ## Operator CLI (awrit)
 
-`awrit` is the operator command-line tool for AgentAuth. It reads broker connection details from environment variables and handles authentication automatically.
+`awrit` is the operator command-line tool for AgentWrit. It reads broker connection details from environment variables and handles authentication automatically.
 
 ### Install / build
 
@@ -73,11 +73,11 @@ go build -o awrit ./cmd/awrit/
 Use `awrit init` to set up configuration. This creates a config file with broker URL and secret:
 
 ```bash
-# Dev mode (creates ~/.agentauth/config)
+# Dev mode (creates ~/.broker/config)
 awrit init --mode dev --force
 
 # Prod mode with custom path
-awrit init --mode prod --config-path /etc/agentauth/config
+awrit init --mode prod --config-path /etc/broker/config
 ```
 
 ### Configure
@@ -126,15 +126,15 @@ All broker configuration is via environment variables prefixed `AA_`. Configurat
 | `AA_ADMIN_SECRET` | string | *(none)* | **Yes** | Shared secret for admin authentication. The broker exits immediately on startup if this is unset or empty. Use a strong random value (e.g., `openssl rand -hex 32`). |
 | `AA_PORT` | string | `"8080"` | No | HTTP listen port. |
 | `AA_LOG_LEVEL` | string | `"verbose"` | No | Log verbosity: `quiet`, `standard`, `verbose`, `trace`. Note: `verbose` currently emits the same output as `standard`. |
-| `AA_TRUST_DOMAIN` | string | `"agentauth.local"` | No | SPIFFE trust domain used in agent identity URIs (e.g., `spiffe://agentauth.local/agent/...`). |
+| `AA_TRUST_DOMAIN` | string | `"agentwrit.local"` | No | SPIFFE trust domain used in agent identity URIs (e.g., `spiffe://agentwrit.local/agent/...`). |
 | `AA_DEFAULT_TTL` | int | `300` | No | Default token TTL in seconds (5 minutes). |
 | `AA_MAX_TTL` | int | `86400` | No | Maximum token TTL ceiling in seconds (24 hours). Tokens requesting longer TTL are clamped to this value. Set to `0` to disable the ceiling entirely. |
 | `AA_BIND_ADDRESS` | string | `"127.0.0.1"` | No | Bind address for the HTTP listener. Use `"0.0.0.0"` for Docker or to accept external connections. |
 | `AA_SIGNING_KEY_PATH` | string | `"./signing.key"` | No | Path to Ed25519 private key for token signing. If the file does not exist, a fresh key is generated and saved to this path on startup. |
-| `AA_AUDIENCE` | string | `"agentauth"` | No | Expected `aud` claim in JWTs. Set to empty string to skip audience validation. |
+| `AA_AUDIENCE` | string | `"agentwrit"` | No | Expected `aud` claim in JWTs. Set to empty string to skip audience validation. |
 | `AA_APP_TOKEN_TTL` | int | `1800` | No | TTL for app JWTs in seconds (30 minutes). Controls how long app-authenticated tokens last. |
 | `AA_SEED_TOKENS` | bool | `false` | No | Print seed launch and admin tokens to stdout on startup. **Development only** -- never enable in production. |
-| `AA_DB_PATH` | string | `"./agentauth.db"` | No | Path to the SQLite database file for audit event persistence. The broker creates the file and table on first startup. Set to `""` to disable persistence (memory-only mode). See [Audit Persistence](#audit-persistence-aa_db_path) below. |
+| `AA_DB_PATH` | string | `"./data.db"` | No | Path to the SQLite database file for audit event persistence. The broker creates the file and table on first startup. Set to `""` to disable persistence (memory-only mode). See [Audit Persistence](#audit-persistence-aa_db_path) below. |
 | `AA_TLS_MODE` | string | `"none"` | No | Transport security mode: `none` (plain HTTP), `tls` (one-way TLS), `mtls` (mutual TLS). See [TLS/mTLS Configuration](#tlsmtls-configuration) below. |
 | `AA_TLS_CERT` | string | *(none)* | If TLS | Path to the broker's TLS certificate PEM file. Required when `AA_TLS_MODE` is `tls` or `mtls`. |
 | `AA_TLS_KEY` | string | *(none)* | If TLS | Path to the broker's TLS private key PEM file. Required when `AA_TLS_MODE` is `tls` or `mtls`. |
@@ -161,18 +161,18 @@ The broker presents a certificate. Clients verify the broker's identity but do n
 
 ```bash
 export AA_TLS_MODE=tls
-export AA_TLS_CERT=/etc/agentauth/certs/broker.crt
-export AA_TLS_KEY=/etc/agentauth/certs/broker.key
+export AA_TLS_CERT=/etc/broker/certs/broker.crt
+export AA_TLS_KEY=/etc/broker/certs/broker.key
 export AA_ADMIN_SECRET="$(openssl rand -hex 32)"
 
 go run ./cmd/broker
-# AgentAuth broker v2.0.0 listening on :8080 (TLS)
+# AgentWrit broker v2.0.0 listening on :8080 (TLS)
 ```
 
 Clients connect with HTTPS:
 
 ```bash
-curl --cacert /etc/agentauth/certs/ca.crt https://localhost:8080/v1/health
+curl --cacert /etc/broker/certs/ca.crt https://localhost:8080/v1/health
 ```
 
 ### Mode: mtls (mutual TLS)
@@ -181,9 +181,9 @@ Both broker and client present certificates. The broker verifies client certific
 
 ```bash
 export AA_TLS_MODE=mtls
-export AA_TLS_CERT=/etc/agentauth/certs/broker.crt
-export AA_TLS_KEY=/etc/agentauth/certs/broker.key
-export AA_TLS_CLIENT_CA=/etc/agentauth/certs/client-ca.crt
+export AA_TLS_CERT=/etc/broker/certs/broker.crt
+export AA_TLS_KEY=/etc/broker/certs/broker.key
+export AA_TLS_CLIENT_CA=/etc/broker/certs/client-ca.crt
 export AA_ADMIN_SECRET="$(openssl rand -hex 32)"
 
 go run ./cmd/broker
@@ -193,9 +193,9 @@ Clients must present a certificate signed by the configured client CA:
 
 ```bash
 curl \
-  --cacert /etc/agentauth/certs/ca.crt \
-  --cert /etc/agentauth/certs/client.crt \
-  --key /etc/agentauth/certs/client.key \
+  --cacert /etc/broker/certs/ca.crt \
+  --cert /etc/broker/certs/client.crt \
+  --key /etc/broker/certs/client.key \
   https://localhost:8080/v1/health
 ```
 
@@ -211,7 +211,7 @@ Three compose files ship with the repo — a base plus two overlays:
 | `docker-compose.tls.yml` | Overlay — adds one-way TLS (broker serves HTTPS) |
 | `docker-compose.mtls.yml` | Overlay — adds mutual TLS (broker requires client cert) |
 
-The overlays expect certs in `/tmp/agentauth-certs/`. Generate them first:
+The overlays expect certs in `/tmp/agentwrit-certs/`. Generate them first:
 
 ```bash
 ./scripts/gen_test_certs.sh
@@ -249,7 +249,7 @@ broker:
     - AA_TLS_KEY=${AA_TLS_KEY:-}
     - AA_TLS_CLIENT_CA=${AA_TLS_CLIENT_CA:-}
   volumes:
-    - /etc/agentauth/certs:/certs:ro
+    - /etc/broker/certs:/certs:ro
 ```
 
 Then export the env vars before bringing up the stack:
@@ -271,12 +271,12 @@ The broker persists audit events and revocations to SQLite. To configure the dat
 
 | Variable | Type | Default | Required | Description |
 |----------|------|---------|----------|-------------|
-| `AA_DB_PATH` | string | `"./agentauth.db"` | No | Path to the SQLite database file. The broker creates the file if it does not exist. The directory must be writable by the broker process. |
+| `AA_DB_PATH` | string | `"./data.db"` | No | Path to the SQLite database file. The broker creates the file if it does not exist. The directory must be writable by the broker process. |
 
 Set `AA_DB_PATH` to a stable location on the host:
 
 ```bash
-export AA_DB_PATH="/var/lib/agentauth/agentauth.db"
+export AA_DB_PATH="/var/lib/broker/data.db"
 AA_ADMIN_SECRET="..." go run ./cmd/broker
 ```
 
@@ -285,15 +285,15 @@ In Docker Compose, mount a volume so the database survives container replacement
 ```yaml
 broker:
   environment:
-    - AA_DB_PATH=/data/agentauth.db
+    - AA_DB_PATH=/data/data.db
   volumes:
-    - agentauth-data:/data
+    - agentwrit-data:/data
 
 volumes:
-  agentauth-data:
+  agentwrit-data:
 ```
 
-On startup, the broker loads all existing audit events from SQLite to rebuild the hash chain in memory. The number of events loaded is logged and exposed as the `agentauth_audit_events_loaded` Prometheus gauge.
+On startup, the broker loads all existing audit events from SQLite to rebuild the hash chain in memory. The number of events loaded is logged and exposed as the `agentwrit_audit_events_loaded` Prometheus gauge.
 
 **Note:** The broker persists its Ed25519 signing key to `AA_SIGNING_KEY_PATH`. Both audit events and signing keys survive restarts, so previously issued tokens remain valid. To force key rotation, delete the signing key file and restart.
 
@@ -418,20 +418,20 @@ This endpoint records the token release in the audit trail and marks the token a
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `agentauth_tokens_issued_total` | counter | `scope` | Tokens issued, labeled by primary scope. |
-| `agentauth_tokens_revoked_total` | counter | `level` | Revocation operations by level (`token`, `agent`, `task`, `chain`). |
-| `agentauth_registrations_total` | counter | `status` | Agent registration attempts (`success`, `failure`). |
-| `agentauth_admin_auth_total` | counter | `status` | Admin authentication attempts (`success`, `failure`). |
-| `agentauth_launch_tokens_created_total` | counter | -- | Total launch tokens created. |
-| `agentauth_active_agents` | gauge | -- | Currently registered agents. |
-| `agentauth_request_duration_seconds` | histogram | `endpoint` | HTTP request latency by endpoint. |
-| `agentauth_clock_skew_total` | counter | -- | Clock skew events detected during token validation. |
+| `agentwrit_tokens_issued_total` | counter | `scope` | Tokens issued, labeled by primary scope. |
+| `agentwrit_tokens_revoked_total` | counter | `level` | Revocation operations by level (`token`, `agent`, `task`, `chain`). |
+| `agentwrit_registrations_total` | counter | `status` | Agent registration attempts (`success`, `failure`). |
+| `agentwrit_admin_auth_total` | counter | `status` | Admin authentication attempts (`success`, `failure`). |
+| `agentwrit_launch_tokens_created_total` | counter | -- | Total launch tokens created. |
+| `agentwrit_active_agents` | gauge | -- | Currently registered agents. |
+| `agentwrit_request_duration_seconds` | histogram | `endpoint` | HTTP request latency by endpoint. |
+| `agentwrit_clock_skew_total` | counter | -- | Clock skew events detected during token validation. |
 
 
 ### Key metrics to alert on
 
-- `agentauth_admin_auth_total{status="failure"}` -- repeated failures may indicate a brute-force attempt or misconfigured secret.
-- `agentauth_tokens_revoked_total` spike -- potential security incident in progress.
+- `agentwrit_admin_auth_total{status="failure"}` -- repeated failures may indicate a brute-force attempt or misconfigured secret.
+- `agentwrit_tokens_revoked_total` spike -- potential security incident in progress.
 
 ### Log Format
 

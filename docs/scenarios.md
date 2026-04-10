@@ -2,7 +2,7 @@
 
 > **Purpose:** Show how the 8 Ephemeral Agent Credentialing components work together in real production deployments. Each scenario is a real use case with real API calls.
 >
-> **Audience:** Developers building agent systems, architects evaluating AgentAuth, security reviewers verifying coverage.
+> **Audience:** Developers building agent systems, architects evaluating AgentWrit, security reviewers verifying coverage.
 >
 > **Prerequisites:** [Concepts](concepts.md) for component definitions, [Implementation Map](implementation-map.md) for code tracing.
 
@@ -142,14 +142,14 @@ class LoanPipeline:
 
 | Component | What happened | Where in code |
 |-----------|--------------|---------------|
-| 1. Ephemeral Identity | Each agent got `spiffe://agentauth.local/agent/loan-pipeline/loan-12345/{unique}` | `identity/id_svc.go:Register()` |
+| 1. Ephemeral Identity | Each agent got `spiffe://agentwrit.local/agent/loan-pipeline/loan-12345/{unique}` | `identity/id_svc.go:Register()` |
 | 2. Short-Lived Tokens | App token: 1800s. Agent tokens: 300s max. Launch tokens: 30s. | `token/tkn_svc.go:Issue()` |
 | 3. Zero-Trust | Every API call validated by `ValMw`. Reader can't write. Writer can't read credit data. | `authz/val_mw.go:Wrap()` |
 | 4. Expiration & Revocation | Agents released tokens on completion. If the pipeline crashes, tokens expire in 5 min. | `handler/release_hdl.go`, `token/tkn_claims.go:Validate()` |
 | 5. Audit Trail | 9+ events recorded with `task_id=loan-12345` — full pipeline trace. | `audit/audit_log.go:Record()` |
 | 6. Mutual Auth | Not used here (single pipeline, agents don't talk to each other). | — |
 | 7. Delegation | Not used here (no agent-to-agent delegation needed). | — |
-| 8. Observability | `agentauth_tokens_issued_total{scope="read:documents:loans"}` incremented. Health check shows all events recorded. | `obs/obs.go` metrics |
+| 8. Observability | `agentwrit_tokens_issued_total{scope="read:documents:loans"}` incremented. Health check shows all events recorded. | `obs/obs.go` metrics |
 
 ---
 
@@ -178,7 +178,7 @@ A deployment orchestrator spawns agents to deploy code. The lead agent has broad
 config_reader = requests.post(f"{BROKER}/v1/delegate",
     headers={"Authorization": f"Bearer {orchestrator_token}"},
     json={
-        "delegate_to": "spiffe://agentauth.local/agent/deploy/task-42/config-reader",
+        "delegate_to": "spiffe://agentwrit.local/agent/deploy/task-42/config-reader",
         "scope": ["read:config:production"],  # narrowed from read:config:*
         "ttl": 120,
     })
@@ -189,7 +189,7 @@ config_reader_token = config_reader.json()["access_token"]
 deployer = requests.post(f"{BROKER}/v1/delegate",
     headers={"Authorization": f"Bearer {orchestrator_token}"},
     json={
-        "delegate_to": "spiffe://agentauth.local/agent/deploy/task-42/deployer",
+        "delegate_to": "spiffe://agentwrit.local/agent/deploy/task-42/deployer",
         "scope": ["write:deploy:web-service"],  # narrowed from write:deploy:*
         "ttl": 120,
     })
@@ -213,7 +213,7 @@ curl -X POST https://broker.internal:8080/v1/revoke \
   -H "Content-Type: application/json" \
   -d '{
     "level": "chain",
-    "target": "spiffe://agentauth.local/agent/deploy/task-42/orchestrator"
+    "target": "spiffe://agentwrit.local/agent/deploy/task-42/orchestrator"
   }'
 
 # All three agents (orchestrator, config reader, deployer) are now revoked.
@@ -231,7 +231,7 @@ curl -X POST https://broker.internal:8080/v1/revoke \
 | 5. Audit Trail | `delegation_created` events trace the full chain. `token_revoked` records the emergency. |
 | 6. Mutual Auth | Not used (workers trust the broker, not each other). |
 | 7. Delegation | Orchestrator → Config Reader (narrowed). Orchestrator → Deployer (narrowed). Max depth 5. |
-| 8. Observability | `agentauth_tokens_revoked_total{level="chain"}` incremented. Prometheus alert fires. |
+| 8. Observability | `agentwrit_tokens_revoked_total{level="chain"}` incremented. Prometheus alert fires. |
 
 ---
 
@@ -296,15 +296,15 @@ events = requests.get(f"{BROKER}/v1/audit/events",
 
 # ━━━ Component 8: Observability ━━━
 # Prometheus dashboard shows:
-# - agentauth_active_agents: 0 (consultation complete)
-# - agentauth_tokens_issued_total{scope="read:patient:patient-456"}: 1
-# - agentauth_audit_events_total: growing
-# - agentauth_request_duration_seconds: SLA compliance
+# - agentwrit_active_agents: 0 (consultation complete)
+# - agentwrit_tokens_issued_total{scope="read:patient:patient-456"}: 1
+# - agentwrit_audit_events_total: growing
+# - agentwrit_request_duration_seconds: SLA compliance
 ```
 
 ### Compliance Summary
 
-| Requirement | How AgentAuth Delivers |
+| Requirement | How AgentWrit Delivers |
 |------------|----------------------|
 | Patient-specific access control | Scope: `read:patient:patient-456` (Component 3) |
 | Time-limited access | 300s token TTL, auto-expiry (Component 2) |
@@ -329,9 +329,9 @@ A fintech company processes thousands of payment transactions per minute. AI age
 | Account Freezer | Freeze accounts with confirmed fraud | `write:accounts:freeze` | Could freeze innocent accounts |
 | Audit Reporter | Generate compliance reports | `read:audit:*`, `read:flags:fraud` | Could leak internal fraud patterns |
 
-### Why AgentAuth Matters Here
+### Why AgentWrit Matters Here
 
-Without AgentAuth, a typical fintech setup uses a shared API key for all agents:
+Without AgentWrit, a typical fintech setup uses a shared API key for all agents:
 
 ```
 # THE DANGEROUS PATH — shared credential
@@ -341,7 +341,7 @@ PAYMENT_API_KEY=sk_live_abc123...  # All agents share this
 # Blast radius: TOTAL
 ```
 
-With AgentAuth, each agent gets exactly what it needs, for exactly as long as it needs it:
+With AgentWrit, each agent gets exactly what it needs, for exactly as long as it needs it:
 
 ```python
 import base64, binascii, requests
@@ -475,7 +475,7 @@ curl -s "https://broker.payments.internal:8080/v1/audit/events?task_id=batch-729
 
 ### The Security Story in One Table
 
-| Without AgentAuth | With AgentAuth |
+| Without AgentWrit | With AgentWrit |
 |-------------------|---------------|
 | Shared API key across all agents | Each agent has unique SPIFFE identity |
 | Key lives forever until manually rotated | Tokens expire in 60-120 seconds |
@@ -575,7 +575,7 @@ requests.post(f"{BROKER}/v1/revoke",
 | 5. Audit Trail | Regulator asks "who authorized the Boston agent to access compliance data?" — the chain proves Central → Northeast → Boston with signatures. |
 | 6. Mutual Auth | Branch agents can verify each other's identity before sharing data in a mesh topology. |
 | 7. Delegation | Scope narrows at every level. Central: `read:compliance:*` → Regional: `read:compliance:northeast` → Branch: `read:compliance:northeast:boston`. Attenuation is enforced — no scope expansion possible. |
-| 8. Observability | `agentauth_active_agents` shows real-time agent count. Alerts fire if delegation depth exceeds threshold. |
+| 8. Observability | `agentwrit_active_agents` shows real-time agent count. Alerts fire if delegation depth exceeds threshold. |
 
 ---
 
@@ -598,13 +598,13 @@ Component 6 (Mutual Auth) is implemented as a Go API and applies when agents nee
 
 ## Scenario 6: Go-Native Agent — Minimal Dependencies, Minimal Attack Surface
 
-AgentAuth's core security path — Ed25519 signing, JWT creation/verification, SHA-256 hash chains, challenge-response, scope enforcement — is built entirely on the **Go standard library**. No JWT library. No auth framework. No middleware library.
+AgentWrit's core security path — Ed25519 signing, JWT creation/verification, SHA-256 hash chains, challenge-response, scope enforcement — is built entirely on the **Go standard library**. No JWT library. No auth framework. No middleware library.
 
-This means a Go agent integrating with AgentAuth has **zero additional dependencies** for the security-critical path. Everything needed is in `crypto/ed25519`, `crypto/sha256`, `encoding/base64`, `encoding/json`, and `net/http`.
+This means a Go agent integrating with AgentWrit has **zero additional dependencies** for the security-critical path. Everything needed is in `crypto/ed25519`, `crypto/sha256`, `encoding/base64`, `encoding/json`, and `net/http`.
 
 ### Why This Matters
 
-| Risk | Typical AI Agent Stack | AgentAuth Go Agent |
+| Risk | Typical AI Agent Stack | AgentWrit Go Agent |
 |------|----------------------|-------------------|
 | Supply chain attack via compromised dependency | PyJWT, python-jose, requests, cryptography — each with transitive deps | Go stdlib only. No third-party code in the auth path. |
 | CVE in JWT library | Common — CVE-2022-29217 (PyJWT), CVE-2024-33663 (python-jose) | No JWT library to patch. JWT is 50 lines of `base64` + `ed25519`. |
@@ -612,7 +612,7 @@ This means a Go agent integrating with AgentAuth has **zero additional dependenc
 | Binary size | Python: 50MB+ with dependencies | Go: single static binary, ~15MB total |
 | Audit scope | Must audit every transitive dependency | Audit scope: Go stdlib (maintained by the Go team) |
 
-### AgentAuth Broker Dependencies
+### AgentWrit Broker Dependencies
 
 Only 5 direct dependencies, and none are in the token signing/verification path:
 

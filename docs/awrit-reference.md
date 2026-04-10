@@ -2,7 +2,7 @@
 
 > **Document Version:** 3.0 | **Last Updated:** March 2026 | **Status:** Current
 >
-> **Audience:** Operators and administrators managing the AgentAuth broker.
+> **Audience:** Operators and administrators managing the AgentWrit broker.
 >
 > **Prerequisites:** [Getting Started: Operator](getting-started-operator.md) for initial setup, [Concepts](concepts.md) for background on agents, tokens, and scopes.
 >
@@ -12,7 +12,7 @@
 
 ## Overview
 
-**awrit** is the operator CLI for the AgentAuth broker. It provides full control over token lifecycle, revocation, app management, and audit trail inspection via a set of commands backed by the broker's admin API.
+**awrit** is the operator CLI for the AgentWrit broker. It provides full control over token lifecycle, revocation, app management, and audit trail inspection via a set of commands backed by the broker's admin API.
 
 awrit uses the Cobra command framework and outputs formatted tables by default, with optional JSON output for scripting.
 
@@ -21,11 +21,11 @@ awrit uses the Cobra command framework and outputs formatted tables by default, 
 Build awrit from source:
 
 ```bash
-cd /path/to/agentauth
+cd /path/to/agentwrit
 go build -o awrit ./cmd/awrit
 ```
 
-Or use the pre-built binary if already available in your AgentAuth distribution.
+Or use the pre-built binary if already available in your AgentWrit distribution.
 
 ### Quick Start
 
@@ -675,7 +675,7 @@ awrit init [--mode {dev|prod}] [--config-path PATH] [--force]
 
 **Description:**
 
-Initialize AgentAuth by generating a cryptographically secure admin secret and writing a configuration file.
+Initialize AgentWrit by generating a cryptographically secure admin secret and writing a configuration file.
 
 In **dev mode**, the plaintext secret is stored in the config file for easy retrieval during development. In **prod mode**, only the bcrypt hash is stored — the plaintext is shown once on stdout and never saved to disk.
 
@@ -686,13 +686,13 @@ Use the generated secret to set `AACTL_ADMIN_SECRET` for subsequent awrit comman
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--mode` | string | dev | Initialization mode: `dev` (plaintext stored) or `prod` (bcrypt hash only) |
-| `--config-path` | string | (default) | Explicit path to write config file (default: `~/.agentauth/config`) |
+| `--config-path` | string | (default) | Explicit path to write config file (default: `~/.broker/config`) |
 | `--force` | bool | false | Overwrite existing config file without confirmation |
 
 **Output:**
 
 ```
-Config written to: /home/user/.agentauth/config
+Config written to: /home/user/.agentwrit/config
 
 Admin secret: dGVzdC1zZWNyZXQtdmFsdWUtYmFzZTY0LWVuY29kZWQtdGV4dA...
 
@@ -702,7 +702,7 @@ Dev mode: secret is also stored in the config file.
 Or in prod mode:
 
 ```
-Config written to: /etc/agentauth/config
+Config written to: /etc/broker/config
 
 Admin secret: dGVzdC1zZWNyZXQtdmFsdWUtYmFzZTY0LWVuY29kZWQtdGV4dA...
 
@@ -719,7 +719,7 @@ awrit init
 
 Initialize in prod mode with explicit path:
 ```bash
-awrit init --mode prod --config-path /etc/agentauth/config
+awrit init --mode prod --config-path /etc/broker/config
 ```
 
 Reinitialize with force:

@@ -1,6 +1,6 @@
-# AgentAuth Design Decisions — Why We Built It This Way
+# AgentWrit Design Decisions — Why We Built It This Way
 
-> This document traces the reasoning behind every major design choice in AgentAuth. Not what the system does — why it does it that way. Each section starts with the problem we faced, the options we considered, and why we chose what we chose.
+> This document traces the reasoning behind every major design choice in AgentWrit. Not what the system does — why it does it that way. Each section starts with the problem we faced, the options we considered, and why we chose what we chose.
 
 ---
 
@@ -173,7 +173,7 @@ The broker doesn't maintain a registry of "valid" scopes. Any three-part string 
 
 This is intentional. The broker doesn't know what `read:data:customers` means to your application. It only knows whether one scope covers another. Your application decides what permissions the scope actually grants.
 
-This means AgentAuth works with any application, any resource model, any permission structure — as long as it can be expressed in `action:resource:identifier` format.
+This means AgentWrit works with any application, any resource model, any permission structure — as long as it can be expressed in `action:resource:identifier` format.
 
 ---
 
@@ -207,11 +207,11 @@ The scope ceiling is the key design element. It's a hard cap set by the operator
 
 ### What the Sidecar Was
 
-Early versions of AgentAuth had a sidecar process that ran alongside each agent. The sidecar handled token management — the agent called the sidecar on localhost, and the sidecar called the broker. The idea was to keep agents simple: they don't need to know about tokens, just call the sidecar.
+Early versions of AgentWrit had a sidecar process that ran alongside each agent. The sidecar handled token management — the agent called the sidecar on localhost, and the sidecar called the broker. The idea was to keep agents simple: they don't need to know about tokens, just call the sidecar.
 
 ### Why We Removed It (Phase 0)
 
-The sidecar was tied to Docker Compose as a mandatory dependency. You couldn't run AgentAuth without Docker orchestrating the sidecar alongside each agent container. That's a non-starter for:
+The sidecar was tied to Docker Compose as a mandatory dependency. You couldn't run AgentWrit without Docker orchestrating the sidecar alongside each agent container. That's a non-starter for:
 
 - Bare-metal deployments
 - Kubernetes (which has its own sidecar patterns)

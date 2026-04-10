@@ -1,10 +1,10 @@
-# AgentAuth Credential Model — From First Principles
+# AgentWrit Credential Model — From First Principles
 
 ## The Core Guarantee
 
 **Permissions can only narrow as they flow through the system. No credential can ever grant more than the credential that created it.**
 
-This is the invariant that every design decision in AgentAuth traces back to. An operator sets up an app with a permission ceiling. The app creates launch tokens within that ceiling. Agents register with launch tokens and get scoped credentials. Agents delegate to other agents with even narrower scope. At every step, the scope can only shrink — never expand.
+This is the invariant that every design decision in AgentWrit traces back to. An operator sets up an app with a permission ceiling. The app creates launch tokens within that ceiling. Agents register with launch tokens and get scoped credentials. Agents delegate to other agents with even narrower scope. At every step, the scope can only shrink — never expand.
 
 If an agent is compromised, the blast radius is provably contained to whatever scope it was granted. And the operator can kill it instantly at four levels of granularity.
 
@@ -22,7 +22,7 @@ That creates three security failures:
 
 3. **Unattributable.** Twenty agents sharing one API key means you can't tell which agent did what. The audit trail shows "service-account-prod accessed customer-data" but not which task, which orchestrator, or which delegation chain led to that access.
 
-AgentAuth eliminates all three by issuing short-lived, scope-attenuated, individually-identifiable credentials with a tamper-evident audit trail.
+AgentWrit eliminates all three by issuing short-lived, scope-attenuated, individually-identifiable credentials with a tamper-evident audit trail.
 
 ---
 
@@ -151,7 +151,7 @@ graph TD
 | `admin:revoke:*` | `POST /v1/revoke` | Kill switch at 4 levels: token, agent, task, chain |
 | `admin:audit:*` | `GET /v1/audit/events` | Query the tamper-evident audit trail with filters |
 
-**Lifetime:** 5 minutes (hardcoded `adminTTL = 300` — see TD-010 for making this configurable). Not renewable. Authenticate again when it expires.
+**Lifetime:** 5 minutes default, operator-configurable via `AA_ADMIN_TOKEN_TTL` (env var, seconds). Not renewable. Authenticate again when it expires. (TD-010 resolved 2026-04-10 — the value was previously hardcoded as `adminTTL = 300`.)
 
 **How it dies:** Expiry, or explicit revocation by another admin session.
 
@@ -375,7 +375,7 @@ The complete chain is hashed (SHA-256) into the `chain_hash` claim. If anyone ta
 
 ## Revocation: The Kill Switch
 
-When something goes wrong — compromised agent, runaway task, poisoned delegation chain — the operator needs to shut it down. AgentAuth provides four revocation levels, each targeting a different blast radius:
+When something goes wrong — compromised agent, runaway task, poisoned delegation chain — the operator needs to shut it down. AgentWrit provides four revocation levels, each targeting a different blast radius:
 
 ```mermaid
 graph LR

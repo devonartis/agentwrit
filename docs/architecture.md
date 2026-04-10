@@ -2,7 +2,7 @@
 
 > **Document Version:** 3.0 | **Last Updated:** March 2026 | **Status:** Current
 >
-> **Audience:** Contributors, security reviewers, and operators who want to understand how AgentAuth works internally.
+> **Audience:** Contributors, security reviewers, and operators who want to understand how AgentWrit works internally.
 >
 > **Prerequisites:** [Concepts](concepts.md) for the security pattern overview.
 >
@@ -12,7 +12,7 @@
 
 ## System Overview
 
-AgentAuth sits between AI agents and the resources they need to access, providing ephemeral, scoped credentials through a challenge-response identity flow.
+AgentWrit sits between AI agents and the resources they need to access, providing ephemeral, scoped credentials through a challenge-response identity flow.
 
 ```mermaid
 flowchart TB
@@ -23,7 +23,7 @@ flowchart TB
         RS["Resource Servers"]
     end
 
-    subgraph AgentAuth["AgentAuth System Boundary"]
+    subgraph AgentWrit["AgentWrit System Boundary"]
         BROKER["Broker\ncmd/broker\nPort 8080"]
         AACTL["awrit\ncmd/awrit\nOperator CLI"]
     end
@@ -100,7 +100,7 @@ flowchart TB
 ## Directory Layout
 
 ```
-agentauth/
+agentwrit/
 |-- cmd/
 |   |-- broker/
 |   |   +-- main.go              # Service wiring, route registration, startup

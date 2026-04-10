@@ -1,4 +1,4 @@
-# AgentAuth Explained
+# AgentWrit Explained
 
 > For sales teams and developers new to the system. No prior knowledge of JWTs or cryptography required.
 
@@ -8,7 +8,7 @@
 
 AI agents need credentials to do their work — read a database, call an API, write to a log. Most systems give those agents a long-lived API key that has broad access and never expires. When that key leaks — through a breach, an accident, a compromised vendor — the damage is wide and the fix is painful.
 
-AgentAuth replaces long-lived keys with short-lived, task-scoped tokens that expire automatically, can be revoked instantly, and can only do what they were specifically created for.
+AgentWrit replaces long-lived keys with short-lived, task-scoped tokens that expire automatically, can be revoked instantly, and can only do what they were specifically created for.
 
 ---
 
@@ -155,7 +155,7 @@ The admin token appears at steps 1 and 2 — then it expires and leaves the pict
 ## For Sales: The Three Questions You'll Get
 
 **"How is this different from API keys?"**
-API keys are permanent, usually over-permissioned, and require a full rotation when one leaks. AgentAuth credentials expire on their own, are scoped to a specific task, and can be cancelled in seconds without affecting anything else running at the same time.
+API keys are permanent, usually over-permissioned, and require a full rotation when one leaks. AgentWrit credentials expire on their own, are scoped to a specific task, and can be cancelled in seconds without affecting anything else running at the same time.
 
 **"What if an agent is compromised?"**
 The admin revokes it. One call to `POST /v1/revoke` cancels the specific token, the specific agent, the specific task, or the entire delegation chain — whatever the situation requires. The revocation takes effect on the next request. No key rotation, no downtime for other agents.

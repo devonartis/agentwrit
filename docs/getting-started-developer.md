@@ -30,7 +30,7 @@ The registration flow gives you full control over your keys. You manage the cryp
   - Python 3.8+ with `requests` and `cryptography`
   - Go 1.24+ with the standard library
 
-There is no AgentAuth SDK yet. Today, Go integrations should call the broker's HTTP API directly and perform the Ed25519 registration flow themselves.
+There is no AgentWrit SDK yet. Today, Go integrations should call the broker's HTTP API directly and perform the Ed25519 registration flow themselves.
 
 You will manage your own Ed25519 keys and follow the registration flow.
 
@@ -49,8 +49,8 @@ import requests
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal.company.com")
-LAUNCH_TOKEN = os.environ.get("AGENTAUTH_LAUNCH_TOKEN")
+BROKER = os.environ.get("AGENTWRIT_BROKER_URL", "https://broker.internal.company.com")
+LAUNCH_TOKEN = os.environ.get("AGENTWRIT_LAUNCH_TOKEN")
 
 # 1. Generate Ed25519 keypair
 private_key = Ed25519PrivateKey.generate()
@@ -121,13 +121,13 @@ type registerResp struct {
 }
 
 func main() {
-	broker := os.Getenv("AGENTAUTH_BROKER_URL")
+	broker := os.Getenv("AGENTWRIT_BROKER_URL")
 	if broker == "" {
 		broker = "https://broker.internal.company.com"
 	}
-	launchToken := os.Getenv("AGENTAUTH_LAUNCH_TOKEN")
+	launchToken := os.Getenv("AGENTWRIT_LAUNCH_TOKEN")
 	if launchToken == "" {
-		panic("AGENTAUTH_LAUNCH_TOKEN is required")
+		panic("AGENTWRIT_LAUNCH_TOKEN is required")
 	}
 
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
@@ -243,7 +243,7 @@ else:
 
 ## Enforcing Scopes in Your Resource Server
 
-> **This is interim guidance.** When the AgentAuth SDK ships, it replaces these manual checks with a single function call. But the principle never changes: **validate first, check scope second, act third.** Never skip the scope check -- a valid token does not mean the agent is authorized for this specific action.
+> **This is interim guidance.** When the AgentWrit SDK ships, it replaces these manual checks with a single function call. But the principle never changes: **validate first, check scope second, act third.** Never skip the scope check -- a valid token does not mean the agent is authorized for this specific action.
 
 Every resource server endpoint that accepts agent tokens must do three things, in order:
 
@@ -257,7 +257,7 @@ Every resource server endpoint that accepts agent tokens must do three things, i
 import os
 import requests
 
-BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://agentauth.internal.company.com")
+BROKER = os.environ.get("AGENTWRIT_BROKER_URL", "https://agentwrit.internal.company.com")
 
 
 def require_scope(request, required_scope):
@@ -333,7 +333,7 @@ func requireScope(brokerURL, token, required string) (*Claims, error) {
 ### TypeScript Example
 
 ```typescript
-const BROKER = process.env.AGENTAUTH_BROKER_URL || "https://agentauth.internal.company.com";
+const BROKER = process.env.AGENTWRIT_BROKER_URL || "https://agentwrit.internal.company.com";
 
 async function requireScope(request: Request, requiredScope: string) {
   const token = request.headers.get("Authorization")?.replace("Bearer ", "");
@@ -438,7 +438,7 @@ import os
 import requests
 import time
 
-BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal.company.com")
+BROKER = os.environ.get("AGENTWRIT_BROKER_URL", "https://broker.internal.company.com")
 
 def renew_token(broker, token):
     """Renew a token before it expires."""
@@ -552,8 +552,8 @@ func renewalLoop(brokerURL, token string, ttl int) error {
 ```typescript
 import nacl from "tweetnacl";
 
-const BROKER = process.env.AGENTAUTH_BROKER_URL || "https://broker.internal.company.com";
-const LAUNCH_TOKEN = process.env.AGENTAUTH_LAUNCH_TOKEN || "";
+const BROKER = process.env.AGENTWRIT_BROKER_URL || "https://broker.internal.company.com";
+const LAUNCH_TOKEN = process.env.AGENTWRIT_LAUNCH_TOKEN || "";
 
 function b64(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("base64");
@@ -603,7 +603,7 @@ console.log(`Registered as ${agent_id}, token expires in ${expires_in}s`);
 ### Token Renewal
 
 ```typescript
-const BROKER = process.env.AGENTAUTH_BROKER_URL || "https://broker.internal.company.com";
+const BROKER = process.env.AGENTWRIT_BROKER_URL || "https://broker.internal.company.com";
 
 async function renewToken(broker: string, token: string) {
   const resp = await fetch(`${broker}/v1/token/renew`, {

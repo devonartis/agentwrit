@@ -1,4 +1,4 @@
-# Getting Started with AgentAuth
+# Getting Started with AgentWrit
 
 ---
 
@@ -6,7 +6,7 @@
 
 | Property | Value |
 |----------|-------|
-| **Target Audience** | Absolute beginners; first-time users of AgentAuth |
+| **Target Audience** | Absolute beginners; first-time users of AgentWrit |
 | **Persona** | Platform user or system administrator getting their first agent token |
 | **Document Version** | 3.0 |
 | **Last Updated** | 2026-03-29 |
@@ -16,21 +16,21 @@
 
 ---
 
-## What is AgentAuth?
+## What is AgentWrit?
 
-**AgentAuth is a security service that issues short-lived, scoped identity tokens to autonomous agents.** Think of it like a hotel key card system: when you check in, you receive a key card that only works for your assigned room and automatically expires at checkout time. Similarly, AgentAuth issues agents temporary credentials that grant access only to the specific resources they need, and the credentials expire quickly to limit the damage if they're compromised. This design ensures agents can't accidentally (or maliciously) access resources beyond their authorization, and even if credentials leak, they expire within minutes.
+**AgentWrit is a security service that issues short-lived, scoped identity tokens to autonomous agents.** Think of it like a hotel key card system: when you check in, you receive a key card that only works for your assigned room and automatically expires at checkout time. Similarly, AgentWrit issues agents temporary credentials that grant access only to the specific resources they need, and the credentials expire quickly to limit the damage if they're compromised. This design ensures agents can't accidentally (or maliciously) access resources beyond their authorization, and even if credentials leak, they expire within minutes.
 
 ---
 
 ## Choosing Your Path
 
-AgentAuth serves three different personas. Which one are you?
+AgentWrit serves three different personas. Which one are you?
 
 | If you are... | Read this | Why |
 |---------------|-----------|----|
 | **Building or integrating an AI agent** in Python, TypeScript, Go, or another language | [Getting Started: Developer](getting-started-developer.md) | Developers focus on requesting tokens and using them in agent code. |
-| **Deploying and operating AgentAuth** in production (setting up brokers, configuring scopes) | [Getting Started: Operator](getting-started-operator.md) | Operators manage the full deployment: broker security, launch token creation, and monitoring. |
-| **Just trying AgentAuth locally** to understand how it works end-to-end | **This guide** | You'll run a local setup with Docker Compose, then walk through the agent registration flow to see how it works. |
+| **Deploying and operating AgentWrit** in production (setting up brokers, configuring scopes) | [Getting Started: Operator](getting-started-operator.md) | Operators manage the full deployment: broker security, launch token creation, and monitoring. |
+| **Just trying AgentWrit locally** to understand how it works end-to-end | **This guide** | You'll run a local setup with Docker Compose, then walk through the agent registration flow to see how it works. |
 
 ---
 
@@ -72,7 +72,7 @@ Docker Compose is the easiest way to get started. It launches the broker in two 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/devonartis/agentauth.git
-cd agentauth
+cd agentwrit
 
 # 2. Set the admin secret (required -- broker exits without it)
 export AA_ADMIN_SECRET="$(openssl rand -hex 32)"
@@ -102,7 +102,7 @@ If you prefer to build and run locally without Docker:
 ```bash
 # 1. Clone the repository
 git clone https://github.com/devonartis/agentauth.git
-cd agentauth
+cd agentwrit
 
 # 2. Build the Go binaries
 go build ./...
@@ -118,7 +118,7 @@ The broker will log to stdout. You should see a "broker started" message.
 
 ## Architecture Overview
 
-AgentAuth provides a single registration flow to get tokens. Here's how it works:
+AgentWrit provides a single registration flow to get tokens. Here's how it works:
 
 This hand-sketched diagram mirrors the same flow as the Mermaid diagram below. The embedded PNG gives readers a faster visual orientation, while the Mermaid source stays easy to maintain as the broker evolves.
 
@@ -328,7 +328,7 @@ curl -s -X POST http://localhost:8080/v1/register \
 Response:
 ```json
 {
-  "agent_id": "spiffe://agentauth.local/agent/my-orchestrator/task-001/a1b2c3d4e5f6a7b8",
+  "agent_id": "spiffe://agentwrit.local/agent/my-orchestrator/task-001/a1b2c3d4e5f6a7b8",
   "access_token": "eyJhbGciOiJFZERTQSIs...",
   "expires_in": 300
 }
@@ -350,7 +350,7 @@ curl -s https://your-api.example.com/data \
 
 ## What You Just Did: Summary
 
-You completed AgentAuth's **identity and authorization flow**. Here's what happened:
+You completed AgentWrit's **identity and authorization flow**. Here's what happened:
 
 1. **Admin Authentication** → You authenticated as the admin using the shared secret
 2. **Launch Token Creation** → The broker issued a single-use registration credential
@@ -369,15 +369,15 @@ You completed AgentAuth's **identity and authorization flow**. Here's what happe
 
 ## What's Next?
 
-You now understand how AgentAuth works. Here are your next steps:
+You now understand how AgentWrit works. Here are your next steps:
 
 ### For Developers
 If you're building an agent in Python, TypeScript, Go, or another language:
-- **[Getting Started: Developer](getting-started-developer.md)** -- Learn how to integrate AgentAuth into your agent code
+- **[Getting Started: Developer](getting-started-developer.md)** -- Learn how to integrate AgentWrit into your agent code
 - **[Common Tasks](common-tasks.md)** -- Token renewal, delegation, revocation
 
 ### For Operators
-If you're deploying AgentAuth in production:
+If you're deploying AgentWrit in production:
 - **[Getting Started: Operator](getting-started-operator.md)** -- Deploy the broker, manage scopes, configure persistence
 - **[Architecture](architecture.md)** -- Understand the internals and security design
 

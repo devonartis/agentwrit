@@ -1,10 +1,10 @@
-# AgentAuth Scope Model — From First Principles
+# AgentWrit Scope Model — From First Principles
 
 ## What Is a Scope?
 
 A scope is a permission statement. It says: **this credential holder is allowed to perform this action on this resource.**
 
-Every credential in AgentAuth carries a list of scopes. Every protected endpoint checks that the caller's scopes cover what the endpoint requires. If they don't, the request is denied with a 403.
+Every credential in AgentWrit carries a list of scopes. Every protected endpoint checks that the caller's scopes cover what the endpoint requires. If they don't, the request is denied with a 403.
 
 ### Format: `action:resource:identifier`
 
@@ -92,7 +92,7 @@ This is `authz.ScopeIsSubset(requested, allowed)` — it runs at every trust bou
 
 ## The Three Scope Families
 
-Scopes in AgentAuth fall into three families. Each family belongs to a different role, and the families don't overlap.
+Scopes in AgentWrit fall into three families. Each family belongs to a different role, and the families don't overlap.
 
 ### Admin Scopes (`admin:*:*`)
 

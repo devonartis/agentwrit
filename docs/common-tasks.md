@@ -1,9 +1,9 @@
 # Common Tasks
 
-Step-by-step instructions for AgentAuth workflows, organized by role.
+Step-by-step instructions for AgentWrit workflows, organized by role.
 
 **Document metadata:**
-- **Audience:** Developers (building AI agents), Platform Operators (managing AgentAuth deployments)
+- **Audience:** Developers (building AI agents), Platform Operators (managing AgentWrit deployments)
 - **Version:** 2.0.0
 - **Prerequisites:** Broker running. See [Getting Started: Developer](getting-started-developer.md) or [Getting Started: Operator](getting-started-operator.md).
 - **Next steps:** For advanced topics, see [Concepts](concepts.md), [API Reference](api.md), [Architecture](architecture.md), or [Troubleshooting](troubleshooting.md).
@@ -115,7 +115,7 @@ except requests.exceptions.HTTPError as e:
 ```json
 {
   "access_token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzcGlmZmU6Ly9hZ2VudGF1dGgubG9jYWwvYWdlbnQvb3JjaC8uLi4iLCJleHAiOjE3NDU0MDU2MzAsImlhdCI6MTc0NTQwNTMzMCwic2NvcGUiOlsicmVhZDpkYXRhOioiXX0.SIGNATURE",
-  "agent_id": "spiffe://agentauth.local/agent/orch-001/task-analyze-q4/proc-abc123",
+  "agent_id": "spiffe://agentwrit.local/agent/orch-001/task-analyze-q4/proc-abc123",
   "expires_in": 300
 }
 ```
@@ -232,8 +232,8 @@ except requests.exceptions.RequestException as e:
 {
   "valid": true,
   "claims": {
-    "iss": "agentauth",
-    "sub": "spiffe://agentauth.local/agent/orch-001/task-analyze-q4/proc-abc123",
+    "iss": "agentwrit",
+    "sub": "spiffe://agentwrit.local/agent/orch-001/task-analyze-q4/proc-abc123",
     "exp": 1745405630,
     "iat": 1745405330,
     "jti": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
@@ -322,7 +322,7 @@ try {
 
 | Claim | Type | Description |
 |-------|------|-------------|
-| `iss` | string | Always `"agentauth"` |
+| `iss` | string | Always `"agentwrit"` |
 | `sub` | string | Agent SPIFFE ID (subject) |
 | `exp` | int | Expiration timestamp (Unix seconds) |
 | `iat` | int | Issued-at timestamp (Unix seconds) |
@@ -709,7 +709,7 @@ def delegate_token(broker, my_token, delegate_agent_id, scope, ttl=60):
 
 # Delegate a token
 my_token = "<your_access_token_with_read:data:*>"
-delegate_agent_id = "spiffe://agentauth.local/agent/orch-001/task-002/abc123"
+delegate_agent_id = "spiffe://agentwrit.local/agent/orch-001/task-002/abc123"
 
 try:
     result = delegate_token(
@@ -741,11 +741,11 @@ except requests.exceptions.RequestException as e:
   "expires_in": 60,
   "delegation_chain": [
     {
-      "agent": "spiffe://agentauth.local/agent/orch-001/task-001/abc",
+      "agent": "spiffe://agentwrit.local/agent/orch-001/task-001/abc",
       "scope": ["read:data:*"]
     },
     {
-      "agent": "spiffe://agentauth.local/agent/orch-001/task-002/def",
+      "agent": "spiffe://agentwrit.local/agent/orch-001/task-002/def",
       "scope": ["read:data:users"]
     }
   ]
@@ -815,7 +815,7 @@ try {
   const result = await delegateToken(
     BROKER,
     "<your_access_token_with_read:data:*>",
-    "spiffe://agentauth.local/agent/orch-001/task-002/abc123",
+    "spiffe://agentwrit.local/agent/orch-001/task-002/abc123",
     ["read:data:users"],
     60
   );
@@ -921,7 +921,7 @@ def handle_token_expiration(broker_url, launch_token_provider, orch_id, task_id,
 def get_launch_token():
     # Replace this with your operator/app callback if launch tokens are
     # single-use and must be reissued before every re-registration.
-    return os.environ["AGENTAUTH_LAUNCH_TOKEN"]
+    return os.environ["AGENTWRIT_LAUNCH_TOKEN"]
 
 @handle_token_expiration(
     BROKER,
@@ -1058,7 +1058,7 @@ try {
 
 ## Operator Tasks
 
-> **Persona:** Platform Operator managing AgentAuth deployments.
+> **Persona:** Platform Operator managing AgentWrit deployments.
 >
 > These tasks cover administrative operations: authentication, launch token management, revocation, audit, and monitoring. All examples use curl or similar.
 >
@@ -1322,7 +1322,7 @@ except requests.exceptions.RequestException as e:
 
 ### Revoke Tokens at Different Levels
 
-AgentAuth provides four revocation levels, each with a different blast radius. Use the narrowest level that addresses the incident.
+AgentWrit provides four revocation levels, each with a different blast radius. Use the narrowest level that addresses the incident.
 
 **What's happening:** Revocation is cryptographically verified: revoked tokens are immediately rejected on the next validation. The four levels allow you to target the exact scope of compromise—single token, all tokens for one agent, all tokens for one task, or an entire delegation chain.
 
@@ -1335,13 +1335,13 @@ AgentAuth provides four revocation levels, each with a different blast radius. U
 awrit revoke --level token --target a1b2c3d4e5f6...
 
 # Agent-level: revoke all tokens for one agent
-awrit revoke --level agent --target spiffe://agentauth.local/agent/orch/task/instance
+awrit revoke --level agent --target spiffe://agentwrit.local/agent/orch/task/instance
 
 # Task-level: revoke all tokens for a task
 awrit revoke --level task --target task-001
 
 # Chain-level: revoke an entire delegation chain
-awrit revoke --level chain --target spiffe://agentauth.local/agent/orch/task/instance
+awrit revoke --level chain --target spiffe://agentwrit.local/agent/orch/task/instance
 ```
 
 **Bash/curl example (token-level revocation):**
@@ -1392,7 +1392,7 @@ echo "Token revoked: $JTI"
 set -e
 
 BROKER="http://localhost:8080"
-SPIFFE_ID="spiffe://agentauth.local/agent/orch/task/instance"
+SPIFFE_ID="spiffe://agentwrit.local/agent/orch/task/instance"
 
 # Authenticate
 ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
@@ -1438,7 +1438,7 @@ curl -s -X POST "$BROKER/v1/revoke" \
 set -e
 
 BROKER="http://localhost:8080"
-ROOT_DELEGATOR="spiffe://agentauth.local/agent/orch/task/instance"
+ROOT_DELEGATOR="spiffe://agentwrit.local/agent/orch/task/instance"
 
 # Authenticate
 ADMIN_TOKEN=$(curl -s -X POST "$BROKER/v1/admin/auth" \
@@ -1503,7 +1503,7 @@ try:
         BROKER,
         admin_token="<admin_token>",
         level="agent",
-        target="spiffe://agentauth.local/agent/orch/task/instance"
+        target="spiffe://agentwrit.local/agent/orch/task/instance"
     )
     print(f"✓ Revoked {result['count']} token(s) for agent")
 except ValueError as e:
@@ -1527,7 +1527,7 @@ try:
         BROKER,
         admin_token="<admin_token>",
         level="chain",
-        target="spiffe://agentauth.local/agent/orch/task/root"
+        target="spiffe://agentwrit.local/agent/orch/task/root"
     )
     print(f"✓ Revoked {result['count']} token(s) in delegation chain")
 except ValueError as e:
@@ -1577,7 +1577,7 @@ awrit audit events
 awrit audit events --event-type token_revoked
 
 # Filter by agent
-awrit audit events --agent-id spiffe://agentauth.local/agent/orch/task/instance
+awrit audit events --agent-id spiffe://agentwrit.local/agent/orch/task/instance
 
 # Filter by time range with limit
 awrit audit events --since 2026-02-19T00:00:00Z --limit 50
@@ -1607,7 +1607,7 @@ curl -s "http://localhost:8080/v1/audit/events" \
 
 # Filter by agent
 echo "=== Events for specific agent ==="
-curl -s "http://localhost:8080/v1/audit/events?agent_id=spiffe://agentauth.local/agent/orch/task/instance" \
+curl -s "http://localhost:8080/v1/audit/events?agent_id=spiffe://agentwrit.local/agent/orch/task/instance" \
   -H "Authorization: Bearer $ADMIN_TOKEN" | python3 -m json.tool
 
 # Filter by event type
@@ -1645,7 +1645,7 @@ curl -s "http://localhost:8080/v1/audit/events?limit=50&offset=100" \
       "id": "event-001",
       "timestamp": "2026-02-15T11:00:00Z",
       "event_type": "token_issued",
-      "agent_id": "spiffe://agentauth.local/agent/orch/task/instance",
+      "agent_id": "spiffe://agentwrit.local/agent/orch/task/instance",
       "task_id": "task-001",
       "orch_id": "orch-001",
       "detail": {
@@ -1695,7 +1695,7 @@ try:
     result = query_audit_trail(
         BROKER,
         admin_token="<admin_token>",
-        agent_id="spiffe://agentauth.local/agent/orch/task/instance"
+        agent_id="spiffe://agentwrit.local/agent/orch/task/instance"
     )
     print(f"Events for agent: {result['total']}")
 except requests.exceptions.RequestException as e:
@@ -1817,7 +1817,7 @@ except Exception as e:
 
 ### Register and Manage Apps
 
-Apps are third-party services that call AgentAuth to create launch tokens and manage agents.
+Apps are third-party services that call AgentWrit to create launch tokens and manage agents.
 
 **What's happening:** Each app gets a `client_id` and `client_secret` for API authentication. The app can then authenticate to the broker via `POST /v1/app/auth`, which returns an app token with restricted scopes. The app can use this token to create launch tokens for agents it manages. The broker enforces a scope ceiling—the app cannot request scopes beyond the scope ceiling assigned during app registration.
 
@@ -1967,13 +1967,13 @@ curl -s http://localhost:8080/v1/metrics | head -20
 
 | What to monitor | Metric | Alert when |
 |-----------------|--------|------------|
-| Broker availability | `agentauth_broker_up` | Value is 0 |
-| Failed admin auth | `agentauth_admin_auth_total{status="failure"}` | Sustained increase |
-| Failed app auth | `agentauth_app_auth_total{status="failure"}` | Sustained increase |
-| Registration failures | `agentauth_registrations_total{status="failure"}` | Unexpected failures |
-| Revocation activity | `agentauth_tokens_revoked_total` | Unexpected spike |
-| Token expiration | `agentauth_tokens_expired_total` | Monitor trends |
-| Request latency | `agentauth_request_duration_seconds` | p99 exceeds acceptable threshold |
+| Broker availability | `agentwrit_broker_up` | Value is 0 |
+| Failed admin auth | `agentwrit_admin_auth_total{status="failure"}` | Sustained increase |
+| Failed app auth | `agentwrit_app_auth_total{status="failure"}` | Sustained increase |
+| Registration failures | `agentwrit_registrations_total{status="failure"}` | Unexpected failures |
+| Revocation activity | `agentwrit_tokens_revoked_total` | Unexpected spike |
+| Token expiration | `agentwrit_tokens_expired_total` | Monitor trends |
+| Request latency | `agentwrit_request_duration_seconds` | p99 exceeds acceptable threshold |
 
 **Python example (health checks):**
 
@@ -2011,7 +2011,7 @@ try:
 
     # Simple example: look for specific metrics
     for line in metrics.split('\n'):
-        if 'agentauth_tokens_revoked_total' in line and not line.startswith('#'):
+        if 'agentwrit_tokens_revoked_total' in line and not line.startswith('#'):
             print(f"Revocation metric: {line}")
 except requests.exceptions.RequestException as e:
     print(f"Metrics fetch failed: {e}")
@@ -2021,7 +2021,7 @@ except requests.exceptions.RequestException as e:
 
 ```yaml
 scrape_configs:
-  - job_name: 'agentauth-broker'
+  - job_name: 'agentwrit-broker'
     static_configs:
       - targets: ['localhost:8080']
     metrics_path: /v1/metrics
@@ -2227,13 +2227,13 @@ sys.exit(0 if success else 1)
 
 ## Error Handling Reference
 
-AgentAuth uses RFC 7807 `application/problem+json` error responses.
+AgentWrit uses RFC 7807 `application/problem+json` error responses.
 
 **Broker error format (RFC 7807):**
 
 ```json
 {
-  "type": "urn:agentauth:error:scope_violation",
+  "type": "urn:agentwrit:error:scope_violation",
   "title": "Forbidden",
   "status": 403,
   "detail": "requested scope exceeds allowed scope",

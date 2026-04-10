@@ -2,7 +2,7 @@
 
 > **Document Version:** 2.0 | **Last Updated:** February 2026 | **Status:** Current
 >
-> **Audience:** Developers and Operators encountering errors in AgentAuth.
+> **Audience:** Developers and Operators encountering errors in AgentWrit.
 >
 > **Prerequisites:** [Getting Started: Developer](getting-started-developer.md) or [Getting Started: Operator](getting-started-operator.md).
 >
@@ -296,7 +296,7 @@ All broker error responses use the [RFC 7807](https://www.rfc-editor.org/rfc/rfc
 
 ```json
 {
-  "type": "urn:agentauth:error:scope_violation",
+  "type": "urn:agentwrit:error:scope_violation",
   "title": "Forbidden",
   "status": 403,
   "detail": "requested scope exceeds allowed scope",
@@ -311,7 +311,7 @@ All broker error responses use the [RFC 7807](https://www.rfc-editor.org/rfc/rfc
 
 | Field | Type | Always Present | Description |
 |-------|------|----------------|-------------|
-| `type` | string | Yes | URN identifying the error category: `urn:agentauth:error:{errType}` |
+| `type` | string | Yes | URN identifying the error category: `urn:agentwrit:error:{errType}` |
 | `title` | string | Yes | HTTP status text (e.g., "Forbidden", "Unauthorized") |
 | `status` | int | Yes | HTTP status code |
 | `detail` | string | Yes | Human-readable description of what went wrong |
@@ -397,7 +397,7 @@ AA_ADMIN_SECRET=your-strong-random-secret
 
 ```json
 {
-  "type": "urn:agentauth:error:unauthorized",
+  "type": "urn:agentwrit:error:unauthorized",
   "status": 401,
   "detail": "invalid credentials"
 }
@@ -407,7 +407,7 @@ Or:
 
 ```json
 {
-  "type": "urn:agentauth:error:unauthorized",
+  "type": "urn:agentwrit:error:unauthorized",
   "status": 401,
   "detail": "admin secret does not meet security requirements"
 }
@@ -462,7 +462,7 @@ curl -s -X POST http://localhost:8080/v1/admin/auth \
 
 ```json
 {
-  "type": "urn:agentauth:error:rate_limited",
+  "type": "urn:agentwrit:error:rate_limited",
   "status": 429,
   "detail": "rate limit exceeded, try again later"
 }
@@ -500,7 +500,7 @@ When registering an agent with a long TTL or requesting token renewal:
 
 ```json
 {
-  "type": "urn:agentauth:error:invalid_ttl",
+  "type": "urn:agentwrit:error:invalid_ttl",
   "status": 400,
   "detail": "token TTL exceeds MaxTTL ceiling"
 }
@@ -553,7 +553,7 @@ broker:
 Broker fails to start with one of these errors:
 
 ```
-FATAL: config file not found at path: /etc/agentauth/config.yaml
+FATAL: config file not found at path: /etc/broker/config.yaml
 ```
 
 ```
@@ -578,7 +578,7 @@ FATAL: admin secret rejected: does not meet security requirements
 awrit init --mode dev
 
 # Production mode (longer TTLs, bcrypt-hashed admin secret, config file)
-awrit init --mode prod --config-path /etc/agentauth/config.yaml
+awrit init --mode prod --config-path /etc/broker/config.yaml
 ```
 
 2. **For development, use environment variables instead of a config file:**
@@ -593,14 +593,14 @@ go run ./cmd/broker
 3. **Ensure the config file is readable by the broker process:**
 
 ```bash
-ls -la /etc/agentauth/config.yaml
+ls -la /etc/broker/config.yaml
 # Should have read permissions for the broker user
 ```
 
 4. **To use the config file with the broker:**
 
 ```bash
-export AA_CONFIG_PATH=/etc/agentauth/config.yaml
+export AA_CONFIG_PATH=/etc/broker/config.yaml
 # Leave AA_ADMIN_SECRET unset or it will override the config file
 go run ./cmd/broker
 ```
@@ -617,7 +617,7 @@ After restarting the broker, all previously issued tokens fail validation:
 
 ```json
 {
-  "type": "urn:agentauth:error:unauthorized",
+  "type": "urn:agentwrit:error:unauthorized",
   "status": 401,
   "detail": "token verification failed: signature verification failed"
 }
@@ -665,7 +665,7 @@ Agents fail to connect with TLS errors:
 
 ```json
 {
-  "type": "urn:agentauth:error:unauthorized",
+  "type": "urn:agentwrit:error:unauthorized",
   "status": 401,
   "detail": "TLS certificate verification failed"
 }
@@ -735,5 +735,5 @@ broker:
     - AA_TLS_KEY=/certs/broker.key
     - AA_TLS_CLIENT_CA=/certs/ca.crt  # For mTLS
   volumes:
-    - /etc/agentauth/certs:/certs:ro
+    - /etc/broker/certs:/certs:ro
 ```

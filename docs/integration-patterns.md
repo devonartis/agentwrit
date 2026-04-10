@@ -1,8 +1,8 @@
-# Integration Patterns Guide for AgentAuth
+# Integration Patterns Guide for AgentWrit
 
 > **Document Version:** 2.0 | **Last Updated:** February 2026 | **Status:** Current
 >
-> **Audience:** Developers, architects, and platform engineers implementing AgentAuth in production systems
+> **Audience:** Developers, architects, and platform engineers implementing AgentWrit in production systems
 >
 > **Prerequisites:** [Concepts](concepts.md), [API Reference](api.md), Python familiarity, REST API experience
 >
@@ -28,7 +28,7 @@
 
 ## Introduction
 
-This guide covers six proven patterns for integrating AgentAuth into AI agent systems. Each pattern solves a specific architectural challenge:
+This guide covers six proven patterns for integrating AgentWrit into AI agent systems. Each pattern solves a specific architectural challenge:
 
 - **Multi-Agent Pipeline:** Sequential agents with scope attenuation at each step
 - **Multi-Service Authorization:** Different services with independent auth boundaries
@@ -37,7 +37,7 @@ This guide covers six proven patterns for integrating AgentAuth into AI agent sy
 - **Emergency Revocation:** Incident response and containment strategies
 - **App-Managed Agent Registration:** Orchestration apps managing agent credentials
 
-Every pattern demonstrates the **security contrast**: what goes wrong without AgentAuth (the dangerous path) versus the safe, auditable approach with AgentAuth.
+Every pattern demonstrates the **security contrast**: what goes wrong without AgentWrit (the dangerous path) versus the safe, auditable approach with AgentWrit.
 
 **Setup:** All examples use the `requests` library. Install with:
 
@@ -46,7 +46,7 @@ uv pip install requests cryptography
 ```
 
 All examples assume environment variables:
-- `AGENTAUTH_BROKER_URL`: Broker endpoint (e.g., `https://broker.internal:8080`)
+- `AGENTWRIT_BROKER_URL`: Broker endpoint (e.g., `https://broker.internal:8080`)
 - `AA_ADMIN_SECRET`: Operator admin credential (for app registration and emergency examples)
 
 ---
@@ -118,11 +118,11 @@ from typing import Dict, Any, List
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal:8080")
+BROKER = os.environ.get("AGENTWRIT_BROKER_URL", "https://broker.internal:8080")
 LAUNCH_TOKEN = os.environ.get("RESEARCH_AGENT_LAUNCH_TOKEN", "lt_...")
 TASK_ID = "analysis-2026-0215-001"
-WRITER_AGENT_ID = "spiffe://agentauth.local/agent/orch-research-001/task-writer-001/writer-001"
-REVIEWER_AGENT_ID = "spiffe://agentauth.local/agent/orch-research-001/task-review-001/reviewer-001"
+WRITER_AGENT_ID = "spiffe://agentwrit.local/agent/orch-research-001/task-writer-001/writer-001"
+REVIEWER_AGENT_ID = "spiffe://agentwrit.local/agent/orch-research-001/task-review-001/reviewer-001"
 
 class ResearchAgent:
     """Research Agent with broad read:data:* scope."""
@@ -311,7 +311,7 @@ if __name__ == "__main__":
 
 4. **Revocation Propagates:** If the Research Agent is revoked at the agent level, all downstream delegations (Writer, Reviewer) also become invalid because they depend on the chain.
 
-### What Goes Wrong Without AgentAuth
+### What Goes Wrong Without AgentWrit
 
 ```python
 # DANGEROUS: Multi-agent pipeline without scope isolation
@@ -382,7 +382,7 @@ flowchart TB
         OS["Order Service"]
     end
 
-    subgraph agentauth["Shared Broker"]
+    subgraph agentwrit["Shared Broker"]
         B["Broker"]
         Apps["App Registry:<br/>- customer-app<br/>- payment-app<br/>- order-app"]
     end
@@ -419,7 +419,7 @@ from typing import Dict, Any
 
 # ── Service-Specific Configuration ──────────────────────────────────
 
-BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal:8080")
+BROKER = os.environ.get("AGENTWRIT_BROKER_URL", "https://broker.internal:8080")
 
 class ServiceConfig:
     """Configuration for a microservice app."""
@@ -591,7 +591,7 @@ if __name__ == "__main__":
 
 5. **Revocation Granularity:** If a service is compromised, the operator can revoke all tokens for that app without affecting other services.
 
-### What Goes Wrong Without AgentAuth
+### What Goes Wrong Without AgentWrit
 
 ```python
 # DANGEROUS: Monolithic credential approach without service isolation
@@ -623,7 +623,7 @@ class PaymentServiceDangerous:
 #   - All billing records
 #   - All order data
 #
-# With AgentAuth, the attacker would only get:
+# With AgentWrit, the attacker would only get:
 #   - Billing data (app's scope ceiling)
 #   - For 30 minutes (token TTL)
 #   - With full audit trail showing the breach
@@ -695,7 +695,7 @@ from typing import Dict, Any, List, Optional
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
-BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal:8080")
+BROKER = os.environ.get("AGENTWRIT_BROKER_URL", "https://broker.internal:8080")
 LAUNCH_TOKEN = os.environ.get("ETL_AGENT_LAUNCH_TOKEN", "")
 ORCH_ID = "orch-etl-001"
 
@@ -926,7 +926,7 @@ if __name__ == "__main__":
 
 4. **Audit Completeness:** Every token has an entry in the audit log. You can reconstruct the full lifecycle of any credential.
 
-### What Goes Wrong Without AgentAuth
+### What Goes Wrong Without AgentWrit
 
 ```python
 # DANGEROUS: No explicit token lifecycle, metrics are guesses
@@ -954,7 +954,7 @@ class LongLivedCredentialAgent:
 # 4. Resource consumption is unmeasured (how much data did agent process?)
 # 5. Hung agents go undetected (is the agent still working or stuck?)
 #
-# With AgentAuth token release pattern:
+# With AgentWrit token release pattern:
 # - Exact start/end timestamps
 # - Measured credential lifetime
 # - Automatic anomaly detection
@@ -1019,11 +1019,11 @@ from typing import List, Dict, Any, Optional
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
-BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal:8080")
+BROKER = os.environ.get("AGENTWRIT_BROKER_URL", "https://broker.internal:8080")
 TASK_ID = "analysis-cascade-2026-0215"
 ORCH_LAUNCH_TOKEN = os.environ.get("ORCH_AGENT_LAUNCH_TOKEN", "")
-ANALYZER_AGENT_ID = "spiffe://agentauth.local/agent/orch-analysis-001/task-analyzer-001/analyzer-001"
-SPECIALIST_AGENT_ID = "spiffe://agentauth.local/agent/orch-analysis-001/task-specialist-001/specialist-001"
+ANALYZER_AGENT_ID = "spiffe://agentwrit.local/agent/orch-analysis-001/task-analyzer-001/analyzer-001"
+SPECIALIST_AGENT_ID = "spiffe://agentwrit.local/agent/orch-analysis-001/task-specialist-001/specialist-001"
 
 
 class DelegationChainValidator:
@@ -1271,7 +1271,7 @@ if __name__ == "__main__":
 
 4. **Revocation Propagates Downward:** Revoking the orchestrator at chain-level invalidates all downstream delegations.
 
-### What Goes Wrong Without AgentAuth
+### What Goes Wrong Without AgentWrit
 
 ```python
 # DANGEROUS: Delegation without scope narrowing or proof
@@ -1304,7 +1304,7 @@ class AnalyzerDangerous:
 # 4. No depth limit. Could create infinite delegation chains.
 # 5. No escalation prevention. Specialist could claim to have broader scope.
 #
-# With AgentAuth delegation pattern:
+# With AgentWrit delegation pattern:
 # - Each level has narrower scope enforced by broker
 # - Cryptographic proof of authorization lineage
 # - Chain signatures prevent forgery
@@ -1402,7 +1402,7 @@ import requests
 from typing import Dict, Any, Optional
 from enum import Enum
 
-BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal:8080")
+BROKER = os.environ.get("AGENTWRIT_BROKER_URL", "https://broker.internal:8080")
 ADMIN_SECRET = os.environ.get("AA_ADMIN_SECRET")
 
 
@@ -1574,7 +1574,7 @@ def run_incident_response():
     print("An agent was compromised via prompt injection")
     print("Blast radius: Agent-level (all tokens for that agent)")
     mgr.revoke_agent(
-        agent_id="spiffe://agentauth.local/agent/orch-456/task-789/a1b2c3d4",
+        agent_id="spiffe://agentwrit.local/agent/orch-456/task-789/a1b2c3d4",
         reason="Agent compromised via prompt injection attack"
     )
 
@@ -1590,7 +1590,7 @@ def run_incident_response():
     print("Delegation chain was exploited for escalation")
     print("Blast radius: Chain-level (all delegated tokens from root)")
     mgr.revoke_chain(
-        root_agent_id="spiffe://agentauth.local/agent/orch-456/task-789/root",
+        root_agent_id="spiffe://agentwrit.local/agent/orch-456/task-789/root",
         reason="Delegation chain exploited for privilege escalation"
     )
 
@@ -1655,7 +1655,7 @@ if __name__ == "__main__":
 
 5. **Idempotent:** Revoking an already-revoked token is safe (succeeds with no error).
 
-### What Goes Wrong Without AgentAuth
+### What Goes Wrong Without AgentWrit
 
 ```python
 # DANGEROUS: Incident response without revocation mechanism
@@ -1683,7 +1683,7 @@ class IncidentResponseWithoutRevocation:
         # Legitimate traffic from that IP is also blocked
 
 
-# With AgentAuth emergency revocation:
+# With AgentWrit emergency revocation:
 # 1. Agent revocation: Invalidates only compromised agent's tokens
 # 2. Task revocation: If needed, invalidate all agents in a task
 # 3. Chain revocation: If needed, invalidate entire delegation tree
@@ -1759,7 +1759,7 @@ from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.backends import default_backend
 from typing import Dict, Any, Optional
 
-BROKER = os.environ.get("AGENTAUTH_BROKER_URL", "https://broker.internal:8080")
+BROKER = os.environ.get("AGENTWRIT_BROKER_URL", "https://broker.internal:8080")
 ADMIN_SECRET = os.environ.get("AA_ADMIN_SECRET")
 TASK_ID = "byok-task-2026-0215"
 
@@ -2043,7 +2043,7 @@ if __name__ == "__main__":
 
 5. **Key Rotation:** New keypairs should be generated for each task or on a schedule. Compromised keys affect only credentials signed with that key.
 
-### What Goes Wrong Without AgentAuth
+### What Goes Wrong Without AgentWrit
 
 ```python
 # DANGEROUS: Manual key management without standards
@@ -2073,10 +2073,10 @@ class UnsafeRegistration:
 # Generated once, used for months
 AGENT_KEY = ed25519.Ed25519PrivateKey.generate()  # One-time setup
 # PROBLEM: If compromised, valid for months
-# With AgentAuth: Keys rotated per-task, valid for minutes
+# With AgentWrit: Keys rotated per-task, valid for minutes
 
 
-# With AgentAuth BYOK:
+# With AgentWrit BYOK:
 # - Nonce challenge proves key possession without exposing it
 # - Private keys stay local and never transmitted
 # - Single-use launch tokens prevent registration replay
@@ -2087,7 +2087,7 @@ AGENT_KEY = ed25519.Ed25519PrivateKey.generate()  # One-time setup
 
 ## Security Checklist
 
-When implementing AgentAuth patterns, verify:
+When implementing AgentWrit patterns, verify:
 
 ### Credentials and Tokens
 
