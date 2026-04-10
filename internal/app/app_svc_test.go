@@ -73,12 +73,12 @@ func TestRegisterApp_InvalidName(t *testing.T) {
 	svc := newTestAppSvc(t)
 
 	cases := []string{
-		"",            // empty
-		"My App",      // spaces
-		"my_app",      // underscores
-		"-my-app",     // starts with hyphen
-		"my--app",     // consecutive hyphens
-		"1myapp",      // starts with digit
+		"",        // empty
+		"My App",  // spaces
+		"my_app",  // underscores
+		"-my-app", // starts with hyphen
+		"my--app", // consecutive hyphens
+		"1myapp",  // starts with digit
 	}
 	for _, name := range cases {
 		if _, err := svc.RegisterApp(name, []string{"read:data:*"}, "admin", 0); err == nil {

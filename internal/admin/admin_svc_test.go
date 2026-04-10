@@ -114,7 +114,7 @@ func TestAuthenticate_DifferentLengthSecret(t *testing.T) {
 		t.Errorf("expected ErrInvalidSecret for different-length secret, got: %v", err)
 	}
 
-	_, err = svc.Authenticate(testSecret+"extra-long-suffix-that-should-fail")
+	_, err = svc.Authenticate(testSecret + "extra-long-suffix-that-should-fail")
 	if err != ErrInvalidSecret {
 		t.Errorf("expected ErrInvalidSecret for longer secret, got: %v", err)
 	}
@@ -390,7 +390,10 @@ func TestCreateLaunchToken_HexFormat(t *testing.T) {
 	}
 }
 
-// Compile-time check: LaunchTokenRecord fields match spec.
+// Compile-time check: LaunchTokenRecord fields match spec. The purpose of
+// this test is that every field in the literal below MUST exist on the type.
+// If a field is renamed or removed upstream, this test fails to compile —
+// which is the point. Do not "simplify" by removing fields.
 func TestLaunchTokenRecord_SpecCompliance(t *testing.T) {
 	rec := store.LaunchTokenRecord{
 		Token:        "abc",
@@ -402,6 +405,9 @@ func TestLaunchTokenRecord_SpecCompliance(t *testing.T) {
 		ExpiresAt:    time.Now(),
 		CreatedBy:    adminSub,
 	}
+	// Silence govet unusedwrite: the writes above are *intentional* — the
+	// literal is exhaustive on purpose to lock the struct's field set.
+	_ = rec
 	// ConsumedAt is a pointer — nil means not consumed.
 	if rec.ConsumedAt != nil {
 		t.Error("new record should have nil ConsumedAt")

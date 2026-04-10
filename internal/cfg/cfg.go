@@ -42,20 +42,20 @@ const AdminBcryptCost = 12
 // Cfg holds the complete broker configuration derived from environment
 // variables. Use [Load] to create an instance with defaults applied.
 type Cfg struct {
-	Port        string // AA_PORT (default "8080")
-	BindAddress string // AA_BIND_ADDRESS (default "127.0.0.1")
-	LogLevel    string // AA_LOG_LEVEL (default "verbose")
-	TrustDomain string // AA_TRUST_DOMAIN (default "agentauth.local")
-	DefaultTTL  int    // AA_DEFAULT_TTL (default 300 seconds)
-	AppTokenTTL int    // AA_APP_TOKEN_TTL (default 1800 seconds / 30 min)
-	AdminSecret string // AA_ADMIN_SECRET (required for admin auth)
-	SeedTokens  bool   // AA_SEED_TOKENS (dev only, default false)
-	DBPath         string // AA_DB_PATH (default "./agentauth.db")
-	SigningKeyPath string // AA_SIGNING_KEY_PATH (default "./signing.key")
-	TLSMode     string // AA_TLS_MODE: none|tls|mtls (default "none")
-	TLSCert     string // AA_TLS_CERT: path to TLS certificate PEM file
-	TLSKey      string // AA_TLS_KEY: path to TLS private key PEM file
-	TLSClientCA string // AA_TLS_CLIENT_CA: path to client CA PEM file (mtls only)
+	Port            string // AA_PORT (default "8080")
+	BindAddress     string // AA_BIND_ADDRESS (default "127.0.0.1")
+	LogLevel        string // AA_LOG_LEVEL (default "verbose")
+	TrustDomain     string // AA_TRUST_DOMAIN (default "agentauth.local")
+	DefaultTTL      int    // AA_DEFAULT_TTL (default 300 seconds)
+	AppTokenTTL     int    // AA_APP_TOKEN_TTL (default 1800 seconds / 30 min)
+	AdminSecret     string // AA_ADMIN_SECRET (required for admin auth)
+	SeedTokens      bool   // AA_SEED_TOKENS (dev only, default false)
+	DBPath          string // AA_DB_PATH (default "./agentauth.db")
+	SigningKeyPath  string // AA_SIGNING_KEY_PATH (default "./signing.key")
+	TLSMode         string // AA_TLS_MODE: none|tls|mtls (default "none")
+	TLSCert         string // AA_TLS_CERT: path to TLS certificate PEM file
+	TLSKey          string // AA_TLS_KEY: path to TLS private key PEM file
+	TLSClientCA     string // AA_TLS_CLIENT_CA: path to client CA PEM file (mtls only)
 	Audience        string // AA_AUDIENCE: expected token audience (default "agentauth", empty = skip)
 	Mode            string // MODE: development|production (default "development")
 	AdminSecretHash string // bcrypt hash of admin secret (derived at load time)
@@ -71,22 +71,22 @@ func Load() (Cfg, error) {
 	cfgMode, cfgSecret, cfgPath := loadConfigFile()
 
 	c := Cfg{
-		Port:        envOr("AA_PORT", "8080"),
-		BindAddress: envOr("AA_BIND_ADDRESS", "127.0.0.1"),
-		LogLevel:    envOr("AA_LOG_LEVEL", "verbose"),
-		TrustDomain: envOr("AA_TRUST_DOMAIN", "agentauth.local"),
-		DefaultTTL:  envIntOr("AA_DEFAULT_TTL", 300),
-		AppTokenTTL: envIntOr("AA_APP_TOKEN_TTL", 1800),
-		AdminSecret: os.Getenv("AA_ADMIN_SECRET"),
-		SeedTokens:  envOr("AA_SEED_TOKENS", "false") == "true",
+		Port:           envOr("AA_PORT", "8080"),
+		BindAddress:    envOr("AA_BIND_ADDRESS", "127.0.0.1"),
+		LogLevel:       envOr("AA_LOG_LEVEL", "verbose"),
+		TrustDomain:    envOr("AA_TRUST_DOMAIN", "agentauth.local"),
+		DefaultTTL:     envIntOr("AA_DEFAULT_TTL", 300),
+		AppTokenTTL:    envIntOr("AA_APP_TOKEN_TTL", 1800),
+		AdminSecret:    os.Getenv("AA_ADMIN_SECRET"),
+		SeedTokens:     envOr("AA_SEED_TOKENS", "false") == "true",
 		DBPath:         envOr("AA_DB_PATH", "./agentauth.db"),
 		SigningKeyPath: envOr("AA_SIGNING_KEY_PATH", "./signing.key"),
-		TLSMode:     envOr("AA_TLS_MODE", "none"),
-		TLSCert:     os.Getenv("AA_TLS_CERT"),
-		TLSKey:      os.Getenv("AA_TLS_KEY"),
-		TLSClientCA: os.Getenv("AA_TLS_CLIENT_CA"),
-		ConfigPath:  cfgPath,
-		Mode:        "development",
+		TLSMode:        envOr("AA_TLS_MODE", "none"),
+		TLSCert:        os.Getenv("AA_TLS_CERT"),
+		TLSKey:         os.Getenv("AA_TLS_KEY"),
+		TLSClientCA:    os.Getenv("AA_TLS_CLIENT_CA"),
+		ConfigPath:     cfgPath,
+		Mode:           "development",
 	}
 	// AA_AUDIENCE: LookupEnv distinguishes unset (→ default "agentauth")
 	// from explicitly empty (→ skip validation).

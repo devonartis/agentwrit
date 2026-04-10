@@ -1,0 +1,78 @@
+name: Nightly full regression
+
+on:
+  schedule:
+    - cron: '17 5 * * *'  # daily 05:17 UTC
+  workflow_dispatch:        # manual trigger for ad-hoc runs
+
+permissions:
+  contents: read
+  issues: write  # to open triage issues on failure
+
+jobs:
+  regression:
+    name: L4 full regression
+    runs-on: ubuntu-latest
+    env:
+      AA_ADMIN_SECRET: live-test-secret-32bytes-long-ok
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: develop
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6.4.0
+        with:
+          go-version-file: go.mod
+
+      - name: Build broker image
+        run: |
+          export AA_ADMIN_SECRET="$AA_ADMIN_SECRET"
+          docker compose build
+
+      - name: Run full regression suite
+        id: regression
+        run: ./scripts/gates.sh regression
+        continue-on-error: true
+
+      - name: Upload evidence on failure
+        if: steps.regression.outcome == 'failure'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: regression-evidence-${{ github.run_id }}
+          path: tests/**/evidence/
+          retention-days: 14
+
+      - name: Open issue on failure
+        if: steps.regression.outcome == 'failure'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const run_url = `https://github.com/${owner}/${repo}/actions/runs/${context.runId}`;
+            const short_sha = context.sha.substring(0, 7);
+            await github.rest.issues.create({
+              owner,
+              repo,
+              title: `Nightly regression failed — ${short_sha}`,
+              body: [
+                '# Nightly L4 regression failure',
+                '',
+                `**Commit:** \`${short_sha}\``,
+                `**Branch:** develop`,
+                `**Workflow run:** ${run_url}`,
+                '',
+                'The nightly full regression suite failed. Evidence uploaded as workflow artifact.',
+                '',
+                'Triage steps:',
+                '1. Download the `regression-evidence-${{ github.run_id }}` artifact',
+                '2. Identify which batch failed (`scripts/gates.sh regression` output)',
+                '3. Reproduce locally: `./scripts/gates.sh regression`',
+                '4. Open a fix branch if the failure is real, or close this issue if flaky',
+                '',
+                '_Auto-created by `.github/workflows/nightly.yml`_',
+              ].join('\n'),
+              labels: ['regression', 'nightly', 'needs-triage'],
+            });
+
+      - name: Fail workflow if regression failed
+        if: steps.regression.outcome == 'failure'
+        run: exit 1

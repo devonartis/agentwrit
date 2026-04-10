@@ -1,0 +1,11 @@
+# MAINTAINERS — allowlist for contribution-policy.yml
+#
+# Users listed here bypass the auto-close policy in
+# .github/workflows/contribution-policy.yml. Anyone else opening a PR
+# (except dependabot and github-actions bot) gets auto-closed with a
+# templated comment pointing to the issues-only contribution policy
+# (Decision 014).
+#
+# Format: one GitHub username per line, no @ prefix, no inline comments.
+
+devonartis

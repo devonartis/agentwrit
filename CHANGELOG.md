@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — strip_for_main.sh mid-merge support + two drift fixes
+
+- **`scripts/strip_for_main.sh`** — the documented `git merge develop
+  --no-commit` → strip flow could never actually work because the
+  script's dirty-tree guard refused to run mid-merge. Added merge-state
+  detection (`$GIT_DIR/MERGE_HEAD` presence); when mid-merge the strip
+  uses `git rm -rf --ignore-unmatch` so modify/delete conflicts get
+  deleted AND staged as resolved in one step. The "absolute refusal to
+  run on develop" guard is preserved regardless of merge state.
+- **`scripts/strip_for_main.sh` + `.githooks/pre-commit`** — added
+  `.vscode/` (editor settings, often carry per-user Snyk / IDE prefs)
+  to both strip lists, and `adr/` to the pre-commit FORBIDDEN list
+  (it was already in the strip script). The two defense layers now
+  agree. A note in pre-commit tells future editors to keep both lists
+  in sync.
+
+### Added — CI/build/gates (M-sec v1)
+
+- **`.gosec.yml`** — explicit gosec configuration with documented rule
+  exclusions (G117, G304, G101) rationalized for a credential broker's API
+  surface. Every excluded rule carries a reviewer-auditable rationale.
+- **`.golangci.yml`** — security-aware `golangci-lint` config (errcheck,
+  gosec, govet, ineffassign, staticcheck, unused, gosimple, bodyclose,
+  misspell, gofmt, goimports) with tuned govet subchecks (fieldalignment
+  and shadow disabled with rationale) and mirrored gosec excludes.
+- **`scripts/smoke/core-contract.sh`** — L2.5 core contract smoke test.
+  10-step verification (health, admin auth, launch token, challenge,
+  Ed25519 challenge-response register, JWT structure, validate-accepted,
+  revoke, validate-rejected, out-of-scope denied) against a running
+  broker. Uses `python3 + cryptography` for the Ed25519 signing step.
+- **`scripts/test-gate-parity.sh`** — enforces gate list alignment
+  between `scripts/gates.sh --list-gates` and `.github/workflows/ci.yml`
+  `GATE_LIST_START/END` block. Prevents silent drift.
+- **`syft scan` baseline** — SBOM generation integrated into the local
+  `gates.sh full` pipeline (SPDX-2.3, 27 packages at baseline).
+
+### Changed — CI/build/gates (M-sec v1)
+
+- **`scripts/gates.sh`** — extended from 4 gates to 13. New blocking
+  gates: `contamination` (enterprise refs grep), `govulncheck` (stdlib
+  and dependency vulnerabilities), `go-mod-verify` (module integrity +
+  tidy drift), `vet`, `format`, plus `full`-mode-only: `unit-tests-race`,
+  `docker-build`, `smoke-l2.5`, `sbom`. `gosec` flipped from warn-only
+  to blocking. `module` renamed to `full` (deprecated alias retained).
+  Dead references to `live_test.sh`/`live_test_docker.sh` removed.
+  `golangci-lint` and `gosec` are now required (no fallback). Added
+  `--list-gates` for parity enforcement. Honors `BROKER_URL` for
+  smoke-l2.5 on non-default ports.
+- **`TECH-DEBT.md`** — recorded TD-VUL-001..004 (four Go stdlib CVEs
+  fixed by bumping `go.mod` toolchain from `go1.25.7` to `go1.25.9`,
+  scheduled for landing at the first CI push).
+
+### Fixed — CI/build/gates (M-sec v1)
+
+- **gofmt drift** — 24 pre-existing gofmt-dirty files normalized in a
+  single style commit. No behavior change. Surfaced by adding `format`
+  as a blocking gate.
+- **`internal/keystore/parseKey`** — defensive type-assertion on
+  `priv.Public().(ed25519.PublicKey)` to satisfy `errcheck
+  check-type-assertions`. Unreachable on the happy path.
+- **`internal/mutauth/heartbeat.sweep`** — heartbeat auto-revoke
+  failures are now logged via `obs.Warn` instead of being silently
+  dropped. Previously `_, _ = h.revSvc.Revoke(...)` was followed by an
+  unconditional "agent auto-revoked" log line, even when the revocation
+  actually failed.
+- **`cmd/aactl/client`** — `json.Marshal` and `io.ReadAll` errors are
+  now propagated as wrapped errors instead of being discarded. Affects
+  `authenticate()` (two sites) and `doPostWithToken()`.
+- **`internal/store/sql_store.QueryAuditEvents`** — documented `#nosec
+  G202` on the audit query SELECT, explaining why the fragment
+  concatenation is safe (fixed template, parameterized values).
+- **`internal/admin/admin_svc_test.TestLaunchTokenRecord_SpecCompliance`** —
+  clarified the exhaustive-literal intent in a doc comment and silenced
+  `govet unusedwrite` with `_ = rec`.
+
 ### Added
 
 **Security hardening**

@@ -1,0 +1,5 @@
+# Global ownership — all paths default to the maintainer.
+# Per Decision 014, external contributions are not accepted, so CODEOWNERS
+# primarily serves as documentation and branch-protection review enforcement.
+
+* @devonartis

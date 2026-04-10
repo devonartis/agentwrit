@@ -32,7 +32,7 @@ type validateReq struct {
 }
 
 type validateRespValid struct {
-	Valid  bool            `json:"valid"`
+	Valid  bool             `json:"valid"`
 	Claims *token.TknClaims `json:"claims"`
 }
 

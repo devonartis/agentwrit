@@ -59,7 +59,14 @@ func parseKey(data []byte) (ed25519.PublicKey, ed25519.PrivateKey, error) {
 	if !ok {
 		return nil, nil, fmt.Errorf("keystore: key is %T, want ed25519.PrivateKey", key)
 	}
-	return priv.Public().(ed25519.PublicKey), priv, nil
+	pub, ok := priv.Public().(ed25519.PublicKey)
+	if !ok {
+		// Unreachable: ed25519.PrivateKey.Public() is documented to return
+		// ed25519.PublicKey. Defensive check satisfies errcheck and guards
+		// against stdlib contract changes.
+		return nil, nil, fmt.Errorf("keystore: public key is %T, want ed25519.PublicKey", priv.Public())
+	}
+	return pub, priv, nil
 }
 
 func writeKey(path string, priv ed25519.PrivateKey) error {

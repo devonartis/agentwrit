@@ -50,13 +50,13 @@ func WriteProblem(ctx context.Context, w http.ResponseWriter, status int, errTyp
 // errorCode and hint.
 func WriteProblemExtended(ctx context.Context, w http.ResponseWriter, status int, errType, detail, instance, errorCode, hint string) {
 	requestID := GetRequestID(ctx)
-	
+
 	p := ProblemDetail{
 		Type:      "urn:agentauth:error:" + errType,
-		Title:    http.StatusText(status),
-		Status:   status,
-		Detail:   detail,
-		Instance: instance,
+		Title:     http.StatusText(status),
+		Status:    status,
+		Detail:    detail,
+		Instance:  instance,
 		ErrorCode: errorCode,
 		RequestID: requestID,
 		Hint:      hint,

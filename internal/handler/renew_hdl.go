@@ -49,7 +49,7 @@ func (h *RenewHdl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if h.auditLog != nil && claims != nil {
 			h.auditLog.Record(audit.EventTokenRenewalFailed, claims.Sub, claims.TaskId, claims.OrchId,
 				fmt.Sprintf("token renewal failed for agent=%s: %s", claims.Sub, err.Error()),
-			audit.WithOutcome("denied"))
+				audit.WithOutcome("denied"))
 		}
 		obs.Warn("RENEW", "hdl", "token renewal failed", "err="+err.Error())
 		problemdetails.WriteProblem(r.Context(), w, http.StatusUnauthorized, "unauthorized", "token renewal failed", r.URL.Path)

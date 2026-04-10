@@ -390,7 +390,6 @@ func TestIssueWithoutSid_DefaultsEmpty(t *testing.T) {
 	}
 }
 
-
 func TestRenew_RevokesPredecessor(t *testing.T) {
 	pub, priv := testKeyPair(t)
 	svc := NewTknSvc(priv, pub, testCfg())

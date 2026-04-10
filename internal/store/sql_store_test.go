@@ -383,7 +383,6 @@ func TestSaveAgent_NoAppIDByDefault(t *testing.T) {
 	}
 }
 
-
 // --- SQLite audit persistence ---
 
 func TestInitDB_CreatesAuditTable(t *testing.T) {

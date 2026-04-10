@@ -206,4 +206,3 @@ func (h *AdminHdl) handleCreateLaunchToken(w http.ResponseWriter, r *http.Reques
 		obs.Warn(mod, hdlCmp, "failed to encode launch token response", "err="+err.Error())
 	}
 }
-

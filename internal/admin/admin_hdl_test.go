@@ -525,4 +525,3 @@ func TestCreateLaunchToken_AppCallerAuditOnCeilingExceeded(t *testing.T) {
 		t.Fatal("expected audit event EventScopeCeilingExceeded")
 	}
 }
-
