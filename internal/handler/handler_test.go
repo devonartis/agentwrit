@@ -1114,10 +1114,10 @@ func TestMetrics_AfterExercisedFlows(t *testing.T) {
 
 	// Check for expected Prometheus metric names.
 	expectedMetrics := []string{
-		"agentauth_tokens_issued_total",
-		"agentauth_tokens_revoked_total",
-		"agentauth_registrations_total",
-		"agentauth_admin_auth_total",
+		"agentwrit_tokens_issued_total",
+		"agentwrit_tokens_revoked_total",
+		"agentwrit_registrations_total",
+		"agentwrit_admin_auth_total",
 	}
 	for _, metric := range expectedMetrics {
 		if !strings.Contains(body, metric) {

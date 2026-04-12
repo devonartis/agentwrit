@@ -20,7 +20,7 @@ var (
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Generate admin secret and write config file",
-	Long: `Initialize AgentAuth by generating a cryptographically secure admin
+	Long: `Initialize AgentWrit by generating a cryptographically secure admin
 secret and writing a config file. In dev mode, the plaintext is stored
 in the config for easy retrieval. In prod mode, only the bcrypt hash
 is stored -- the plaintext is shown once and never saved to disk.`,
@@ -59,9 +59,9 @@ func resolveConfigPath() string {
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "/etc/agentauth/config"
+		return "/etc/broker/config"
 	}
-	return home + "/.agentauth/config"
+	return home + "/.broker/config"
 }
 
 // runInit generates a secret and writes the config file. Returns the

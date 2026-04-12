@@ -316,7 +316,7 @@ try {
 
 | Claim | Type | Description |
 |-------|------|-------------|
-| `iss` | string | Always `"agentwrit"` |
+| `iss` | string | Value of `AA_ISSUER`; empty string if unset |
 | `sub` | string | Agent SPIFFE ID (subject) |
 | `exp` | int | Expiration timestamp (Unix seconds) |
 | `iat` | int | Issued-at timestamp (Unix seconds) |
@@ -1975,12 +1975,9 @@ curl -s http://localhost:8080/v1/metrics | head -20
 
 | What to monitor | Metric | Alert when |
 |-----------------|--------|------------|
-| Broker availability | `agentwrit_broker_up` | Value is 0 |
 | Failed admin auth | `agentwrit_admin_auth_total{status="failure"}` | Sustained increase |
-| Failed app auth | `agentwrit_app_auth_total{status="failure"}` | Sustained increase |
 | Registration failures | `agentwrit_registrations_total{status="failure"}` | Unexpected failures |
 | Revocation activity | `agentwrit_tokens_revoked_total` | Unexpected spike |
-| Token expiration | `agentwrit_tokens_expired_total` | Monitor trends |
 | Request latency | `agentwrit_request_duration_seconds` | p99 exceeds acceptable threshold |
 
 **Python example (health checks):**

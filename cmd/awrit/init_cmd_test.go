@@ -108,6 +108,21 @@ func TestInitCmd_ForceOverwrite(t *testing.T) {
 	}
 }
 
+func TestResolveConfigPath_DefaultMatchesBrokerSearchPath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("AA_CONFIG_PATH", "")
+
+	oldPath := initConfigPath
+	initConfigPath = ""
+	t.Cleanup(func() { initConfigPath = oldPath })
+
+	want := filepath.Join(home, ".broker", "config")
+	if got := resolveConfigPath(); got != want {
+		t.Fatalf("resolveConfigPath() = %q, want %q", got, want)
+	}
+}
+
 func TestInitCmd_AtomicCreate_RejectsSymlink(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "target-file")

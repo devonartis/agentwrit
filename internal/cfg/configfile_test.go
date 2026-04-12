@@ -72,7 +72,7 @@ func TestLoadConfigFile_CommentsAndBlankLines(t *testing.T) {
 
 func TestLoadConfigFile_NoFileFound(t *testing.T) {
 	t.Setenv("AA_CONFIG_PATH", "/nonexistent/path/config")
-	t.Setenv("HOME", t.TempDir()) // isolate from real ~/.agentauth/config
+	t.Setenv("HOME", t.TempDir()) // isolate from real ~/.broker/config
 
 	mode, secret, path := loadConfigFile()
 	if mode != "" {
@@ -246,7 +246,7 @@ func TestConfigLocations_RejectsSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("AA_CONFIG_PATH", symlink)
-	t.Setenv("HOME", t.TempDir()) // isolate from real ~/.agentauth/config
+	t.Setenv("HOME", t.TempDir()) // isolate from real ~/.broker/config
 
 	_, _, path := loadConfigFile()
 	if path != "" {
