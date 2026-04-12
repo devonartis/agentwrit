@@ -357,6 +357,38 @@ Audit triggered by discovery of hardcoded `iss: "agentauth"` in `internal/token/
 
 | TD-CLI-002 | ~~**`awrit init` writes config to `~/.agentauth/config` but broker reads `~/.broker/config`** — broken first-run path~~ | ~~HIGH~~ | **RESOLVED 2026-04-12** — `resolveConfigPath()` now defaults to `~/.broker/config` and fallback `/etc/broker/config`; unit test added. Branch `fix/rebrand-runtime-doc-alignment`. | `cmd/awrit/init_cmd.go:53-64`, `cmd/awrit/init_cmd_test.go` |
 | TD-CLI-003 | **`docker-compose.yml` network still named `agentauth-net`** — docs say `agentwrit-net` after brand sweep | Low | Next compose-touching PR | `docker-compose.yml:35,42` |
+| TD-CI-002 | **Docker image build + push to Docker Hub** — `docker-build` CI gate builds the image and discards it; there is no release workflow that tags and publishes to a registry so operators can `docker pull agentwrit:latest` | **HIGH** | Before public release | `.github/workflows/` (new workflow), `docs/getting-started-operator.md`, `README.md` |
+| TD-CI-003 | **Automated `develop → main` PR workflow** — today develop → main is a direct strip-push with admin bypass. Should be a GHA that checks out main, merges develop, runs strip, opens a PR back to main, and the PR goes through all CI gates (main-hygiene included). Removes the "forgot to run strip" risk entirely. | **HIGH** | After TD-CI-002 | `.github/workflows/` (new workflow), potentially tighten branch protection on main to remove admin bypass |
+
+### TD-CI-002 Detail: Docker image publishing to Docker Hub
+
+**Current state:** `.github/workflows/ci.yml` has a `docker-build` job that runs `docker build -t agentwrit-ci:${{ github.sha }} .` on every PR and develop/main push. The image is built, verified to compile, then thrown away. No registry push.
+
+**Target state:** On push to `main` and on release tags, build the multi-arch (amd64 + arm64) image and push to **Docker Hub** as `devonartis/agentwrit:<tag>`. Tagging scheme:
+- `latest` — always tracks `main`
+- `main-<sha>` — every main push, for reproducibility
+- `v<semver>` — release tags (e.g. `v2.0.0`, `v2.0`, `v2`)
+- `develop` — optional, tracks `develop` branch for early adopters
+
+**Why Docker Hub (not GHCR):** operator UX. `docker pull devonartis/agentwrit` is the familiar path for most operators. GHCR is fine but adds a step (login / allow-list). Revisit if we move off Docker Hub for rate limit or licensing reasons.
+
+**What the workflow needs:**
+1. New `.github/workflows/release.yml` (or extend ci.yml) triggered on `push: [main]` and `push: { tags: [v*] }`
+2. `docker/login-action` with `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` secrets
+3. `docker/setup-qemu-action` + `docker/setup-buildx-action` for multi-arch
+4. `docker/build-push-action` with `platforms: linux/amd64,linux/arm64` and appropriate tags
+5. Optional: SBOM + cosign signing for supply-chain integrity (already have syft; add cosign)
+
+**Docs that need updating once published:**
+- `README.md` — add `docker pull devonartis/agentwrit:latest` to Quick Start
+- `docs/getting-started-operator.md` — add a "Docker image" section with pull + run examples
+- `docs/getting-started-user.md` — mention pre-built image as an alternative to `git clone`
+- `CHANGELOG.md` — Added entry per release
+- `docker-compose.yml` — document how to use `image: devonartis/agentwrit:latest` instead of `build: .`
+
+**Secrets required:** `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` (scoped to the agentwrit repo only, not user-wide). Set via GitHub repo secrets.
+
+**Exit criteria:** `docker pull devonartis/agentwrit:latest && docker run devonartis/agentwrit` starts a broker with the documented env vars, passes the L2.5 smoke test when pointed at it, and the image has a valid SBOM and (optionally) a cosign signature.
 
 ### TD-CLI-002 Detail: awrit init config path mismatch — RESOLVED 2026-04-12
 

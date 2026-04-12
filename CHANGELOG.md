@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — `main-hygiene` CI gate (2026-04-12)
+
+- **`.github/workflows/ci.yml`** — new `main-hygiene` job greps for strip-target paths on pushes to `main`. Runs only when `github.ref == 'refs/heads/main'` so PR runs against `develop` are untouched (develop legitimately carries these files). Fails the `gates-passed` aggregator if any dev-only file slips onto `main` via a missed `strip_for_main.sh` invocation — an automated safety net on top of the existing manual strip script.
+- **`scripts/gates.sh`** — mirror of the new gate in `GATES_FULL` so `scripts/test-gate-parity.sh` passes. Local invocation skips with `skip_gate` unless the current branch is `main`, since a developer running `gates.sh full` on `develop` would otherwise get a spurious failure.
+- **`TECH-DEBT.md`** — TD-CI-002 (Docker image publishing to Docker Hub) and TD-CI-003 (automated develop→main PR workflow) added with full specs. Both are follow-on work unlocked by the rebrand landing.
+
 ### Fixed — Runtime rebrand alignment (2026-04-12)
 
 - **`internal/problemdetails/problemdetails.go`** — RFC 7807 problem `type` URNs now use `urn:agentwrit:error:{errType}` instead of the former `urn:agentauth:error:{errType}` namespace, matching the published API docs.
