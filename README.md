@@ -47,9 +47,42 @@ This release validates that AgentAuth is a working implementation of the target 
 
 ## Quick Start
 
-Prerequisites: [Go 1.24+](https://go.dev/dl/), [Docker](https://docs.docker.com/get-docker/), and [Docker Compose](https://docs.docker.com/compose/install/).
+Prerequisites: [Docker](https://docs.docker.com/get-docker/) (plus [Go 1.24+](https://go.dev/dl/) and [Docker Compose](https://docs.docker.com/compose/install/) for source builds).
 
-### Option A: Docker Compose (recommended)
+### Option A: Pre-built image from Docker Hub (fastest)
+
+The signed, multi-arch (`linux/amd64` + `linux/arm64`) broker image is published to Docker Hub on every push to `main` and on release tags. Pull and run directly — no clone required.
+
+```bash
+# 1. Set a strong admin secret (required — broker exits without it)
+export AA_ADMIN_SECRET="$(openssl rand -base64 32)"
+
+# 2. Pull and run
+docker run --rm -p 8080:8080 \
+  -e AA_ADMIN_SECRET \
+  -e AA_BIND_ADDRESS=0.0.0.0 \
+  -v agentwrit-data:/data \
+  -e AA_DB_PATH=/data/data.db \
+  -e AA_SIGNING_KEY_PATH=/data/signing.key \
+  devonartis/agentwrit:latest
+
+# 3. In another terminal, verify health
+curl -s http://localhost:8080/v1/health | jq .
+```
+
+Available tags: `latest` (always tracks `main`), `main-<sha>` (every commit), `v<major>.<minor>.<patch>` / `v<major>.<minor>` / `v<major>` (release tags).
+
+**Verifying the image signature** (optional, recommended for production):
+
+```bash
+cosign verify devonartis/agentwrit:latest \
+  --certificate-identity-regexp='^https://github.com/devonartis/agentwrit/\.github/workflows/release\.yml@' \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+```
+
+Signed keyless with Sigstore via GitHub Actions OIDC — no long-lived signing key to rotate.
+
+### Option B: Docker Compose (clone + build locally)
 
 ```bash
 # 1. Clone and enter the repo
@@ -73,7 +106,9 @@ curl -s -X POST http://localhost:8080/v1/admin/auth \
 # {"access_token":"eyJ...","expires_in":300,"token_type":"Bearer"}
 ```
 
-### Option B: Build from source
+To use the pre-built image with Compose instead of a local build, edit `docker-compose.yml` and replace the `build: .` block with `image: devonartis/agentwrit:latest`.
+
+### Option C: Build from source
 
 ```bash
 # 1. Build the broker and operator CLI

@@ -7,11 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Docker Hub image publishing + cosign signing (TD-CI-002, 2026-04-12)
+
+- **`.github/workflows/release.yml`** — new workflow that publishes multi-arch (`linux/amd64` + `linux/arm64`) broker images to Docker Hub on every push to `main` and on `v*` release tags. Tags produced: `latest` (tracks main), `main-<sha>` (per-commit traceability), `v<major>.<minor>.<patch>` / `v<major>.<minor>` / `v<major>` (semver releases). Builds with buildx + QEMU emulation on the hosted x86 runner; cached via `type=gha` so repeat builds are fast.
+- **Cosign keyless signing** — every published image is signed with Sigstore via GitHub Actions OIDC. No long-lived signing key to rotate. Verification command published in the README and `docs/getting-started-operator.md`.
+- **SLSA provenance + SBOM attestation** — `docker/build-push-action` emits provenance (`mode=max`) and SBOM alongside the image.
+- **`Dockerfile`** — added OCI image labels (`org.opencontainers.image.title/description/vendor/licenses/source/url/documentation`) as bake-time defaults, plus `-trimpath` on the Go build for reproducibility. The release workflow overrides `revision`, `version`, and `created` labels at publish time via `docker/metadata-action`.
+- **`README.md`** — new "Option A: Pre-built image from Docker Hub" section in Quick Start, now the recommended onboarding path ahead of source builds. Includes signature verification command.
+- **`docs/getting-started-operator.md`** — restructured "Quick Start" into three deployment options (pre-built image / Docker Compose local build / native binary). Pre-built image is the new default with full pull/run/verify walkthrough and OCI-image inventory.
+- **`docker-compose.yml`** — added commented-out `image: devonartis/agentwrit:latest` as an alternative to `build: .` so operators can swap without editing the compose file structurally. Also fixed stale `AA_DB_PATH` default (`agentauth.db` → `data.db`) missed in the earlier brand sweep.
+- **`TECH-DEBT.md`** — TD-CI-002 marked RESOLVED with link to this branch.
+
+**Required manual setup before first release:**
+1. Docker Hub repo `devonartis/agentwrit` must exist (public)
+2. Docker Hub PAT with read/write scope to `agentwrit` only
+3. GitHub repo secrets: `DOCKERHUB_USERNAME` + `DOCKERHUB_TOKEN`
+
 ### Added — `main-hygiene` CI gate (2026-04-12)
 
 - **`.github/workflows/ci.yml`** — new `main-hygiene` job greps for strip-target paths on pushes to `main`. Runs only when `github.ref == 'refs/heads/main'` so PR runs against `develop` are untouched (develop legitimately carries these files). Fails the `gates-passed` aggregator if any dev-only file slips onto `main` via a missed `strip_for_main.sh` invocation — an automated safety net on top of the existing manual strip script.
 - **`scripts/gates.sh`** — mirror of the new gate in `GATES_FULL` so `scripts/test-gate-parity.sh` passes. Local invocation skips with `skip_gate` unless the current branch is `main`, since a developer running `gates.sh full` on `develop` would otherwise get a spurious failure.
-- **`TECH-DEBT.md`** — TD-CI-002 (Docker image publishing to Docker Hub) and TD-CI-003 (automated develop→main PR workflow) added with full specs. Both are follow-on work unlocked by the rebrand landing.
+- **`TECH-DEBT.md`** — TD-CI-003 (automated develop→main PR workflow) added as follow-on work.
 
 ### Fixed — Runtime rebrand alignment (2026-04-12)
 
