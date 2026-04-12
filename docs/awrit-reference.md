@@ -1,12 +1,6 @@
 # awrit CLI Reference
 
-> **Document Version:** 3.0 | **Last Updated:** March 2026 | **Status:** Current
->
-> **Audience:** Operators and administrators managing the AgentWrit broker.
->
-> **Prerequisites:** [Getting Started: Operator](getting-started-operator.md) for initial setup, [Concepts](concepts.md) for background on agents, tokens, and scopes.
->
-> **Next steps:** [Common Tasks](common-tasks.md) for step-by-step workflows | [Troubleshooting](troubleshooting.md) for error resolution.
+The operator command-line tool for managing tokens, apps, revocation, and audit trails.
 
 ---
 
@@ -692,7 +686,7 @@ Use the generated secret to set `AACTL_ADMIN_SECRET` for subsequent awrit comman
 **Output:**
 
 ```
-Config written to: /home/user/.agentwrit/config
+Config written to: /home/user/.broker/config
 
 Admin secret: dGVzdC1zZWNyZXQtdmFsdWUtYmFzZTY0LWVuY29kZWQtdGV4dA...
 
@@ -1069,3 +1063,17 @@ A: Use cron or systemd timer to run:
    ```bash
    awrit audit events --limit 10000 --json > "/backups/audit-$(date +%Y-%m-%d).json"
    ```
+
+---
+
+## What's Next?
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| Look up HTTP endpoints | [API Reference](api.md) |
+| See the internal architecture | [Architecture](architecture.md) |
+| Find where features live in code | [Implementation Map](implementation-map.md) |
+
+---
+
+*Previous: [API Reference](api.md) · Next: [Architecture](architecture.md)*

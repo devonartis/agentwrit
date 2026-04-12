@@ -1,164 +1,174 @@
-# AgentWrit Explained
+# What Is AgentWrit?
 
-> For sales teams and developers new to the system. No prior knowledge of JWTs or cryptography required.
-
----
-
-## The Problem
-
-AI agents need credentials to do their work — read a database, call an API, write to a log. Most systems give those agents a long-lived API key that has broad access and never expires. When that key leaks — through a breach, an accident, a compromised vendor — the damage is wide and the fix is painful.
-
-AgentWrit replaces long-lived keys with short-lived, task-scoped tokens that expire automatically, can be revoked instantly, and can only do what they were specifically created for.
+AgentWrit is a credential broker for AI agents. It issues short-lived, task-scoped tokens so agents operate with only the permissions their task requires — nothing more, nothing longer.
 
 ---
 
-## What a Token Is in This System
+## The Problem: Credentials That Don't Match the Work
 
-A token is a digitally signed string. When a caller makes a request to the broker, they put the token in the HTTP request header:
+AI agents are different from the services that traditional credentials were designed for. Some agents spin up in seconds, finish a task in two minutes, and die. Others run for hours processing a batch pipeline. Some are one-shot — do a thing and exit. Others are long-running orchestrators that spawn sub-agents throughout the day.
 
-```
-Authorization: Bearer <token>
-```
+What they have in common: **their credential lifetime has no relationship to their task lifetime.** A two-minute agent holds a permanent API key. A four-hour pipeline holds the same permanent API key. Neither agent needs access after its work is done, but the credential doesn't know that — it stays valid indefinitely.
 
-The broker reads that header, verifies the token's signature, checks it hasn't been revoked, then checks whether it carries the scope required for that specific endpoint. If any check fails, the request is rejected with a 401 or 403. If all checks pass, the request proceeds.
+Now multiply that by fifty agents, all sharing the same key. You can't tell which agent did what. You can't revoke one without killing all fifty. And when one is compromised, you can't surgically remove it — you have to rotate the shared key, which means every service and agent that depends on it stops working until you reconfigure all of them. That's not rotating a credential. That's an outage.
 
-This is how both the admin token and the app token work. Same mechanism. What separates them is what is embedded inside — specifically their **scopes**.
+The root problem isn't carelessness. It's a mismatch: traditional credentials assume long-lived services with predictable, stable identities. AI agents — whether they run for minutes or hours — break that assumption because they're dynamic, task-specific, and numerous. The credential model needs to match the work model.
 
 ---
 
-## The Admin Token — The Root of the System
+## The Solution: Ephemeral, Scoped Tokens
 
-The admin token is where everything starts. Nothing else in the system can exist without it.
+AgentWrit replaces long-lived keys with short-lived, task-scoped tokens. Each token expires on a configurable TTL (five minutes by default, adjustable up to 24 hours for longer pipelines), carries only the permissions its task requires, and can be revoked individually — the revocation takes effect on the very next request any resource server validates against the broker.
 
-**How it's obtained:**
-```
-POST /v1/admin/auth
-{ "secret": "..." }
-```
+Think of it like a building access system — not the master key kind, but the kind where every contractor gets a badge programmed for specific floors, specific doors, and a specific time window. The badge expires when the job is done. If one contractor's badge is compromised, security deactivates that badge without reprogramming every other contractor in the building.
 
-The operator sends the master admin secret. The broker verifies it against a bcrypt hash — the plaintext secret is never stored. If it matches, the broker issues a signed JWT that lasts **5 minutes**.
+AgentWrit works the same way for AI agents:
 
-**What scopes it carries:**
-```
-admin:launch-tokens:*
-admin:revoke:*
-admin:audit:*
-```
-
-**What each scope does:**
-
-`admin:launch-tokens:*` — this scope opens two things. First, it lets the admin register, update, and deregister applications. When an application is registered, the admin sets its **scope ceiling** — the maximum permissions any agent running under that app can ever receive. Second, it lets the admin create launch tokens directly, which is the bootstrap path before any apps exist.
-
-`admin:revoke:*` — this scope is the kill switch. The admin can cancel any token, any agent, any task, or an entire delegation chain. No other token type can do this.
-
-`admin:audit:*` — this scope gives the admin full visibility into the audit trail. Every credential issued, every failed attempt, every scope violation — all of it. No other token type can see the full trail.
-
-**Why 5 minutes:** The admin token is the most powerful credential in the system. Keeping it short-lived limits the window of exposure if it's intercepted. The operator authenticates, does what they need to do, and the token expires.
+| Traditional API Keys | AgentWrit Tokens |
+|---------------------|-----------------|
+| Permanent until rotated | Expire on a configurable TTL (default: 5 min) |
+| Shared across agents | Unique per agent instance |
+| Broad permissions | Scoped to specific actions on specific resources |
+| Revoke one = rotate the shared key = outage | Revoke one agent, others keep working |
+| "service-account-prod did something" | "agent `spiffe://acme.co/agent/orch-456/task-789/a1b2c3d4` read `customers`" |
 
 ---
 
-## The App Token — Bounded Authority
+## The Three Core Concepts
 
-Once the admin has registered an application and set its scope ceiling, the application authenticates with its own credentials to get its own token. This is the production path for creating agents.
+Everything in AgentWrit builds on three ideas:
 
-**How it's obtained:**
+| Concept | What It Is | Think of It Like |
+|---------|-----------|-----------------|
+| **Scopes** | Permission strings in the format `action:resource:identifier` that say exactly what a token holder can do | A badge that reads "Floor 3 only, read-only access" |
+| **Launch Tokens** | Single-use, 30-second registration passes that authorize one agent to join the system | A one-time visitor pass at the lobby desk |
+| **The Attenuation Chain** | Each credential in the system can never *exceed* the one that created it — same scope or narrower, never wider | Each person can hand out keys to the same rooms they have access to or fewer, never more |
+
+Here's how they connect — the **attenuation chain**:
+
+```mermaid
+flowchart TB
+    SECRET["🔑 Admin Secret<br/><i>Root of trust — never travels, never expires</i>"]
+    ADMIN["🛡️ Admin Token<br/><i>5 min · admin:* scopes</i>"]
+    APP["📦 App Token<br/><i>30 min · app:* scopes</i>"]
+    LAUNCH["🎫 Launch Token<br/><i>30 sec · single-use</i>"]
+    AGENT["🤖 Agent Token<br/><i>Task TTL · task-specific scopes</i>"]
+    DELEG["🔗 Delegated Token<br/><i>Narrower scope · max 5 levels</i>"]
+
+    SECRET -->|"authenticates"| ADMIN
+    ADMIN -->|"registers app<br/>sets scope ceiling"| APP
+    APP -->|"creates launch token<br/>ceiling enforced ✓"| LAUNCH
+    LAUNCH -->|"agent registers<br/>proves key ownership"| AGENT
+    AGENT -->|"delegates<br/>scope can never expand"| DELEG
+
+    classDef root fill:#1a1a2e,stroke:#e94560,color:#fff,stroke-width:2px
+    classDef admin fill:#16213e,stroke:#0f3460,color:#fff
+    classDef app fill:#0f3460,stroke:#53a8b6,color:#fff
+    classDef launch fill:#533483,stroke:#e94560,color:#fff
+    classDef agent fill:#2b4865,stroke:#256d85,color:#fff
+    classDef deleg fill:#334756,stroke:#548ca8,color:#fff
+
+    class SECRET root
+    class ADMIN admin
+    class APP app
+    class LAUNCH launch
+    class AGENT agent
+    class DELEG deleg
 ```
-POST /v1/app/auth
-{ "client_id": "...", "client_secret": "..." }
-```
 
-The `client_id` and `client_secret` were generated when the admin registered the app. The secret is shown once at registration and never stored in plaintext — only a bcrypt hash is persisted.
-
-**What scopes it carries:**
-```
-app:launch-tokens:*
-app:agents:*
-app:audit:read
-```
-
-**What each scope does:**
-
-`app:launch-tokens:*` — lets the app create launch tokens for its agents. Every launch token created through this path is checked against the app's scope ceiling. If the requested scope exceeds the ceiling, the broker rejects it with a 403 and records the violation in the audit trail.
-
-`app:agents:*` — reserved for agent management operations.
-
-`app:audit:read` — reserved for the app reading its own audit events, scoped to its agents only.
-
-**What it cannot do:** call any admin endpoint. The scope strings are different. An app token carrying `app:launch-tokens:*` cannot open a route that requires `admin:launch-tokens:*`. The broker enforces this on every request.
-
-**Why the app token exists as a separate credential from the admin token:** The admin token is for a human or a deployment script. It's short-lived and powerful. The app token is for software running autonomously in production — an orchestrator, a pipeline, a backend service. It lives longer (30 minutes, configurable), authenticates differently (client_id/secret rather than a master secret), and is bounded by a ceiling the admin defined. If the app's credentials are compromised, the attacker can only create agents within that ceiling. They cannot revoke tokens, cannot read the full audit trail, cannot touch other apps.
+At every step, authority can never expand. The admin defines what apps can do. Apps define what agents can do. Agents define what sub-agents can do. A delegate can receive the same scope as its delegator or less — but never more.
 
 ---
 
-## The Scope — What Actually Controls Access
+## How It Works in Practice
 
-The scope is a string in the format `action:resource:identifier`. Examples:
+The full flow from zero to a working agent takes six steps:
 
+```mermaid
+sequenceDiagram
+    actor Operator
+    participant Broker
+    participant App as App (Software)
+    participant Agent as AI Agent
+    participant RS as Resource Server
+
+    rect rgb(30, 40, 60)
+        Note over Operator,Broker: Phase 1: Bootstrap (one-time setup)
+        Operator->>Broker: 1. POST /v1/admin/auth {secret}
+        Broker-->>Operator: Admin JWT (5 min)
+        Operator->>Broker: 2. POST /v1/admin/apps {ceiling: ["read:data:*"]}
+        Broker-->>Operator: client_id + client_secret
+    end
+
+    rect rgb(20, 50, 50)
+        Note over App,Broker: Phase 2: Production (automated)
+        App->>Broker: 3. POST /v1/app/auth {client_id, secret}
+        Broker-->>App: App JWT (30 min)
+        App->>Broker: 4. POST /v1/app/launch-tokens {scope}
+        Note right of Broker: Ceiling check ✓
+        Broker-->>App: Launch token (30s, single-use)
+    end
+
+    rect rgb(40, 30, 60)
+        Note over Agent,RS: Phase 3: Agent work
+        App-->>Agent: Deliver launch token
+        Agent->>Broker: 5. GET /v1/challenge → sign nonce → POST /v1/register
+        Broker-->>Agent: Agent JWT (task TTL)
+        Agent->>RS: 6. Bearer token → do work
+        RS->>Broker: POST /v1/token/validate
+        Broker-->>RS: Valid ✓ scopes: ["read:data:*"]
+    end
 ```
-admin:revoke:*        — admin can revoke anything
-app:launch-tokens:*   — app can create launch tokens
-read:data:customers   — agent can read customer data
-write:logs:run-42     — agent can write to a specific log
-```
 
-When a request arrives, the broker middleware calls `RequireScope` — it checks whether the token's scopes cover the required scope for that endpoint. If not, 403. The scope is not advisory. It is enforced in code on every single request.
-
-The ceiling works the same way. When an app creates a launch token, the broker calls `ScopeIsSubset` — it checks whether every requested scope is covered by the app's ceiling. If the app tries to request a scope it doesn't hold, the request is denied before the launch token is created.
+The admin token appears at steps 1 and 2 — then it expires and leaves the picture. From step 3 onward, the app manages its own agents autonomously. The admin's decision at step 2 — the scope ceiling — controls what is possible from that point forward.
 
 ---
 
-## The Launch Token — A Different Kind of Token
+## What AgentWrit Is NOT
 
-The launch token is not a JWT. It is a random 64-character hex string — 32 bytes of cryptographic randomness encoded as hex. It has no structure, no signature to verify, no claims to read. It is looked up from the database when presented.
+Before you go further, a few things AgentWrit explicitly does not do:
 
-```
-a3f9c2d1e8b74f0a...  (64 hex characters)
-```
+**Not an OAuth provider.** OAuth is designed for user-delegated access ("let this app access my Google Drive"). AgentWrit handles machine-to-machine credentialing with no user in the loop.
 
-It has one job: give a specific agent one opportunity to register. By default it expires in **30 seconds** and can only be used **once**. After it is consumed at registration, it is marked in the database and cannot be used again.
+**Not a secrets manager.** AgentWrit issues credentials. It doesn't store your database passwords or API keys. It gives agents a scoped identity so downstream services can verify them.
 
-The launch token carries a policy — the scope the agent is allowed to request and the maximum TTL its credential can have. The agent cannot exceed either.
+**Not a service mesh.** No sidecars, no proxies. AgentWrit is a standalone broker that issues and validates tokens over HTTP.
 
 ---
 
-## The Agent Credential — Task-Scoped, Traceable
-
-When the agent presents the launch token at `POST /v1/register`, it also proves it controls its own cryptographic key by signing a challenge the broker issued. If the launch token is valid and the signature checks out, the broker issues an Agent JWT.
-
-The Agent JWT carries:
-- The exact scopes the agent requested (within the launch token's policy)
-- A SPIFFE-format identity that encodes the orchestrator, task, and instance — making every agent credential traceable to the exact task that created it
-- A unique token ID so it can be cancelled individually
-
-The agent uses this JWT as a Bearer token — the same `Authorization: Bearer <token>` header — when calling downstream services, which validate it at `POST /v1/token/validate`.
-
----
-
-## How It All Connects
-
-```
-1. Admin authenticates        → gets Admin JWT (5 min, admin:* scopes)
-2. Admin registers App        → sets scope ceiling, gets client_id + client_secret
-3. App authenticates          → gets App JWT (30 min, app:* scopes)
-4. App creates launch token   → ceiling enforced, 30s expiry, single-use
-5. Launch token sent to agent → via environment variable or orchestrator config
-6. Agent requests challenge   → signs it with its own key
-7. Agent registers            → presents launch token + signed challenge → gets Agent JWT
-8. Agent does its work        → uses Agent JWT as Bearer token
-9. Admin can revoke anything  → at any level, any time, takes effect immediately
-```
-
-The admin token appears at steps 1 and 2 — then it expires and leaves the picture. From step 3 onward the app manages its own agents autonomously. The admin's decision at step 2 — the scope ceiling — controls what is possible from that point forward, enforced by the broker on every request.
-
----
-
-## For Sales: The Three Questions You'll Get
+## Frequently Asked Questions
 
 **"How is this different from API keys?"**
-API keys are permanent, usually over-permissioned, and require a full rotation when one leaks. AgentWrit credentials expire on their own, are scoped to a specific task, and can be cancelled in seconds without affecting anything else running at the same time.
+API keys are permanent, usually over-permissioned, and shared across multiple agents — so when one leaks, you rotate the key and take down every agent that depends on it. AgentWrit tokens expire on a configurable TTL, are scoped to a specific task, and can be revoked individually. The revocation takes effect on the next request. No rotation, no collateral damage.
 
 **"What if an agent is compromised?"**
-The admin revokes it. One call to `POST /v1/revoke` cancels the specific token, the specific agent, the specific task, or the entire delegation chain — whatever the situation requires. The revocation takes effect on the next request. No key rotation, no downtime for other agents.
+The operator revokes it. One API call cancels the specific token, the specific agent, all agents on a task, or an entire delegation chain — four levels of surgical revocation, matched to the blast radius. Every subsequent validation request for the revoked credential is rejected. No key rotation, no downtime for other agents.
 
 **"Can a developer give an agent more access than they should?"**
 No. The platform team sets the scope ceiling when registering the application. When the developer's code requests a launch token, the broker checks every requested scope against that ceiling. If any scope exceeds it, the request is rejected before the launch token is created.
+
+---
+
+## What's Next?
+
+Ready to see it in action? Start here:
+
+**[Your First Five Minutes →](getting-started-user.md)**
+Run a local setup with Docker, walk through the registration flow, and get your first agent token.
+
+**[Live Demos →](https://github.com/devonartis/agentauth-python)**
+See AgentWrit in real applications — a healthcare multi-agent pipeline and a support ticket zero-trust demo, both running against a live broker with LLM-driven agents.
+
+Or jump to the topic that matches your interest:
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| Understand what tokens actually are and how JWTs work | [Foundations](foundations.md) |
+| See who holds which token and why | [The Three Actors](roles.md) |
+| Learn the permission system | [Scopes and Permissions](scope-model.md) |
+| Integrate AgentWrit into your agent code | [Getting Started: Developer](getting-started-developer.md) |
+| Deploy AgentWrit in production | [Getting Started: Operator](getting-started-operator.md) |
+
+---
+
+*Previous: [Documentation Home](README.md) · Next: [Your First Five Minutes](getting-started-user.md)*

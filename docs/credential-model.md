@@ -2,9 +2,9 @@
 
 ## The Core Guarantee
 
-**Permissions can only narrow as they flow through the system. No credential can ever grant more than the credential that created it.**
+**Permissions can never expand as they flow through the system. Each credential can grant the same scope as its creator or less — but never more.**
 
-This is the invariant that every design decision in AgentWrit traces back to. An operator sets up an app with a permission ceiling. The app creates launch tokens within that ceiling. Agents register with launch tokens and get scoped credentials. Agents delegate to other agents with even narrower scope. At every step, the scope can only shrink — never expand.
+This is the invariant that every design decision in AgentWrit traces back to. An operator sets up an app with a permission ceiling. The app creates launch tokens within that ceiling. Agents register with launch tokens and get scoped credentials. Agents can delegate to other agents with the same scope or narrower. At every step, `ScopeIsSubset` enforces the ceiling — a delegate can receive its delegator's full scope, but never exceed it.
 
 If an agent is compromised, the blast radius is provably contained to whatever scope it was granted. And the operator can kill it instantly at four levels of granularity.
 
@@ -367,7 +367,7 @@ graph TD
 The complete chain is hashed (SHA-256) into the `chain_hash` claim. If anyone tampers with the chain, the hash won't match.
 
 **Constraints:**
-- Scope can only narrow — `authz.ScopeIsSubset(delegated, delegator)` enforced
+- Scope can never expand — `authz.ScopeIsSubset(delegated, delegator)` enforced (same or narrower, never wider)
 - Maximum chain depth: **5 levels** — prevents unbounded delegation
 - Delegate must be a registered agent in the store — no delegation to unknown identities
 
@@ -406,19 +406,46 @@ Revocation is checked on every authenticated request (`ValMw.Wrap` → `revSvc.I
 
 ## The Complete Trust Chain
 
-```
-Admin Secret (permanent, root of trust)
-  └─→ Admin JWT (5 min, admin:* scopes)
-       ├─→ App Registration (one-time, sets scope ceiling)
-       │    └─→ App JWT (30 min, app:* scopes, ceiling-constrained)
-       │         └─→ Launch Token (30s, single-use, scope ≤ ceiling)
-       │              └─→ Agent JWT (task TTL, scope ≤ launch token)
-       │                   └─→ Delegated JWT (scope ≤ delegator, max depth 5)
-       └─→ Launch Token (dev/testing, NO ceiling — TD-013)
-            └─→ Agent JWT (no app traceability)
+```mermaid
+flowchart TB
+    SECRET["🔑 Admin Secret<br/><i>Permanent, root of trust</i>"]
+    
+    ADMIN["🛡️ Admin JWT<br/><i>5 min · admin:* scopes</i>"]
+    
+    subgraph Production Path
+        APP_REG["App Registration<br/><i>One-time · sets scope ceiling</i>"]
+        APP_JWT["📦 App JWT<br/><i>30 min · ceiling-constrained</i>"]
+        LAUNCH_P["🎫 Launch Token<br/><i>30s · scope ≤ ceiling</i>"]
+        AGENT_P["🤖 Agent JWT<br/><i>Task TTL · scope ≤ launch token</i>"]
+        DELEG["🔗 Delegated JWT<br/><i>scope ≤ delegator · max depth 5</i>"]
+    end
+
+    subgraph Bootstrap Path
+        LAUNCH_B["🎫 Launch Token<br/><i>Dev/testing · NO ceiling — TD-013</i>"]
+        AGENT_B["🤖 Agent JWT<br/><i>No app traceability</i>"]
+    end
+
+    SECRET --> ADMIN
+    ADMIN --> APP_REG
+    APP_REG --> APP_JWT
+    APP_JWT --> LAUNCH_P
+    LAUNCH_P --> AGENT_P
+    AGENT_P --> DELEG
+    ADMIN --> LAUNCH_B
+    LAUNCH_B --> AGENT_B
+
+    classDef root fill:#1a1a2e,stroke:#e94560,color:#fff,stroke-width:2px
+    classDef admin fill:#16213e,stroke:#0f3460,color:#fff
+    classDef prod fill:#0f3460,stroke:#53a8b6,color:#fff
+    classDef boot fill:#533483,stroke:#e94560,color:#fff
+
+    class SECRET root
+    class ADMIN admin
+    class APP_REG,APP_JWT,LAUNCH_P,AGENT_P,DELEG prod
+    class LAUNCH_B,AGENT_B boot
 ```
 
-At every arrow, the scope can only narrow. Every credential is audited, every credential has a defined lifetime, and every credential can be killed by the operator. That's the design.
+At every arrow, the scope can never expand — same or narrower, never wider. Every credential is audited, every credential has a defined lifetime, and every credential can be killed by the operator. That's the design.
 
 ---
 
@@ -458,3 +485,24 @@ At every arrow, the scope can only narrow. Every credential is audited, every cr
 | Endpoint | Required scope | Purpose |
 |----------|---------------|---------|
 | `POST /v1/app/launch-tokens` | `app:launch-tokens:*` | Create launch tokens (ceiling-constrained) |
+
+---
+
+## What's Next?
+
+You've seen every credential in the system. Next, understand why we built it this way:
+
+**[Design Decisions →](design-decisions.md)**
+The reasoning behind every major architectural choice — JWTs, Ed25519, SPIFFE, hash-chained audit, and more.
+
+Or explore related topics:
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| Integrate these credentials into your agent code | [Getting Started: Developer](getting-started-developer.md) |
+| Deploy and manage the broker in production | [Getting Started: Operator](getting-started-operator.md) |
+| Look up endpoint details | [API Reference](api.md) |
+
+---
+
+*Previous: [Scopes and Permissions](scope-model.md) · Next: [Design Decisions](design-decisions.md)*

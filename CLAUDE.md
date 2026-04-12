@@ -9,6 +9,7 @@
 - `.claude/rules/testing.md` — LIVE test and acceptance test expectations
 - `.claude/rules/golang.md` — Go coding standards
 - `.claude/rules/mandatory-reading.md` — **Read this entirely and summarize it back to the user at session start.** Defines what goes in MEMORY.md vs FLOW.md vs TECH-DEBT.md. Do NOT mix them up.
+- `.claude/rules/karpathy.md` — coding discipline (simplicity, surgical changes, goal-driven execution). Always active alongside the rules above.
 
 ## Defaults
 

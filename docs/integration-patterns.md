@@ -1,14 +1,6 @@
 # Integration Patterns Guide for AgentWrit
 
-> **Document Version:** 2.0 | **Last Updated:** February 2026 | **Status:** Current
->
-> **Audience:** Developers, architects, and platform engineers implementing AgentWrit in production systems
->
-> **Prerequisites:** [Concepts](concepts.md), [API Reference](api.md), Python familiarity, REST API experience
->
-> **Time to read:** 45 minutes (all 6 patterns) or 5-10 minutes per pattern
->
-> **Next steps:** [Getting Started: Developer](getting-started-developer.md) for setup | [Troubleshooting](troubleshooting.md) for debugging
+Six proven patterns for integrating ephemeral credentialing into AI agent systems.
 
 ---
 
@@ -967,7 +959,7 @@ class LongLivedCredentialAgent:
 
 ### Use Case
 
-A hierarchical AI system where an orchestrator delegates progressively narrower scope to specialists. The orchestrator has broad access but can only delegate narrower scopes to child agents. Each delegation level is cryptographically signed and recorded in the audit trail.
+A hierarchical AI system where an orchestrator delegates scope to specialists. The orchestrator has broad access and can delegate the same scope or narrower to child agents — but never more than it holds. Each delegation level is cryptographically signed and recorded in the audit trail.
 
 ### When to Use
 
@@ -2180,4 +2172,15 @@ When implementing AgentWrit patterns, verify:
 
 ---
 
-**Questions?** See [Troubleshooting](troubleshooting.md) or check recent examples in `/docs/examples/`.
+## What's Next?
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| Walk through end-to-end scenarios | [Scenarios](scenarios.md) |
+| Debug common issues | [Troubleshooting](troubleshooting.md) |
+| Look up endpoints | [API Reference](api.md) |
+| Use the operator CLI | [CLI Reference (awrit)](awrit-reference.md) |
+
+---
+
+*Previous: [Common Tasks](common-tasks.md) · Next: [Scenarios](scenarios.md)*

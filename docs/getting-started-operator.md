@@ -1,14 +1,8 @@
 # Getting Started: Operator
 
-> **Document Version:** 3.0 | **Last Updated:** March 2026 | **Status:** Current
->
-> **Audience:** Platform Operator responsible for deploying and managing AgentWrit infrastructure.
->
-> **Prerequisite:** Read [Concepts](concepts.md) to understand why AgentWrit exists and what the 8-component security pattern provides. If you are a developer integrating an agent, see [Getting Started: Developer](getting-started-developer.md).
->
-> **Next steps:** [Common Tasks: Operator](common-tasks.md#operator-tasks) | [Troubleshooting](troubleshooting.md#operator-errors) | [Architecture](architecture.md)
+Deploy AgentWrit in production. This guide covers broker startup, TLS configuration, app registration, scope ceilings, monitoring, and everything an operator needs to run the system securely.
 
-This guide walks you through deploying the AgentWrit broker, configuring it, creating launch tokens for developers, and monitoring the system.
+**Prerequisites:** Familiarity with Linux administration, Docker, and TLS certificates.
 
 ---
 
@@ -131,10 +125,10 @@ All broker configuration is via environment variables prefixed `AA_`. Configurat
 | `AA_MAX_TTL` | int | `86400` | No | Maximum token TTL ceiling in seconds (24 hours). Tokens requesting longer TTL are clamped to this value. Set to `0` to disable the ceiling entirely. |
 | `AA_BIND_ADDRESS` | string | `"127.0.0.1"` | No | Bind address for the HTTP listener. Use `"0.0.0.0"` for Docker or to accept external connections. |
 | `AA_SIGNING_KEY_PATH` | string | `"./signing.key"` | No | Path to Ed25519 private key for token signing. If the file does not exist, a fresh key is generated and saved to this path on startup. |
-| `AA_AUDIENCE` | string | `"agentwrit"` | No | Expected `aud` claim in JWTs. Set to empty string to skip audience validation. |
+| `AA_AUDIENCE` | string | *(empty)* | No | Expected `aud` claim in JWTs. Unset or empty skips audience validation. Set to a non-empty value to enforce it. |
 | `AA_APP_TOKEN_TTL` | int | `1800` | No | TTL for app JWTs in seconds (30 minutes). Controls how long app-authenticated tokens last. |
 | `AA_SEED_TOKENS` | bool | `false` | No | Print seed launch and admin tokens to stdout on startup. **Development only** -- never enable in production. |
-| `AA_DB_PATH` | string | `"./data.db"` | No | Path to the SQLite database file for audit event persistence. The broker creates the file and table on first startup. Set to `""` to disable persistence (memory-only mode). See [Audit Persistence](#audit-persistence-aa_db_path) below. |
+| `AA_DB_PATH` | string | `"./data.db"` | No | Path to the SQLite database file for audit event persistence. The broker creates the file and table on first startup. Leaving this unset uses the default `./data.db`. See [Audit Persistence](#audit-persistence-aa_db_path) below. |
 | `AA_TLS_MODE` | string | `"none"` | No | Transport security mode: `none` (plain HTTP), `tls` (one-way TLS), `mtls` (mutual TLS). See [TLS/mTLS Configuration](#tlsmtls-configuration) below. |
 | `AA_TLS_CERT` | string | *(none)* | If TLS | Path to the broker's TLS certificate PEM file. Required when `AA_TLS_MODE` is `tls` or `mtls`. |
 | `AA_TLS_KEY` | string | *(none)* | If TLS | Path to the broker's TLS private key PEM file. Required when `AA_TLS_MODE` is `tls` or `mtls`. |
@@ -451,11 +445,35 @@ Example:
 - `FAIL` level logs go to stderr; all others go to stdout.
 - Log levels control verbosity: `quiet` (errors only), `standard` (normal operations), `verbose` (same as standard currently), `trace` (detailed debugging).
 
+### Background Maintenance
+
+The broker automatically runs two cleanup tasks every 60 seconds:
+
+- **JTI pruning** — removes expired JWT ID entries from the database to prevent unbounded growth
+- **Agent expiration** — marks inactive agents as expired when they exceed inactivity thresholds
+
+These run silently in the background. You'll see log entries like `pruned expired JTIs | count=42` when records are cleaned up. No operator action is required — this is fully automatic.
+
 ---
 
-## Next Steps
+---
 
-- [Common Tasks: Operator](common-tasks.md#operator-tasks) -- revocation, audit queries, launch token management
-- [Architecture](architecture.md) -- how the broker works internally
-- [Troubleshooting](troubleshooting.md#operator-errors) -- operational issues and fixes
-- [API Reference](api.md) -- complete endpoint documentation
+## What's Next?
+
+The broker is running in production. Now learn the day-to-day operations:
+
+**[Common Tasks →](common-tasks.md)**
+App management, token revocation, audit queries, and other everyday operations.
+
+Or explore related topics:
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| Understand the internal architecture | [Architecture](architecture.md) |
+| Use the CLI for all operator tasks | [CLI Reference (awrit)](awrit-reference.md) |
+| Debug issues | [Troubleshooting](troubleshooting.md) |
+| See all configuration options | [API Reference](api.md) |
+
+---
+
+*Previous: [Getting Started: Developer](getting-started-developer.md) · Next: [Common Tasks](common-tasks.md)*

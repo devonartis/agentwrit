@@ -2,12 +2,6 @@
 
 Step-by-step instructions for AgentWrit workflows, organized by role.
 
-**Document metadata:**
-- **Audience:** Developers (building AI agents), Platform Operators (managing AgentWrit deployments)
-- **Version:** 2.0.0
-- **Prerequisites:** Broker running. See [Getting Started: Developer](getting-started-developer.md) or [Getting Started: Operator](getting-started-operator.md).
-- **Next steps:** For advanced topics, see [Concepts](concepts.md), [API Reference](api.md), [Architecture](architecture.md), or [Troubleshooting](troubleshooting.md).
-
 ---
 
 ## Quick Reference
@@ -672,9 +666,9 @@ else:
 
 ### Delegate a Token to Another Agent
 
-Delegation lets your agent issue a narrower-scoped token to another registered agent. Scopes can only narrow (attenuate), never expand.
+Delegation lets your agent issue a token to another registered agent with the same scope or less. Scopes can never expand — the delegate can receive your full scope, but never exceed it.
 
-**What's happening:** Delegation creates a new token signed by the broker, with a reference back to your token in the delegation chain. This allows you to hand off work to a less-privileged agent without exposing your full token. The chain is cryptographically verified; each entry must narrow the scope further.
+**What's happening:** Delegation creates a new token signed by the broker, with a reference back to your token in the delegation chain. This allows you to hand off work to another agent without exposing your full token. The chain is cryptographically verified; each entry's scope must be covered by the delegator's scope.
 
 **Python example:**
 
@@ -1536,16 +1530,30 @@ except ValueError as e:
 
 **Revocation decision tree:**
 
-```
-What happened?
-├─ Single token leaked
-│  └─ Token-level revocation (target = JTI)
-├─ Agent instance compromised
-│  └─ Agent-level revocation (target = SPIFFE ID)
-├─ Entire task suspect
-│  └─ Task-level revocation (target = task_id)
-└─ Delegation chain exploited
-   └─ Chain-level revocation (target = root delegator SPIFFE ID)
+```mermaid
+flowchart TD
+    Q{"What happened?"}
+    T1["Single token leaked"]
+    T2["Agent instance compromised"]
+    T3["Entire task suspect"]
+    T4["Delegation chain exploited"]
+    R1["Token-level revocation<br/><i>target = JTI</i>"]
+    R2["Agent-level revocation<br/><i>target = SPIFFE ID</i>"]
+    R3["Task-level revocation<br/><i>target = task_id</i>"]
+    R4["Chain-level revocation<br/><i>target = root delegator SPIFFE ID</i>"]
+
+    Q --> T1 --> R1
+    Q --> T2 --> R2
+    Q --> T3 --> R3
+    Q --> T4 --> R4
+
+    classDef question fill:#533483,stroke:#e94560,color:#fff,stroke-width:2px
+    classDef scenario fill:#16213e,stroke:#0f3460,color:#fff
+    classDef action fill:#0f3460,stroke:#53a8b6,color:#fff
+
+    class Q question
+    class T1,T2,T3,T4 scenario
+    class R1,R2,R3,R4 action
 ```
 
 **If revocation fails:**
@@ -2277,3 +2285,18 @@ AgentWrit uses RFC 7807 `application/problem+json` error responses.
 - **Concepts:** [concepts.md](concepts.md) — SPIFFE, token lifetime, delegation, scopes
 - **Architecture:** [architecture.md](architecture.md) — Broker, key management, trust model
 - **Troubleshooting:** [troubleshooting.md](troubleshooting.md) — Common problems and solutions
+
+---
+
+## What's Next?
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| See end-to-end usage scenarios | [Scenarios](scenarios.md) |
+| Integrate with resource servers and orchestrators | [Integration Patterns](integration-patterns.md) |
+| Debug issues | [Troubleshooting](troubleshooting.md) |
+| Look up endpoints | [API Reference](api.md) |
+
+---
+
+*Previous: [Getting Started: Operator](getting-started-operator.md) · Next: [Integration Patterns](integration-patterns.md)*

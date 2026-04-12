@@ -32,12 +32,12 @@ services:
       timeout: 3s
       retries: 10
     networks:
-      - agentauth-net
+      - agentwrit-net
 
 
 volumes:
   broker-data:
 
 networks:
-  agentauth-net:
+  agentwrit-net:
     driver: bridge

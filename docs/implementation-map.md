@@ -1,8 +1,6 @@
 # Implementation Map — Ephemeral Agent Credentialing v1.3
 
-> **Purpose:** Trace every component of the [Ephemeral Agent Credentialing v1.3](https://github.com/devonartis/AI-Security-Blueprints/blob/main/patterns/ephemeral-agent-credentialing/versions/v1.3.md) pattern to the exact Go file, function, and HTTP endpoint that implements it.
->
-> **Audience:** Contributors, security reviewers, and anyone who needs to verify that AgentWrit delivers what the pattern specifies.
+Trace every component of the security pattern to the exact Go file, function, and HTTP endpoint that implements it.
 
 ---
 
@@ -167,7 +165,7 @@ action:resource:identifier
 
 Examples: `read:data:*`, `admin:revoke:*`, `app:launch-tokens:*`
 
-Wildcard `*` in identifier covers any specific value. Scopes can only narrow, never expand.
+Wildcard `*` in identifier covers any specific value. Scopes can never expand — same or narrower, never wider.
 
 ---
 
@@ -348,7 +346,7 @@ POST /v1/delegate
 
 ### Security Properties
 
-- Scope can only narrow (attenuation is one-way)
+- Scope can never expand (same or narrower, never wider)
 - Max delegation depth: 5 hops
 - Each chain entry is signed with the broker's Ed25519 key
 - Chain hash embedded in JWT prevents chain tampering
@@ -439,3 +437,17 @@ Component 8: Prometheus metrics updated (request_duration, tokens_issued)
 ```
 
 Every component participates in every authenticated request. The pattern is not 8 separate features — it's 8 layers that compose on every operation.
+
+---
+
+## What's Next?
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| Understand the security pattern | [Concepts Deep Dive](concepts.md) |
+| See the full API | [API Reference](api.md) |
+| Return to the documentation home | [Documentation Home](README.md) |
+
+---
+
+*Previous: [Architecture](architecture.md) · Next: [Documentation Home](README.md)*

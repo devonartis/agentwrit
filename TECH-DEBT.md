@@ -77,6 +77,7 @@ B0 removed all sidecar Go code and infrastructure but did NOT rewrite the user-f
 | TD-012 | **MISSING: Role model documentation — who does what, which scopes, and why** | **CRITICAL** | `docs/` — new file needed | See detail below. Without this document, every agent that touches the code misunderstands the system. |
 | TD-013 | `POST /v1/admin/launch-tokens` lets admin CREATE agents — admin should only LIST/REVOKE launch tokens | High | `cmd/broker/main.go:257`, `internal/admin/admin_hdl.go:58-60` | See detail below. |
 | TD-014 | **Code comments audit — all handlers, services, and types need role/scope/boundary comments** | **CRITICAL** | All `internal/` packages | Every function, handler, and type must document: what it does, who can call it (role/scope), why it exists, and its boundaries. Current code has minimal Go doc comments that describe mechanics but not roles, scopes, or security boundaries. An agent reading only the source file cannot understand who calls what or why. Standard defined in `.claude/rules/golang.md`. |
+| TD-015 | `deleg_svc.go` comment says "strict subset" but `ScopeIsSubset` allows equal scopes | Low | `internal/deleg/deleg_svc.go:10-11` | Line 10 says "The delegated scope must be a strict subset of the delegator's scope" but the actual `ScopeIsSubset` check allows equal scopes (subset-or-equal). The behavior is correct — the comment is wrong. Fix: change "strict subset" to "subset" in the package doc. |
 
 ### TD-012 Detail: Missing Role Model Document
 
@@ -351,6 +352,21 @@ Audit triggered by discovery of hardcoded `iss: "agentauth"` in `internal/token/
 | TD-CLI-001 | ~~**Binary name `aactl` → `awrit` rename**~~ | ~~MEDIUM~~ | **RESOLVED 2026-04-10** — `cmd/aactl/` → `cmd/awrit/`, `docs/aactl-reference.md` → `docs/awrit-reference.md`, Cobra command `Use` field, all ship-to-main doc/script/test/config references rewritten. Evidence files under `tests/*/evidence/*.md` preserved as-is (historical records). Branch `fix/td-cli-001-aactl-to-awrit-rename`. | `cmd/awrit/`, `docs/awrit-reference.md`, scripts, docs, tests |
 
 **Not creating a TD for env var prefix** — decided 2026-04-10 to keep `AA_*` indefinitely. Neutral enough (two letters), operator-facing, highest-friction change in the whole rebrand. Re-evaluate at 1.0 if ever.
+
+| TD-CLI-002 | **`awrit init` writes config to `~/.agentauth/config` but broker reads `~/.broker/config`** — broken first-run path | **HIGH** | Immediate — breaks first-run UX | `cmd/awrit/init_cmd.go:53-64` |
+| TD-CLI-003 | **`docker-compose.yml` network still named `agentauth-net`** — docs say `agentwrit-net` after brand sweep | Low | Next compose-touching PR | `docker-compose.yml:35,42` |
+
+### TD-CLI-002 Detail: awrit init config path mismatch
+
+TD-CFG-002 (resolved 2026-04-10) updated `internal/cfg/configfile.go` to search `~/.broker/config` and `/etc/broker/config`. But commit `4e197a5` (TD-CLI-001, awrit rename) introduced `cmd/awrit/init_cmd.go` with `resolveConfigPath()` still returning `~/.agentauth/config` (home) and `/etc/agentauth/config` (fallback). The fix to the broker's *read* side and the creation of the CLI's *write* side happened in different commits and were never reconciled.
+
+**Impact:** A user who runs `awrit init` (no `--config-path`) gets a config at `~/.agentauth/config`. The broker auto-loads from `~/.broker/config`. The config is silently ignored and the broker starts with no admin secret, causing a `FATAL` exit.
+
+**Fix:** In `cmd/awrit/init_cmd.go:53-64`, update `resolveConfigPath()`:
+- `"/etc/agentauth/config"` → `"/etc/broker/config"`
+- `home + "/.agentauth/config"` → `home + "/.broker/config"`
+
+**Needs:** `fix/td-cli-002-awrit-init-config-path` branch + gates + PR. Bug report at `.plans/bugs/BUG-CLI-002-awrit-init-config-path.md`.
 
 ## When to Fix
 

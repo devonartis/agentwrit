@@ -1,12 +1,8 @@
 # Getting Started: Developer
 
-> **Document Version:** 3.0 | **Last Updated:** March 2026 | **Status:** Current
->
-> **Audience:** Developer building an AI agent in Python, TypeScript, or Go.
->
-> **Prerequisite:** Your operator has deployed the broker and given you its URL and your allowed scopes. If you are the operator, see [Getting Started: Operator](getting-started-operator.md).
->
-> **Next steps:** [Common Tasks](common-tasks.md) | [API Reference](api.md) | [Troubleshooting](troubleshooting.md)
+Build an AI agent that authenticates with AgentWrit. This guide walks you through requesting tokens, using them in your code, and validating them at your resource server — in Python, TypeScript, or Go.
+
+**Prerequisites:** A running AgentWrit broker ([Your First Five Minutes](getting-started-user.md)) and familiarity with HTTP APIs.
 
 ## How It Works: The Registration Flow
 
@@ -30,9 +26,7 @@ The registration flow gives you full control over your keys. You manage the cryp
   - Python 3.8+ with `requests` and `cryptography`
   - Go 1.24+ with the standard library
 
-There is no AgentWrit SDK yet. Today, Go integrations should call the broker's HTTP API directly and perform the Ed25519 registration flow themselves.
-
-You will manage your own Ed25519 keys and follow the registration flow.
+The [AgentWrit Python SDK](https://github.com/devonartis/agentauth-python) handles the full agent lifecycle. This guide covers the raw HTTP API for any language.
 
 ---
 
@@ -243,7 +237,7 @@ else:
 
 ## Enforcing Scopes in Your Resource Server
 
-> **This is interim guidance.** When the AgentWrit SDK ships, it replaces these manual checks with a single function call. But the principle never changes: **validate first, check scope second, act third.** Never skip the scope check -- a valid token does not mean the agent is authorized for this specific action.
+> The principle never changes: **validate first, check scope second, act third.** Never skip the scope check — a valid token does not mean the agent is authorized for this specific action.
 
 Every resource server endpoint that accepts agent tokens must do three things, in order:
 
@@ -708,9 +702,24 @@ See [Getting Started: Operator — TLS/mTLS Configuration](getting-started-opera
 
 ---
 
-## Next Steps
+---
 
-- [Common Tasks](common-tasks.md) -- validation, delegation, error handling
-- [Concepts](concepts.md) -- understand why this works the way it does
-- [Troubleshooting](troubleshooting.md) -- exact error messages and fixes
-- [API Reference](api.md) -- complete endpoint documentation
+## What's Next?
+
+Your agent can authenticate. Now learn the everyday operations:
+
+**[Common Tasks →](common-tasks.md)**
+Token renewal, delegation, revocation, and audit queries.
+
+Or explore related topics:
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| Deploy and operate the broker | [Getting Started: Operator](getting-started-operator.md) |
+| See integration patterns for resource servers | [Integration Patterns](integration-patterns.md) |
+| Understand scopes in depth | [Scopes and Permissions](scope-model.md) |
+| Look up a specific endpoint | [API Reference](api.md) |
+
+---
+
+*Previous: [Your First Five Minutes](getting-started-user.md) · Next: [Getting Started: Operator](getting-started-operator.md)*
