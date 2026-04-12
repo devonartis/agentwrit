@@ -532,3 +532,37 @@ Rewrote the AgentWrit public intro copy for the rebrand (Layer 1 of Decision 013
 
 ### Status: Copy ready — apply on next agentauth-core session
 **Next:** apply the new intro to the website, core README, and any other location the old intro lives. Single source of truth in the decision file — no per-repo drift.
+
+---
+
+## 2026-04-12 — Docs audit P1/P2 corrections + TD-CLI-002 bug discovery
+
+### Action: Fixed 9 doc accuracy issues from external audit report
+
+Branch: `doc/docs-layout-archon-style`
+
+Audit report surfaced P1/P2 findings against the codebase. After verification:
+
+**Docs fixed (pure doc errors — no code changes):**
+- `docs/getting-started-user.md` — wrong admin secret literal in auth examples → `$AA_ADMIN_SECRET`
+- `docs/awrit-reference.md` — `awrit init` sample output showed `~/.agentwrit/config` → `~/.broker/config`
+- `docs/api.md` — JWT claims table: `iss` not always "agentwrit" (driven by `AA_ISSUER`, empty by default); app subject is `app:{internal_app_id}` not `app:{client_id}`; `aud` driven by `AA_AUDIENCE`, omitted if unset
+- `docs/getting-started-operator.md` — `AA_AUDIENCE` default was wrong (`"agentwrit"` → empty); SQLite memory-mode fallback claim removed (false — empty `AA_DB_PATH` falls back to `./data.db`)
+- `docs/api/openapi.yaml` — license `Apache-2.0` → `AGPL-3.0`
+- `docker-compose.yml` — network `agentauth-net` → `agentwrit-net` (brand sweep miss)
+- `docs/README.md` — endpoint count 22 → 19 (verified from route registration); component count seven → eight
+- `docs/concepts.md` — component count seven → eight
+
+**Left alone (intentional code/docs gap — code-side rebrand not done yet):**
+- `urn:agentauth:error:` in `internal/problemdetails/problemdetails.go` — docs say `urn:agentwrit:error:`, code hasn't been renamed; this is planned work
+- `agentauth_*` metric names in `internal/obs/obs.go` — docs say `agentwrit_*`, same situation
+
+**New tech debt logged:**
+- TD-CLI-002 (HIGH) — `awrit init` writes to `~/.agentauth/config`, broker reads `~/.broker/config`. Bug introduced in `4e197a5`: TD-CFG-002 fixed the broker read side but the CLI write side (`cmd/awrit/init_cmd.go:53-64`) was created with old paths. Bug report: `.plans/bugs/BUG-CLI-002-awrit-init-config-path.md`
+- TD-CLI-003 (Low) — docker-compose.yml network name lag (fixed in this session)
+
+### What's Next
+
+1. **`fix/td-cli-002-awrit-init-config-path`** — two-line fix in `cmd/awrit/init_cmd.go:53-64`, unit test, gates, PR. Bug report ready at `.plans/bugs/BUG-CLI-002-awrit-init-config-path.md`.
+2. **Code-side rebrand** — rename `agentauth_*` Prometheus metrics in `internal/obs/obs.go` and `urn:agentauth:error:` in `internal/problemdetails/problemdetails.go` to match the docs. Separate PR.
+3. **Merge `doc/docs-layout-archon-style`** — after user review.

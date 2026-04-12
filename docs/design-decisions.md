@@ -1,6 +1,6 @@
-# AgentWrit Design Decisions — Why We Built It This Way
+# Design Decisions — Why We Built It This Way
 
-> This document traces the reasoning behind every major design choice in AgentWrit. Not what the system does — why it does it that way. Each section starts with the problem we faced, the options we considered, and why we chose what we chose.
+Every design choice in AgentWrit traces back to a problem we faced, options we considered, and a reason we chose what we chose. This document tells you the "why" behind the architecture.
 
 ---
 
@@ -317,3 +317,25 @@ Each decision builds on the previous:
 9. **OAuth doesn't fit machine-to-machine ephemeral agents** → own token system, OIDC bridge as enterprise add-on
 10. **Admin launch token creation bypasses ceiling** → restrict to dev mode (TD-013)
 11. **Different failure scenarios need different blast radii** → four revocation levels
+
+---
+
+## What's Next?
+
+You understand why AgentWrit is built the way it is. Time to put it to use:
+
+**[Your First Five Minutes →](getting-started-user.md)**
+Run a local setup, walk through the registration flow, and get your first agent token.
+
+Or dive deeper:
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| Build AgentWrit into your agent code | [Getting Started: Developer](getting-started-developer.md) |
+| Deploy and operate the broker | [Getting Started: Operator](getting-started-operator.md) |
+| See the internal architecture and package map | [Architecture](architecture.md) |
+| Look up where features live in the codebase | [Implementation Map](implementation-map.md) |
+
+---
+
+*Previous: [The Credential Lifecycle](credential-model.md) · Next: [Your First Five Minutes](getting-started-user.md)*

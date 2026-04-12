@@ -185,6 +185,40 @@ Tokens are not magic. Understanding their limits is as important as understandin
 
 ---
 
+## Token Lifecycle
+
+Every token in AgentWrit follows the same lifecycle, regardless of type:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Issued: Broker signs JWT
+    Issued --> Active: nbf time reached
+    Active --> Active: Used for requests
+    Active --> Renewed: POST /v1/token/renew<br/>(old token revoked)
+    Renewed --> Active: New JWT issued
+    Active --> Released: POST /v1/token/release<br/>(self-revoke)
+    Active --> Revoked: POST /v1/revoke<br/>(admin kills it)
+    Active --> Expired: exp time reached
+    Released --> [*]
+    Revoked --> [*]
+    Expired --> [*]
+
+    note right of Active
+        Every authenticated request
+        checks: not expired, not revoked,
+        scopes cover the endpoint
+    end note
+
+    note right of Expired
+        Background pruner removes
+        expired JTIs every 60s
+    end note
+```
+
+The key insight: tokens don't just expire — they can be **renewed** (extending the session with a new JWT while revoking the old one), **released** (self-revoked by the agent when done), or **revoked** (killed by the admin at any time). All three paths are distinct.
+
+---
+
 ## The Three Types of Token in AgentWrit
 
 With the foundation of what tokens are and why they matter, here's what AgentWrit actually issues:
@@ -220,8 +254,21 @@ Nonces aren't really "tokens" in the authorization sense — they're part of the
 
 ---
 
-## Now: What Are Scopes and How Do They Work?
+## What's Next?
 
-With tokens defined, scopes are what give tokens their meaning. A token without scopes is a proof of identity — it says who you are but not what you're allowed to do.
+Tokens make sense now. Next, understand who holds them and why:
 
-See [Scope Model](scope-model.md) for the complete scope deep dive: the format, the coverage rules, the four enforcement points, and how scopes flow through the attenuation chain.
+**[The Three Actors →](roles.md)**
+Operator, Application, Agent — each holds a different token with different authority.
+
+Or explore related topics:
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| See the permission system that gives tokens their meaning | [Scopes and Permissions](scope-model.md) |
+| Understand the full credential lifecycle with sequence diagrams | [The Credential Lifecycle](credential-model.md) |
+| Jump straight to getting a token | [Your First Five Minutes](getting-started-user.md) |
+
+---
+
+*Previous: [What Is AgentWrit?](agentwrit-explained.md) · Next: [The Three Actors](roles.md)*

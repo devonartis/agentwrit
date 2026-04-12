@@ -1,10 +1,10 @@
 # Real-World Scenarios — The 8 Components in Production
 
-> **Purpose:** Show how the 8 Ephemeral Agent Credentialing components work together in real production deployments. Each scenario is a real use case with real API calls.
->
-> **Audience:** Developers building agent systems, architects evaluating AgentWrit, security reviewers verifying coverage.
->
-> **Prerequisites:** [Concepts](concepts.md) for component definitions, [Implementation Map](implementation-map.md) for code tracing.
+These scenarios show how the Ephemeral Agent Credentialing components work together in production deployments with real API calls.
+
+**Want to run a real demo?** The [Python SDK](https://github.com/devonartis/agentauth-python) includes two working demo applications that implement these patterns against a live broker:
+- [MedAssist AI](https://github.com/devonartis/agentauth-python/tree/main/demo) — healthcare multi-agent pipeline with scope isolation, delegation, and LLM tool-calling
+- [Support Ticket Zero-Trust](https://github.com/devonartis/agentauth-python/tree/main/demo2) — three LLM-driven agents with streaming execution and natural token expiry
 
 ---
 
@@ -492,21 +492,28 @@ A bank operates AI agents across multiple branches. A central compliance agent o
 
 ### The Delegation Hierarchy
 
-```
-Central Compliance Agent (HQ)
-  scope: read:compliance:*, write:reports:*
-  │
-  ├── Regional Agent (Northeast)
-  │   scope: read:compliance:northeast, write:reports:northeast
-  │   │
-  │   ├── Branch Agent (Boston)
-  │   │   scope: read:compliance:northeast:boston
-  │   │
-  │   └── Branch Agent (NYC)
-  │       scope: read:compliance:northeast:nyc
-  │
-  └── Regional Agent (Southeast)
-      scope: read:compliance:southeast, write:reports:southeast
+```mermaid
+flowchart TB
+    HQ["🏛️ Central Compliance Agent (HQ)<br/><i>scope: read:compliance:*, write:reports:*</i>"]
+
+    NE["📍 Regional Agent (Northeast)<br/><i>scope: read:compliance:northeast, write:reports:northeast</i>"]
+    SE["📍 Regional Agent (Southeast)<br/><i>scope: read:compliance:southeast, write:reports:southeast</i>"]
+
+    BOS["🏢 Branch Agent (Boston)<br/><i>scope: read:compliance:northeast:boston</i>"]
+    NYC["🏢 Branch Agent (NYC)<br/><i>scope: read:compliance:northeast:nyc</i>"]
+
+    HQ -->|"delegates"| NE
+    HQ -->|"delegates"| SE
+    NE -->|"delegates"| BOS
+    NE -->|"delegates"| NYC
+
+    classDef hq fill:#1a1a2e,stroke:#e94560,color:#fff,stroke-width:2px
+    classDef regional fill:#16213e,stroke:#0f3460,color:#fff
+    classDef branch fill:#0f3460,stroke:#53a8b6,color:#fff
+
+    class HQ hq
+    class NE,SE regional
+    class BOS,NYC branch
 ```
 
 ### How Delegation Chains Work
@@ -771,3 +778,17 @@ func jsonBody(v interface{}) io.Reader {
 | `POST /v1/token/release` | 4+5. Release + Audit | `net/http` |
 
 **No JWT library needed.** The broker handles JWT creation and verification. The agent just sends HTTP requests and uses the token as an opaque bearer string.
+
+---
+
+## What's Next?
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| Debug common issues | [Troubleshooting](troubleshooting.md) |
+| Look up endpoints | [API Reference](api.md) |
+| See the internal architecture | [Architecture](architecture.md) |
+
+---
+
+*Previous: [Integration Patterns](integration-patterns.md) · Next: [Troubleshooting](troubleshooting.md)*

@@ -1,12 +1,6 @@
 # API Reference
 
-> **Document Version:** 3.0 | **Last Updated:** March 2026 | **Status:** Current
->
-> **Audience:** Developers and operators who need the definitive contract for every endpoint.
->
-> **Prerequisites:** [Concepts](concepts.md) for background, [Getting Started: Developer](getting-started-developer.md) or [Getting Started: Operator](getting-started-operator.md) for walkthroughs.
->
-> **Next steps:** [Troubleshooting](troubleshooting.md) for error resolution | [Common Tasks](common-tasks.md) for step-by-step workflows.
+Complete HTTP API specification for all endpoints.
 
 ---
 
@@ -38,6 +32,21 @@ All responses include security headers: `X-Content-Type-Options: nosniff`, `Cach
 Request bodies are limited to 1 MB on ALL endpoints (enforced by global middleware).
 
 **Error sanitization:** Token validation, renewal, and auth middleware endpoints return generic error messages (e.g., `"token is invalid or expired"`, `"token renewal failed"`, `"token verification failed"`) to prevent leaking internal details to clients.
+
+---
+
+## Rate Limiting
+
+Authentication endpoints are rate-limited to protect against brute-force attacks.
+
+| Endpoint | Rate | Burst | Key | Retry-After |
+|----------|------|-------|-----|-------------|
+| `POST /v1/admin/auth` | 5 req/s | 10 | Per IP address | 1 second |
+| `POST /v1/app/auth` | Configurable | Configurable | Per `client_id` (falls back to IP) | 60 seconds |
+
+When a rate limit is exceeded, the broker returns `429 Too Many Requests` in RFC 7807 Problem Details format with a `Retry-After` header.
+
+**Production note:** The broker extracts client IP from the `X-Forwarded-For` header. In production, always place the broker behind a reverse proxy that overwrites this header — otherwise clients can spoof their IP to bypass rate limits.
 
 ---
 
@@ -1045,7 +1054,7 @@ A `*` in the identifier position of an allowed scope covers any specific identif
 
 ### Attenuation
 
-Scopes can only narrow, never expand. This is enforced at two points:
+Scopes can never expand — same or narrower, never wider. This is enforced at two points:
 
 1. **Registration:** `requested_scope` must be a subset of `launch_token.allowed_scope`
 2. **Delegation:** `delegated_scope` must be a subset of `delegator.scope`
@@ -1060,9 +1069,9 @@ All tokens issued by AgentWrit use EdDSA (Ed25519) signing with compact JWT seri
 
 | Field | JSON Key | Type | Description |
 |---|---|---|---|
-| `Iss` | `iss` | string | Always `"agentwrit"` |
-| `Sub` | `sub` | string | SPIFFE agent ID, `"admin"`, or `"app:{client_id}"` |
-| `Aud` | `aud` | string[] | Audience (optional) |
+| `Iss` | `iss` | string | Value of `AA_ISSUER`; empty string if unset (issuer validation skipped) |
+| `Sub` | `sub` | string | SPIFFE agent ID, `"admin"`, or `"app:{internal_app_id}"` |
+| `Aud` | `aud` | string[] | Value of `AA_AUDIENCE`; omitted if unset (audience validation skipped) |
 | `Exp` | `exp` | int64 | Expiration timestamp (Unix seconds) |
 | `Nbf` | `nbf` | int64 | Not-before timestamp (Unix seconds) |
 | `Iat` | `iat` | int64 | Issued-at timestamp (Unix seconds) |
@@ -1129,3 +1138,17 @@ Applied to `POST /v1/admin/auth` and `POST /v1/app/auth`:
 | `agentwrit_active_agents` | Gauge | -- | Currently registered agents |
 | `agentwrit_request_duration_seconds` | HistogramVec | `endpoint` | Request latency |
 | `agentwrit_clock_skew_total` | Counter | -- | Clock skew events |
+
+---
+
+## What's Next?
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| Use the operator CLI instead | [CLI Reference (awrit)](awrit-reference.md) |
+| See the internal architecture | [Architecture](architecture.md) |
+| Find where features live in code | [Implementation Map](implementation-map.md) |
+
+---
+
+*Previous: [Troubleshooting](troubleshooting.md) · Next: [CLI Reference (awrit)](awrit-reference.md)*

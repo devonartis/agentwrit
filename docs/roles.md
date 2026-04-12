@@ -1,6 +1,6 @@
-# Token Roles — Who Holds What and Why
+# The Three Actors — Who Holds What and Why
 
-> This document answers the question the codebase raises but doesn't say out loud: **which actor holds which token, what can they actually do with it, and why does the admin token have the ability to create agents?** Read this before `docs/credential-model.md`.
+Every token in the system is held by one of three actors. Each has a different job, a different token, and different authority. Understanding who holds what is the key to understanding how AgentWrit's security model works.
 
 ---
 
@@ -151,32 +151,75 @@ if !authz.ScopeIsSubset(req.AllowedScope, appRec.ScopeCeiling) {
 
 ---
 
+## The Three Actors — How They Interact
+
+```mermaid
+flowchart LR
+    subgraph Operator["🛡️ Operator"]
+        direction TB
+        OP_DESC["Human or deploy script<br/>Manages the system<br/>Holds: Admin JWT"]
+    end
+
+    subgraph Application["📦 Application"]
+        direction TB
+        APP_DESC["Software running in production<br/>Manages its own agents<br/>Holds: App JWT"]
+    end
+
+    subgraph Agent["🤖 Agent"]
+        direction TB
+        AG_DESC["AI agent executing a task<br/>Does the actual work<br/>Holds: Agent JWT"]
+    end
+
+    Operator -->|"registers app<br/>sets scope ceiling"| Application
+    Application -->|"creates launch token<br/>ceiling enforced"| Agent
+    Agent -.->|"can delegate to<br/>sub-agents"| Agent
+    Operator -->|"can revoke<br/>any credential"| Application
+    Operator -->|"can revoke<br/>any credential"| Agent
+
+    classDef op fill:#16213e,stroke:#0f3460,color:#fff
+    classDef app fill:#0f3460,stroke:#53a8b6,color:#fff
+    classDef ag fill:#2b4865,stroke:#256d85,color:#fff
+
+    class Operator op
+    class Application app
+    class Agent ag
+```
+
+---
+
 ## The Authority Chain in One Picture
 
-```
-Admin Secret  (root of trust — never travels, never expires)
-     │
-     ▼
-Admin JWT  (5 min, human/script — manages the system)
-     │
-     ├──► registers App → sets scope ceiling ["read:data:*", ...]
-     │
-     ▼
-App JWT  (30 min, software — manages its own agents)
-     │
-     │   ceiling check enforced here on every call
-     ▼
-Launch Token  (30s, one-time-use — delivered to the agent)
-     │
-     ▼
-Agent JWT  (task TTL, specific agent — does the work)
-     │
-     │   scope can only narrow on delegation
-     ▼
-Delegated JWT  (sub-agent — subset of parent's scope, max 5 levels)
+```mermaid
+flowchart TB
+    SECRET["🔑 Admin Secret<br/><i>Root of trust — never travels, never expires</i>"]
+    ADMIN["🛡️ Admin JWT<br/><i>5 min · human/script — manages the system</i>"]
+    APP["📦 App JWT<br/><i>30 min · software — manages its own agents</i>"]
+    LAUNCH["🎫 Launch Token<br/><i>30s · one-time-use — delivered to the agent</i>"]
+    AGENT["🤖 Agent JWT<br/><i>Task TTL · specific agent — does the work</i>"]
+    DELEG["🔗 Delegated JWT<br/><i>Sub-agent — subset of parent scope, max 5 levels</i>"]
+
+    SECRET -->|"authenticates"| ADMIN
+    ADMIN -->|"registers App<br/>sets scope ceiling"| APP
+    APP -->|"creates launch token<br/>ceiling enforced ✓"| LAUNCH
+    LAUNCH -->|"agent registers<br/>proves key ownership"| AGENT
+    AGENT -->|"delegates<br/>scope can never expand"| DELEG
+
+    classDef root fill:#1a1a2e,stroke:#e94560,color:#fff,stroke-width:2px
+    classDef admin fill:#16213e,stroke:#0f3460,color:#fff
+    classDef app fill:#0f3460,stroke:#53a8b6,color:#fff
+    classDef launch fill:#533483,stroke:#e94560,color:#fff
+    classDef agent fill:#2b4865,stroke:#256d85,color:#fff
+    classDef deleg fill:#334756,stroke:#548ca8,color:#fff
+
+    class SECRET root
+    class ADMIN admin
+    class APP app
+    class LAUNCH launch
+    class AGENT agent
+    class DELEG deleg
 ```
 
-At every step, authority can only narrow. The admin defines what apps can do. Apps define what agents can do. Agents define what sub-agents can do. No step can exceed the step above it — except the admin, who is the step above everything.
+At every step, authority can never expand. The admin defines what apps can do. Apps define what agents can do. Agents define what sub-agents can do. A delegate can receive its delegator's full scope or less — but never more. The admin, as root of trust, is the ceiling above everything.
 
 ---
 
@@ -202,9 +245,24 @@ At every step, authority can only narrow. The admin defines what apps can do. Ap
 
 ---
 
-## What to Read Next
+---
 
-- **`docs/credential-model.md`** — the full technical walkthrough: every credential's claims, TTLs, and sequence diagrams
-- **`docs/agentwrit-explained.md`** — the plain-language version for sales and new team members
+## What's Next?
 
+You know who holds which token. Next, understand what those tokens can actually *do*:
+
+**[Scopes and Permissions →](scope-model.md)**
+The `action:resource:identifier` format, coverage rules, and the four enforcement points.
+
+Or explore related topics:
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| See every credential's claims and TTLs | [The Credential Lifecycle](credential-model.md) |
+| Understand the full registration flow hands-on | [Your First Five Minutes](getting-started-user.md) |
+| See the plain-language version for sales teams | [What Is AgentWrit?](agentwrit-explained.md) |
+
+---
+
+*Previous: [Foundations](foundations.md) · Next: [Scopes and Permissions](scope-model.md)*
 

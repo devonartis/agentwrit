@@ -1,14 +1,6 @@
-# Concepts: Why AgentWrit Exists
+# Concepts — The Security Pattern Behind AgentWrit
 
-> **Document Version:** 2.0 | **Last Updated:** February 2026 | **Status:** Current
->
-> **Audience:** Developers, Operators, and Security Reviewers
->
-> **Prerequisites:** None — this is the starting point for understanding AgentWrit.
->
-> **Purpose:** Understand the problem AgentWrit solves, the security pattern behind it, and how all 8 components work together.
->
-> **Next steps:** [Getting Started](getting-started-user.md) | [Architecture](architecture.md) | [API Reference](api.md)
+AgentWrit implements the Ephemeral Agent Credentialing pattern — a security architecture purpose-built for AI agents. This page covers the full pattern: the industry context, the six principles, and all eight components that work together to eliminate the credential exposure problem.
 
 ---
 
@@ -157,7 +149,7 @@ sequenceDiagram
 
 **Solution:** AgentWrit issues JWT tokens with narrow scope limited to specific resources and actions. The scope format is `action:resource:identifier` (for example, `read:customers:12345`). Token TTL defaults to 5 minutes -- long enough for a task, short enough to limit exposure.
 
-Scope attenuation is a one-way operation: permissions can only be narrowed, never expanded. When an agent registers, its requested scope must be a subset of what the launch token allows. This ensures least-privilege access at every step.
+Scope attenuation is a one-way operation: permissions can never expand. A delegate can receive the same scope as its creator or less, but never more. When an agent registers, its requested scope must be covered by what the launch token allows. This ensures least-privilege access at every step.
 
 ```mermaid
 stateDiagram-v2
@@ -360,7 +352,7 @@ sequenceDiagram
 
 **Problem:** How do you prevent privilege escalation in multi-agent workflows? When Agent A delegates work to Agent B, which delegates to Agent C, how do you ensure that Agent C only has the permissions it legitimately needs? Without verification, a malicious agent could forge delegation claims to access resources it was never authorized to touch.
 
-**Solution:** A cryptographically signed delegation chain where permissions can only be narrowed (never expanded) at each hop. Each delegation step creates a signed record that is appended to the chain. A chain hash (SHA-256 of the serialized chain) is embedded in the token, making the chain tamper-evident. Maximum delegation depth is limited to 5 hops.
+**Solution:** A cryptographically signed delegation chain where permissions can never expand at each hop (same scope or narrower, never wider). Each delegation step creates a signed record that is appended to the chain. A chain hash (SHA-256 of the serialized chain) is embedded in the token, making the chain tamper-evident. Maximum delegation depth is limited to 5 hops.
 
 ```mermaid
 sequenceDiagram
@@ -611,7 +603,24 @@ The core lesson: agents should never hold long-lived secrets in their environmen
 
 ---
 
-## Next Steps
+---
 
-- **Developers:** Read [Getting Started: Developer](getting-started-developer.md) to integrate an agent with AgentWrit in 15 lines of Python
-- **Operators:** Read [Getting Started: Operator](getting-started-operator.md) to deploy the broker, configure apps, and create launch tokens
+## What's Next?
+
+You now understand the security pattern behind AgentWrit. Pick your next step:
+
+**[Architecture →](architecture.md)**
+See how the pattern maps to actual code — packages, components, and data flow diagrams.
+
+Or explore by interest:
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| Try the registration flow hands-on | [Your First Five Minutes](getting-started-user.md) |
+| See every API endpoint | [API Reference](api.md) |
+| Understand the scope system in detail | [Scopes and Permissions](scope-model.md) |
+| Find where a feature lives in the codebase | [Implementation Map](implementation-map.md) |
+
+---
+
+*Previous: [Documentation Home](README.md) · Next: [Architecture](architecture.md)*

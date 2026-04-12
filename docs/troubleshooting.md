@@ -1,14 +1,6 @@
 # Troubleshooting
 
-> **Document Version:** 2.0 | **Last Updated:** February 2026 | **Status:** Current
->
-> **Audience:** Developers and Operators encountering errors in AgentWrit.
->
-> **Prerequisites:** [Getting Started: Developer](getting-started-developer.md) or [Getting Started: Operator](getting-started-operator.md).
->
-> **Next steps:** [API Reference](api.md) for endpoint details | [Common Tasks](common-tasks.md) for working examples.
->
-> This guide covers exact error messages, their causes, and fixes. Errors are organized by role: [Developer Errors](#developer-errors) and [Operator Errors](#operator-errors).
+Exact error messages, their causes, and fixes organized by role.
 
 ## Diagnostic Flowchart
 
@@ -196,7 +188,7 @@ Each nonce is also single-use. A nonce consumed by one registration attempt cann
 
 ### 403 at /v1/register: "requested scope exceeds allowed scope"
 
-**Cause:** Your `requested_scope` includes permissions not covered by the launch token's `allowed_scope`. Scopes can only narrow (attenuate), never expand.
+**Cause:** Your `requested_scope` includes permissions not covered by the launch token's `allowed_scope`. Scopes can never expand — every requested scope must be covered by the launch token's ceiling.
 
 **Fix:** Request a scope that is a subset of the allowed scope:
 
@@ -737,3 +729,59 @@ broker:
   volumes:
     - /etc/broker/certs:/certs:ro
 ```
+
+---
+
+## Prometheus Metrics Reference
+
+The broker exposes metrics at `GET /v1/metrics` in Prometheus format. Use these to monitor health, detect anomalies, and build dashboards.
+
+### Counters
+
+| Metric | Labels | What it measures |
+|--------|--------|-----------------|
+| `agentauth_tokens_issued_total` | `scope` | Total tokens issued, by scope |
+| `agentauth_tokens_revoked_total` | `level` | Revocations by level: `token`, `agent`, `task`, `chain` |
+| `agentauth_registrations_total` | `status` | Agent registrations: `success` or `failure` |
+| `agentauth_admin_auth_total` | `status` | Admin auth attempts: `success` or `failure` |
+| `agentauth_launch_tokens_created_total` | — | Launch tokens created via admin API |
+| `agentauth_clock_skew_total` | — | Clock skew events detected (token `nbf` in the future) |
+| `agentauth_audit_events_total` | `event_type` | Audit events recorded, by type |
+| `agentauth_db_errors_total` | `operation` | Database operation errors |
+
+### Gauges
+
+| Metric | What it measures |
+|--------|-----------------|
+| `agentauth_active_agents` | Current number of registered agents |
+| `agentauth_audit_events_loaded` | Audit events loaded from SQLite at startup (set once) |
+
+### Histograms
+
+| Metric | Labels | What it measures |
+|--------|--------|-----------------|
+| `agentauth_request_duration_seconds` | `endpoint` | Request duration by endpoint (e.g., `token_issue`) |
+| `agentauth_audit_write_duration_seconds` | — | Time to persist an audit event to SQLite |
+
+### Key Alerts to Consider
+
+- **`agentauth_admin_auth_total{status="failure"}` rising** — possible brute-force attempt on the admin secret
+- **`agentauth_registrations_total{status="failure"}` rising** — agents failing to register (expired launch tokens? wrong signatures?)
+- **`agentauth_tokens_revoked_total` spike** — mass revocation event, investigate the cause
+- **`agentauth_db_errors_total` > 0** — database issues, check SQLite file permissions and disk space
+- **`agentauth_clock_skew_total` > 0** — clock drift between broker and clients, check NTP
+
+---
+
+## What's Next?
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| Look up endpoint details | [API Reference](api.md) |
+| Use the operator CLI | [CLI Reference (awrit)](awrit-reference.md) |
+| See the internal architecture | [Architecture](architecture.md) |
+| Find where features live in code | [Implementation Map](implementation-map.md) |
+
+---
+
+*Previous: [Scenarios](scenarios.md) · Next: [API Reference](api.md)*
