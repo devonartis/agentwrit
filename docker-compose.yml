@@ -1,5 +1,15 @@
 services:
   broker:
+    # Two ways to source the broker image:
+    #
+    #   1. LOCAL BUILD (default) — builds from this checkout. Use during
+    #      development or when hacking on broker code.
+    #   2. PRE-BUILT — pull the signed multi-arch image from Docker Hub.
+    #      To use, comment out the `build:` block below and uncomment the
+    #      `image:` line. Pin to a specific tag for production
+    #      (e.g. devonartis/agentwrit:v2.0.0 or devonartis/agentwrit:main-<sha>).
+    #
+    # image: devonartis/agentwrit:latest
     build:
       context: .
       target: broker
@@ -15,7 +25,7 @@ services:
       - AA_ADMIN_SECRET=${AA_ADMIN_SECRET:-}
       - AA_SEED_TOKENS=${AA_SEED_TOKENS:-false}
       - AA_LOG_LEVEL=${AA_LOG_LEVEL:-standard}
-      - AA_DB_PATH=${AA_DB_PATH:-/data/agentauth.db}
+      - AA_DB_PATH=${AA_DB_PATH:-/data/data.db}
       - AA_SIGNING_KEY_PATH=${AA_SIGNING_KEY_PATH:-/data/signing.key}
       - AA_CONFIG_PATH=${AA_CONFIG_PATH:-}
       - AA_TLS_MODE=${AA_TLS_MODE:-none}

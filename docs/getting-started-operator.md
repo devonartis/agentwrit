@@ -6,21 +6,104 @@ Deploy AgentWrit in production. This guide covers broker startup, TLS configurat
 
 ---
 
-## Quick Start (Docker Compose)
+## Deployment Options
 
-Get a broker running in three commands:
+There are three ways to deploy the broker, in order of how much you need to build locally:
+
+| Option | When to use |
+|---|---|
+| **1. Pre-built Docker Hub image** | Production, fastest onboarding, no source checkout needed. Multi-arch (amd64 + arm64), signed with cosign. |
+| **2. Docker Compose with local build** | You want to run unreleased code from `main` or `develop`, or you need to modify the Dockerfile. |
+| **3. Native binary (VPS mode)** | Systemd-managed deployments, bare-metal hosts, no Docker available. |
+
+---
+
+## Option 1: Pre-built image from Docker Hub
+
+The signed multi-arch broker image is published to [`devonartis/agentwrit`](https://hub.docker.com/r/devonartis/agentwrit) on every push to `main` and on release tags. This is the recommended operator onboarding path — no source checkout, no local build toolchain required.
+
+### Available tags
+
+| Tag | When it moves | Use for |
+|---|---|---|
+| `latest` | Every push to `main` | Quick evaluation, lab environments |
+| `main-<sha>` | Every push to `main` | Reproducible deployments, pinning to a specific commit |
+| `v2.0.0`, `v2.0`, `v2` | Release tags | **Production** — pin to an exact semver release |
+
+Never pin production to `latest` — it moves with every `main` push and can introduce unexpected changes. Pin to a `v<semver>` tag or a `main-<sha>` digest and upgrade on a schedule you control.
+
+### Pull and run
 
 ```bash
-# 1. Set the admin secret (required -- broker exits without it)
+# 1. Set the admin secret (required — broker exits without it)
 export AA_ADMIN_SECRET="$(openssl rand -hex 32)"
 
-# 2. Build and start the stack
+# 2. Pull a specific version (recommended over :latest for production)
+docker pull devonartis/agentwrit:v2.0.0
+
+# 3. Run with a persistent volume
+docker run -d --name agentwrit \
+  -p 8080:8080 \
+  -e AA_ADMIN_SECRET \
+  -e AA_BIND_ADDRESS=0.0.0.0 \
+  -e AA_DB_PATH=/data/data.db \
+  -e AA_SIGNING_KEY_PATH=/data/signing.key \
+  -v agentwrit-data:/data \
+  devonartis/agentwrit:v2.0.0
+
+# 4. Verify
+curl -s http://localhost:8080/v1/health | jq .
+```
+
+### Verifying the image signature
+
+The release workflow signs every published image with [cosign](https://github.com/sigstore/cosign) keyless mode, using a short-lived Sigstore certificate issued via GitHub Actions OIDC. There is no long-lived signing key to rotate. Verify before running in production:
+
+```bash
+cosign verify devonartis/agentwrit:v2.0.0 \
+  --certificate-identity-regexp='^https://github.com/devonartis/agentwrit/\.github/workflows/release\.yml@' \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+```
+
+If verification fails, **do not run the image** — it was not produced by this project's release pipeline. Report the discrepancy.
+
+### What's in the image
+
+- Multi-stage build (Alpine 3.21 runtime, ~12 MB compressed per arch)
+- Platforms: `linux/amd64`, `linux/arm64`
+- Binary: `/broker` (entry point)
+- Ports exposed: `8080`
+- OCI labels: `org.opencontainers.image.source`, `revision`, `created`, `title`, `description`, `licenses=AGPL-3.0-only`
+
+### Docker Hub listing
+
+- **Repository:** <https://hub.docker.com/r/devonartis/agentwrit>
+- **Source:** <https://github.com/devonartis/agentwrit>
+- **Issues and support:** <https://github.com/devonartis/agentwrit/issues>
+
+---
+
+## Option 2: Docker Compose (local build)
+
+If you're working from a source checkout — either to track unreleased changes or to modify the Dockerfile — use Docker Compose:
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/devonartis/agentwrit.git
+cd agentwrit
+
+# 2. Set the admin secret (required -- broker exits without it)
+export AA_ADMIN_SECRET="$(openssl rand -hex 32)"
+
+# 3. Build and start the stack
 ./scripts/stack_up.sh
 
-# 3. Verify the broker is healthy
+# 4. Verify the broker is healthy
 curl http://localhost:8080/v1/health
 # {"status":"ok","version":"2.0.0","uptime":5,"db_connected":true,"audit_events_count":0}
 ```
+
+To swap the local build for the pre-built image without forking `docker-compose.yml`, edit the file and change `build: .` to `image: devonartis/agentwrit:v2.0.0` — the commented-out `image:` line at the top of the `broker:` service shows exactly where.
 
 To tear down the stack:
 
