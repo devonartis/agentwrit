@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # gen_test_certs.sh — generates CA, broker, and client certs for TLS/mTLS testing.
-# Outputs to $1 (default: /tmp/agentauth-certs).
+# Outputs to $1 (default: /tmp/agentwrit-certs).
 # All certs are self-signed, valid for 1 day, suitable only for testing.
 
-CERT_DIR="${1:-/tmp/agentauth-certs}"
+CERT_DIR="${1:-/tmp/agentwrit-certs}"
 mkdir -p "$CERT_DIR"
 
 echo "=== Generating test certs in $CERT_DIR ==="
@@ -14,7 +14,7 @@ echo "=== Generating test certs in $CERT_DIR ==="
 openssl ecparam -genkey -name prime256v1 -noout -out "$CERT_DIR/ca-key.pem" 2>/dev/null
 openssl req -new -x509 -sha256 -key "$CERT_DIR/ca-key.pem" \
   -out "$CERT_DIR/ca.pem" -days 1 \
-  -subj "/CN=agentauth-test-ca" 2>/dev/null
+  -subj "/CN=agentwrit-test-ca" 2>/dev/null
 
 # Broker server cert (SAN: broker, localhost)
 openssl ecparam -genkey -name prime256v1 -noout -out "$CERT_DIR/broker-key.pem" 2>/dev/null

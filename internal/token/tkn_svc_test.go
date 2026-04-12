@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devonartis/agentauth/internal/cfg"
+	"github.com/devonartis/agentwrit/internal/cfg"
 )
 
 // mockRevoker implements Revoker for testing.

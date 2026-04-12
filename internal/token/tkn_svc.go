@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devonartis/agentauth/internal/cfg"
-	"github.com/devonartis/agentauth/internal/obs"
+	"github.com/devonartis/agentwrit/internal/cfg"
+	"github.com/devonartis/agentwrit/internal/obs"
 )
 
 // Sentinel errors for token verification. A single generic message is returned

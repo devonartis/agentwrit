@@ -32,9 +32,9 @@ import (
 	"encoding/hex"
 	"errors"
 
-	"github.com/devonartis/agentauth/internal/obs"
-	"github.com/devonartis/agentauth/internal/store"
-	"github.com/devonartis/agentauth/internal/token"
+	"github.com/devonartis/agentwrit/internal/obs"
+	"github.com/devonartis/agentwrit/internal/store"
+	"github.com/devonartis/agentwrit/internal/token"
 )
 
 // Handshake errors.

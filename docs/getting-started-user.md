@@ -61,7 +61,7 @@ Docker Compose is the easiest way to get started. It launches the broker in two 
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/devonartis/agentauth.git
+git clone https://github.com/devonartis/agentwrit.git
 cd agentwrit
 
 # 2. Set the admin secret (required -- broker exits without it)
@@ -91,7 +91,7 @@ If you prefer to build and run locally without Docker:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/devonartis/agentauth.git
+git clone https://github.com/devonartis/agentwrit.git
 cd agentwrit
 
 # 2. Build the Go binaries

@@ -5,10 +5,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/devonartis/agentauth/internal/audit"
-	"github.com/devonartis/agentauth/internal/authz"
-	"github.com/devonartis/agentauth/internal/revoke"
-	"github.com/devonartis/agentauth/internal/token"
+	"github.com/devonartis/agentwrit/internal/audit"
+	"github.com/devonartis/agentwrit/internal/authz"
+	"github.com/devonartis/agentwrit/internal/revoke"
+	"github.com/devonartis/agentwrit/internal/token"
 )
 
 // nopRevStoreInternal is a no-op RevocationStore for internal handler tests.

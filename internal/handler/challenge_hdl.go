@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/devonartis/agentauth/internal/obs"
-	"github.com/devonartis/agentauth/internal/store"
+	"github.com/devonartis/agentwrit/internal/obs"
+	"github.com/devonartis/agentwrit/internal/store"
 )
 
 // ChallengeHdl handles GET /v1/challenge — step 1 of the agent registration
