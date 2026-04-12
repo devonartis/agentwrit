@@ -14,6 +14,7 @@ name: CI
 # - docker-build
 # - smoke-l25
 # - sbom
+# - main-hygiene
 # GATE_LIST_END
 
 on:
@@ -278,6 +279,69 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - run: ./scripts/test-gate-parity.sh
 
+  # main-hygiene only runs on push to main (the branch where strip-target
+  # paths must not exist). On PR runs it auto-skips via the `if:` guard
+  # because PRs target develop, which legitimately carries these files.
+  # On main this is the automated safety net that catches a missed
+  # ./scripts/strip_for_main.sh — a strip-target file slipping through
+  # would otherwise only be caught by manual review after-the-fact.
+  # Keep the STRIP_PATHS array in sync with scripts/strip_for_main.sh
+  # and the mirror block in scripts/gates.sh.
+  main-hygiene:
+    name: main-hygiene
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Main must not contain dev-only paths
+        run: |
+          STRIP_PATHS=(
+            "MEMORY.md"
+            "MEMORY_ARCHIVE.md"
+            "FLOW.md"
+            "TECH-DEBT.md"
+            "AGENTS.md"
+            "CLAUDE.md"
+            "COWORK_SESSION.md"
+            "COWORK_DOCS_AUDIT.md"
+            ".active_module"
+            ".plans"
+            ".claude"
+            ".agents"
+            "audit"
+            "adr"
+            ".vscode"
+            "generate_pdf.py"
+          )
+          found=0
+          for path in "${STRIP_PATHS[@]}"; do
+            if [[ -e "$path" ]]; then
+              echo "FAIL: dev-only path found on main: $path"
+              found=$((found + 1))
+            fi
+          done
+          # Glob patterns (match strip_for_main.sh)
+          for f in AgentAuth_*.docx docs/QA_REPORT_*.md; do
+            if [[ -e "$f" ]]; then
+              echo "FAIL: dev-only glob match found on main: $f"
+              found=$((found + 1))
+            fi
+          done
+          for f in tests/*/evidence/DOC-AUDIT-REPORT.md; do
+            if [[ -e "$f" ]]; then
+              echo "FAIL: dev-only test audit report found on main: $f"
+              found=$((found + 1))
+            fi
+          done
+          if [[ $found -gt 0 ]]; then
+            echo ""
+            echo "$found strip-target path(s) found on main."
+            echo "These files are dev-only and must be stripped before landing."
+            echo "Fix: ./scripts/strip_for_main.sh (run mid-merge per its docs)."
+            exit 1
+          fi
+          echo "PASS: main is clean of dev-only paths"
+
   gates-passed:
     name: gates-passed
     runs-on: ubuntu-latest
@@ -296,6 +360,7 @@ jobs:
       - smoke-l25
       - sbom
       - gate-parity
+      - main-hygiene
     if: always()
     steps:
       - name: Check all gates passed

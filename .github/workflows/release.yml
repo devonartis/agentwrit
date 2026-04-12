@@ -1,0 +1,146 @@
+name: Release — publish image to Docker Hub
+
+# When this workflow fires:
+#   - push to main: publishes `devonartis/agentwrit:latest` and
+#     `devonartis/agentwrit:main-<sha>` so every main commit is traceable.
+#   - push of a `v*` tag: publishes semver tags `v2.0.0`, `v2.0`, `v2` AND
+#     updates `latest`. Tag the release commit AFTER it lands on main so the
+#     same image is promoted (not rebuilt) when possible.
+#
+# Why not on `develop` or PRs: `develop` is private dev state (we don't want
+# that image downloaded by operators), and PR runs can't access secrets on
+# public repos — so DOCKERHUB_TOKEN would be empty and the login step fails.
+#
+# What this workflow needs (set manually, one-time):
+#   - Docker Hub repo `devonartis/agentwrit` exists and is public
+#   - GitHub repo secrets:
+#       DOCKERHUB_USERNAME = devonartis
+#       DOCKERHUB_TOKEN    = PAT scoped to read+write on agentwrit only
+#
+# Multi-arch note: amd64 + arm64 built via QEMU emulation on the x86 runner.
+# Build is ~2-3x longer than amd64-only but covers Apple Silicon, Raspberry
+# Pi, and ARM cloud hosts. If this becomes a bottleneck, switch to a matrix
+# with native arm64 runners (GitHub's arm64 hosted runners are in preview
+# for public repos — TD worth opening when we're paying attention to build
+# latency).
+#
+# Supply-chain: the released image is signed with cosign keyless
+# (OIDC-issued Sigstore certificate from GitHub Actions workload identity).
+# Verify with:
+#   cosign verify devonartis/agentwrit:latest \
+#     --certificate-identity-regexp='^https://github.com/devonartis/agentwrit/.github/workflows/release.yml@' \
+#     --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false  # never cancel a release mid-push
+
+permissions:
+  contents: read
+  packages: write        # not used for Docker Hub, but future-proof if we mirror to GHCR
+  id-token: write        # required for cosign keyless signing (OIDC)
+
+jobs:
+  publish:
+    name: publish-dockerhub
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Set up QEMU (for arm64 via emulation)
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a  # v4.0.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4.0.0
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract image metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf  # v6.0.0
+        with:
+          images: devonartis/agentwrit
+          # Tagging strategy:
+          #   - `latest`          — only on default branch push (main)
+          #   - `main-<sha>`      — every main push for reproducibility
+          #   - `v1.2.3` etc.     — semver tags when a release tag is pushed
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=main-${{ github.sha }},enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+
+      - name: Build and push multi-arch image
+        id: build
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f  # v7.1.0
+        with:
+          context: .
+          target: broker
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003  # v4.1.1
+
+      - name: Sign the published image (keyless)
+        # Signs EVERY tag the build-push step emitted, using the image digest
+        # to avoid signing a moving target. Keyless mode uses GitHub OIDC to
+        # get a short-lived Sigstore certificate — no long-lived signing key
+        # to rotate or leak. Verify on the pull side with `cosign verify`.
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          for tag in $TAGS; do
+            echo "Signing ${tag}@${DIGEST}"
+            cosign sign --yes "${tag}@${DIGEST}"
+          done
+
+      - name: Publish summary
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo "## Published image"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Registry | Docker Hub |"
+            echo "| Repository | \`devonartis/agentwrit\` |"
+            echo "| Digest | \`${DIGEST}\` |"
+            echo "| Platforms | \`linux/amd64\`, \`linux/arm64\` |"
+            echo "| Signed | keyless (cosign + Sigstore) |"
+            echo ""
+            echo "### Tags"
+            for tag in $TAGS; do
+              echo "- \`$tag\`"
+            done
+            echo ""
+            echo "### Pull"
+            echo '```bash'
+            echo "docker pull devonartis/agentwrit:latest"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -45,3 +45,11 @@ sbom.spdx.json
 # strip_for_main.sh and .githooks/pre-commit both enforce this for main;
 # ignoring it in .gitignore prevents accidental commits on ANY branch.
 .vscode/
+
+# Credential scratch pads — any filename containing TOKEN / SECRET / CREDENTIAL
+# is assumed to be a temporary holding spot for a real secret and must never
+# be committed. If a legitimate config file needs one of these words in its
+# name, allow-list it explicitly with a negation pattern (e.g. !config/example_TOKEN.yaml).
+*TOKEN*
+*SECRET*
+*CREDENTIAL*
