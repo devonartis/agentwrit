@@ -20,7 +20,7 @@
 //
 // The package registers Prometheus counters, gauges, and histograms via
 // promauto so they are automatically collected by the default registry.
-// Metric names are prefixed with "agentauth_" to namespace them.
+// Metric names are prefixed with "agentwrit_" to namespace them.
 package obs
 
 import (
@@ -123,49 +123,49 @@ func emit(w *os.File, module, level, component, msg string, ctx []string) {
 // TokensIssuedTotal counts the number of tokens issued, partitioned by the
 // primary scope string granted in each token.
 var TokensIssuedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-	Name: "agentauth_tokens_issued_total",
+	Name: "agentwrit_tokens_issued_total",
 	Help: "Total number of tokens issued",
 }, []string{"scope"})
 
 // TokensRevokedTotal counts revocation operations, partitioned by the
 // revocation level ("token", "agent", "task", or "chain").
 var TokensRevokedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-	Name: "agentauth_tokens_revoked_total",
+	Name: "agentwrit_tokens_revoked_total",
 	Help: "Total number of tokens revoked",
 }, []string{"level"})
 
 // RegistrationsTotal counts agent registration attempts, partitioned by
 // outcome ("success" or "failure").
 var RegistrationsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-	Name: "agentauth_registrations_total",
+	Name: "agentwrit_registrations_total",
 	Help: "Total number of agent registrations",
 }, []string{"status"})
 
 // AdminAuthTotal counts admin authentication attempts, partitioned by
 // outcome ("success" or "failure").
 var AdminAuthTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-	Name: "agentauth_admin_auth_total",
+	Name: "agentwrit_admin_auth_total",
 	Help: "Total number of admin auth attempts",
 }, []string{"status"})
 
 // LaunchTokensCreatedTotal counts the total number of launch tokens created
 // through the admin API.
 var LaunchTokensCreatedTotal = promauto.NewCounter(prometheus.CounterOpts{
-	Name: "agentauth_launch_tokens_created_total",
+	Name: "agentwrit_launch_tokens_created_total",
 	Help: "Total number of launch tokens created",
 })
 
 // ActiveAgents tracks the current number of registered agents. It is
 // incremented on successful registration; no decrement is implemented yet.
 var ActiveAgents = promauto.NewGauge(prometheus.GaugeOpts{
-	Name: "agentauth_active_agents",
+	Name: "agentwrit_active_agents",
 	Help: "Number of currently active agents",
 })
 
 // RequestDuration observes HTTP request durations in seconds, partitioned
 // by the logical endpoint name (e.g. "token_issue").
 var RequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-	Name:    "agentauth_request_duration_seconds",
+	Name:    "agentwrit_request_duration_seconds",
 	Help:    "Request duration in seconds",
 	Buckets: prometheus.DefBuckets,
 }, []string{"endpoint"})
@@ -173,33 +173,33 @@ var RequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 // ClockSkewTotal counts the number of times a clock-skew condition was
 // detected during token validation (nbf in the future).
 var ClockSkewTotal = promauto.NewCounter(prometheus.CounterOpts{
-	Name: "agentauth_clock_skew_total",
+	Name: "agentwrit_clock_skew_total",
 	Help: "Number of clock skew events detected",
 })
 
 // AuditEventsTotal counts audit events recorded, partitioned by event type.
 var AuditEventsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-	Name: "agentauth_audit_events_total",
+	Name: "agentwrit_audit_events_total",
 	Help: "Total number of audit events recorded",
 }, []string{"event_type"})
 
 // AuditWriteDuration observes the time to persist an audit event to SQLite.
 var AuditWriteDuration = promauto.NewHistogram(prometheus.HistogramOpts{
-	Name:    "agentauth_audit_write_duration_seconds",
+	Name:    "agentwrit_audit_write_duration_seconds",
 	Help:    "Time to write an audit event to SQLite",
 	Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1},
 })
 
 // DBErrorsTotal counts database operation errors, partitioned by operation.
 var DBErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-	Name: "agentauth_db_errors_total",
+	Name: "agentwrit_db_errors_total",
 	Help: "Total number of database errors",
 }, []string{"operation"})
 
 // AuditEventsLoaded is set once at startup with the count of events loaded
 // from SQLite to rebuild the hash chain.
 var AuditEventsLoaded = promauto.NewGauge(prometheus.GaugeOpts{
-	Name: "agentauth_audit_events_loaded",
+	Name: "agentwrit_audit_events_loaded",
 	Help: "Number of audit events loaded from SQLite at startup",
 })
 

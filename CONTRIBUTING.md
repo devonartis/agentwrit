@@ -344,7 +344,7 @@ Comments must explain what **reading the code alone would NOT tell you**:
 Use the `obs` package for structured logging:
 
 ```go
-import "github.com/devonartis/agentauth/internal/obs"
+import "github.com/devonartis/agentwrit/internal/obs"
 
 // Correct: Structured with context
 obs.Log(ctx, "token_validated",

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# core-contract.sh — L2.5 smoke test for agentauth-core
+# core-contract.sh — L2.5 smoke test for agentwrit
 #
 # Verifies the broker's core contract:
 #   1. /v1/health returns 200

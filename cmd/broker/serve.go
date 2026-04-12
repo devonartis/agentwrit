@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/devonartis/agentauth/internal/cfg"
-	"github.com/devonartis/agentauth/internal/obs"
+	"github.com/devonartis/agentwrit/internal/cfg"
+	"github.com/devonartis/agentwrit/internal/obs"
 )
 
 // buildServer creates an http.Server with production-hardened timeouts and

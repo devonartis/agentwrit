@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/devonartis/agentauth/internal/obs"
+	"github.com/devonartis/agentwrit/internal/obs"
 )
 
 // configLocations returns the ordered list of config file paths to check.

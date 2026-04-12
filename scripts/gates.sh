@@ -110,8 +110,11 @@ fi
 # Format: gofmt -l must return empty
 run_gate "format" bash -c 'test -z "$(gofmt -l .)"'
 
-# Contamination: zero enterprise refs in core
-run_gate "contamination" bash -c "! grep -ri 'hitl\|approval\|oidc\|federation\|cloud\|sidecar' internal/ cmd/ 2>/dev/null"
+# Contamination: zero enterprise refs in core, zero stale brand strings.
+# Brand alignment portion catches the gap that let obs.go metric names and
+# problemdetails.go URN namespace survive the first rebrand pass
+# (TD-RUNTIME-001 / TD-OBS-001).
+run_gate "contamination" bash -c "! grep -ri 'hitl\|approval\|oidc\|federation\|cloud\|sidecar' internal/ cmd/ 2>/dev/null && ! grep -rn 'urn:agentauth\|agentauth_\|github\.com/devonartis/agentauth[^-]' internal/ cmd/ --include='*.go' 2>/dev/null"
 
 run_gate "unit-tests" go test -short -count=1 ./...
 
@@ -141,7 +144,7 @@ if [[ "$MODE" == "full" ]]; then
 
   # Docker build: multi-stage image builds cleanly
   if docker info >/dev/null 2>&1; then
-    run_gate "docker-build" docker build -t agentauth-ci:local .
+    run_gate "docker-build" docker build -t agentwrit-ci:local .
   else
     skip_gate "docker-build" "Docker daemon not running"
   fi
