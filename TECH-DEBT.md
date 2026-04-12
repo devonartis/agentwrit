@@ -350,23 +350,25 @@ Audit triggered by discovery of hardcoded `iss: "agentauth"` in `internal/token/
 | TD-TOKEN-003 | ~~**Tests lock the issuer hardcode in place** — 6 assertions across `tkn_svc_test.go` and `val_mw_test.go`~~ | ~~HIGH~~ | **RESOLVED 2026-04-10** — all 6 assertions and 3 `cfg.Cfg{}` literal constructions updated to drive from fixture `Issuer: "test-issuer"`. Same branch as TD-TOKEN-001. | `internal/token/tkn_svc_test.go`, `internal/authz/val_mw_test.go`, `internal/deleg/deleg_svc_test.go`, `internal/admin/admin_svc_test.go` |
 | TD-TEST-001 | ~~**Test SPIFFE fixtures leak `agentauth.local`**~~ | ~~MEDIUM~~ | **RESOLVED 2026-04-10** — all `agentauth.local` references in test files swept to `test.local` (mechanical sed across `admin_hdl_test.go`, `identity/id_svc_test.go`, `mutauth/{heartbeat,discovery,mut_auth_hdl}_test.go`, `token/tkn_svc_test.go`). Same branch as TD-TOKEN-001. | `internal/admin/admin_hdl_test.go`, `internal/identity/id_svc_test.go`, `internal/mutauth/heartbeat_test.go`, `internal/mutauth/discovery_test.go`, `internal/mutauth/mut_auth_hdl_test.go`, `internal/token/tkn_svc_test.go` |
 | TD-CLI-001 | ~~**Binary name `aactl` → `awrit` rename**~~ | ~~MEDIUM~~ | **RESOLVED 2026-04-10** — `cmd/aactl/` → `cmd/awrit/`, `docs/aactl-reference.md` → `docs/awrit-reference.md`, Cobra command `Use` field, all ship-to-main doc/script/test/config references rewritten. Evidence files under `tests/*/evidence/*.md` preserved as-is (historical records). Branch `fix/td-cli-001-aactl-to-awrit-rename`. | `cmd/awrit/`, `docs/awrit-reference.md`, scripts, docs, tests |
+| TD-RUNTIME-001 | ~~**Problem-detail URN namespace leaked former brand** — runtime emitted `urn:agentauth:error:*` while docs said `urn:agentwrit:error:*`~~ | ~~HIGH~~ | **RESOLVED 2026-04-12** — `internal/problemdetails` now emits the AgentWrit URN namespace and package comments match. Branch `fix/rebrand-runtime-doc-alignment`. | `internal/problemdetails/problemdetails.go`, docs with RFC 7807 examples |
+| TD-OBS-001 | ~~**Prometheus metric namespace leaked former brand** — runtime exposed `agentauth_*` while docs said `agentwrit_*`~~ | ~~HIGH~~ | **RESOLVED 2026-04-12** — all broker metric names now use `agentwrit_*`; metrics test and docs aligned. Branch `fix/rebrand-runtime-doc-alignment`. | `internal/obs/obs.go`, `internal/handler/handler_test.go`, metrics docs |
 
 **Not creating a TD for env var prefix** — decided 2026-04-10 to keep `AA_*` indefinitely. Neutral enough (two letters), operator-facing, highest-friction change in the whole rebrand. Re-evaluate at 1.0 if ever.
 
-| TD-CLI-002 | **`awrit init` writes config to `~/.agentauth/config` but broker reads `~/.broker/config`** — broken first-run path | **HIGH** | Immediate — breaks first-run UX | `cmd/awrit/init_cmd.go:53-64` |
+| TD-CLI-002 | ~~**`awrit init` writes config to `~/.agentauth/config` but broker reads `~/.broker/config`** — broken first-run path~~ | ~~HIGH~~ | **RESOLVED 2026-04-12** — `resolveConfigPath()` now defaults to `~/.broker/config` and fallback `/etc/broker/config`; unit test added. Branch `fix/rebrand-runtime-doc-alignment`. | `cmd/awrit/init_cmd.go:53-64`, `cmd/awrit/init_cmd_test.go` |
 | TD-CLI-003 | **`docker-compose.yml` network still named `agentauth-net`** — docs say `agentwrit-net` after brand sweep | Low | Next compose-touching PR | `docker-compose.yml:35,42` |
 
-### TD-CLI-002 Detail: awrit init config path mismatch
+### TD-CLI-002 Detail: awrit init config path mismatch — RESOLVED 2026-04-12
 
 TD-CFG-002 (resolved 2026-04-10) updated `internal/cfg/configfile.go` to search `~/.broker/config` and `/etc/broker/config`. But commit `4e197a5` (TD-CLI-001, awrit rename) introduced `cmd/awrit/init_cmd.go` with `resolveConfigPath()` still returning `~/.agentauth/config` (home) and `/etc/agentauth/config` (fallback). The fix to the broker's *read* side and the creation of the CLI's *write* side happened in different commits and were never reconciled.
 
 **Impact:** A user who runs `awrit init` (no `--config-path`) gets a config at `~/.agentauth/config`. The broker auto-loads from `~/.broker/config`. The config is silently ignored and the broker starts with no admin secret, causing a `FATAL` exit.
 
-**Fix:** In `cmd/awrit/init_cmd.go:53-64`, update `resolveConfigPath()`:
+**Fix:** In `cmd/awrit/init_cmd.go:53-64`, `resolveConfigPath()` was updated:
 - `"/etc/agentauth/config"` → `"/etc/broker/config"`
 - `home + "/.agentauth/config"` → `home + "/.broker/config"`
 
-**Needs:** `fix/td-cli-002-awrit-init-config-path` branch + gates + PR. Bug report at `.plans/bugs/BUG-CLI-002-awrit-init-config-path.md`.
+**Verification:** `cmd/awrit/init_cmd_test.go` now asserts the default user config path matches the broker's `~/.broker/config` search path. Bug report at `.plans/bugs/BUG-CLI-002-awrit-init-config-path.md`.
 
 ## When to Fix
 

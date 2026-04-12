@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devonartis/agentauth/internal/audit"
-	"github.com/devonartis/agentauth/internal/cfg"
-	"github.com/devonartis/agentauth/internal/store"
-	"github.com/devonartis/agentauth/internal/token"
+	"github.com/devonartis/agentwrit/internal/audit"
+	"github.com/devonartis/agentwrit/internal/cfg"
+	"github.com/devonartis/agentwrit/internal/store"
+	"github.com/devonartis/agentwrit/internal/token"
 )
 
 func setupIdSvc(t *testing.T) (*IdSvc, *store.SqlStore, *audit.AuditLog) {

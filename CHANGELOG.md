@@ -7,17 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Runtime rebrand alignment (2026-04-12)
+
+- **`internal/problemdetails/problemdetails.go`** — RFC 7807 problem `type` URNs now use `urn:agentwrit:error:{errType}` instead of the former `urn:agentauth:error:{errType}` namespace, matching the published API docs.
+- **`internal/obs/obs.go`** — Prometheus metric names now use the `agentwrit_` namespace. Updated the metrics test and troubleshooting/common-tasks docs so runtime output and docs agree.
+- **`cmd/awrit/init_cmd.go`** — `awrit init` now writes to the same default paths the broker auto-loads (`~/.broker/config`, fallback `/etc/broker/config`). Added a unit test for the default user config path.
+- **`docs/common-tasks.md`** — JWT `iss` claim text now matches the actual `AA_ISSUER` behavior, and the alert table no longer lists non-existent broker/app-auth/expired-token metrics.
+
 ### Fixed — Docs audit P1/P2 corrections (2026-04-12)
 
 - **`docs/getting-started-user.md`** — admin auth examples used the literal `"my-secret-key-change-in-production"` while the guide starts the broker with a randomly generated `$AA_ADMIN_SECRET`. Examples now reference `$AA_ADMIN_SECRET` so the first-run path works without 401s.
-- **`docs/awrit-reference.md`** — `awrit init` sample output showed `~/.agentwrit/config`; corrected to `~/.broker/config` (the actual default write path — or rather, the broker's read path; see TD-CLI-002 for the underlying code bug).
+- **`docs/awrit-reference.md`** — `awrit init` sample output showed `~/.agentwrit/config`; corrected to `~/.broker/config`, matching the broker's read path and the CLI default after TD-CLI-002.
 - **`docs/api.md`** — JWT claims table corrected: `iss` is driven by `AA_ISSUER` (empty by default, issuer validation skipped); app token subject is `app:{internal_app_id}` not `app:{client_id}`; `aud` is driven by `AA_AUDIENCE` (omitted if unset, audience validation skipped).
 - **`docs/getting-started-operator.md`** — `AA_AUDIENCE` default corrected from `"agentwrit"` to *(empty)*. SQLite persistence note corrected: setting `AA_DB_PATH=""` does not enable memory-only mode — unset uses the `./data.db` default.
 - **`docs/api/openapi.yaml`** — `info.license` corrected from `Apache-2.0` to `AGPL-3.0` with the correct license URL. Matches `LICENSE`, `README.md`, and `CLA.md`.
 - **`docker-compose.yml`** — Docker bridge network renamed `agentauth-net` → `agentwrit-net` to match brand sweep and operator docs.
 - **`docs/README.md`** — API reference entry corrected from "22 HTTP endpoints" to "19". Concepts entry corrected from "seven components" to "eight".
 - **`docs/concepts.md`** — intro sentence corrected from "seven components" to "eight".
-- **`TECH-DEBT.md`** — added TD-CLI-002 (HIGH: `awrit init` writes to `~/.agentauth/config`, broker reads `~/.broker/config` — broken first-run path introduced in commit `4e197a5`) and TD-CLI-003 (Low: docker-compose.yml network name lag). Bug report at `.plans/bugs/BUG-CLI-002-awrit-init-config-path.md`.
+- **`TECH-DEBT.md`** — added TD-CLI-002 (HIGH: `awrit init` writes to `~/.agentauth/config`, broker reads `~/.broker/config` — broken first-run path introduced in commit `4e197a5`) and TD-CLI-003 (Low: docker-compose.yml network name lag). Bug report at `.plans/bugs/BUG-CLI-002-awrit-init-config-path.md`; TD-CLI-002 is resolved by the runtime rebrand alignment fix above.
 
 ### Renamed CLI binary `aactl` → `awrit` (TD-CLI-001)
 

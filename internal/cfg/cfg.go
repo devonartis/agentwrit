@@ -32,7 +32,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/devonartis/agentauth/internal/obs"
+	"github.com/devonartis/agentwrit/internal/obs"
 
 	"golang.org/x/crypto/bcrypt"
 )

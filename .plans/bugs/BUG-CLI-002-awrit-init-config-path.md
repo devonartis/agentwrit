@@ -4,13 +4,13 @@
 **Severity:** HIGH  
 **Introduced in:** commit `4e197a5` (`fix(cli): rename aactl binary to awrit (TD-CLI-001)`)  
 **Linked TD:** TD-CLI-002  
-**Status:** Open — fix branch not yet created
+**Status:** Resolved 2026-04-12 — fixed on `fix/rebrand-runtime-doc-alignment`
 
 ---
 
 ## Summary
 
-`awrit init` writes the generated config file to `~/.agentauth/config`. The broker's
+`awrit init` wrote the generated config file to `~/.agentauth/config`. The broker's
 config auto-loader reads from `~/.broker/config`. These paths do not match. A user
 who runs `awrit init` without `--config-path` ends up with a config file the broker
 silently ignores, causing the broker to start with no admin secret and exit with a FATAL.
@@ -92,7 +92,7 @@ func resolveConfigPath() string {
 }
 ```
 
-Two literal changes. No other files affected.
+Two literal changes plus a unit test in `cmd/awrit/init_cmd_test.go`.
 
 ---
 
@@ -125,5 +125,5 @@ ends in `.broker/config`.
 
 ## Branch
 
-`fix/td-cli-002-awrit-init-config-path` off `develop`  
-Needs: code fix + unit test + `./scripts/gates.sh task` green + PR
+Fixed on `fix/rebrand-runtime-doc-alignment` off the updated docs branch/develop.
+Needs: PR review and merge.

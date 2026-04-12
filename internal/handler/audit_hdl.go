@@ -6,10 +6,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/devonartis/agentauth/internal/audit"
-	"github.com/devonartis/agentauth/internal/authz"
-	"github.com/devonartis/agentauth/internal/obs"
-	"github.com/devonartis/agentauth/internal/problemdetails"
+	"github.com/devonartis/agentwrit/internal/audit"
+	"github.com/devonartis/agentwrit/internal/authz"
+	"github.com/devonartis/agentwrit/internal/obs"
+	"github.com/devonartis/agentwrit/internal/problemdetails"
 )
 
 // AuditHdl handles GET /v1/audit/events. It accepts optional query

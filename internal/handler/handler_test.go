@@ -15,17 +15,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/devonartis/agentauth/internal/admin"
-	"github.com/devonartis/agentauth/internal/audit"
-	"github.com/devonartis/agentauth/internal/authz"
-	"github.com/devonartis/agentauth/internal/cfg"
-	"github.com/devonartis/agentauth/internal/deleg"
-	"github.com/devonartis/agentauth/internal/handler"
-	"github.com/devonartis/agentauth/internal/identity"
-	"github.com/devonartis/agentauth/internal/problemdetails"
-	"github.com/devonartis/agentauth/internal/revoke"
-	"github.com/devonartis/agentauth/internal/store"
-	"github.com/devonartis/agentauth/internal/token"
+	"github.com/devonartis/agentwrit/internal/admin"
+	"github.com/devonartis/agentwrit/internal/audit"
+	"github.com/devonartis/agentwrit/internal/authz"
+	"github.com/devonartis/agentwrit/internal/cfg"
+	"github.com/devonartis/agentwrit/internal/deleg"
+	"github.com/devonartis/agentwrit/internal/handler"
+	"github.com/devonartis/agentwrit/internal/identity"
+	"github.com/devonartis/agentwrit/internal/problemdetails"
+	"github.com/devonartis/agentwrit/internal/revoke"
+	"github.com/devonartis/agentwrit/internal/store"
+	"github.com/devonartis/agentwrit/internal/token"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -1114,10 +1114,10 @@ func TestMetrics_AfterExercisedFlows(t *testing.T) {
 
 	// Check for expected Prometheus metric names.
 	expectedMetrics := []string{
-		"agentauth_tokens_issued_total",
-		"agentauth_tokens_revoked_total",
-		"agentauth_registrations_total",
-		"agentauth_admin_auth_total",
+		"agentwrit_tokens_issued_total",
+		"agentwrit_tokens_revoked_total",
+		"agentwrit_registrations_total",
+		"agentwrit_admin_auth_total",
 	}
 	for _, metric := range expectedMetrics {
 		if !strings.Contains(body, metric) {

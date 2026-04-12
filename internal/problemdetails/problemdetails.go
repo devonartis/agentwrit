@@ -1,8 +1,8 @@
 // Package problemdetails implements RFC 7807 "application/problem+json"
-// error responses and HTTP request infrastructure for the AgentAuth broker.
+// error responses and HTTP request infrastructure for the AgentWrit broker.
 //
-// All broker error responses use the AgentAuth URN namespace
-// "urn:agentauth:error:{errType}" for machine-readable error categorization.
+// All broker error responses use the AgentWrit URN namespace
+// "urn:agentwrit:error:{errType}" for machine-readable error categorization.
 // Responses include a unique request ID for log correlation, an optional
 // error code for programmatic handling, and an optional diagnostic hint.
 //
@@ -26,8 +26,8 @@ import (
 )
 
 // ProblemDetail represents an RFC 7807 "application/problem+json" error
-// response. The Type field uses the AgentAuth URN namespace
-// "urn:agentauth:error:{errType}". It includes extensions for diagnostics
+// response. The Type field uses the AgentWrit URN namespace
+// "urn:agentwrit:error:{errType}". It includes extensions for diagnostics
 // and diagnostics: ErrorCode, RequestID, and an optional Hint.
 type ProblemDetail struct {
 	Type      string `json:"type"`
@@ -52,7 +52,7 @@ func WriteProblemExtended(ctx context.Context, w http.ResponseWriter, status int
 	requestID := GetRequestID(ctx)
 
 	p := ProblemDetail{
-		Type:      "urn:agentauth:error:" + errType,
+		Type:      "urn:agentwrit:error:" + errType,
 		Title:     http.StatusText(status),
 		Status:    status,
 		Detail:    detail,

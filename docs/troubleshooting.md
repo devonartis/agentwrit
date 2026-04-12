@@ -740,36 +740,36 @@ The broker exposes metrics at `GET /v1/metrics` in Prometheus format. Use these 
 
 | Metric | Labels | What it measures |
 |--------|--------|-----------------|
-| `agentauth_tokens_issued_total` | `scope` | Total tokens issued, by scope |
-| `agentauth_tokens_revoked_total` | `level` | Revocations by level: `token`, `agent`, `task`, `chain` |
-| `agentauth_registrations_total` | `status` | Agent registrations: `success` or `failure` |
-| `agentauth_admin_auth_total` | `status` | Admin auth attempts: `success` or `failure` |
-| `agentauth_launch_tokens_created_total` | — | Launch tokens created via admin API |
-| `agentauth_clock_skew_total` | — | Clock skew events detected (token `nbf` in the future) |
-| `agentauth_audit_events_total` | `event_type` | Audit events recorded, by type |
-| `agentauth_db_errors_total` | `operation` | Database operation errors |
+| `agentwrit_tokens_issued_total` | `scope` | Total tokens issued, by scope |
+| `agentwrit_tokens_revoked_total` | `level` | Revocations by level: `token`, `agent`, `task`, `chain` |
+| `agentwrit_registrations_total` | `status` | Agent registrations: `success` or `failure` |
+| `agentwrit_admin_auth_total` | `status` | Admin auth attempts: `success` or `failure` |
+| `agentwrit_launch_tokens_created_total` | — | Launch tokens created via admin API |
+| `agentwrit_clock_skew_total` | — | Clock skew events detected (token `nbf` in the future) |
+| `agentwrit_audit_events_total` | `event_type` | Audit events recorded, by type |
+| `agentwrit_db_errors_total` | `operation` | Database operation errors |
 
 ### Gauges
 
 | Metric | What it measures |
 |--------|-----------------|
-| `agentauth_active_agents` | Current number of registered agents |
-| `agentauth_audit_events_loaded` | Audit events loaded from SQLite at startup (set once) |
+| `agentwrit_active_agents` | Current number of registered agents |
+| `agentwrit_audit_events_loaded` | Audit events loaded from SQLite at startup (set once) |
 
 ### Histograms
 
 | Metric | Labels | What it measures |
 |--------|--------|-----------------|
-| `agentauth_request_duration_seconds` | `endpoint` | Request duration by endpoint (e.g., `token_issue`) |
-| `agentauth_audit_write_duration_seconds` | — | Time to persist an audit event to SQLite |
+| `agentwrit_request_duration_seconds` | `endpoint` | Request duration by endpoint (e.g., `token_issue`) |
+| `agentwrit_audit_write_duration_seconds` | — | Time to persist an audit event to SQLite |
 
 ### Key Alerts to Consider
 
-- **`agentauth_admin_auth_total{status="failure"}` rising** — possible brute-force attempt on the admin secret
-- **`agentauth_registrations_total{status="failure"}` rising** — agents failing to register (expired launch tokens? wrong signatures?)
-- **`agentauth_tokens_revoked_total` spike** — mass revocation event, investigate the cause
-- **`agentauth_db_errors_total` > 0** — database issues, check SQLite file permissions and disk space
-- **`agentauth_clock_skew_total` > 0** — clock drift between broker and clients, check NTP
+- **`agentwrit_admin_auth_total{status="failure"}` rising** — possible brute-force attempt on the admin secret
+- **`agentwrit_registrations_total{status="failure"}` rising** — agents failing to register (expired launch tokens? wrong signatures?)
+- **`agentwrit_tokens_revoked_total` spike** — mass revocation event, investigate the cause
+- **`agentwrit_db_errors_total` > 0** — database issues, check SQLite file permissions and disk space
+- **`agentwrit_clock_skew_total` > 0** — clock drift between broker and clients, check NTP
 
 ---
 

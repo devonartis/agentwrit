@@ -5,10 +5,10 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/devonartis/agentauth/internal/identity"
-	"github.com/devonartis/agentauth/internal/obs"
-	"github.com/devonartis/agentauth/internal/problemdetails"
-	"github.com/devonartis/agentauth/internal/store"
+	"github.com/devonartis/agentwrit/internal/identity"
+	"github.com/devonartis/agentwrit/internal/obs"
+	"github.com/devonartis/agentwrit/internal/problemdetails"
+	"github.com/devonartis/agentwrit/internal/store"
 )
 
 // RegHdl handles POST /v1/register — the agent's entry point into the system.

@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/devonartis/agentauth/internal/obs"
-	"github.com/devonartis/agentauth/internal/problemdetails"
-	"github.com/devonartis/agentauth/internal/revoke"
-	"github.com/devonartis/agentauth/internal/token"
+	"github.com/devonartis/agentwrit/internal/obs"
+	"github.com/devonartis/agentwrit/internal/problemdetails"
+	"github.com/devonartis/agentwrit/internal/revoke"
+	"github.com/devonartis/agentwrit/internal/token"
 )
 
 // ValHdl handles POST /v1/token/validate — the token introspection endpoint.

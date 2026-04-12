@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/devonartis/agentauth/internal/problemdetails"
+	"github.com/devonartis/agentwrit/internal/problemdetails"
 )
 
 // RateLimiter implements a per-IP token bucket rate limiter.

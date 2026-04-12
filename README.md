@@ -1,10 +1,10 @@
-# AgentAuth
+# AgentWrit
 
-[![CI](https://github.com/devonartis/agentauth/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/devonartis/agentauth/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/devonartis/agentauth/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/devonartis/agentauth/actions/workflows/codeql.yml)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/devonartis/agentauth/badge)](https://securityscorecards.dev/viewer/?uri=github.com/devonartis/agentauth)
-[![Go Reference](https://pkg.go.dev/badge/github.com/devonartis/agentauth.svg)](https://pkg.go.dev/github.com/devonartis/agentauth)
-[![Go Report Card](https://goreportcard.com/badge/github.com/devonartis/agentauth)](https://goreportcard.com/report/github.com/devonartis/agentauth)
+[![CI](https://github.com/devonartis/agentwrit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/devonartis/agentwrit/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/devonartis/agentwrit/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/devonartis/agentwrit/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/devonartis/agentwrit/badge)](https://securityscorecards.dev/viewer/?uri=github.com/devonartis/agentwrit)
+[![Go Reference](https://pkg.go.dev/badge/github.com/devonartis/agentwrit.svg)](https://pkg.go.dev/github.com/devonartis/agentwrit)
+[![Go Report Card](https://goreportcard.com/badge/github.com/devonartis/agentwrit)](https://goreportcard.com/report/github.com/devonartis/agentwrit)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Go Version](https://img.shields.io/badge/Go-1.24%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
@@ -53,8 +53,8 @@ Prerequisites: [Go 1.24+](https://go.dev/dl/), [Docker](https://docs.docker.com/
 
 ```bash
 # 1. Clone and enter the repo
-git clone https://github.com/devonartis/agentauth.git
-cd agentauth
+git clone https://github.com/devonartis/agentwrit.git
+cd agentwrit
 
 # 2. Set the admin secret (required — broker exits without it)
 export AA_ADMIN_SECRET="$(openssl rand -base64 32)"
@@ -81,12 +81,12 @@ go build -o bin/broker ./cmd/broker/
 go build -o bin/awrit  ./cmd/awrit/
 
 # 2. Generate a config file with a secure admin secret
-./bin/awrit init --config-path /tmp/agentauth/config
+./bin/awrit init --config-path /tmp/agentwrit/config
 
 # 3. Start the broker
-AA_CONFIG_PATH=/tmp/agentauth/config \
-AA_DB_PATH=/tmp/agentauth/agentauth.db \
-AA_SIGNING_KEY_PATH=/tmp/agentauth/signing.key \
+AA_CONFIG_PATH=/tmp/agentwrit/config \
+AA_DB_PATH=/tmp/agentwrit/data.db \
+AA_SIGNING_KEY_PATH=/tmp/agentwrit/signing.key \
   ./bin/broker
 
 # 4. In a new terminal, verify health
@@ -276,8 +276,8 @@ All broker environment variables use the `AA_` prefix. The broker also reads con
 | `AA_PORT` | `8080` | HTTP listen port |
 | `AA_BIND_ADDRESS` | `127.0.0.1` | Bind address. Set to `0.0.0.0` for Docker containers. |
 | `AA_LOG_LEVEL` | `verbose` | Logging verbosity: `quiet`, `standard`, `verbose`, `trace` |
-| `AA_TRUST_DOMAIN` | `agentauth.local` | SPIFFE trust domain for agent identity URIs |
-| `AA_AUDIENCE` | `agentauth` | Expected JWT audience claim. Set empty to skip validation. |
+| `AA_TRUST_DOMAIN` | `agentwrit.local` | SPIFFE trust domain for agent identity URIs |
+| `AA_AUDIENCE` | *(empty)* | Expected JWT audience claim. Unset or empty skips audience validation. |
 | `AA_SEED_TOKENS` | `false` | Print seed tokens on startup (dev/demo only) |
 
 ### Token lifetimes
@@ -294,7 +294,7 @@ If `AA_DEFAULT_TTL` exceeds `AA_MAX_TTL`, the broker logs a warning at startup a
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AA_DB_PATH` | `./agentauth.db` | SQLite database path (audit events, revocations, agents, apps) |
+| `AA_DB_PATH` | `./data.db` | SQLite database path (audit events, revocations, agents, apps) |
 | `AA_SIGNING_KEY_PATH` | `./signing.key` | Ed25519 signing key path. Auto-generated on first startup. |
 | `AA_CONFIG_PATH` | *(none)* | Path to config file from `awrit init`. Optional — env vars override config file values. |
 
@@ -431,9 +431,9 @@ If your infrastructure handles TLS at the load balancer or reverse proxy, run th
 ```nginx
 server {
     listen 443 ssl;
-    server_name agentauth.example.com;
-    ssl_certificate     /etc/ssl/certs/agentauth.pem;
-    ssl_certificate_key /etc/ssl/private/agentauth-key.pem;
+    server_name agentwrit.example.com;
+    ssl_certificate     /etc/ssl/certs/agentwrit.pem;
+    ssl_certificate_key /etc/ssl/private/agentwrit-key.pem;
     location / {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;

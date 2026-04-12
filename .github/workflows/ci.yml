@@ -98,12 +98,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-      - run: |
+      - name: Enterprise contamination check
+        run: |
           if grep -ri 'hitl\|approval\|oidc\|federation\|cloud\|sidecar' internal/ cmd/ 2>/dev/null; then
             echo "FAIL: enterprise references found in core code"
             exit 1
           fi
           echo "PASS: no enterprise contamination"
+      - name: Brand alignment check
+        run: |
+          # Catches brand strings that should have been renamed during the
+          # AgentAuth → AgentWrit rebrand. See TD-RUNTIME-001 and TD-OBS-001
+          # for the gap this check closes (obs.go metric names and
+          # problemdetails.go URN namespace were missed in the first rebrand
+          # pass because the hardcoded identity audit only scoped JWT/config
+          # values, not Prometheus names or RFC 7807 URNs).
+          if grep -rn 'urn:agentauth\|agentauth_\|github\.com/devonartis/agentauth[^-]' internal/ cmd/ --include='*.go' 2>/dev/null; then
+            echo "FAIL: stale 'agentauth' brand strings found in runtime code"
+            echo "Rename to 'agentwrit' and update tests / docs to match."
+            exit 1
+          fi
+          echo "PASS: no stale brand strings"
 
   unit-tests:
     name: unit-tests
@@ -180,7 +195,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - name: Build image
-        run: docker build -t agentauth-ci:${{ github.sha }} .
+        run: docker build -t agentwrit-ci:${{ github.sha }} .
 
   smoke-l25:
     name: smoke-l25
