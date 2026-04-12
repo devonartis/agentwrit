@@ -1,4 +1,4 @@
-// Command aactl revoke subcommand — revokes tokens at various granularity levels.
+// Command awrit revoke subcommand — revokes tokens at various granularity levels.
 package main
 
 import (

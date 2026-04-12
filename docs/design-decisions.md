@@ -1,6 +1,6 @@
-# AgentAuth Design Decisions — Why We Built It This Way
+# Design Decisions — Why We Built It This Way
 
-> This document traces the reasoning behind every major design choice in AgentAuth. Not what the system does — why it does it that way. Each section starts with the problem we faced, the options we considered, and why we chose what we chose.
+Every design choice in AgentWrit traces back to a problem we faced, options we considered, and a reason we chose what we chose. This document tells you the "why" behind the architecture.
 
 ---
 
@@ -173,7 +173,7 @@ The broker doesn't maintain a registry of "valid" scopes. Any three-part string 
 
 This is intentional. The broker doesn't know what `read:data:customers` means to your application. It only knows whether one scope covers another. Your application decides what permissions the scope actually grants.
 
-This means AgentAuth works with any application, any resource model, any permission structure — as long as it can be expressed in `action:resource:identifier` format.
+This means AgentWrit works with any application, any resource model, any permission structure — as long as it can be expressed in `action:resource:identifier` format.
 
 ---
 
@@ -207,11 +207,11 @@ The scope ceiling is the key design element. It's a hard cap set by the operator
 
 ### What the Sidecar Was
 
-Early versions of AgentAuth had a sidecar process that ran alongside each agent. The sidecar handled token management — the agent called the sidecar on localhost, and the sidecar called the broker. The idea was to keep agents simple: they don't need to know about tokens, just call the sidecar.
+Early versions of AgentWrit had a sidecar process that ran alongside each agent. The sidecar handled token management — the agent called the sidecar on localhost, and the sidecar called the broker. The idea was to keep agents simple: they don't need to know about tokens, just call the sidecar.
 
 ### Why We Removed It (Phase 0)
 
-The sidecar was tied to Docker Compose as a mandatory dependency. You couldn't run AgentAuth without Docker orchestrating the sidecar alongside each agent container. That's a non-starter for:
+The sidecar was tied to Docker Compose as a mandatory dependency. You couldn't run AgentWrit without Docker orchestrating the sidecar alongside each agent container. That's a non-starter for:
 
 - Bare-metal deployments
 - Kubernetes (which has its own sidecar patterns)
@@ -258,7 +258,7 @@ Admin can create launch tokens via `POST /v1/admin/launch-tokens`. When admin cr
 
 ### Why This Exists
 
-**Bootstrapping.** Before any apps are registered, the operator needs to test the system. The flow is: authenticate → create launch token → register test agent → verify the flow works. This is the `aactl init → aactl token create-launch → test` development workflow.
+**Bootstrapping.** Before any apps are registered, the operator needs to test the system. The flow is: authenticate → create launch token → register test agent → verify the flow works. This is the `awrit init → awrit token create-launch → test` development workflow.
 
 ### Why It's a Problem in Production
 
@@ -317,3 +317,25 @@ Each decision builds on the previous:
 9. **OAuth doesn't fit machine-to-machine ephemeral agents** → own token system, OIDC bridge as enterprise add-on
 10. **Admin launch token creation bypasses ceiling** → restrict to dev mode (TD-013)
 11. **Different failure scenarios need different blast radii** → four revocation levels
+
+---
+
+## What's Next?
+
+You understand why AgentWrit is built the way it is. Time to put it to use:
+
+**[Your First Five Minutes →](getting-started-user.md)**
+Run a local setup, walk through the registration flow, and get your first agent token.
+
+Or dive deeper:
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| Build AgentWrit into your agent code | [Getting Started: Developer](getting-started-developer.md) |
+| Deploy and operate the broker | [Getting Started: Operator](getting-started-operator.md) |
+| See the internal architecture and package map | [Architecture](architecture.md) |
+| Look up where features live in the codebase | [Implementation Map](implementation-map.md) |
+
+---
+
+*Previous: [The Credential Lifecycle](credential-model.md) · Next: [Your First Five Minutes](getting-started-user.md)*

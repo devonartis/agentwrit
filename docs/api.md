@@ -1,24 +1,18 @@
 # API Reference
 
-> **Document Version:** 3.0 | **Last Updated:** March 2026 | **Status:** Current
->
-> **Audience:** Developers and operators who need the definitive contract for every endpoint.
->
-> **Prerequisites:** [Concepts](concepts.md) for background, [Getting Started: Developer](getting-started-developer.md) or [Getting Started: Operator](getting-started-operator.md) for walkthroughs.
->
-> **Next steps:** [Troubleshooting](troubleshooting.md) for error resolution | [Common Tasks](common-tasks.md) for step-by-step workflows.
+Complete HTTP API specification for all endpoints.
 
 ---
 
 ## Overview
 
-AgentAuth exposes a JSON HTTP API. All request and response bodies use `Content-Type: application/json`. The broker listens on port 8080 by default (`AA_PORT`).
+AgentWrit exposes a JSON HTTP API. All request and response bodies use `Content-Type: application/json`. The broker listens on port 8080 by default (`AA_PORT`).
 
 All error responses use RFC 7807 `application/problem+json` format:
 
 ```json
 {
-  "type": "urn:agentauth:error:{errType}",
+  "type": "urn:agentwrit:error:{errType}",
   "title": "HTTP Status Text",
   "status": 400,
   "detail": "human-readable description",
@@ -38,6 +32,21 @@ All responses include security headers: `X-Content-Type-Options: nosniff`, `Cach
 Request bodies are limited to 1 MB on ALL endpoints (enforced by global middleware).
 
 **Error sanitization:** Token validation, renewal, and auth middleware endpoints return generic error messages (e.g., `"token is invalid or expired"`, `"token renewal failed"`, `"token verification failed"`) to prevent leaking internal details to clients.
+
+---
+
+## Rate Limiting
+
+Authentication endpoints are rate-limited to protect against brute-force attacks.
+
+| Endpoint | Rate | Burst | Key | Retry-After |
+|----------|------|-------|-----|-------------|
+| `POST /v1/admin/auth` | 5 req/s | 10 | Per IP address | 1 second |
+| `POST /v1/app/auth` | Configurable | Configurable | Per `client_id` (falls back to IP) | 60 seconds |
+
+When a rate limit is exceeded, the broker returns `429 Too Many Requests` in RFC 7807 Problem Details format with a `Retry-After` header.
+
+**Production note:** The broker extracts client IP from the `X-Forwarded-For` header. In production, always place the broker behind a reverse proxy that overwrites this header — otherwise clients can spoof their IP to bypass rate limits.
 
 ---
 
@@ -216,8 +225,8 @@ Verify a token and return its claims. Also checks revocation status.
 {
   "valid": true,
   "claims": {
-    "iss": "agentauth",
-    "sub": "spiffe://agentauth.local/agent/orch/task/instance",
+    "iss": "agentwrit",
+    "sub": "spiffe://agentwrit.local/agent/orch/task/instance",
     "exp": 1707600000,
     "nbf": 1707599700,
     "iat": 1707599700,
@@ -355,7 +364,7 @@ curl -X POST http://localhost:8080/v1/register \
 
 ```json
 {
-  "agent_id": "spiffe://agentauth.local/agent/my-orchestrator/task-001/a1b2c3d4e5f6",
+  "agent_id": "spiffe://agentwrit.local/agent/my-orchestrator/task-001/a1b2c3d4e5f6",
   "access_token": "eyJ...",
   "expires_in": 300
 }
@@ -461,7 +470,7 @@ curl -X POST http://localhost:8080/v1/delegate \
   -H "Authorization: Bearer <delegator-token>" \
   -H "Content-Type: application/json" \
   -d '{
-    "delegate_to": "spiffe://agentauth.local/agent/orch/task/instance2",
+    "delegate_to": "spiffe://agentwrit.local/agent/orch/task/instance2",
     "scope": ["read:data:*"],
     "ttl": 60
   }'
@@ -473,7 +482,7 @@ curl -X POST http://localhost:8080/v1/delegate \
   "expires_in": 60,
   "delegation_chain": [
     {
-      "agent": "spiffe://agentauth.local/agent/orch/task/instance1",
+      "agent": "spiffe://agentwrit.local/agent/orch/task/instance1",
       "scope": ["read:data:*", "write:data:*"],
       "delegated_at": "2026-02-15T12:00:00Z",
       "signature": "a1b2c3..."
@@ -711,7 +720,7 @@ curl "http://localhost:8080/v1/audit/events?event_type=agent_registered&limit=10
       "id": "evt-000001",
       "timestamp": "2026-02-15T12:00:00Z",
       "event_type": "agent_registered",
-      "agent_id": "spiffe://agentauth.local/agent/orch/task/instance",
+      "agent_id": "spiffe://agentwrit.local/agent/orch/task/instance",
       "task_id": "task-001",
       "orch_id": "my-orchestrator",
       "detail": "Agent registered with scope [read:data:*]",
@@ -952,7 +961,7 @@ Agent self-revocation. An authenticated agent surrenders its credential by revok
 | 401 | `unauthorized` | Missing or invalid Bearer token |
 | 403 | `insufficient_scope` | Token already revoked |
 
-**Idempotency:** Releasing an already-released token returns 403 (token already revoked via the ValMw middleware). The `aactl` CLI treats this as idempotent success.
+**Idempotency:** Releasing an already-released token returns 403 (token already revoked via the ValMw middleware). The `awrit` CLI treats this as idempotent success.
 
 **Audit event:** `token_released` with the agent's SPIFFE ID and JTI.
 
@@ -972,13 +981,13 @@ The broker reads configuration from a config file and environment variables. Env
 **Config file location priority:**
 
 1. `AA_CONFIG_PATH` environment variable (explicit path)
-2. `/etc/agentauth/config` (system-wide)
-3. `~/.agentauth/config` (user-local)
+2. `/etc/broker/config` (system-wide)
+3. `~/.broker/config` (user-local)
 
 **Config file format:** Simple KEY=VALUE, one per line. Comments (`#`) and blank lines are ignored.
 
 ```
-# AgentAuth Configuration
+# AgentWrit Configuration
 MODE=production
 ADMIN_SECRET=$2a$12$...bcrypt-hash...
 ```
@@ -990,28 +999,28 @@ ADMIN_SECRET=$2a$12$...bcrypt-hash...
 | `MODE` | `development` or `production` (default: `development`) |
 | `ADMIN_SECRET` | Admin secret — plaintext (dev) or bcrypt hash (prod) |
 
-### `aactl init`
+### `awrit init`
 
 Generate a secure admin secret and write a config file:
 
 ```bash
 # Development mode: plaintext secret stored in config
-aactl init --mode=dev
+awrit init --mode=dev
 
 # Production mode: only bcrypt hash stored, plaintext shown once
-aactl init --mode=prod
+awrit init --mode=prod
 
 # Custom config path
-aactl init --mode=prod --config-path=/etc/agentauth/config
+awrit init --mode=prod --config-path=/etc/broker/config
 
 # Overwrite existing config
-aactl init --mode=dev --force
+awrit init --mode=dev --force
 ```
 
 ### Admin Secret Handling
 
 - **Development mode:** Plaintext secret stored in config file. Bcrypt hash derived at broker startup.
-- **Production mode:** Only the bcrypt hash is stored. The plaintext is shown once during `aactl init` and never saved to disk.
+- **Production mode:** Only the bcrypt hash is stored. The plaintext is shown once during `awrit init` and never saved to disk.
 - **Environment variable:** `AA_ADMIN_SECRET` continues to work (backward compatible). If set, it overrides the config file value.
 - **Authentication:** `POST /v1/admin/auth` always uses `bcrypt.CompareHashAndPassword` regardless of mode.
 
@@ -1045,7 +1054,7 @@ A `*` in the identifier position of an allowed scope covers any specific identif
 
 ### Attenuation
 
-Scopes can only narrow, never expand. This is enforced at two points:
+Scopes can never expand — same or narrower, never wider. This is enforced at two points:
 
 1. **Registration:** `requested_scope` must be a subset of `launch_token.allowed_scope`
 2. **Delegation:** `delegated_scope` must be a subset of `delegator.scope`
@@ -1054,15 +1063,15 @@ Scopes can only narrow, never expand. This is enforced at two points:
 
 ## JWT Claims
 
-All tokens issued by AgentAuth use EdDSA (Ed25519) signing with compact JWT serialization.
+All tokens issued by AgentWrit use EdDSA (Ed25519) signing with compact JWT serialization.
 
 ### TknClaims Fields
 
 | Field | JSON Key | Type | Description |
 |---|---|---|---|
-| `Iss` | `iss` | string | Always `"agentauth"` |
-| `Sub` | `sub` | string | SPIFFE agent ID, `"admin"`, or `"app:{client_id}"` |
-| `Aud` | `aud` | string[] | Audience (optional) |
+| `Iss` | `iss` | string | Value of `AA_ISSUER`; empty string if unset (issuer validation skipped) |
+| `Sub` | `sub` | string | SPIFFE agent ID, `"admin"`, or `"app:{internal_app_id}"` |
+| `Aud` | `aud` | string[] | Value of `AA_AUDIENCE`; omitted if unset (audience validation skipped) |
 | `Exp` | `exp` | int64 | Expiration timestamp (Unix seconds) |
 | `Nbf` | `nbf` | int64 | Not-before timestamp (Unix seconds) |
 | `Iat` | `iat` | int64 | Issued-at timestamp (Unix seconds) |
@@ -1121,11 +1130,25 @@ Applied to `POST /v1/admin/auth` and `POST /v1/app/auth`:
 
 | Metric | Type | Labels | Description |
 |---|---|---|---|
-| `agentauth_tokens_issued_total` | CounterVec | `scope` | Tokens issued by primary scope |
-| `agentauth_tokens_revoked_total` | CounterVec | `level` | Revocations by level |
-| `agentauth_registrations_total` | CounterVec | `status` | Registration attempts (success/failure) |
-| `agentauth_admin_auth_total` | CounterVec | `status` | Admin auth attempts (success/failure) |
-| `agentauth_launch_tokens_created_total` | Counter | -- | Launch tokens created |
-| `agentauth_active_agents` | Gauge | -- | Currently registered agents |
-| `agentauth_request_duration_seconds` | HistogramVec | `endpoint` | Request latency |
-| `agentauth_clock_skew_total` | Counter | -- | Clock skew events |
+| `agentwrit_tokens_issued_total` | CounterVec | `scope` | Tokens issued by primary scope |
+| `agentwrit_tokens_revoked_total` | CounterVec | `level` | Revocations by level |
+| `agentwrit_registrations_total` | CounterVec | `status` | Registration attempts (success/failure) |
+| `agentwrit_admin_auth_total` | CounterVec | `status` | Admin auth attempts (success/failure) |
+| `agentwrit_launch_tokens_created_total` | Counter | -- | Launch tokens created |
+| `agentwrit_active_agents` | Gauge | -- | Currently registered agents |
+| `agentwrit_request_duration_seconds` | HistogramVec | `endpoint` | Request latency |
+| `agentwrit_clock_skew_total` | Counter | -- | Clock skew events |
+
+---
+
+## What's Next?
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| Use the operator CLI instead | [CLI Reference (awrit)](awrit-reference.md) |
+| See the internal architecture | [Architecture](architecture.md) |
+| Find where features live in code | [Implementation Map](implementation-map.md) |
+
+---
+
+*Previous: [Troubleshooting](troubleshooting.md) · Next: [CLI Reference (awrit)](awrit-reference.md)*

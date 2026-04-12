@@ -1,4 +1,4 @@
-// audit.go implements the aactl audit command group.
+// audit.go implements the awrit audit command group.
 package main
 
 import (

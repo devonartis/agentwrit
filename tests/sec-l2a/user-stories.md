@@ -21,10 +21,10 @@ containers, no volume mounts.
 ```bash
 # Build binaries
 go build -o bin/broker ./cmd/broker/
-go build -o bin/aactl ./cmd/aactl/
+go build -o bin/awrit ./cmd/awrit/
 
 # Generate config and start broker
-./bin/aactl init --config-path /tmp/aa-test-l2a/config
+./bin/awrit init --config-path /tmp/aa-test-l2a/config
 AA_CONFIG_PATH=/tmp/aa-test-l2a/config \
 AA_DB_PATH=/tmp/agentauth-l2a.db \
 AA_SIGNING_KEY_PATH=/tmp/signing-l2a.key \
@@ -61,7 +61,7 @@ AA_SIGNING_KEY_PATH=/tmp/signing-l2a.key \
 
 **Tracker:** b4-s1
 **Persona:** Operator
-**Tool:** aactl + curl
+**Tool:** awrit + curl
 
 The operator just deployed the token hardening update to the broker. Before
 doing anything else, they want to confirm the basics still work — log in
@@ -75,7 +75,7 @@ hardening damaged something fundamental and needs to be rolled back.
 **Mode:** VPS + Container
 **Steps:**
 1. Source env.sh
-2. Authenticate with the admin secret using aactl or curl, get a JWT
+2. Authenticate with the admin secret using awrit or curl, get a JWT
 3. Decode the JWT header and check it says `alg: EdDSA` and has a `kid` field
 4. Use the JWT to call GET /v1/admin/apps
 5. Verify the call succeeds (200)

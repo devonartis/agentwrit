@@ -33,7 +33,7 @@ Substantial contributions (anything beyond typo fixes or minor doc corrections) 
 agentauth/
 ├── cmd/
 │   ├── broker/              # Credential broker HTTP server (main binary)
-│   └── aactl/               # Operator CLI — admin auth, app management, audit
+│   └── awrit/               # Operator CLI — admin auth, app management, audit
 ├── internal/
 │   ├── admin/               # Admin authentication (bcrypt, shared secret)
 │   ├── app/                 # App registration, credential lifecycle, launch tokens
@@ -88,7 +88,7 @@ Before you start, ensure you have:
 
    ```bash
    go build -o bin/broker ./cmd/broker/
-   go build -o bin/aactl  ./cmd/aactl/
+   go build -o bin/awrit  ./cmd/awrit/
    ```
 
 5. **Run unit tests:**
@@ -155,7 +155,7 @@ Examples: `feature/key-rotation`, `fix/renew-ttl-preservation`, `security/rate-l
    go vet ./...                                # Static analysis
    go test ./...                               # Unit tests
    go build -o bin/broker ./cmd/broker/        # Broker builds
-   go build -o bin/aactl  ./cmd/aactl/         # CLI builds
+   go build -o bin/awrit  ./cmd/awrit/         # CLI builds
    ```
 
 ### Commit Messages
@@ -382,7 +382,7 @@ log.Printf("Token %s validated for scope %s", tokenID, scope)
    go vet ./...                                # No warnings
    go test ./...                               # All pass
    go build -o bin/broker ./cmd/broker/        # Broker builds
-   go build -o bin/aactl  ./cmd/aactl/         # CLI builds
+   go build -o bin/awrit  ./cmd/awrit/         # CLI builds
    ```
 
 3. **Submit your PR** against **`develop`** (not `main`) with:

@@ -1,14 +1,6 @@
 # Troubleshooting
 
-> **Document Version:** 2.0 | **Last Updated:** February 2026 | **Status:** Current
->
-> **Audience:** Developers and Operators encountering errors in AgentAuth.
->
-> **Prerequisites:** [Getting Started: Developer](getting-started-developer.md) or [Getting Started: Operator](getting-started-operator.md).
->
-> **Next steps:** [API Reference](api.md) for endpoint details | [Common Tasks](common-tasks.md) for working examples.
->
-> This guide covers exact error messages, their causes, and fixes. Errors are organized by role: [Developer Errors](#developer-errors) and [Operator Errors](#operator-errors).
+Exact error messages, their causes, and fixes organized by role.
 
 ## Diagnostic Flowchart
 
@@ -61,7 +53,7 @@ flowchart TD
     A4 --> A4WEAK["admin secret<br/>rejected (weak)"]
 
     A4CREDS --> A4CREDSF["Fix: Check<br/>AA_ADMIN_SECRET"]
-    A4WEAK --> A4WEAKF["Fix: Use aactl init<br/>to set strong secret"]
+    A4WEAK --> A4WEAKF["Fix: Use awrit init<br/>to set strong secret"]
 
     S403 --> F1{"Error code?"}
     F1 --> F1SV["scope_violation"]
@@ -196,7 +188,7 @@ Each nonce is also single-use. A nonce consumed by one registration attempt cann
 
 ### 403 at /v1/register: "requested scope exceeds allowed scope"
 
-**Cause:** Your `requested_scope` includes permissions not covered by the launch token's `allowed_scope`. Scopes can only narrow (attenuate), never expand.
+**Cause:** Your `requested_scope` includes permissions not covered by the launch token's `allowed_scope`. Scopes can never expand — every requested scope must be covered by the launch token's ceiling.
 
 **Fix:** Request a scope that is a subset of the allowed scope:
 
@@ -296,7 +288,7 @@ All broker error responses use the [RFC 7807](https://www.rfc-editor.org/rfc/rfc
 
 ```json
 {
-  "type": "urn:agentauth:error:scope_violation",
+  "type": "urn:agentwrit:error:scope_violation",
   "title": "Forbidden",
   "status": 403,
   "detail": "requested scope exceeds allowed scope",
@@ -311,7 +303,7 @@ All broker error responses use the [RFC 7807](https://www.rfc-editor.org/rfc/rfc
 
 | Field | Type | Always Present | Description |
 |-------|------|----------------|-------------|
-| `type` | string | Yes | URN identifying the error category: `urn:agentauth:error:{errType}` |
+| `type` | string | Yes | URN identifying the error category: `urn:agentwrit:error:{errType}` |
 | `title` | string | Yes | HTTP status text (e.g., "Forbidden", "Unauthorized") |
 | `status` | int | Yes | HTTP status code |
 | `detail` | string | Yes | Human-readable description of what went wrong |
@@ -397,7 +389,7 @@ AA_ADMIN_SECRET=your-strong-random-secret
 
 ```json
 {
-  "type": "urn:agentauth:error:unauthorized",
+  "type": "urn:agentwrit:error:unauthorized",
   "status": 401,
   "detail": "invalid credentials"
 }
@@ -407,7 +399,7 @@ Or:
 
 ```json
 {
-  "type": "urn:agentauth:error:unauthorized",
+  "type": "urn:agentwrit:error:unauthorized",
   "status": 401,
   "detail": "admin secret does not meet security requirements"
 }
@@ -419,12 +411,12 @@ Or:
 
 **Fix:**
 
-1. If the secret is weak, use `aactl init` to generate a strong secret with bcrypt hashing:
+1. If the secret is weak, use `awrit init` to generate a strong secret with bcrypt hashing:
 
 ```bash
-aactl init --mode dev
+awrit init --mode dev
 # or
-aactl init --mode prod --config-path /path/to/config.yaml
+awrit init --mode prod --config-path /path/to/config.yaml
 ```
 
 This creates a configuration file with a bcrypt-hashed admin secret. Set `AA_CONFIG_PATH` to point to this file:
@@ -462,7 +454,7 @@ curl -s -X POST http://localhost:8080/v1/admin/auth \
 
 ```json
 {
-  "type": "urn:agentauth:error:rate_limited",
+  "type": "urn:agentwrit:error:rate_limited",
   "status": 429,
   "detail": "rate limit exceeded, try again later"
 }
@@ -500,7 +492,7 @@ When registering an agent with a long TTL or requesting token renewal:
 
 ```json
 {
-  "type": "urn:agentauth:error:invalid_ttl",
+  "type": "urn:agentwrit:error:invalid_ttl",
   "status": 400,
   "detail": "token TTL exceeds MaxTTL ceiling"
 }
@@ -546,14 +538,14 @@ broker:
 
 ---
 
-### Broker Config File Issues: aactl init
+### Broker Config File Issues: awrit init
 
 **Symptom:**
 
 Broker fails to start with one of these errors:
 
 ```
-FATAL: config file not found at path: /etc/agentauth/config.yaml
+FATAL: config file not found at path: /etc/broker/config.yaml
 ```
 
 ```
@@ -571,14 +563,14 @@ FATAL: admin secret rejected: does not meet security requirements
 
 **Fix:**
 
-1. **Generate a config file using aactl init:**
+1. **Generate a config file using awrit init:**
 
 ```bash
 # Development mode (shorter TTLs, simpler config)
-aactl init --mode dev
+awrit init --mode dev
 
 # Production mode (longer TTLs, bcrypt-hashed admin secret, config file)
-aactl init --mode prod --config-path /etc/agentauth/config.yaml
+awrit init --mode prod --config-path /etc/broker/config.yaml
 ```
 
 2. **For development, use environment variables instead of a config file:**
@@ -593,14 +585,14 @@ go run ./cmd/broker
 3. **Ensure the config file is readable by the broker process:**
 
 ```bash
-ls -la /etc/agentauth/config.yaml
+ls -la /etc/broker/config.yaml
 # Should have read permissions for the broker user
 ```
 
 4. **To use the config file with the broker:**
 
 ```bash
-export AA_CONFIG_PATH=/etc/agentauth/config.yaml
+export AA_CONFIG_PATH=/etc/broker/config.yaml
 # Leave AA_ADMIN_SECRET unset or it will override the config file
 go run ./cmd/broker
 ```
@@ -617,7 +609,7 @@ After restarting the broker, all previously issued tokens fail validation:
 
 ```json
 {
-  "type": "urn:agentauth:error:unauthorized",
+  "type": "urn:agentwrit:error:unauthorized",
   "status": 401,
   "detail": "token verification failed: signature verification failed"
 }
@@ -665,7 +657,7 @@ Agents fail to connect with TLS errors:
 
 ```json
 {
-  "type": "urn:agentauth:error:unauthorized",
+  "type": "urn:agentwrit:error:unauthorized",
   "status": 401,
   "detail": "TLS certificate verification failed"
 }
@@ -735,5 +727,61 @@ broker:
     - AA_TLS_KEY=/certs/broker.key
     - AA_TLS_CLIENT_CA=/certs/ca.crt  # For mTLS
   volumes:
-    - /etc/agentauth/certs:/certs:ro
+    - /etc/broker/certs:/certs:ro
 ```
+
+---
+
+## Prometheus Metrics Reference
+
+The broker exposes metrics at `GET /v1/metrics` in Prometheus format. Use these to monitor health, detect anomalies, and build dashboards.
+
+### Counters
+
+| Metric | Labels | What it measures |
+|--------|--------|-----------------|
+| `agentauth_tokens_issued_total` | `scope` | Total tokens issued, by scope |
+| `agentauth_tokens_revoked_total` | `level` | Revocations by level: `token`, `agent`, `task`, `chain` |
+| `agentauth_registrations_total` | `status` | Agent registrations: `success` or `failure` |
+| `agentauth_admin_auth_total` | `status` | Admin auth attempts: `success` or `failure` |
+| `agentauth_launch_tokens_created_total` | — | Launch tokens created via admin API |
+| `agentauth_clock_skew_total` | — | Clock skew events detected (token `nbf` in the future) |
+| `agentauth_audit_events_total` | `event_type` | Audit events recorded, by type |
+| `agentauth_db_errors_total` | `operation` | Database operation errors |
+
+### Gauges
+
+| Metric | What it measures |
+|--------|-----------------|
+| `agentauth_active_agents` | Current number of registered agents |
+| `agentauth_audit_events_loaded` | Audit events loaded from SQLite at startup (set once) |
+
+### Histograms
+
+| Metric | Labels | What it measures |
+|--------|--------|-----------------|
+| `agentauth_request_duration_seconds` | `endpoint` | Request duration by endpoint (e.g., `token_issue`) |
+| `agentauth_audit_write_duration_seconds` | — | Time to persist an audit event to SQLite |
+
+### Key Alerts to Consider
+
+- **`agentauth_admin_auth_total{status="failure"}` rising** — possible brute-force attempt on the admin secret
+- **`agentauth_registrations_total{status="failure"}` rising** — agents failing to register (expired launch tokens? wrong signatures?)
+- **`agentauth_tokens_revoked_total` spike** — mass revocation event, investigate the cause
+- **`agentauth_db_errors_total` > 0** — database issues, check SQLite file permissions and disk space
+- **`agentauth_clock_skew_total` > 0** — clock drift between broker and clients, check NTP
+
+---
+
+## What's Next?
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| Look up endpoint details | [API Reference](api.md) |
+| Use the operator CLI | [CLI Reference (awrit)](awrit-reference.md) |
+| See the internal architecture | [Architecture](architecture.md) |
+| Find where features live in code | [Implementation Map](implementation-map.md) |
+
+---
+
+*Previous: [Scenarios](scenarios.md) · Next: [API Reference](api.md)*

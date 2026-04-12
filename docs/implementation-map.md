@@ -1,8 +1,6 @@
 # Implementation Map — Ephemeral Agent Credentialing v1.3
 
-> **Purpose:** Trace every component of the [Ephemeral Agent Credentialing v1.3](https://github.com/devonartis/AI-Security-Blueprints/blob/main/patterns/ephemeral-agent-credentialing/versions/v1.3.md) pattern to the exact Go file, function, and HTTP endpoint that implements it.
->
-> **Audience:** Contributors, security reviewers, and anyone who needs to verify that AgentAuth delivers what the pattern specifies.
+Trace every component of the security pattern to the exact Go file, function, and HTTP endpoint that implements it.
 
 ---
 
@@ -78,7 +76,7 @@ Token Verification (called on every authenticated request):
     2. Algorithm check: header.alg must be "EdDSA" (prevents CVE-2015-9235)
     3. Key ID check: if header.kid present, must match broker's kid (prevents cross-broker replay)
     4. Signature check: ed25519.Verify(pubKey, signingInput, sigBytes)
-    5. Claims decode and validate: iss="agentauth", sub non-empty, jti non-empty, exp>0, exp>now, nbf<=now
+    5. Claims decode and validate: iss="agentwrit", sub non-empty, jti non-empty, exp>0, exp>now, nbf<=now
     6. Revocation check: revoker.IsRevoked(claims) — defense-in-depth
     ← Returns TknClaims or error
 
@@ -167,7 +165,7 @@ action:resource:identifier
 
 Examples: `read:data:*`, `admin:revoke:*`, `app:launch-tokens:*`
 
-Wildcard `*` in identifier covers any specific value. Scopes can only narrow, never expand.
+Wildcard `*` in identifier covers any specific value. Scopes can never expand — same or narrower, never wider.
 
 ---
 
@@ -348,7 +346,7 @@ POST /v1/delegate
 
 ### Security Properties
 
-- Scope can only narrow (attenuation is one-way)
+- Scope can never expand (same or narrower, never wider)
 - Max delegation depth: 5 hops
 - Each chain entry is signed with the broker's Ed25519 key
 - Chain hash embedded in JWT prevents chain tampering
@@ -389,18 +387,18 @@ Error responses:
 
 | Metric | Type | Labels | What it measures |
 |--------|------|--------|-----------------|
-| `agentauth_tokens_issued_total` | Counter | `scope` | Token issuance rate by primary scope |
-| `agentauth_tokens_revoked_total` | Counter | `level` | Revocation rate by level |
-| `agentauth_registrations_total` | Counter | `status` | Agent registration success/failure |
-| `agentauth_admin_auth_total` | Counter | `status` | Admin login success/failure |
-| `agentauth_launch_tokens_created_total` | Counter | — | Launch token creation rate |
-| `agentauth_active_agents` | Gauge | — | Currently registered agents |
-| `agentauth_request_duration_seconds` | Histogram | `endpoint` | Request latency per endpoint |
-| `agentauth_clock_skew_total` | Counter | — | Clock drift events |
-| `agentauth_audit_events_total` | Counter | — | Audit trail growth |
-| `agentauth_audit_write_duration_seconds` | Histogram | — | Audit write latency |
-| `agentauth_db_errors_total` | Counter | — | Database error rate |
-| `agentauth_audit_events_loaded` | Gauge | — | Events loaded from SQLite on startup |
+| `agentwrit_tokens_issued_total` | Counter | `scope` | Token issuance rate by primary scope |
+| `agentwrit_tokens_revoked_total` | Counter | `level` | Revocation rate by level |
+| `agentwrit_registrations_total` | Counter | `status` | Agent registration success/failure |
+| `agentwrit_admin_auth_total` | Counter | `status` | Admin login success/failure |
+| `agentwrit_launch_tokens_created_total` | Counter | — | Launch token creation rate |
+| `agentwrit_active_agents` | Gauge | — | Currently registered agents |
+| `agentwrit_request_duration_seconds` | Histogram | `endpoint` | Request latency per endpoint |
+| `agentwrit_clock_skew_total` | Counter | — | Clock drift events |
+| `agentwrit_audit_events_total` | Counter | — | Audit trail growth |
+| `agentwrit_audit_write_duration_seconds` | Histogram | — | Audit write latency |
+| `agentwrit_db_errors_total` | Counter | — | Database error rate |
+| `agentwrit_audit_events_loaded` | Gauge | — | Events loaded from SQLite on startup |
 
 ### Key Files
 
@@ -439,3 +437,17 @@ Component 8: Prometheus metrics updated (request_duration, tokens_issued)
 ```
 
 Every component participates in every authenticated request. The pattern is not 8 separate features — it's 8 layers that compose on every operation.
+
+---
+
+## What's Next?
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| Understand the security pattern | [Concepts Deep Dive](concepts.md) |
+| See the full API | [API Reference](api.md) |
+| Return to the documentation home | [Documentation Home](README.md) |
+
+---
+
+*Previous: [Architecture](architecture.md) · Next: [Documentation Home](README.md)*

@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Docs audit P1/P2 corrections (2026-04-12)
+
+- **`docs/getting-started-user.md`** — admin auth examples used the literal `"my-secret-key-change-in-production"` while the guide starts the broker with a randomly generated `$AA_ADMIN_SECRET`. Examples now reference `$AA_ADMIN_SECRET` so the first-run path works without 401s.
+- **`docs/awrit-reference.md`** — `awrit init` sample output showed `~/.agentwrit/config`; corrected to `~/.broker/config` (the actual default write path — or rather, the broker's read path; see TD-CLI-002 for the underlying code bug).
+- **`docs/api.md`** — JWT claims table corrected: `iss` is driven by `AA_ISSUER` (empty by default, issuer validation skipped); app token subject is `app:{internal_app_id}` not `app:{client_id}`; `aud` is driven by `AA_AUDIENCE` (omitted if unset, audience validation skipped).
+- **`docs/getting-started-operator.md`** — `AA_AUDIENCE` default corrected from `"agentwrit"` to *(empty)*. SQLite persistence note corrected: setting `AA_DB_PATH=""` does not enable memory-only mode — unset uses the `./data.db` default.
+- **`docs/api/openapi.yaml`** — `info.license` corrected from `Apache-2.0` to `AGPL-3.0` with the correct license URL. Matches `LICENSE`, `README.md`, and `CLA.md`.
+- **`docker-compose.yml`** — Docker bridge network renamed `agentauth-net` → `agentwrit-net` to match brand sweep and operator docs.
+- **`docs/README.md`** — API reference entry corrected from "22 HTTP endpoints" to "19". Concepts entry corrected from "seven components" to "eight".
+- **`docs/concepts.md`** — intro sentence corrected from "seven components" to "eight".
+- **`TECH-DEBT.md`** — added TD-CLI-002 (HIGH: `awrit init` writes to `~/.agentauth/config`, broker reads `~/.broker/config` — broken first-run path introduced in commit `4e197a5`) and TD-CLI-003 (Low: docker-compose.yml network name lag). Bug report at `.plans/bugs/BUG-CLI-002-awrit-init-config-path.md`.
+
+### Renamed CLI binary `aactl` → `awrit` (TD-CLI-001)
+
+- **`cmd/aactl/` → `cmd/awrit/`** — directory renamed. Cobra command name changed (`Use: "aactl"` → `Use: "awrit"`). All internal CLI output, help text, and error messages updated.
+- **`docs/aactl-reference.md` → `docs/awrit-reference.md`** — reference doc renamed. All example commands in the doc rewritten to use `awrit`.
+- **Docs, scripts, tests, README, CONTRIBUTING, docker-compose.yml, .github/workflows/ci.yml, .gitignore** — every `aactl` reference in ship-to-main files rewritten to `awrit`. Evidence files under `tests/*/evidence/*.md` intentionally preserved as-is because they are historical records of past test runs (rewriting history would misrepresent what happened at the time).
+- **`cmd/broker/main.go`** — error message `"Run 'aactl init'..."` → `"Run 'awrit init'..."`.
+- **`.gitignore`** — both `/awrit` and `/aactl` listed so accidentally-built binaries under either name stay untracked during the transition.
+- **`internal/cfg/configfile.go`** — user-visible references in the env var comment block updated to `awrit`.
+
+Scope: ~36 files touched plus directory + file renames. No production logic changes — pure mechanical rename. The `github.com/devonartis/agentauth` Go module path is NOT changed (that's gated on the GitHub repo rename, separate work).
+
+### Promoted `adminTTL` const to configurable `cfg.AdminTokenTTL` (TD-010)
+
+- **`internal/admin/admin_svc.go`** — deleted the magic-number const `adminTTL = 300`. Admin JWT TTL is now driven by `cfg.AdminTokenTTL` (seconds), wired through a new `tokenTTL` parameter on `NewAdminSvc`. Operators tune via `AA_ADMIN_TOKEN_TTL` (default 300 / 5 min).
+- **`internal/cfg/cfg.go`** — added `AdminTokenTTL int` field and a named const `defaultAdminTokenTTL = 300` (seconds; matches existing int-seconds convention for DefaultTTL, MaxTTL, AppTokenTTL so the cfg package stays internally consistent). Env var `AA_ADMIN_TOKEN_TTL` added to the inline doc comment.
+- **`cmd/broker/main.go`** — `NewAdminSvc` wiring updated to pass `c.AdminTokenTTL`.
+- **Tests** — `newTestAdminSvc` helpers and direct `NewAdminSvc` calls across `admin_svc_test.go`, `admin_hdl_test.go`, `app_hdl_test.go`, `handler/handler_test.go` now pass an explicit `testAdminTokenTTL = 300` fixture. Assertions that checked `resp.ExpiresIn != adminTTL` now check against the fixture value — the test drives cfg-to-claim TTL flow end-to-end inside the admin package, which is the unit-level equivalent of a config-matrix behavioral test for this field.
+- **Rationale for int seconds (not `time.Duration`)** — the existing TTL fields (`DefaultTTL`, `MaxTTL`, `AppTokenTTL`) all use int seconds. Adding one `time.Duration` field would create two conventions in the same cfg package and leak into every caller that passes the field through. A future cleanup can migrate all TTL fields to `time.Duration` together (proposed TD-CFG-003) — but mixing conventions in this PR would be worse than preserving the existing one.
+
+### Removed hardcoded identity literals from cfg + token packages (TD-TOKEN-001, TD-TOKEN-002, TD-CFG-001, TD-CFG-002)
+
+- **`internal/token/tkn_svc.go`** — JWT `iss` claim is now driven by `cfg.Issuer` instead of the hardcoded literal `"agentauth"`. Issuer enforcement moved from `TknClaims.Validate()` (pure structural check) into `TknSvc.Verify()` where config is available. Empty `cfg.Issuer` skips the issuer check (mirrors the Audience contract — operator opt-in).
+- **`internal/cfg/cfg.go`** — added `Issuer string` field, env var `AA_ISSUER`. No default; empty value means "skip issuer enforcement at verify time," matching the documented Audience pattern.
+- **`internal/cfg/cfg.go`** — `TrustDomain` default literal `"agentauth.local"` → `"agentwrit.local"` (no longer leaks the prior brand into source).
+- **`internal/cfg/cfg.go`** — `DBPath` default literal `"./agentauth.db"` → `"./data.db"` (neutral, no brand in source).
+- **`internal/cfg/cfg.go`** — `Audience` default override at line 96 deleted. The `cfg.go:22` doc comment said `"empty = skip"` but the code overrode unset → `"agentauth"`. Now `Audience` honors its documented contract: unset OR explicitly empty both skip audience validation. No brand-coupled default.
+- **`internal/cfg/configfile.go`** — config search paths `/etc/agentauth/config` → `/etc/broker/config` and `~/.agentauth/config` → `~/.broker/config`. Filesystem layout no longer encodes the brand. Header comment in generated config files updated from `# AgentAuth Configuration` → `# Broker Configuration`.
+- **`internal/token/tkn_claims.go`** — package doc comment updated to reflect that `iss` is operator-configured via `cfg.Issuer`, not "always 'agentauth'". `Validate()` is now a pure structural check (sub, jti, exp, nbf) — issuer enforcement is the service layer's job.
+- **Test surface** — test fixtures across `cfg/`, `token/`, `authz/`, `deleg/`, `admin/`, `identity/`, `mutauth/` updated to use brand-neutral test values (`test-issuer`, `test.local`, `spiffe://test.local/...`) instead of leaked `"agentauth"` and `agentauth.local` literals. Tests now drive issuer/audience expectations from fixture cfg, not hardcoded constants.
+- **Root cause:** `IssuerURL` was an OIDC-coupled config field stripped during the open-core split. The strip removed the field, the validation, AND the tests (tombstone preserved at `internal/token/tkn_svc_test.go:521`), but the validation was replaced with a hardcoded literal `"agentauth"` rather than left as configurable. The general JWT `iss` claim is independent of OIDC and core still needs it — this PR restores configurability without re-coupling to OIDC. Full audit at `.plans/reviews/2026-04-10-hardcoded-identity-audit.md`.
+- **Standing rule added:** `~/.claude/CLAUDE.md` now contains "No Hardcoded Identity Values — Universal, Non-Negotiable" as a global rule. Identity-shaped string literals in source code (brand names, issuers, trust domains, search paths) are non-negotiable findings going forward.
+
 ### Added — M-sec README badges (Task 30)
 
 - **`README.md`** — added three CI-health badges ahead of the existing

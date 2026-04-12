@@ -51,7 +51,8 @@ func testCfg() cfg.Cfg {
 	return cfg.Cfg{
 		Port:        "8080",
 		LogLevel:    "quiet",
-		TrustDomain: "agentauth.local",
+		TrustDomain: "test.local",
+		Issuer:      "test-issuer",
 		DefaultTTL:  300,
 	}
 }
@@ -61,7 +62,7 @@ func TestIssueAndVerify(t *testing.T) {
 	svc := NewTknSvc(priv, pub, testCfg())
 
 	resp, err := svc.Issue(IssueReq{
-		Sub:    "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+		Sub:    "spiffe://test.local/agent/orch-1/task-1/abc123",
 		Scope:  []string{"read:Customers:*"},
 		TaskId: "task-1",
 		OrchId: "orch-1",
@@ -83,10 +84,10 @@ func TestIssueAndVerify(t *testing.T) {
 		t.Fatalf("Verify: %v", err)
 	}
 
-	if claims.Sub != "spiffe://agentauth.local/agent/orch-1/task-1/abc123" {
+	if claims.Sub != "spiffe://test.local/agent/orch-1/task-1/abc123" {
 		t.Errorf("sub = %q", claims.Sub)
 	}
-	if claims.Iss != "agentauth" {
+	if claims.Iss != "test-issuer" {
 		t.Errorf("iss = %q", claims.Iss)
 	}
 	if len(claims.Scope) != 1 || claims.Scope[0] != "read:Customers:*" {
@@ -108,7 +109,7 @@ func TestVerifyTamperedSignature(t *testing.T) {
 	svc := NewTknSvc(priv, pub, testCfg())
 
 	resp, err := svc.Issue(IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+		Sub:   "spiffe://test.local/agent/orch-1/task-1/abc123",
 		Scope: []string{"read:Customers:*"},
 	})
 	if err != nil {
@@ -132,7 +133,7 @@ func TestVerifyTamperedPayload(t *testing.T) {
 	svc := NewTknSvc(priv, pub, testCfg())
 
 	resp, err := svc.Issue(IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+		Sub:   "spiffe://test.local/agent/orch-1/task-1/abc123",
 		Scope: []string{"read:Customers:*"},
 	})
 	if err != nil {
@@ -158,7 +159,7 @@ func TestVerifyWrongKey(t *testing.T) {
 	svc2 := NewTknSvc(nil, pub2, testCfg()) // different public key for verification
 
 	resp, err := svc1.Issue(IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+		Sub:   "spiffe://test.local/agent/orch-1/task-1/abc123",
 		Scope: []string{"read:Customers:*"},
 	})
 	if err != nil {
@@ -179,7 +180,7 @@ func TestVerifyExpiredToken(t *testing.T) {
 
 	// Issue a token with very short TTL
 	resp, err := svc.Issue(IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+		Sub:   "spiffe://test.local/agent/orch-1/task-1/abc123",
 		Scope: []string{"read:Customers:*"},
 		TTL:   1, // 1 second
 	})
@@ -205,8 +206,8 @@ func TestVerifyNotYetValid(t *testing.T) {
 	// claims with a future nbf.
 	now := time.Now().Unix()
 	claims := &TknClaims{
-		Iss:   "agentauth",
-		Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/nbf-test",
+		Iss:   "test-issuer",
+		Sub:   "spiffe://test.local/agent/orch-1/task-1/nbf-test",
 		Exp:   now + 3600,
 		Nbf:   now + 600, // 10 minutes in the future
 		Iat:   now,
@@ -245,7 +246,7 @@ func TestRenew(t *testing.T) {
 	svc := NewTknSvc(priv, pub, testCfg())
 
 	resp1, err := svc.Issue(IssueReq{
-		Sub:    "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+		Sub:    "spiffe://test.local/agent/orch-1/task-1/abc123",
 		Scope:  []string{"read:Customers:*"},
 		TaskId: "task-1",
 		OrchId: "orch-1",
@@ -269,7 +270,7 @@ func TestRenew(t *testing.T) {
 	if err != nil {
 		t.Fatalf("verify renewed: %v", err)
 	}
-	if claims2.Sub != "spiffe://agentauth.local/agent/orch-1/task-1/abc123" {
+	if claims2.Sub != "spiffe://test.local/agent/orch-1/task-1/abc123" {
 		t.Errorf("renewed sub = %q", claims2.Sub)
 	}
 	if claims2.TaskId != "task-1" {
@@ -290,7 +291,7 @@ func TestRenew_PreservesChainHash(t *testing.T) {
 	}
 
 	resp1, err := svc.Issue(IssueReq{
-		Sub:        "spiffe://agentauth.local/agent/orch-1/task-1/delegated",
+		Sub:        "spiffe://test.local/agent/orch-1/task-1/delegated",
 		Scope:      []string{"read:data:*"},
 		TaskId:     "task-1",
 		OrchId:     "orch-1",
@@ -332,7 +333,7 @@ func TestCustomTTL(t *testing.T) {
 	svc := NewTknSvc(priv, pub, testCfg())
 
 	resp, err := svc.Issue(IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+		Sub:   "spiffe://test.local/agent/orch-1/task-1/abc123",
 		Scope: []string{"read:Customers:*"},
 		TTL:   60,
 	})
@@ -350,7 +351,7 @@ func TestSidClaim(t *testing.T) {
 
 	testSid := "session-123"
 	resp, err := svc.Issue(IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+		Sub:   "spiffe://test.local/agent/orch-1/task-1/abc123",
 		Scope: []string{"read:Customers:*"},
 		Sid:   testSid,
 	})
@@ -373,7 +374,7 @@ func TestIssueWithoutSid_DefaultsEmpty(t *testing.T) {
 	svc := NewTknSvc(priv, pub, testCfg())
 
 	resp, err := svc.Issue(IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+		Sub:   "spiffe://test.local/agent/orch-1/task-1/abc123",
 		Scope: []string{"read:Customers:*"},
 	})
 	if err != nil {
@@ -395,7 +396,7 @@ func TestRenew_RevokesPredecessor(t *testing.T) {
 	svc := NewTknSvc(priv, pub, testCfg())
 
 	resp1, err := svc.Issue(IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+		Sub:   "spiffe://test.local/agent/orch-1/task-1/abc123",
 		Scope: []string{"read:data:*"},
 		TTL:   300,
 	})
@@ -427,7 +428,7 @@ func TestRenew_RevokeFailureBlocksRenewal(t *testing.T) {
 	svc := NewTknSvc(priv, pub, testCfg())
 
 	resp1, err := svc.Issue(IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+		Sub:   "spiffe://test.local/agent/orch-1/task-1/abc123",
 		Scope: []string{"read:data:*"},
 		TTL:   300,
 	})
@@ -457,7 +458,7 @@ func TestKidInJWTHeader(t *testing.T) {
 	}
 
 	resp, err := svc.Issue(IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/test-agent",
+		Sub:   "spiffe://test.local/agent/test-agent",
 		Scope: []string{"read:data:*"},
 	})
 	if err != nil {
@@ -527,7 +528,7 @@ func TestRenew_PreservesSid(t *testing.T) {
 
 	const testSid = "session-renew-001"
 	resp1, err := svc.Issue(IssueReq{
-		Sub:    "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+		Sub:    "spiffe://test.local/agent/orch-1/task-1/abc123",
 		Scope:  []string{"read:Customers:*"},
 		TaskId: "task-1",
 		OrchId: "orch-1",
@@ -559,7 +560,7 @@ func TestIssue_MaxTTL_Clamps(t *testing.T) {
 	svc := NewTknSvc(priv, pub, c)
 
 	resp, err := svc.Issue(IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/test/task/abc",
+		Sub:   "spiffe://test.local/agent/test/task/abc",
 		Scope: []string{"read:data:*"},
 		TTL:   7200, // request 2 hours
 	})
@@ -578,7 +579,7 @@ func TestIssue_MaxTTL_Zero_NoLimit(t *testing.T) {
 	svc := NewTknSvc(priv, pub, c)
 
 	resp, err := svc.Issue(IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/test/task/abc",
+		Sub:   "spiffe://test.local/agent/test/task/abc",
 		Scope: []string{"read:data:*"},
 		TTL:   86400,
 	})
@@ -597,7 +598,7 @@ func TestIssue_MaxTTL_UnderLimit_Unchanged(t *testing.T) {
 	svc := NewTknSvc(priv, pub, c)
 
 	resp, err := svc.Issue(IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/test/task/abc",
+		Sub:   "spiffe://test.local/agent/test/task/abc",
 		Scope: []string{"read:data:*"},
 		TTL:   1800,
 	})
@@ -614,7 +615,7 @@ func TestVerify_RejectsWrongAlg(t *testing.T) {
 	svc := NewTknSvc(priv, pub, testCfg())
 
 	resp, err := svc.Issue(IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/test/task/abc",
+		Sub:   "spiffe://test.local/agent/test/task/abc",
 		Scope: []string{"read:data:*"},
 		TTL:   300,
 	})
@@ -644,7 +645,7 @@ func TestVerify_RejectsWrongKid(t *testing.T) {
 	svc := NewTknSvc(priv, pub, testCfg())
 
 	resp, err := svc.Issue(IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/test/task/abc",
+		Sub:   "spiffe://test.local/agent/test/task/abc",
 		Scope: []string{"read:data:*"},
 		TTL:   300,
 	})
@@ -673,7 +674,7 @@ func TestVerify_AcceptsEmptyKid(t *testing.T) {
 	svc := NewTknSvc(priv, pub, testCfg())
 
 	resp, err := svc.Issue(IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/test/task/abc",
+		Sub:   "spiffe://test.local/agent/test/task/abc",
 		Scope: []string{"read:data:*"},
 		TTL:   300,
 	})
@@ -702,7 +703,7 @@ func TestVerify_RejectsRevokedToken(t *testing.T) {
 	svc := NewTknSvc(priv, pub, testCfg())
 
 	resp, err := svc.Issue(IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/test/task/abc",
+		Sub:   "spiffe://test.local/agent/test/task/abc",
 		Scope: []string{"read:data:*"},
 		TTL:   300,
 	})
@@ -769,7 +770,7 @@ func TestRenew_PreservesTTL(t *testing.T) {
 			svc := NewTknSvc(priv, pub, c)
 
 			resp1, err := svc.Issue(IssueReq{
-				Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+				Sub:   "spiffe://test.local/agent/orch-1/task-1/abc123",
 				Scope: []string{"read:data:*"},
 				TTL:   tt.issueTTL,
 			})
@@ -795,7 +796,7 @@ func TestRenew_PreservesTTL(t *testing.T) {
 
 		shortSvc := NewTknSvc(priv, pub, c)
 		resp, err := shortSvc.Issue(IssueReq{
-			Sub:   "spiffe://agentauth.local/agent/orch-1/task-1/abc123",
+			Sub:   "spiffe://test.local/agent/orch-1/task-1/abc123",
 			Scope: []string{"read:data:*"},
 			TTL:   60,
 		})
@@ -821,7 +822,7 @@ func TestRenew_PreservesTTL(t *testing.T) {
 func TestVerify_RejectsZeroExpiry(t *testing.T) {
 	now := time.Now().Unix()
 	claims := &TknClaims{
-		Iss:   "agentauth",
+		Iss:   "test-issuer",
 		Sub:   "spiffe://test.local/agent/test/task/abc",
 		Jti:   "test-jti-zero-exp",
 		Iat:   now,

@@ -27,7 +27,7 @@ func newTestHandler(t *testing.T) (*AdminHdl, *AdminSvc, *token.TknSvc) {
 	}
 	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
 	st := store.NewSqlStore()
-	adminSvc := NewAdminSvc(testSecretHash, tknSvc, st, nil, "")
+	adminSvc := NewAdminSvc(testSecretHash, tknSvc, st, nil, "", testAdminTokenTTL)
 	valMw := authz.NewValMw(tknSvc, nil, nil, "")
 	hdl := NewAdminHdl(adminSvc, valMw, nil, nil, st)
 	return hdl, adminSvc, tknSvc
@@ -67,8 +67,8 @@ func TestHandleAuth_Success(t *testing.T) {
 	if resp.TokenType != "Bearer" {
 		t.Errorf("expected token_type=Bearer, got %s", resp.TokenType)
 	}
-	if resp.ExpiresIn != adminTTL {
-		t.Errorf("expected expires_in=%d, got %d", adminTTL, resp.ExpiresIn)
+	if resp.ExpiresIn != testAdminTokenTTL {
+		t.Errorf("expected expires_in=%d, got %d", testAdminTokenTTL, resp.ExpiresIn)
 	}
 }
 
@@ -213,7 +213,7 @@ func TestHandleCreateLaunchToken_WrongScope(t *testing.T) {
 
 	// Issue a token with agent-level scope (not admin).
 	agentResp, err := tknSvc.Issue(token.IssueReq{
-		Sub:   "spiffe://agentauth.local/agent/orch/task/inst",
+		Sub:   "spiffe://test.local/agent/orch/task/inst",
 		Scope: []string{"read:Customers:*"},
 		TTL:   300,
 	})
@@ -295,7 +295,7 @@ func newAppTestMux(t *testing.T) (*http.ServeMux, *AdminSvc, *token.TknSvc, *sto
 	}
 	tknSvc := token.NewTknSvc(priv, pub, cfg.Cfg{DefaultTTL: 300})
 	al := audit.NewAuditLog(st)
-	adminSvc := NewAdminSvc(testSecretHash, tknSvc, st, al, "")
+	adminSvc := NewAdminSvc(testSecretHash, tknSvc, st, al, "", testAdminTokenTTL)
 	valMw := authz.NewValMw(tknSvc, nil, al, "")
 	hdl := NewAdminHdl(adminSvc, valMw, al, nil, st)
 

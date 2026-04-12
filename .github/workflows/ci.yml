@@ -40,7 +40,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - run: go build ./cmd/broker ./cmd/aactl
+      - run: go build ./cmd/broker ./cmd/awrit
 
   vet:
     name: vet

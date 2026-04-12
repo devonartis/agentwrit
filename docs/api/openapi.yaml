@@ -1,16 +1,16 @@
 openapi: "3.0.3"
 info:
-  title: AgentAuth Broker API
+  title: AgentWrit Broker API
   description: >
     Ephemeral agent credentialing broker. Issues short-lived, scope-attenuated
     EdDSA JWT tokens to AI agents via Ed25519 challenge-response identity
     verification. All error responses use RFC 7807 application/problem+json.
   version: "2.0.0"
   contact:
-    name: AgentAuth
+    name: AgentWrit
   license:
-    name: Apache-2.0
-    url: https://www.apache.org/licenses/LICENSE-2.0
+    name: AGPL-3.0
+    url: https://www.gnu.org/licenses/agpl-3.0.html
 
 servers:
   - url: http://localhost:8080
@@ -700,7 +700,7 @@ components:
         agent_id:
           type: string
           description: SPIFFE ID assigned to the agent
-          example: spiffe://agentauth.local/agent/agent-12345
+          example: spiffe://agentwrit.local/agent/agent-12345
         access_token:
           type: string
           description: JWT bearer token for the agent

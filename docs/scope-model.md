@@ -1,22 +1,28 @@
-# AgentAuth Scope Model — From First Principles
+# AgentWrit Scope Model — From First Principles
 
 ## What Is a Scope?
 
 A scope is a permission statement. It says: **this credential holder is allowed to perform this action on this resource.**
 
-Every credential in AgentAuth carries a list of scopes. Every protected endpoint checks that the caller's scopes cover what the endpoint requires. If they don't, the request is denied with a 403.
+Every credential in AgentWrit carries a list of scopes. Every protected endpoint checks that the caller's scopes cover what the endpoint requires. If they don't, the request is denied with a 403.
 
 ### Format: `action:resource:identifier`
 
 Every scope has exactly three parts, separated by colons:
 
+| Part | Example | Meaning |
+|------|---------|---------|
+| **action** | `read` | What you're doing |
+| **resource** | `data` | What you're acting on |
+| **identifier** | `customers` | Which specific instance (or `*` for all) |
+
+Examples:
+
 ```
-action   : resource   : identifier
-───────    ─────────    ──────────
-read     : data       : customers
-write    : logs       : *
-admin    : revoke     : *
-app      : launch-tokens : *
+read:data:customers
+write:logs:*
+admin:revoke:*
+app:launch-tokens:*
 ```
 
 - **action** — what you're doing: `read`, `write`, `admin`, `app`
@@ -92,7 +98,7 @@ This is `authz.ScopeIsSubset(requested, allowed)` — it runs at every trust bou
 
 ## The Three Scope Families
 
-Scopes in AgentAuth fall into three families. Each family belongs to a different role, and the families don't overlap.
+Scopes in AgentWrit fall into three families. Each family belongs to a different role, and the families don't overlap.
 
 ### Admin Scopes (`admin:*:*`)
 
@@ -137,7 +143,7 @@ Task scopes are not predefined by the broker. They're defined by the operator wh
 
 ## Where Scopes Are Checked (The Four Enforcement Points)
 
-This is where the design gets concrete. Scopes are checked at four distinct points, and each point enforces the attenuation invariant: permissions can only narrow.
+This is where the design gets concrete. Scopes are checked at four distinct points, and each point enforces the attenuation invariant: permissions can never expand (same or narrower, never wider).
 
 ### Enforcement Point 1: App Creates Launch Token
 
@@ -284,7 +290,7 @@ graph TD
     style DJWT fill:#9370db,color:#fff
 ```
 
-At every arrow, `ScopeIsSubset` enforces that the new scope is covered by the previous scope. The chain can only narrow.
+At every arrow, `ScopeIsSubset` enforces that the new scope is covered by the previous scope. The chain can never expand — a delegate can receive its delegator's full scope, but never exceed it.
 
 ---
 
@@ -329,7 +335,7 @@ What's missing:
 
 The admin launch token path serves exactly two purposes:
 
-1. **Bootstrapping.** Before any apps are registered, someone needs to test the system. The operator creates a launch token, registers a test agent, verifies the flow works. This is the "aactl init → create launch token → test" development workflow.
+1. **Bootstrapping.** Before any apps are registered, someone needs to test the system. The operator creates a launch token, registers a test agent, verifies the flow works. This is the "awrit init → create launch token → test" development workflow.
 
 2. **Emergency/debugging.** If something is wrong with the app credential flow and you need to get an agent running immediately, the admin can bypass the app layer entirely.
 
@@ -363,6 +369,27 @@ The answer depends on what matters more: developer convenience during bootstrapp
 - `*` in the identifier position is a wildcard covering all instances
 - `ScopeIsSubset` is the single function that enforces all permission checks
 - Scopes are checked at four enforcement points: app→launch token, launch token→agent, agent→delegate, and every endpoint access
-- At every step, scope can only narrow — the attenuation invariant
+- At every step, scope can never expand (same or narrower) — the attenuation invariant
 - Admin scopes (`admin:*:*`), app scopes (`app:*:*`), and task scopes are three distinct families
 - The admin launch token path bypasses EP1 (no ceiling check) — this is a known design question (TD-013), not a bug
+
+---
+
+## What's Next?
+
+Scopes control what tokens can do. Next, see every credential type in detail:
+
+**[The Credential Lifecycle →](credential-model.md)**
+Every credential's claims, TTLs, and how they flow through the attenuation chain.
+
+Or explore related topics:
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| See who holds which token | [The Three Actors](roles.md) |
+| Try the registration flow hands-on | [Your First Five Minutes](getting-started-user.md) |
+| Look up a specific API endpoint | [API Reference](api.md) |
+
+---
+
+*Previous: [The Three Actors](roles.md) · Next: [The Credential Lifecycle](credential-model.md)*

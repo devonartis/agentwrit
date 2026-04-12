@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 440" role="img" aria-labelledby="title desc">
-  <title id="title">AgentAuth registration flow sketch</title>
+  <title id="title">AgentWrit registration flow sketch</title>
   <desc id="desc">Hand-drawn overview showing operator bootstrap, developer registration, and token-ready outcome.</desc>
   <defs>
     <style>
@@ -22,7 +22,7 @@
 
   <rect class="paper" x="0" y="0" width="1200" height="440" rx="24"/>
 
-  <text x="38" y="38" class="group-title">AgentAuth registration overview</text>
+  <text x="38" y="38" class="group-title">AgentWrit registration overview</text>
   <text x="38" y="66" class="note-text">Hand-sketched companion to the Mermaid source-of-truth below.</text>
 
   <g transform="rotate(-1.2 110 210)">

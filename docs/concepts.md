@@ -1,14 +1,6 @@
-# Concepts: Why AgentAuth Exists
+# Concepts — The Security Pattern Behind AgentWrit
 
-> **Document Version:** 2.0 | **Last Updated:** February 2026 | **Status:** Current
->
-> **Audience:** Developers, Operators, and Security Reviewers
->
-> **Prerequisites:** None — this is the starting point for understanding AgentAuth.
->
-> **Purpose:** Understand the problem AgentAuth solves, the security pattern behind it, and how all 8 components work together.
->
-> **Next steps:** [Getting Started](getting-started-user.md) | [Architecture](architecture.md) | [API Reference](api.md)
+AgentWrit implements the Ephemeral Agent Credentialing pattern — a security architecture purpose-built for AI agents. This page covers the full pattern: the industry context, the six principles, and all eight components that work together to eliminate the credential exposure problem.
 
 ---
 
@@ -67,7 +59,7 @@ This represents a massive attack surface where stolen credentials remain valid l
 
 ## The Ephemeral Agent Credentialing Pattern
 
-AgentAuth implements the **Ephemeral Agent Credentialing** pattern, a security architecture built on six principles:
+AgentWrit implements the **Ephemeral Agent Credentialing** pattern, a security architecture built on six principles:
 
 1. **Identity Ephemeral by Default** -- Every agent instance receives a unique, non-reusable identity
 2. **Task-Scoped Authorization** -- Credentials grant access only to resources required for the specific task
@@ -105,7 +97,7 @@ flowchart TB
 
 ## The 7 Components
 
-Each component follows the same structure: the **problem** it solves, the **solution** it provides, a **diagram** of the flow, and what **AgentAuth implements** concretely.
+Each component follows the same structure: the **problem** it solves, the **solution** it provides, a **diagram** of the flow, and what **AgentWrit implements** concretely.
 
 ---
 
@@ -121,7 +113,7 @@ The SPIFFE ID format:
 spiffe://{trust_domain}/agent/{orchestration_id}/{task_id}/{instance_id}
 ```
 
-For example: `spiffe://agentauth.local/agent/orch-456/task-789/a1b2c3d4`
+For example: `spiffe://agentwrit.local/agent/orch-456/task-789/a1b2c3d4`
 
 This identity is globally unique per agent instance, includes task context and orchestration lineage, is cryptographically bound to the agent's Ed25519 key pair, and cannot be forged or transferred between agents.
 
@@ -142,7 +134,7 @@ sequenceDiagram
     Broker-->>Agent: { agent_id: "spiffe://...", access_token: "jwt", expires_in: 300 }
 ```
 
-**What AgentAuth implements:**
+**What AgentWrit implements:**
 - `GET /v1/challenge` returns a 64-character hex nonce with a 30-second TTL
 - `POST /v1/register` performs the full 10-step registration flow
 - Ed25519 signatures verify agent identity cryptographically
@@ -155,9 +147,9 @@ sequenceDiagram
 
 **Problem:** How do you limit what an agent can access? A customer-analysis agent should read customer records for one specific customer -- not have write access to the entire database. And its credentials should last only as long as the task, not a minute longer.
 
-**Solution:** AgentAuth issues JWT tokens with narrow scope limited to specific resources and actions. The scope format is `action:resource:identifier` (for example, `read:customers:12345`). Token TTL defaults to 5 minutes -- long enough for a task, short enough to limit exposure.
+**Solution:** AgentWrit issues JWT tokens with narrow scope limited to specific resources and actions. The scope format is `action:resource:identifier` (for example, `read:customers:12345`). Token TTL defaults to 5 minutes -- long enough for a task, short enough to limit exposure.
 
-Scope attenuation is a one-way operation: permissions can only be narrowed, never expanded. When an agent registers, its requested scope must be a subset of what the launch token allows. This ensures least-privilege access at every step.
+Scope attenuation is a one-way operation: permissions can never expand. A delegate can receive the same scope as its creator or less, but never more. When an agent registers, its requested scope must be covered by what the launch token allows. This ensures least-privilege access at every step.
 
 ```mermaid
 stateDiagram-v2
@@ -179,7 +171,7 @@ stateDiagram-v2
     Revoked --> [*]: Token is permanently unusable
 ```
 
-**What AgentAuth implements:**
+**What AgentWrit implements:**
 - JWTs signed with EdDSA (Ed25519), containing claims: `sub` (SPIFFE ID), `scope`, `task_id`, `orch_id`, `delegation_chain`, `chain_hash`, `jti`, `exp`, `iat`
 - Scope format: `action:resource:identifier` with wildcard `*` support in the identifier position
 - Default TTL of 300 seconds (5 minutes), configurable via `AA_DEFAULT_TTL`
@@ -210,7 +202,7 @@ flowchart LR
     F -->|"Sufficient"| G["Request Allowed<br/>+ Audit Logged"]
 ```
 
-**What AgentAuth implements:**
+**What AgentWrit implements:**
 - `ValMw` (validation middleware) wraps every protected endpoint, performing the full pipeline on every request
 - `ValMw.RequireScope` checks that the token's scope covers the endpoint's requirement
 - No session caching -- tokens are verified from scratch on each request
@@ -268,7 +260,7 @@ flowchart TB
 | **Task** | Entire task is suspect (data poisoning, wrong inputs) | The task_id |
 | **Chain** | Delegation chain exploited (privilege escalation) | The root delegator's agent ID |
 
-**What AgentAuth implements:**
+**What AgentWrit implements:**
 - `RevSvc` maintains revocation lists at all 4 levels, persisted to SQLite for durability across broker restarts
 - `POST /v1/revoke` requires admin scope (`admin:revoke:*`)
 - Every token validation checks all 4 revocation levels via `RevSvc.IsRevoked()`
@@ -300,7 +292,7 @@ flowchart LR
 
 Each hash is computed over: `prev_hash | event_id | timestamp | event_type | agent_id | task_id | orch_id | detail`. The genesis event uses 64 zeros as its previous hash. If an attacker modifies any event, every subsequent hash becomes invalid.
 
-**What AgentAuth implements:**
+**What AgentWrit implements:**
 - `AuditLog` provides append-only storage with automatic hash chaining using SHA-256
 - Audit events persist to SQLite (configured via `AA_DB_PATH`); if no database path is set, events are stored in memory only
 - 25 event types covering the full lifecycle: `admin_auth`, `admin_auth_failed`, `launch_token_issued`, `launch_token_denied`, `agent_registered`, `registration_policy_violation`, `token_issued`, `token_revoked`, `token_renewed`, `token_released`, `token_renewal_failed`, `delegation_created`, `resource_accessed`, `token_auth_failed`, `token_revoked_access`, `scope_violation`, `scope_ceiling_exceeded`, `delegation_attenuation_violation`, `scopes_ceiling_updated`, `app_registered`, `app_authenticated`, `app_auth_failed`, `app_updated`, `app_deregistered`, `app_rate_limited`
@@ -346,7 +338,7 @@ sequenceDiagram
     Note over A,B: Mutual authentication complete.<br/>Both agents verified.
 ```
 
-**What AgentAuth implements:**
+**What AgentWrit implements:**
 - Agents register directly with the broker via `POST /v1/register`, receiving a unique SPIFFE ID and JWT token
 - Anti-spoofing checks verify that declared agent identity matches the token's `sub` claim at every step
 - Agents exchange tokens with each other via application-layer protocols (HTTP, gRPC, etc.), presenting their broker-issued JWT
@@ -360,7 +352,7 @@ sequenceDiagram
 
 **Problem:** How do you prevent privilege escalation in multi-agent workflows? When Agent A delegates work to Agent B, which delegates to Agent C, how do you ensure that Agent C only has the permissions it legitimately needs? Without verification, a malicious agent could forge delegation claims to access resources it was never authorized to touch.
 
-**Solution:** A cryptographically signed delegation chain where permissions can only be narrowed (never expanded) at each hop. Each delegation step creates a signed record that is appended to the chain. A chain hash (SHA-256 of the serialized chain) is embedded in the token, making the chain tamper-evident. Maximum delegation depth is limited to 5 hops.
+**Solution:** A cryptographically signed delegation chain where permissions can never expand at each hop (same scope or narrower, never wider). Each delegation step creates a signed record that is appended to the chain. A chain hash (SHA-256 of the serialized chain) is embedded in the token, making the chain tamper-evident. Maximum delegation depth is limited to 5 hops.
 
 ```mermaid
 sequenceDiagram
@@ -387,7 +379,7 @@ Scope attenuation rules at each delegation hop:
 | `read:data:customers` | `read:data:customers` | `read:data:*` (broader identifier) |
 | `read:data:*` and `write:data:*` | `read:data:customers` | Adding `admin:*` (new scope) |
 
-**What AgentAuth implements:**
+**What AgentWrit implements:**
 - `DelegSvc` manages the delegation flow with scope attenuation enforcement
 - Maximum delegation depth of 5 hops, enforced before processing
 - Each delegation record is signed with the broker's Ed25519 key
@@ -403,21 +395,21 @@ Scope attenuation rules at each delegation hop:
 
 **Solution:** The broker exposes structured metrics, health checks, and error contracts that make security-relevant operational state visible to monitoring systems. Every request produces a structured log entry. Every denial, every revocation, every scope violation is counted and labeled. Health checks report not just "up/down" but whether the database is connected and how many audit events have been recorded.
 
-**What AgentAuth implements:**
+**What AgentWrit implements:**
 
 - `internal/obs/obs.go` provides structured logging (`Ok`, `Warn`, `Fail`, `Trace`) and 12 Prometheus metrics:
-  - `agentauth_tokens_issued_total` (by scope) — are tokens being issued?
-  - `agentauth_tokens_revoked_total` (by level) — is revocation working?
-  - `agentauth_registrations_total` (by status) — are agents registering successfully?
-  - `agentauth_admin_auth_total` (by status) — are admin logins working?
-  - `agentauth_request_duration_seconds` (by endpoint) — latency per endpoint
-  - `agentauth_active_agents` — current registered agent count
-  - `agentauth_clock_skew_total` — clock drift events
-  - `agentauth_audit_events_total` — total audit trail size
-  - `agentauth_audit_write_duration_seconds` — audit write latency
-  - `agentauth_db_errors_total` — database error count
-  - `agentauth_launch_tokens_created_total` — launch tokens created
-  - `agentauth_audit_events_loaded` — events loaded from SQLite on startup
+  - `agentwrit_tokens_issued_total` (by scope) — are tokens being issued?
+  - `agentwrit_tokens_revoked_total` (by level) — is revocation working?
+  - `agentwrit_registrations_total` (by status) — are agents registering successfully?
+  - `agentwrit_admin_auth_total` (by status) — are admin logins working?
+  - `agentwrit_request_duration_seconds` (by endpoint) — latency per endpoint
+  - `agentwrit_active_agents` — current registered agent count
+  - `agentwrit_clock_skew_total` — clock drift events
+  - `agentwrit_audit_events_total` — total audit trail size
+  - `agentwrit_audit_write_duration_seconds` — audit write latency
+  - `agentwrit_db_errors_total` — database error count
+  - `agentwrit_launch_tokens_created_total` — launch tokens created
+  - `agentwrit_audit_events_loaded` — events loaded from SQLite on startup
 - `GET /v1/health` returns `{"status":"ok","version":"2.0.0","uptime":N,"db_connected":true,"audit_events_count":N}`
 - `GET /v1/metrics` exposes all Prometheus metrics for scraping
 - `internal/problemdetails/problemdetails.go` provides RFC 7807 `application/problem+json` error responses with request IDs on every error, enabling correlation between client errors and broker logs
@@ -444,11 +436,11 @@ All 8 components of the [Ephemeral Agent Credentialing v1.3](https://github.com/
 
 ## Threat Model Summary
 
-Understanding what AgentAuth defends against -- and what it does not -- is essential for proper deployment.
+Understanding what AgentWrit defends against -- and what it does not -- is essential for proper deployment.
 
 ### What We Defend Against
 
-| Threat | How AgentAuth Mitigates |
+| Threat | How AgentWrit Mitigates |
 |--------|------------------------|
 | **Credential theft** | Short-lived tokens (minutes, not hours). Stolen credentials become useless quickly. |
 | **Compromised agents** | Task-scoped credentials limit blast radius. Unique identity per instance prevents cross-agent access. Revocation enables immediate invalidation. |
@@ -463,7 +455,7 @@ Understanding what AgentAuth defends against -- and what it does not -- is essen
 | Threat | Why It Is Out of Scope |
 |--------|----------------------|
 | **Credential service compromise** | If the broker itself is compromised, all guarantees fail. The broker is the root of trust and must be protected as critical infrastructure. |
-| **LLM-level attacks** | Prompt injection may cause agents to misuse legitimate credentials. AgentAuth limits the blast radius but cannot prevent the attack itself. Requires LLM guardrails as a complementary control. |
+| **LLM-level attacks** | Prompt injection may cause agents to misuse legitimate credentials. AgentWrit limits the blast radius but cannot prevent the attack itself. Requires LLM guardrails as a complementary control. |
 | **Data poisoning** | Corrupted training data affects agent decisions at a layer below credential management. |
 | **Physical access** | An attacker with physical access can extract signing keys. Physical security is a separate concern. |
 | **Cryptographic breaks** | The pattern assumes Ed25519, SHA-256, and TLS remain secure. |
@@ -516,9 +508,9 @@ flowchart TB
 
 ---
 
-## How AgentAuth Compares
+## How AgentWrit Compares
 
-| Capability | Shared Service Accounts | OAuth 2.0 (15-min tokens) | Cloud IAM (AWS/Azure/GCP) | AgentAuth |
+| Capability | Shared Service Accounts | OAuth 2.0 (15-min tokens) | Cloud IAM (AWS/Azure/GCP) | AgentWrit |
 |------------|------------------------|---------------------------|---------------------------|-----------|
 | Unique identity per agent | No -- all agents share one identity | Possible but not default | Possible with workload identity | Yes -- every instance gets a SPIFFE ID |
 | Task-scoped credentials | No -- broad permissions | Token scope exists but rarely task-specific | IAM conditions can scope | Yes -- `action:resource:identifier` per task |
@@ -529,9 +521,9 @@ flowchart TB
 | Mutual agent authentication | No | No | No | Yes -- 3-step handshake |
 | Designed for AI agents | No | No | No (designed for services) | Yes -- built for ephemeral, autonomous agents |
 
-**When to use AgentAuth:** Multi-agent AI systems where agents need privileged access, lifetimes are measured in minutes, compliance requires least-privilege controls, and you need delegation chain integrity.
+**When to use AgentWrit:** Multi-agent AI systems where agents need privileged access, lifetimes are measured in minutes, compliance requires least-privilege controls, and you need delegation chain integrity.
 
-**When NOT to use AgentAuth:** Agents that run for hours or days (use credential rotation instead), fully offline environments, agents that only access public non-sensitive resources, or environments where dynamic credential issuance infrastructure is unavailable.
+**When NOT to use AgentWrit:** Agents that run for hours or days (use credential rotation instead), fully offline environments, agents that only access public non-sensitive resources, or environments where dynamic credential issuance infrastructure is unavailable.
 
 ---
 
@@ -541,7 +533,7 @@ A fundamental challenge in any identity system: how does an agent get its first 
 
 Traditional approaches provision a long-lived API key or certificate that agents use to request short-lived credentials. But this initial secret becomes a single point of failure -- if it leaks, attackers can request credentials for arbitrary agents.
 
-AgentAuth solves this with **single-use launch tokens**:
+AgentWrit solves this with **single-use launch tokens**:
 
 1. An operator authenticates with the broker using `AA_ADMIN_SECRET`
 2. The operator creates a launch token with a specific scope ceiling and short TTL
@@ -611,7 +603,24 @@ The core lesson: agents should never hold long-lived secrets in their environmen
 
 ---
 
-## Next Steps
+---
 
-- **Developers:** Read [Getting Started: Developer](getting-started-developer.md) to integrate an agent with AgentAuth in 15 lines of Python
-- **Operators:** Read [Getting Started: Operator](getting-started-operator.md) to deploy the broker, configure apps, and create launch tokens
+## What's Next?
+
+You now understand the security pattern behind AgentWrit. Pick your next step:
+
+**[Architecture →](architecture.md)**
+See how the pattern maps to actual code — packages, components, and data flow diagrams.
+
+Or explore by interest:
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| Try the registration flow hands-on | [Your First Five Minutes](getting-started-user.md) |
+| See every API endpoint | [API Reference](api.md) |
+| Understand the scope system in detail | [Scopes and Permissions](scope-model.md) |
+| Find where a feature lives in the codebase | [Implementation Map](implementation-map.md) |
+
+---
+
+*Previous: [Documentation Home](README.md) · Next: [Architecture](architecture.md)*

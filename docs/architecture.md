@@ -1,18 +1,14 @@
-# Architecture
+# Architecture — How AgentWrit Works Inside
 
-> **Document Version:** 3.0 | **Last Updated:** March 2026 | **Status:** Current
->
-> **Audience:** Contributors, security reviewers, and operators who want to understand how AgentAuth works internally.
->
-> **Prerequisites:** [Concepts](concepts.md) for the security pattern overview.
->
-> **Next steps:** [API Reference](api.md) | [Contributing](../CONTRIBUTING.md) | [Getting Started: Operator](getting-started-operator.md)
+Two binaries, one Go module, fourteen internal packages. This page shows how every component connects — from HTTP request to signed JWT to audit record.
+
+**Prerequisites:** [Concepts](concepts.md) helps, but isn't required.
 
 ---
 
 ## System Overview
 
-AgentAuth sits between AI agents and the resources they need to access, providing ephemeral, scoped credentials through a challenge-response identity flow.
+AgentWrit sits between AI agents and the resources they need to access, providing ephemeral, scoped credentials through a challenge-response identity flow.
 
 ```mermaid
 flowchart TB
@@ -23,9 +19,9 @@ flowchart TB
         RS["Resource Servers"]
     end
 
-    subgraph AgentAuth["AgentAuth System Boundary"]
+    subgraph AgentWrit["AgentWrit System Boundary"]
         BROKER["Broker\ncmd/broker\nPort 8080"]
-        AACTL["aactl\ncmd/aactl\nOperator CLI"]
+        AACTL["awrit\ncmd/awrit\nOperator CLI"]
     end
 
     DEV -- "challenge-response\nregistration" --> BROKER
@@ -47,9 +43,9 @@ flowchart TB
 
 **Broker** (`cmd/broker`) -- The central authority. Loads or generates a persistent Ed25519 signing key (`internal/keystore`), issues EdDSA-signed JWTs, validates challenge-response registrations, manages scope attenuation, delegation, revocation, and maintains a hash-chained audit trail. All endpoints use `application/json` with RFC 7807 error responses.
 
-**App Service** (`internal/app`) -- Manages application registrations and app-level authentication. Operators register apps with `aactl app register`, which generates a client_id and client_secret. Apps authenticate with `POST /v1/app/auth` using those credentials to get scoped tokens.
+**App Service** (`internal/app`) -- Manages application registrations and app-level authentication. Operators register apps with `awrit app register`, which generates a client_id and client_secret. Apps authenticate with `POST /v1/app/auth` using those credentials to get scoped tokens.
 
-**aactl** (`cmd/aactl`) -- The operator CLI. Reads `AACTL_BROKER_URL` and `AACTL_ADMIN_SECRET` from environment variables and auto-authenticates. Provides table and JSON output for app management, token revocation, and audit trail queries. Intended for operators who prefer a CLI over hand-crafting curl + JWT.
+**awrit** (`cmd/awrit`) -- The operator CLI. Reads `AACTL_BROKER_URL` and `AACTL_ADMIN_SECRET` from environment variables and auto-authenticates. Provides table and JSON output for app management, token revocation, and audit trail queries. Intended for operators who prefer a CLI over hand-crafting curl + JWT.
 
 ---
 
@@ -100,11 +96,11 @@ flowchart TB
 ## Directory Layout
 
 ```
-agentauth/
+agentwrit/
 |-- cmd/
 |   |-- broker/
 |   |   +-- main.go              # Service wiring, route registration, startup
-|   |-- aactl/                   # Operator CLI (aactl binary)
+|   |-- awrit/                   # Operator CLI (awrit binary)
 |   |   |-- main.go              # Cobra root command, env var config
 |   |   |-- client.go            # HTTP client with auto-auth
 |   |   |-- apps.go              # app register / list
@@ -431,13 +427,13 @@ flowchart LR
 
 2. **Persistent Ed25519 signing key.** On first startup, the broker generates an Ed25519 key pair via `crypto/rand` and writes it to `AA_SIGNING_KEY_PATH` (default `./signing.key`) in PKCS8 PEM format with `0600` permissions. On subsequent startups, the existing key is loaded from disk. Tokens remain valid across restarts as long as the key file persists. Delete the key file to force key rotation (all previously issued tokens become unverifiable). See `internal/keystore` for implementation.
 
-3. **Scope attenuation is one-way.** Scopes can only narrow, never expand. Enforced at registration (requested scope vs. launch token ceiling), delegation (delegated vs. delegator scope), and app-authenticated launch-token creation (requested `allowed_scope` vs. app ceiling).
+3. **Scope attenuation is one-way.** Scopes can never expand — same or narrower, never wider. Enforced at registration (requested scope vs. launch token ceiling), delegation (delegated vs. delegator scope), and app-authenticated launch-token creation (requested `allowed_scope` vs. app ceiling).
 
 4. **Scope check before launch token consumption.** At registration, `ScopeIsSubset` is called before `ConsumeLaunchToken`. A scope violation returns an error without wasting a single-use token.
 
 5. **Bcrypt secret comparison.** Admin authentication uses `bcrypt.CompareHashAndPassword` (cost 12) to prevent timing attacks on `AA_ADMIN_SECRET`. The plaintext secret is bcrypt-hashed at startup in `cfg.Load()` and the hash is stored in `Cfg.AdminSecretHash`. The plaintext is wiped from memory after hashing.
 
-6. **Apps as first-class entities.** Developer applications are registered with the broker via `aactl` and authenticate directly using client credentials (`POST /v1/app/auth`). Each app has its own scope ceiling and configurable JWT TTL (bounded by broker-wide min/max).
+6. **Apps as first-class entities.** Developer applications are registered with the broker via `awrit` and authenticate directly using client credentials (`POST /v1/app/auth`). Each app has its own scope ceiling and configurable JWT TTL (bounded by broker-wide min/max).
 
 7. **Mutual auth not HTTP-exposed.** `MutAuthHdl` in `internal/mutauth` provides a 3-step mutual authentication handshake, but it is not registered on any HTTP mux. It exists as a Go API only, tested in unit tests, intended for future HTTP exposure.
 
@@ -471,3 +467,88 @@ These are explicit trust boundaries and limitations of the current implementatio
 | Go stdlib `crypto/sha256` | -- | Audit hash chain, delegation chain hash |
 | Go stdlib `net/http` | -- | HTTP server (Go 1.22+ method routing) |
 | `golang.org/x/crypto/bcrypt` | v0.48.0 | Admin secret hash verification |
+
+---
+
+## Background Maintenance
+
+The broker runs two background tasks on a 60-second ticker:
+
+**JTI Pruning** (`store.PruneExpiredJTIs`) — Removes expired JWT ID entries from the database. JTIs are stored to prevent token replay; once a token expires, its JTI is no longer needed. The pruner keeps the database from growing unbounded.
+
+**Agent Expiration** (`store.ExpireAgents`) — Marks agents as expired when they exceed inactivity thresholds. This catches agents that crashed without calling `POST /v1/token/release` to self-revoke.
+
+Both tasks log their results at the `Ok` level with the operation name and count of affected records.
+
+---
+
+## Mutual Authentication Protocol
+
+The `mutauth` package provides agent-to-agent mutual authentication using a three-step cryptographic handshake. This is currently a Go API only — HTTP exposure is planned for a future release.
+
+### The Three-Step Handshake
+
+```mermaid
+sequenceDiagram
+    participant A as Agent A (Initiator)
+    participant Broker
+    participant B as Agent B (Responder)
+
+    rect rgb(30, 40, 60)
+        Note over A,Broker: Step 1: Initiate
+        A->>Broker: InitiateHandshake(myToken, targetAgentID)
+        Broker->>Broker: Verify A's token ✓<br/>Confirm B exists ✓<br/>Generate nonce
+        Broker-->>A: nonce
+    end
+
+    rect rgb(20, 50, 50)
+        Note over A,B: Step 2: Respond
+        A->>B: "Here's the nonce. Prove you're agent B."
+        B->>B: Verify A's token/identity ✓<br/>Sign nonce with Ed25519 key
+        B-->>A: signed_nonce + counter_nonce
+    end
+
+    rect rgb(40, 30, 60)
+        Note over A,Broker: Step 3: Complete
+        A->>Broker: CompleteHandshake(B's signed nonce)
+        Broker->>Broker: Look up B's public key<br/>Verify nonce signature ✓
+        Broker-->>A: Mutual auth verified ✓
+    end
+```
+
+### Discovery Registry
+
+The `DiscoveryRegistry` maps agent SPIFFE IDs to network endpoints so agents can find each other:
+
+| Operation | What it does |
+|-----------|-------------|
+| `Bind(agentID, endpoint)` | Associates an agent's SPIFFE ID with a reachable endpoint |
+| `Resolve(agentID)` | Looks up the endpoint for a given agent ID |
+| `Unbind(agentID)` | Removes an agent's endpoint binding |
+| `VerifyBinding(agentID, presentedID)` | Identity-consistency check during handshakes |
+
+### Heartbeat Manager
+
+The `HeartbeatMgr` tracks agent liveness with periodic heartbeats (default: 30-second interval, max 3 consecutive misses). When an agent exceeds the miss threshold, the heartbeat manager can optionally auto-revoke the agent's credentials via `revoke.RevSvc`.
+
+---
+
+## What's Next?
+
+You've seen how the pieces fit together. Pick your next step:
+
+**[API Reference →](api.md)**
+Every endpoint — request formats, response shapes, error codes, and rate limits.
+
+Or explore related topics:
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| Find where a feature lives in the code | [Implementation Map](implementation-map.md) |
+| Use the operator CLI | [CLI Reference (awrit)](awrit-reference.md) |
+| Deploy in production | [Getting Started: Operator](getting-started-operator.md) |
+| Understand the security pattern | [Concepts Deep Dive](concepts.md) |
+
+---
+
+*Previous: [Concepts](concepts.md) · Next: [API Reference](api.md)*

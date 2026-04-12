@@ -224,7 +224,7 @@ func TestRequireScope_NilAuditLog_DoesNotPanic(t *testing.T) {
 
 func TestWrap_AudienceRejectsWrongAud(t *testing.T) {
 	claims := &token.TknClaims{
-		Iss: "agentauth", Sub: "agent-1", Jti: "jti-1",
+		Iss: "test-issuer", Sub: "agent-1", Jti: "jti-1",
 		Exp: 9999999999, Nbf: 0, Iat: 0,
 		Scope: []string{"read:data:*"},
 		Aud:   []string{"other-service"},
@@ -246,7 +246,7 @@ func TestWrap_AudienceRejectsWrongAud(t *testing.T) {
 
 func TestWrap_AudienceAcceptsCorrectAud(t *testing.T) {
 	claims := &token.TknClaims{
-		Iss: "agentauth", Sub: "agent-1", Jti: "jti-1",
+		Iss: "test-issuer", Sub: "agent-1", Jti: "jti-1",
 		Exp: 9999999999, Nbf: 0, Iat: 0,
 		Scope: []string{"read:data:*"},
 		Aud:   []string{"my-broker"},
@@ -338,7 +338,7 @@ func TestRequireAnyScope_AdminTokenAlsoPasses(t *testing.T) {
 
 func TestWrap_AudienceSkippedWhenEmpty(t *testing.T) {
 	claims := &token.TknClaims{
-		Iss: "agentauth", Sub: "agent-1", Jti: "jti-1",
+		Iss: "test-issuer", Sub: "agent-1", Jti: "jti-1",
 		Exp: 9999999999, Nbf: 0, Iat: 0,
 		Scope: []string{"read:data:*"},
 		Aud:   []string{},

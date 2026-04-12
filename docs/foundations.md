@@ -1,4 +1,4 @@
-# AgentAuth Foundations — What Tokens Are and Why We Use Them
+# AgentWrit Foundations — What Tokens Are and Why We Use Them
 
 ## What Is a Token?
 
@@ -39,7 +39,7 @@ API keys are tokens — but they're bad tokens. Here's why.
 
 An API key is a random string that the server looks up in a database. If the string matches, you're in. The problem:
 
-| Property | API Key | AgentAuth Token (JWT) |
+| Property | API Key | AgentWrit Token (JWT) |
 |----------|---------|-----------------------|
 | **Lifetime** | Permanent until rotated | Minutes. Expires automatically |
 | **Permissions** | Whatever the key is configured for — usually everything | Explicit scope list embedded in the token |
@@ -60,13 +60,13 @@ A good token has five properties:
 
 The token carries its own data — who the holder is, what they're allowed to do, when the token expires. The server doesn't need to look anything up to verify it. It checks the cryptographic signature, reads the embedded claims, and makes a decision.
 
-In AgentAuth, this is a JWT (JSON Web Token) signed with Ed25519. The server holds the private key (signs tokens). Anyone with the public key can verify them — including external services that need to check agent credentials without calling back to the broker.
+In AgentWrit, this is a JWT (JSON Web Token) signed with Ed25519. The server holds the private key (signs tokens). Anyone with the public key can verify them — including external services that need to check agent credentials without calling back to the broker.
 
 ### 2. Short-lived
 
 The token has a defined lifetime. When it expires, it's useless. This limits the damage window if the token leaks.
 
-In AgentAuth:
+In AgentWrit:
 - Admin JWT: 5 minutes
 - App JWT: 30 minutes (configurable per app, 60s to 24h)
 - Agent JWT: set by the launch token's `max_ttl`, clamped by the global `MaxTTL`
@@ -78,7 +78,7 @@ Every token has an `exp` (expiration) claim. The server rejects any token where 
 
 The token says exactly what the holder is allowed to do. Not "everything the account can do" — just the specific permissions needed for this session or task.
 
-In AgentAuth, scopes follow the format `action:resource:identifier`:
+In AgentWrit, scopes follow the format `action:resource:identifier`:
 
 ```
 read:data:customers       — read customer data
@@ -98,7 +98,7 @@ Every token has a unique ID (`jti` — JWT ID). Every agent has a unique identit
 
 ### 5. Revocable
 
-If something goes wrong, you can kill the token immediately — before it expires. AgentAuth does this at four levels:
+If something goes wrong, you can kill the token immediately — before it expires. AgentWrit does this at four levels:
 
 - **Token** — kill one specific credential by its JTI
 - **Agent** — kill everything one agent holds, by its SPIFFE ID
@@ -111,7 +111,7 @@ Revocation is checked on every authenticated request. A revoked token gets rejec
 
 ## How Tokens Are Built (The JWT Structure)
 
-AgentAuth tokens are JWTs — three base64-encoded parts separated by dots:
+AgentWrit tokens are JWTs — three base64-encoded parts separated by dots:
 
 ```
 header.payload.signature
@@ -131,9 +131,9 @@ header.payload.signature
 **Payload** — the claims (who you are, what you can do, when it expires):
 ```json
 {
-  "iss": "agentauth",
-  "sub": "spiffe://agentauth.local/agent/orch-456/task-789/a1b2c3d4",
-  "aud": ["agentauth"],
+  "iss": "agentwrit",
+  "sub": "spiffe://agentwrit.local/agent/orch-456/task-789/a1b2c3d4",
+  "aud": ["agentwrit"],
   "exp": 1711810500,
   "nbf": 1711810200,
   "iat": 1711810200,
@@ -149,7 +149,7 @@ header.payload.signature
 
 | Claim | What it carries |
 |-------|----------------|
-| `iss` | Issuer — always `"agentauth"`. Tokens claiming a different issuer are rejected |
+| `iss` | Issuer — always `"agentwrit"`. Tokens claiming a different issuer are rejected |
 | `sub` | Subject — who this token represents. `"admin"` for operators, `"app:{id}"` for apps, SPIFFE URI for agents |
 | `aud` | Audience — who this token is intended for. Checked if configured |
 | `exp` | Expiration — Unix timestamp. Token is dead after this |
@@ -179,15 +179,49 @@ Tokens are not magic. Understanding their limits is as important as understandin
 
 **A token cannot enforce what you do with the data.** A token with `read:data:customers` proves the holder is allowed to read customer data. It doesn't prevent the holder from leaking that data somewhere else. Token-based authorization is about access control, not data loss prevention.
 
-**A token cannot prove the holder is the original recipient.** If Agent A's token is stolen and used by an attacker, the token itself doesn't know. This is why AgentAuth uses challenge-response registration (proving key possession) and why mutual authentication exists — to verify both ends of a communication.
+**A token cannot prove the holder is the original recipient.** If Agent A's token is stolen and used by an attacker, the token itself doesn't know. This is why AgentWrit uses challenge-response registration (proving key possession) and why mutual authentication exists — to verify both ends of a communication.
 
 **A token cannot revoke itself automatically.** When a task finishes, the token doesn't disappear. The agent should call `POST /v1/token/release` to self-revoke. If the agent crashes without releasing, the token remains valid until it expires. This is acceptable because the TTL is short (minutes, not hours).
 
 ---
 
-## The Three Types of Token in AgentAuth
+## Token Lifecycle
 
-With the foundation of what tokens are and why they matter, here's what AgentAuth actually issues:
+Every token in AgentWrit follows the same lifecycle, regardless of type:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Issued: Broker signs JWT
+    Issued --> Active: nbf time reached
+    Active --> Active: Used for requests
+    Active --> Renewed: POST /v1/token/renew<br/>(old token revoked)
+    Renewed --> Active: New JWT issued
+    Active --> Released: POST /v1/token/release<br/>(self-revoke)
+    Active --> Revoked: POST /v1/revoke<br/>(admin kills it)
+    Active --> Expired: exp time reached
+    Released --> [*]
+    Revoked --> [*]
+    Expired --> [*]
+
+    note right of Active
+        Every authenticated request
+        checks: not expired, not revoked,
+        scopes cover the endpoint
+    end note
+
+    note right of Expired
+        Background pruner removes
+        expired JTIs every 60s
+    end note
+```
+
+The key insight: tokens don't just expire — they can be **renewed** (extending the session with a new JWT while revoking the old one), **released** (self-revoked by the agent when done), or **revoked** (killed by the admin at any time). All three paths are distinct.
+
+---
+
+## The Three Types of Token in AgentWrit
+
+With the foundation of what tokens are and why they matter, here's what AgentWrit actually issues:
 
 ### JWT Tokens (Admin, App, Agent, Delegated)
 
@@ -220,8 +254,21 @@ Nonces aren't really "tokens" in the authorization sense — they're part of the
 
 ---
 
-## Now: What Are Scopes and How Do They Work?
+## What's Next?
 
-With tokens defined, scopes are what give tokens their meaning. A token without scopes is a proof of identity — it says who you are but not what you're allowed to do.
+Tokens make sense now. Next, understand who holds them and why:
 
-See [Scope Model](scope-model.md) for the complete scope deep dive: the format, the coverage rules, the four enforcement points, and how scopes flow through the attenuation chain.
+**[The Three Actors →](roles.md)**
+Operator, Application, Agent — each holds a different token with different authority.
+
+Or explore related topics:
+
+| If you want to... | Read this |
+|-------------------|-----------|
+| See the permission system that gives tokens their meaning | [Scopes and Permissions](scope-model.md) |
+| Understand the full credential lifecycle with sequence diagrams | [The Credential Lifecycle](credential-model.md) |
+| Jump straight to getting a token | [Your First Five Minutes](getting-started-user.md) |
+
+---
+
+*Previous: [What Is AgentWrit?](agentwrit-explained.md) · Next: [The Three Actors](roles.md)*

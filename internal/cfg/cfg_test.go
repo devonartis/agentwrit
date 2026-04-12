@@ -12,8 +12,8 @@ func TestLoad_DBPathDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.DBPath != "./agentauth.db" {
-		t.Fatalf("expected default ./agentauth.db, got %q", c.DBPath)
+	if c.DBPath != "./data.db" {
+		t.Fatalf("expected default ./data.db, got %q", c.DBPath)
 	}
 }
 
@@ -62,8 +62,9 @@ func TestLoad_AudienceDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Audience != "agentauth" {
-		t.Fatalf("expected default audience 'agentauth', got %q", c.Audience)
+	// Unset audience = empty = skip validation. No brand-coupled default.
+	if c.Audience != "" {
+		t.Fatalf("expected empty audience when unset (skip validation), got %q", c.Audience)
 	}
 }
 
@@ -90,6 +91,31 @@ func TestLoad_AudienceEmpty(t *testing.T) {
 	}
 	if c.Audience != "" {
 		t.Fatalf("expected empty audience, got %q", c.Audience)
+	}
+}
+
+func TestLoad_AdminTokenTTLDefault(t *testing.T) {
+	t.Setenv("AA_ADMIN_SECRET", "test-cfg-secret")
+	os.Unsetenv("AA_ADMIN_TOKEN_TTL")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.AdminTokenTTL != 300 {
+		t.Fatalf("expected default AdminTokenTTL 300 (5 min), got %d", c.AdminTokenTTL)
+	}
+}
+
+func TestLoad_AdminTokenTTLCustom(t *testing.T) {
+	t.Setenv("AA_ADMIN_SECRET", "test-cfg-secret")
+	os.Setenv("AA_ADMIN_TOKEN_TTL", "600")
+	defer os.Unsetenv("AA_ADMIN_TOKEN_TTL")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.AdminTokenTTL != 600 {
+		t.Fatalf("expected AdminTokenTTL 600, got %d", c.AdminTokenTTL)
 	}
 }
 

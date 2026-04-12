@@ -68,7 +68,7 @@ func main() {
 
 	// P1: Fail fast if admin secret is not configured.
 	if c.AdminSecretHash == "" {
-		fmt.Fprintln(os.Stderr, "FATAL: No admin secret configured. Run 'aactl init' or set the AA_ADMIN_SECRET environment variable.")
+		fmt.Fprintln(os.Stderr, "FATAL: No admin secret configured. Run 'awrit init' or set the AA_ADMIN_SECRET environment variable.")
 		os.Exit(1)
 	}
 
@@ -137,7 +137,7 @@ func main() {
 	}
 	idSvc := identity.NewIdSvc(sqlStore, tknSvc, c.TrustDomain, auditLog, c.Audience)
 	delegSvc := deleg.NewDelegSvc(tknSvc, sqlStore, auditLog, privKey)
-	adminSvc := admin.NewAdminSvc(c.AdminSecretHash, tknSvc, sqlStore, auditLog, c.Audience)
+	adminSvc := admin.NewAdminSvc(c.AdminSecretHash, tknSvc, sqlStore, auditLog, c.Audience, c.AdminTokenTTL)
 	appSvc := app.NewAppSvc(sqlStore, tknSvc, auditLog, c.Audience, c.AppTokenTTL)
 
 	// Seed tokens for development (AA_SEED_TOKENS=true)
