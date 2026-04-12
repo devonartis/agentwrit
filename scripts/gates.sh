@@ -38,6 +38,7 @@ GATES_FULL=(
   docker-build
   smoke-l25
   sbom
+  main-hygiene
 )
 
 if [[ "$MODE" == "--list-gates" ]]; then
@@ -174,6 +175,37 @@ if [[ "$MODE" == "full" ]]; then
     run_gate "sbom" syft scan dir:. -o spdx-json=sbom.spdx.json --quiet
   else
     skip_gate "sbom" "syft not installed — brew install syft or https://github.com/anchore/syft"
+  fi
+
+  # Main-hygiene: strip-target paths must not exist on main. Only runs
+  # when actually checked out to main, since develop legitimately carries
+  # these files. Mirrors the main-hygiene job in ci.yml — keep the
+  # STRIP_PATHS list below in sync with that job AND with
+  # scripts/strip_for_main.sh.
+  CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+  if [[ "$CURRENT_BRANCH" == "main" ]]; then
+    STRIP_PATHS=(
+      "MEMORY.md" "MEMORY_ARCHIVE.md" "FLOW.md" "TECH-DEBT.md"
+      "AGENTS.md" "CLAUDE.md" "COWORK_SESSION.md" "COWORK_DOCS_AUDIT.md"
+      ".active_module" ".plans" ".claude" ".agents" "audit" "adr"
+      ".vscode" "generate_pdf.py"
+    )
+    run_gate "main-hygiene" bash -c '
+      STRIP_PATHS=('"${STRIP_PATHS[*]@Q}"')
+      found=0
+      for p in "${STRIP_PATHS[@]}"; do
+        if [[ -e "$p" ]]; then
+          echo "FAIL: dev-only path found on main: $p"
+          found=$((found + 1))
+        fi
+      done
+      for f in AgentAuth_*.docx docs/QA_REPORT_*.md tests/*/evidence/DOC-AUDIT-REPORT.md; do
+        [[ -e "$f" ]] && { echo "FAIL: dev-only glob match: $f"; found=$((found + 1)); }
+      done
+      [[ $found -eq 0 ]]
+    '
+  else
+    skip_gate "main-hygiene" "not on main branch (current: $CURRENT_BRANCH)"
   fi
 fi
 
