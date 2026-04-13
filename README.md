@@ -20,59 +20,150 @@ They're added now so the moment the repo flips public, they light up without
 needing a README update. Fire-and-forget.
 -->
 
-
-**Ephemeral agent credentialing for AI systems.**
-
-AgentAuth is a credential broker that issues short-lived, scope-attenuated tokens to AI agents. Each agent gets a unique [SPIFFE](https://spiffe.io/)-format identity and operates with only the permissions its task requires. Tokens are signed with Ed25519 (EdDSA), expire in minutes, and are revocable at four levels (token, agent, task, delegation chain). Every credential event is recorded in a tamper-evident audit trail.
-
-AgentAuth implements the [Ephemeral Agent Credentialing](https://github.com/devonartis/AI-Security-Blueprints/blob/main/patterns/ephemeral-agent-credentialing/versions/v1.3.md) security pattern — an 8-component architecture purpose-built for autonomous AI agents.
+> [!IMPORTANT]
+> **Building in public — pre-1.0.** The broker core is stable and we use it daily, but the Python SDK and demo app are still landing. Feel free to try it as we build in the open. For anything non-lab, pin to a `v<semver>` release or a `main-<sha>` image digest — `:latest` moves with every `main` commit and will change without notice. Issues are welcome; external PRs are paused until the contribution workflow is ready. See [CHANGELOG.md](CHANGELOG.md) for what shipped recently.
 
 ---
 
-## Why AgentAuth
+## What is AgentWrit?
 
-Traditional identity systems (OAuth, AWS IAM, service accounts) were designed for long-lived services with persistent identities. AI agents break those assumptions: they are ephemeral, non-deterministic, and require task-specific permissions at runtime. Giving an agent a static API key means it has every permission the key grants for as long as the key exists. AgentAuth replaces that model: agents get short-lived tokens scoped to exactly one task, and those tokens are revoked the moment the task completes.
+**AgentWrit gives AI agents temporary, task-scoped credentials instead of long-lived API keys.**
 
-Read more: [Concepts: Why AgentAuth Exists](docs/concepts.md)
+When an AI agent needs to do something — read a customer record, call a vendor API, run a query — it asks the AgentWrit broker for a token. The token works for that specific task, expires in minutes, and can be yanked at four different levels (token, agent, task, or entire delegation chain) the moment anything feels wrong. The agent never touches your long-lived credentials at all.
+
+Think of it as an issuer of legal **writs** for software: narrow authority, time-limited, revocable at the source, with a tamper-evident audit trail of every credential event.
+
+### The problem AgentWrit solves
+
+When you give an AI agent a long-lived API key, the agent can do anything the key allows, for as long as the key exists. If the agent misbehaves, leaks the key, hits a prompt-injection, or is repurposed for a task you didn't sanction — the blast radius is everything that key can touch. Rotation is a manual, dangerous operation. Revocation is instant to decide and slow to implement.
+
+AgentWrit inverts that model:
+
+- **Tokens are requested per task**, not issued in advance
+- **Scopes are narrow** — one task, one resource, one agent
+- **Lifetimes are short** — minutes, not years — with renewal via a fresh broker call
+- **Revocation is instant** at token, agent, task, or delegation-chain granularity
+- **Every issue / renew / revoke / delegate / release event is audited** in a tamper-evident hash chain
+
+The broker is the only component that holds your long-lived keys. Agents only ever see short-lived JWTs.
+
+AgentWrit implements the [Ephemeral Agent Credentialing v1.3](https://github.com/devonartis/AI-Security-Blueprints/blob/main/patterns/ephemeral-agent-credentialing/versions/v1.3.md) security pattern — an 8-component architecture built specifically for autonomous agents. Tokens are signed with Ed25519 (EdDSA), agents have [SPIFFE](https://spiffe.io/)-format identities, and the broker talks plain HTTP so you can put it behind whatever ingress you already run.
+
+More depth: [docs/concepts.md](docs/concepts.md).
 
 ---
 
-## Release Status
+## Release status
 
-**Current release:** v2.0.0 — MVP Prototype (pattern validation release)
-
-This release validates that AgentAuth is a working implementation of the target security pattern, ready for controlled demos, integration testing, and production hardening.
+**Current:** v2.0.0 — pattern validation release. The broker is stable, the full token lifecycle works, but the surrounding ecosystem (Python SDK, demo, TypeScript SDK) is still being built in public. See the banner at the top and [CHANGELOG.md](CHANGELOG.md) for current state.
 
 ---
 
-## Quick Start
+## Quick Start — five minutes from zero to first agent token
 
-Prerequisites: [Docker](https://docs.docker.com/get-docker/) (plus [Go 1.24+](https://go.dev/dl/) and [Docker Compose](https://docs.docker.com/compose/install/) for source builds).
+You're going to (1) start the broker, (2) authenticate as admin, (3) create a **launch token** (a one-shot registration credential), and (4) use that launch token to issue a scoped agent token. At the end you'll have a JWT your AI agent can hand to a resource server to prove it has permission for exactly one task.
+
+Prerequisites: [Docker](https://docs.docker.com/get-docker/). That's it for Option A. (Option B needs Docker Compose and a clone, Option C needs Go 1.24+.)
 
 ### Option A: Pre-built image from Docker Hub (fastest)
 
-The signed, multi-arch (`linux/amd64` + `linux/arm64`) broker image is published to Docker Hub on every push to `main` and on release tags. Pull and run directly — no clone required.
+The signed, multi-arch (`linux/amd64` + `linux/arm64`) broker image is published to Docker Hub on every push to `main` and on release tags. Pull and run directly — no git clone, no Go toolchain.
+
+**Step 1 — Set a strong admin secret and start the broker.**
 
 ```bash
-# 1. Set a strong admin secret (required — broker exits without it)
+# The broker exits on startup if AA_ADMIN_SECRET is unset. Use a real random value.
 export AA_ADMIN_SECRET="$(openssl rand -base64 32)"
 
-# 2. Pull and run
-docker run --rm -p 8080:8080 \
+docker run -d --name agentwrit \
+  -p 8080:8080 \
   -e AA_ADMIN_SECRET \
   -e AA_BIND_ADDRESS=0.0.0.0 \
-  -v agentwrit-data:/data \
   -e AA_DB_PATH=/data/data.db \
   -e AA_SIGNING_KEY_PATH=/data/signing.key \
+  -v agentwrit-data:/data \
   devonartis/agentwrit:latest
 
-# 3. In another terminal, verify health
+# Confirm it's up
 curl -s http://localhost:8080/v1/health | jq .
+# {"status":"ok","version":"2.0.0","uptime":3,"db_connected":true,"audit_events_count":0}
 ```
 
-Available tags: `latest` (always tracks `main`), `main-<sha>` (every commit), `v<major>.<minor>.<patch>` / `v<major>.<minor>` / `v<major>` (release tags).
+**What the env vars do:**
+- `AA_ADMIN_SECRET` — the root credential. Anyone who knows this can create launch tokens and revoke credentials. Treat like a root password.
+- `AA_BIND_ADDRESS=0.0.0.0` — inside the container, bind to all interfaces so Docker's port forwarding can reach it. (The default `127.0.0.1` is for VPS mode.)
+- `AA_DB_PATH` / `AA_SIGNING_KEY_PATH` — persist the SQLite audit log and the Ed25519 signing key to the named volume so they survive container restarts.
 
-**Verifying the image signature** (optional, recommended for production):
+**Step 2 — Authenticate as admin.**
+
+The admin secret isn't a bearer token — you exchange it for a short-lived admin JWT:
+
+```bash
+ADMIN_TOKEN=$(curl -s -X POST http://localhost:8080/v1/admin/auth \
+  -H "Content-Type: application/json" \
+  -d "{\"secret\":\"$AA_ADMIN_SECRET\"}" | jq -r '.access_token')
+
+echo "${ADMIN_TOKEN:0:20}..."  # should print "eyJhbGciOiJFZERTQSIs..."
+```
+
+**Step 3 — Create a launch token.**
+
+A launch token is a one-time registration credential. The agent presents it once (along with a signed challenge nonce) to get its real task-scoped JWT. You, the operator, decide what scopes the resulting agent is allowed to request:
+
+```bash
+LAUNCH_TOKEN=$(curl -s -X POST http://localhost:8080/v1/admin/launch-tokens \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_name": "demo-agent",
+    "orch_id": "quickstart",
+    "allowed_scope": ["read:data:*"],
+    "ttl_seconds": 300
+  }' | jq -r '.launch_token')
+
+echo "Launch token: ${LAUNCH_TOKEN:0:20}..."
+```
+
+**Step 4 — Register the agent and get a scoped JWT.**
+
+The agent generates an Ed25519 key pair, gets a nonce from the broker, signs it, and registers with the launch token plus the signed nonce. The broker verifies the signature, issues a SPIFFE identity, and returns a short-lived JWT scoped to `read:data:*`.
+
+The crypto here is enough code that the easy path is the Python SDK:
+
+```python
+from agentauth import AgentAuthApp
+
+# The SDK hides the challenge-response signing flow
+agent = AgentAuthApp(broker_url="http://localhost:8080").register(
+    launch_token=LAUNCH_TOKEN,
+    task_id="read-customer-42",
+    requested_scope=["read:data:customers:42"],  # must be subset of allowed_scope
+)
+
+# Now make a request to your resource server
+import httpx
+resp = httpx.get("https://your-api.example.com/customers/42",
+                 headers=agent.bearer_header)
+
+# When the task is done
+agent.release()
+```
+
+**Want to see the raw HTTP registration flow** (challenge + signed nonce + register) without the SDK? See [docs/getting-started-user.md](docs/getting-started-user.md) for the manual 6-step walkthrough with curl + openssl. Good for understanding what the SDK is doing under the hood.
+
+### Image tags and verification
+
+Available Docker Hub tags:
+
+| Tag | Moves | Use for |
+|---|---|---|
+| `latest` | Every `main` push | Lab and evaluation |
+| `main-<sha>` | Every `main` push | Reproducible deployments — pin to a specific commit |
+| `v<major>.<minor>.<patch>` / `v<major>.<minor>` / `v<major>` | Release tags | **Production** — pin to an exact semver release |
+
+Never pin production to `:latest`. Pin to a `v<semver>` or `main-<sha>` digest and upgrade on a schedule you control.
+
+**Verify the image signature** (optional, recommended for production):
 
 ```bash
 cosign verify devonartis/agentwrit:latest \
@@ -80,7 +171,7 @@ cosign verify devonartis/agentwrit:latest \
   --certificate-oidc-issuer=https://token.actions.githubusercontent.com
 ```
 
-Signed keyless with Sigstore via GitHub Actions OIDC — no long-lived signing key to rotate.
+Signed keyless with Sigstore via GitHub Actions OIDC — no long-lived signing key to rotate. If verification fails, **do not run the image** and report the discrepancy.
 
 ### Option B: Docker Compose (clone + build locally)
 
@@ -142,7 +233,7 @@ The typical workflow after setup is: create an app, issue a launch token for tha
 
 | Language | Repo | Install | Status |
 |----------|------|---------|--------|
-| **Python** | [agentauth-python](https://github.com/devonartis/agentauth-python) | `pip install agentauth` | v0.3.0 — 15 acceptance tests passing |
+| **Python** | [agentwrit-python](https://github.com/devonartis/agentwrit-python) | `pip install agentauth` *(PyPI rename pending)* | v0.3.0 — 15 acceptance tests passing |
 | **TypeScript** | Coming soon | — | Planned |
 
 The Python SDK wraps the broker's Ed25519 challenge-response flow into simple function calls:
@@ -168,13 +259,13 @@ response = httpx.get(url, headers=agent.bearer_header)
 agent.release()
 ```
 
-See the [Python SDK documentation](https://github.com/devonartis/agentauth-python) for the full API reference, delegation patterns, and error handling.
+See the [Python SDK documentation](https://github.com/devonartis/agentwrit-python) for the full API reference, delegation patterns, and error handling.
 
 ---
 
 ## See It In Action — MedAssist AI Demo
 
-The Python SDK includes **MedAssist AI**, an interactive healthcare demo that showcases every AgentAuth capability against a live broker.
+The Python SDK includes **MedAssist AI**, an interactive healthcare demo that showcases every AgentWrit capability against a live broker.
 
 A FastAPI web app where you enter a patient ID and a plain-language request. A local LLM chooses which tools to call. The app dynamically creates broker agents with only the scopes those tools need, for that specific patient. You see scope enforcement, cross-patient denial, delegation, token renewal, and release — all in a real-time execution trace.
 
@@ -187,13 +278,13 @@ A FastAPI web app where you enter a patient ID and a plain-language request. A l
 | **Token lifecycle** | Renewal and release shown at end of each encounter |
 | **Audit trail** | Dedicated audit tab showing hash-chained broker events |
 
-**Run it:** See the [MedAssist AI demo](https://github.com/devonartis/agentauth-python/tree/main/demo) in the Python SDK repo, including a [beginner's guide](https://github.com/devonartis/agentauth-python/blob/main/demo/BEGINNERS_GUIDE.md) with architecture diagrams and a [presenter's guide](https://github.com/devonartis/agentauth-python/blob/main/demo/PRESENTERS_GUIDE.md) for live demos.
+**Run it:** See the [MedAssist AI demo](https://github.com/devonartis/agentwrit-python/tree/main/demo) in the Python SDK repo, including a [beginner's guide](https://github.com/devonartis/agentwrit-python/blob/main/demo/BEGINNERS_GUIDE.md) with architecture diagrams and a [presenter's guide](https://github.com/devonartis/agentwrit-python/blob/main/demo/PRESENTERS_GUIDE.md) for live demos.
 
 ---
 
 ## Architecture
 
-AgentAuth is a single broker binary. Operators manage it with the `awrit` CLI. Developers and agents interact with it over HTTP.
+AgentWrit is a single broker binary. Operators manage it with the `awrit` CLI. Developers and agents interact with it over HTTP.
 
 ```mermaid
 flowchart TB
@@ -204,7 +295,7 @@ flowchart TB
         RS["Resource Servers"]
     end
 
-    subgraph AA["AgentAuth Broker :8080"]
+    subgraph AA["AgentWrit Broker :8080"]
         IDENTITY["Identity Service\nChallenge-response registration"]
         TOKEN["Token Service\nEdDSA JWT issue / verify / renew"]
         AUTHZ["Authz Middleware\nScope enforcement"]
@@ -392,7 +483,7 @@ The Docker Compose stack runs the broker on port 8080 (override with `AA_HOST_PO
 
 ## Operator CLI (awrit)
 
-`awrit` is the operator's command-line tool for managing the AgentAuth broker. It auto-authenticates with the broker using `AACTL_BROKER_URL` and `AACTL_ADMIN_SECRET`.
+`awrit` is the operator's command-line tool for managing the AgentWrit broker. It auto-authenticates with the broker using `AACTL_BROKER_URL` and `AACTL_ADMIN_SECRET`.
 
 ```bash
 # Build
@@ -505,7 +596,7 @@ server {
 
 | SDK | Description |
 |-----|-------------|
-| [Python SDK](https://github.com/devonartis/agentauth-python) | Full SDK with agent lifecycle, delegation, scope checking, and the MedAssist AI demo |
+| [Python SDK](https://github.com/devonartis/agentwrit-python) | Full SDK with agent lifecycle, delegation, scope checking, and the MedAssist AI demo |
 
 ### Guides
 
@@ -527,7 +618,7 @@ server {
 
 ## License
 
-AgentAuth is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. See [LICENSE](LICENSE) for the full text.
+AgentWrit is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. See [LICENSE](LICENSE) for the full text.
 
 Substantial contributions require accepting the [Contributor License Agreement](CLA.md). See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 

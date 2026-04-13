@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — README rewrite for newcomers + build-in-public banner (2026-04-12)
+
+- **`README.md`** — significant rewrite of the top section for people who are not already familiar with the product:
+  - Added a GitHub `[!IMPORTANT]` **build-in-public status banner** right under the badges: broker is stable, SDK and demo still landing, pin to `v<semver>` or `main-<sha>` for anything non-lab, issues welcome / external PRs paused.
+  - Replaced the jargon-heavy hero paragraph with a plain-English "What is AgentWrit?" section that leads with the writ metaphor — narrow authority, time-limited, revocable at the source.
+  - Added a new **"The problem AgentWrit solves"** section that frames the pain (long-lived API keys + prompt-injected agents = full blast radius) before introducing the solution.
+  - Rewrote the **Quick Start** as a 5-minute zero-to-first-agent-token walkthrough: Docker Hub pull → admin auth → launch token → Python SDK registration. Every step explains what the command does and why you're running it.
+  - Fixed 5 remaining prose references to `AgentAuth` missed in the earlier brand sweep.
+  - Updated Python SDK links from `github.com/devonartis/agentauth-python` → `github.com/devonartis/agentwrit-python` after the sister repo rename.
+
+### Changed — CONTRIBUTING.md policy rewrite (Decision 014, 2026-04-12)
+
+- **`CONTRIBUTING.md`** — restructured to match Decision 014 (build-in-public, external PRs paused):
+  - New top section "Contribution Policy (READ FIRST)" with a table of what's accepted (issues, security reports, feature requests) and what's not (external PRs of any kind). Explains why PRs are paused and lists 5-item exit criteria for reopening.
+  - Deleted the "Pull Request Process" section and PR checklist (misleading given the current policy).
+  - New "Filing a good Issue" section with concrete templates for bug reports and feature requests.
+  - New "If you're reading this to understand the code" section — preserves dev setup / code style / testing sections as valuable for readers who want to trace behavior without submitting code.
+  - Fixed `agentauth/` project tree root → `agentwrit/` and remaining prose brand references.
+
 ### Added — Docker Hub image publishing + cosign signing (TD-CI-002, 2026-04-12)
 
 - **`.github/workflows/release.yml`** — new workflow that publishes multi-arch (`linux/amd64` + `linux/arm64`) broker images to Docker Hub on every push to `main` and on `v*` release tags. Tags produced: `latest` (tracks main), `main-<sha>` (per-commit traceability), `v<major>.<minor>.<patch>` / `v<major>.<minor>` / `v<major>` (semver releases). Builds with buildx + QEMU emulation on the hosted x86 runner; cached via `type=gha` so repeat builds are fast.
