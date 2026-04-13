@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Architecture component mapping + signing key documentation (2026-04-13)
+
+- Pattern component table now maps all 8 EAC v1.3 components with correct numbering. Component 6 (Mutual Authentication) documented as present but not wired. Component 7 (Delegation) and 8 (Observability) added.
+- Security Assumptions: removed false claim that "all previously issued tokens become unverifiable after restart (new signing keys)." The signing key is persistent via `internal/keystore` — tokens survive restarts. Single-broker note corrected to describe the actual split-brain risk (in-memory state, not signing keys).
+
 ### Fixed — SPDX identifier + gate + middleware diagram (2026-04-13)
 
 - SPDX identifier corrected from `PolyForm-Internal-Use-1.0.0` to `LicenseRef-PolyForm-Internal-Use-1.0.0` across LICENSE and all 77 Go files. PolyForm Internal Use is not on the SPDX License List — `LicenseRef-` prefix is required by spec for unlisted licenses.

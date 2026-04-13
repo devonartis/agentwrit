@@ -126,7 +126,7 @@ Each service is initialized in `cmd/broker/main.go` with explicit constructor in
 
 ## Pattern Components Mapped to Code
 
-The 8-component Ephemeral Agent Credentialing pattern maps directly to Go packages:
+The 8-component Ephemeral Agent Credentialing pattern maps to Go packages. Components 1–5, 7, and 8 are fully implemented. Component 6 (Agent-to-Agent Mutual Authentication) has a package (`mutauth`) but is not wired into the broker — it is planned work.
 
 | Pattern Component | Go Packages | Key Types | Key Functions |
 |---|---|---|---|
@@ -139,7 +139,9 @@ The 8-component Ephemeral Agent Credentialing pattern maps directly to Go packag
 | 3. Zero-Trust Enforcement | `authz`, `handler` | `ValMw`, `RateLimiter` | `ValMw.Wrap()`, `ValMw.RequireScope()`, `ValMw.RequireAnyScope()`, `ScopeIsSubset()` |
 | 4. Automatic Expiration & Revocation | `revoke`, `token`, `handler` | `RevSvc`, `Revoker`, `RevokeHdl`, `ReleaseHdl` | `RevSvc.Revoke()`, `RevSvc.RevokeByJTI()`, `RevSvc.IsRevoked()`, `RevSvc.LoadFromEntries()` |
 | 5. Immutable Audit Logging | `audit`, `handler` | `AuditLog`, `AuditEvent`, `AuditHdl`, `RecordOption` | `AuditLog.Record()`, `AuditLog.Query()`, `WithOutcome()`, `WithResource()` |
-| 6. Delegation Chain Verification | `deleg`, `handler` | `DelegSvc`, `DelegHdl`, `DelegRecord` | `DelegSvc.Delegate()` |
+| 6. Mutual Authentication | `mutauth` *(not wired)* | `MutAuthHdl`, `Discovery`, `Heartbeat` | Package exists but is not registered in `cmd/broker/main.go`. Planned. |
+| 7. Delegation Chain Verification | `deleg`, `handler` | `DelegSvc`, `DelegHdl`, `DelegRecord` | `DelegSvc.Delegate()` |
+| 8. Operational Observability | `obs`, `handler` | `HealthHdl`, `MetricsHdl` | `obs.Ok()`, `obs.Warn()`, `obs.Fail()`, `obs.Trace()`, `/v1/health`, `/v1/metrics` |
 
 ---
 
@@ -315,9 +317,9 @@ These are explicit trust boundaries and limitations of the current implementatio
 
 - **X-Forwarded-For trusted unconditionally.** The `clientIP()` function in `internal/authz/rate_mw.go` trusts the first entry in `X-Forwarded-For` without validation. In production, the broker must sit behind a trusted reverse proxy that sets this header correctly. Without a trusted proxy, rate limiting can be bypassed via header spoofing.
 
-- **Persistent and transient state split.** Audit events, revocations, and app registrations are persisted to SQLite and reloaded on startup. Nonces, agent records, and launch tokens are transient (memory only). All previously issued tokens become unverifiable after restart (new signing keys). The split is intentional — audit and revocation are security-critical; nonces and agent records are ephemeral by design.
+- **Persistent and transient state split.** Audit events, revocations, and app registrations are persisted to SQLite and reloaded on startup. The Ed25519 signing key is persisted to disk (`AA_SIGNING_KEY_PATH`), so tokens issued before a restart remain verifiable. Nonces, agent records, and launch tokens are transient (memory only) and cleared on restart. The split is intentional — audit, revocation, and the signing key are security-critical; nonces and agent records are ephemeral by design.
 
-- **Single broker instance.** There is no replication, consensus, or shared state mechanism. The broker is a single process. Running multiple instances would result in split-brain token verification (each instance has its own signing key).
+- **Single broker instance.** There is no replication, consensus, or shared state mechanism. The broker is a single process. Running multiple instances against separate databases would result in split-brain state for nonces, agent records, and revocation lists. The signing key can be shared via a common `AA_SIGNING_KEY_PATH`, but transient in-memory state cannot.
 
 - **Nonce window is 30 seconds.** Nonces expire after 30 seconds. Agents must complete the challenge-response flow within this window. Clock skew between agent and broker can cause failures.
 
