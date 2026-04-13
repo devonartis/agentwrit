@@ -1,6 +1,6 @@
 # AgentWrit Documentation
 
-AgentWrit is an open-source credential broker for AI agents. It issues short-lived, scope-attenuated tokens so agents operate with only the permissions their task requires — nothing more, nothing longer.
+AgentWrit is a credential broker for AI agents. It issues short-lived, scope-attenuated tokens so agents operate with only the permissions their task requires — nothing more, nothing longer. Free for internal use.
 
 ---
 
