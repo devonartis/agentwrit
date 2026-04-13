@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — README overhaul for scannability and wayfinding (2026-04-13)
+
+- **`README.md`** — full restructure for newcomers who scan, not read:
+  - Quick Start collapsed to one path (Docker Hub), 5 commands, no inline explanations. "Next steps" decision table immediately after.
+  - "Why this matters" side-by-side comparison table replaces prose bullet list.
+  - "How it works" simplified mermaid flow with numbered steps. Component table links to source packages.
+  - API table adds "Who uses it" column so each role finds their endpoints fast.
+  - Documentation section reframed as "I want to..." intent-based navigation.
+  - Configuration collapsed to one essential table + link to operator guide.
+  - TLS/mTLS/nginx config, cosign verification, image tag details moved to docs (not README).
+  - Audit trail wording clarified: broker logs credential lifecycle events, not agent activity at the resource server.
+  - Net: 169 insertions, 469 deletions — README is now a landing page, not a manual.
+
 ### Fixed — stale agentauth brand refs missed in rebrand (2026-04-13)
 
 - **`SECURITY.md`** — contact emails `security@agentauth.dev` → `security@agentwrit.com`; all "AgentAuth" brand references → "AgentWrit".
