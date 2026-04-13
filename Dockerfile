@@ -24,7 +24,7 @@ FROM alpine:3.21 AS broker
 LABEL org.opencontainers.image.title="AgentWrit" \
       org.opencontainers.image.description="Ephemeral agent credentialing broker — short-lived, scope-attenuated tokens for AI agents" \
       org.opencontainers.image.vendor="devonartis" \
-      org.opencontainers.image.licenses="AGPL-3.0-only" \
+      org.opencontainers.image.licenses="LicenseRef-PolyForm-Internal-Use-1.0.0" \
       org.opencontainers.image.source="https://github.com/devonartis/agentwrit" \
       org.opencontainers.image.url="https://github.com/devonartis/agentwrit" \
       org.opencontainers.image.documentation="https://github.com/devonartis/agentwrit/blob/main/README.md"

@@ -1,6 +1,6 @@
 # Architecture — How AgentWrit Works Inside
 
-Two binaries, one Go module, fourteen internal packages. This page shows how every component connects — from HTTP request to signed JWT to audit record.
+Two binaries, one Go module, fifteen internal packages. This page shows how every component connects — from HTTP request to signed JWT to audit record.
 
 **Prerequisites:** [Concepts](concepts.md) helps, but isn't required.
 
@@ -10,36 +10,11 @@ Two binaries, one Go module, fourteen internal packages. This page shows how eve
 
 AgentWrit sits between AI agents and the resources they need to access, providing ephemeral, scoped credentials through a challenge-response identity flow.
 
-```mermaid
-flowchart TB
-    subgraph External Actors
-        DEV["Developer App / Agent"]
-        AGENT["AI Agent / Orchestrator"]
-        ADMIN["Operator / Admin"]
-        RS["Resource Servers"]
-    end
+<p align="center">
+  <img src="diagrams/architecture-overview.svg" alt="AgentWrit Architecture Overview" width="100%">
+</p>
 
-    subgraph AgentWrit["AgentWrit System Boundary"]
-        BROKER["Broker\ncmd/broker\nPort 8080"]
-        AACTL["awrit\ncmd/awrit\nOperator CLI"]
-    end
-
-    DEV -- "challenge-response\nregistration" --> BROKER
-    AGENT -- "challenge-response\nregistration" --> BROKER
-    ADMIN -- "admin auth,\nlaunch tokens,\nrevocation" --> BROKER
-    ADMIN -- "app management,\nrevoke, audit" --> AACTL
-    AACTL -- "admin API calls" --> BROKER
-    AGENT -- "Bearer token" --> RS
-    DEV -- "Bearer token" --> RS
-
-    classDef external fill:#fff3e0,stroke:#ffb74d,color:#e65100
-    classDef control fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
-    classDef resource fill:#fce4ec,stroke:#f06292,color:#880e4f
-
-    class DEV,AGENT,ADMIN external
-    class BROKER,AACTL control
-    class RS resource
-```
+> **More diagrams:** [Token Lifecycle](diagrams/token-lifecycle.svg) · [Security Topology](diagrams/security-topology.svg)
 
 **Broker** (`cmd/broker`) -- The central authority. Loads or generates a persistent Ed25519 signing key (`internal/keystore`), issues EdDSA-signed JWTs, validates challenge-response registrations, manages scope attenuation, delegation, revocation, and maintains a hash-chained audit trail. All endpoints use `application/json` with RFC 7807 error responses.
 
@@ -59,7 +34,7 @@ flowchart TB
 
         subgraph Foundation["Foundation Layer"]
             CFG["cfg\nEnv var config"]
-            OBS["obs\nStructured logging\nPrometheus metrics"]
+            OBS["obs\nStructured logging"]
             STORE["store\nSqlStore\nSQLite + In-memory"]
             KEYSTORE["keystore\nEd25519 key persistence\nPKCS8 PEM"]
         end
@@ -84,9 +59,6 @@ flowchart TB
             PD["problemdetails\nRFC 7807 errors\nRequestID"]
         end
 
-        subgraph Protocol["Protocol Layer (Go API only)"]
-            MUTAUTH["mutauth\nMutAuthHdl\nDiscoveryRegistry\nHeartbeatMgr"]
-        end
     end
 
 ```
@@ -108,7 +80,6 @@ agentwrit/
 |   |   |-- audit.go             # audit events with filters
 |   |   |-- token.go              # token release command
 |   |   +-- output.go            # Table and JSON output helpers
-|   +-- smoketest/               # Container smoke test binary
 |-- internal/
 |   |-- admin/                   # Admin auth, launch tokens
 |   |-- app/                     # App registration, app auth
@@ -119,8 +90,8 @@ agentwrit/
 |   |-- handler/                 # HTTP handlers for all broker endpoints + security_hdl.go (SecurityHeaders)
 |   |-- identity/                # Challenge-response registration, SPIFFE IDs
 |   |-- keystore/                # Ed25519 signing key persistence (PKCS8 PEM)
-|   |-- mutauth/                 # Mutual authentication (Go API only)
-|   |-- obs/                     # Structured logging and Prometheus metrics
+|   |-- mutauth/                 # Agent-to-agent mutual authentication (Component 6 — not wired into broker; server-side mTLS is in cmd/broker/serve.go via AA_TLS_MODE=mtls)
+|   |-- obs/                     # Structured logging
 |   |-- problemdetails/          # RFC 7807 errors, request ID, body limits
 |   |-- revoke/                  # Four-level token revocation
 |   |-- store/                   # SQLite-backed persistence + in-memory maps
@@ -133,103 +104,30 @@ agentwrit/
 
 ---
 
-## Package Dependency Graph
+## Package Dependencies
 
-```mermaid
-flowchart TD
-    MAIN_B["cmd/broker/main.go"] --> CFG
-    MAIN_B --> OBS
-    MAIN_B --> STORE
-    MAIN_B --> KEYSTORE
-    MAIN_B --> TOKEN
-    MAIN_B --> IDENTITY
-    MAIN_B --> AUTHZ
-    MAIN_B --> ADMIN
-    MAIN_B --> APP
-    MAIN_B --> DELEG
-    MAIN_B --> REVOKE
-    MAIN_B --> AUDIT
-    MAIN_B --> HANDLER
-    MAIN_B --> PD
+Each service is initialized in `cmd/broker/main.go` with explicit constructor injection — no globals, no `init()`.
 
-    HANDLER["handler"] --> IDENTITY
-    HANDLER --> TOKEN
-    HANDLER --> REVOKE
-    HANDLER --> DELEG
-    HANDLER --> AUDIT
-    HANDLER --> STORE
-    HANDLER --> PD
-    HANDLER --> OBS
-    HANDLER --> AUTHZ
-
-    ADMIN["admin"] --> TOKEN
-    ADMIN --> STORE
-    ADMIN --> AUDIT
-    ADMIN --> AUTHZ
-    ADMIN --> OBS
-    ADMIN --> PD
-
-    IDENTITY["identity"] --> TOKEN
-    IDENTITY --> STORE
-    IDENTITY --> AUTHZ
-    IDENTITY --> OBS
-
-    AUTHZ["authz"] --> TOKEN
-    AUTHZ --> REVOKE
-    AUTHZ --> AUDIT
-    AUTHZ --> OBS
-    AUTHZ --> PD
-
-    DELEG["deleg"] --> TOKEN
-    DELEG --> STORE
-    DELEG --> AUTHZ
-    DELEG --> AUDIT
-    DELEG --> OBS
-
-    APP["app"] --> STORE
-    APP --> TOKEN
-    APP --> AUDIT
-    APP --> AUTHZ
-    APP --> OBS
-
-    REVOKE["revoke"] --> TOKEN
-    REVOKE --> OBS
-
-    TOKEN["token"] --> CFG
-    TOKEN --> OBS
-
-    KEYSTORE["keystore"]
-
-    MUTAUTH["mutauth"] --> TOKEN
-    MUTAUTH --> STORE
-    MUTAUTH --> REVOKE
-
-    PD["problemdetails"]
-    CFG["cfg"]
-    OBS["obs"]
-    STORE["store"]
-    AUDIT["audit"]
-
-    classDef foundation fill:#e8f5e9,stroke:#66bb6a,color:#1b5e20
-    classDef security fill:#e3f2fd,stroke:#42a5f5,color:#0d47a1
-    classDef domain fill:#fff3e0,stroke:#ffb74d,color:#e65100
-    classDef transport fill:#fce4ec,stroke:#f06292,color:#880e4f
-    classDef protocol fill:#f3e5f5,stroke:#ba68c8,color:#4a148c
-
-    class CFG,OBS,STORE,KEYSTORE foundation
-    class TOKEN,IDENTITY,AUTHZ security
-    class ADMIN,APP,DELEG,REVOKE,AUDIT domain
-    class HANDLER,PD transport
-    class MUTAUTH protocol
-```
-
-**Legend:** Green = Foundation, Blue = Security, Orange = Domain, Pink = Transport, Purple = Protocol (Go API only)
+| Package | Depends on | What it receives |
+|---|---|---|
+| `token` | `cfg`, `keystore` | Config (TTLs, issuer), Ed25519 key pair, revoker interface |
+| `identity` | `store`, `token`, `audit` | Nonce storage, JWT issuance, audit recording |
+| `admin` | `token`, `store`, `audit` | JWT issuance, app/launch-token persistence, audit |
+| `app` | `store`, `token`, `audit` | App persistence, JWT issuance, audit |
+| `authz` | `token`, `revoke`, `audit` | Token verification, revocation checks, scope violation audit |
+| `deleg` | `token`, `store`, `audit`, `keystore` | JWT issuance, chain persistence, audit, signing key |
+| `revoke` | `store` | Revocation persistence |
+| `audit` | `store` | Event persistence (hash chain rebuilt from disk on startup) |
+| `store` | — | Foundation — no dependencies |
+| `keystore` | — | Foundation — loads/generates Ed25519 key from disk |
+| `cfg` | — | Foundation — parses `AA_*` env vars and config files |
+| `obs` | — | Foundation — structured logging |
 
 ---
 
 ## Pattern Components Mapped to Code
 
-The 8-component Ephemeral Agent Credentialing pattern maps directly to Go packages:
+The 8-component Ephemeral Agent Credentialing pattern maps to Go packages. Components 1–5, 7, and 8 are fully implemented. Component 6 (Agent-to-Agent Mutual Authentication) has a package (`mutauth`) but is not wired into the broker — it is planned work. Note: server-side mTLS transport (via `AA_TLS_MODE=mtls`) is implemented in `cmd/broker/serve.go` using Go stdlib `crypto/tls` and is independent of the `mutauth` package. The `mutauth` package implements the pattern's agent-to-agent authentication handshake, which is a different concern.
 
 | Pattern Component | Go Packages | Key Types | Key Functions |
 |---|---|---|---|
@@ -242,8 +140,9 @@ The 8-component Ephemeral Agent Credentialing pattern maps directly to Go packag
 | 3. Zero-Trust Enforcement | `authz`, `handler` | `ValMw`, `RateLimiter` | `ValMw.Wrap()`, `ValMw.RequireScope()`, `ValMw.RequireAnyScope()`, `ScopeIsSubset()` |
 | 4. Automatic Expiration & Revocation | `revoke`, `token`, `handler` | `RevSvc`, `Revoker`, `RevokeHdl`, `ReleaseHdl` | `RevSvc.Revoke()`, `RevSvc.RevokeByJTI()`, `RevSvc.IsRevoked()`, `RevSvc.LoadFromEntries()` |
 | 5. Immutable Audit Logging | `audit`, `handler` | `AuditLog`, `AuditEvent`, `AuditHdl`, `RecordOption` | `AuditLog.Record()`, `AuditLog.Query()`, `WithOutcome()`, `WithResource()` |
-| 6. Agent-to-Agent Mutual Auth | `mutauth` | `MutAuthHdl`, `DiscoveryRegistry`, `HeartbeatMgr` | `InitiateHandshake()`, `RespondToHandshake()`, `CompleteHandshake()` |
+| 6. Mutual Authentication | `mutauth` *(not wired)* | `MutAuthHdl`, `Discovery`, `Heartbeat` | Agent-to-agent auth handshake. Package exists but is not registered in `cmd/broker/main.go`. Planned. (Server-side mTLS is separate — see `cmd/broker/serve.go`.) |
 | 7. Delegation Chain Verification | `deleg`, `handler` | `DelegSvc`, `DelegHdl`, `DelegRecord` | `DelegSvc.Delegate()` |
+| 8. Operational Observability | `obs`, `handler` | `HealthHdl`, `MetricsHdl` | `obs.Ok()`, `obs.Warn()`, `obs.Fail()`, `obs.Trace()`, `/v1/health`, `/v1/metrics` |
 
 ---
 
@@ -251,38 +150,14 @@ The 8-component Ephemeral Agent Credentialing pattern maps directly to Go packag
 
 Every HTTP request passes through the same middleware stack before reaching a handler:
 
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant RID as RequestIDMiddleware
-    participant LOG as LoggingMiddleware
-    participant MUX as http.ServeMux
-    participant SEC as SecurityHeaders
-    participant MB as MaxBytesBody
-    participant VAL as ValMw.Wrap
-    participant SC as ValMw.RequireScope
-    participant H as Handler
+```
+Request → RequestID → Logging → MaxBytesBody → SecurityHeaders → [Route Match]
 
-    C->>RID: HTTP Request
-    RID->>RID: Generate/propagate X-Request-ID
-    RID->>LOG: Request + context
-    LOG->>LOG: Record start time
-    LOG->>MUX: Route to handler
-    MUX->>SEC: SecurityHeaders
-    SEC->>SEC: Set X-Content-Type-Options, Cache-Control, X-Frame-Options; HSTS if TLS
-    SEC->>MB: All requests
-    MB->>MB: Limit body to 1 MB
-    MB->>VAL: (if auth required)
-    VAL->>VAL: Extract Bearer token
-    VAL->>VAL: TknSvc.Verify(token)
-    VAL->>VAL: RevSvc.IsRevoked(claims)
-    VAL->>VAL: Inject claims into context
-    VAL->>SC: (if scope required)
-    SC->>SC: ScopeIsSubset check
-    SC->>H: Authenticated + authorized request
-    H->>H: Business logic
-    H-->>C: JSON response
-    LOG-->>LOG: Log method, path, status, latency, request_id
+  Public routes:      → Handler (health, challenge, metrics, validate)
+  Auth routes:        → ValMw.Wrap → Handler (renew, delegate, release)
+  Admin scope routes: → ValMw.Wrap → RequireScope → Handler (revoke, audit, apps, launch-tokens)
+  Rate-limited:       → RateLimiter → Handler (admin/auth, app/auth)
+  Registration:       → Handler (launch token validated in body, not Bearer)
 ```
 
 Not all routes use every middleware. Public endpoints (health, challenge, metrics) skip `ValMw` and `ValMw.RequireScope`. `SecurityHeaders` (`internal/handler/security_hdl.go`) and `MaxBytesBody` (`internal/problemdetails/problemdetails.go`) are global middleware applied to ALL requests. Execution order on an incoming request: `RequestID → Logging → MaxBytesBody → SecurityHeaders → route handler`. `SecurityHeaders` sets `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`, and `X-Frame-Options: DENY` on every response, and adds `Strict-Transport-Security` (HSTS) when `AA_TLS_MODE` is `tls` or `mtls`. `MaxBytesBody` enforces a 1 MB request body limit — oversized requests get HTTP 413 before reaching any handler.
@@ -379,21 +254,21 @@ The broker applies two layers of middleware: global middleware on all requests, 
 flowchart LR
     REQ["HTTP\nRequest"] --> RID["RequestID\nMiddleware"]
     RID --> LOG["Logging\nMiddleware"]
-    LOG --> MUX["http.ServeMux\nRoute Match"]
-    MUX --> SEC["SecurityHeaders\n(global)"]
-    SEC --> MB["MaxBytesBody\n1 MB (global)"]
+    LOG --> MB["MaxBytesBody\n1 MB (global)"]
+    MB --> SEC["SecurityHeaders\n(global)"]
+    SEC --> MUX["http.ServeMux\nRoute Match"]
 
-    MB --> PUB["Public Handlers\n(health, challenge,\nmetrics, validate)"]
+    MUX --> PUB["Public Handlers\n(health, challenge,\nmetrics, validate)"]
 
-    MB --> AUTH_ONLY["ValMw.Wrap"] --> AUTH_H["Auth Handlers\n(renew, delegate,\nrelease)"]
+    MUX --> AUTH_ONLY["ValMw.Wrap"] --> AUTH_H["Auth Handlers\n(renew, delegate,\nrelease)"]
 
-    MB --> AUDIT_W["ValMw.Wrap"] --> AUDIT_C["ValMw\n.RequireScope"] --> AUDIT_H["Audit Handler\n(audit/events)"]
+    MUX --> AUDIT_W["ValMw.Wrap"] --> AUDIT_C["ValMw\n.RequireScope"] --> AUDIT_H["Audit Handler\n(audit/events)"]
 
-    MB --> SCOPE_W["ValMw.Wrap"] --> SCOPE_C["ValMw\n.RequireScope /\n.RequireAnyScope"] --> ADMIN_H["Scoped POST Handlers\n(revoke, launch-tokens,\nadmin/apps)"]
+    MUX --> SCOPE_W["ValMw.Wrap"] --> SCOPE_C["ValMw\n.RequireScope /\n.RequireAnyScope"] --> ADMIN_H["Scoped POST Handlers\n(revoke, launch-tokens,\nadmin/apps)"]
 
-    MB --> RL["RateLimiter\n.Wrap"] --> RL_H["Rate-Limited\n(admin/auth,\napp/auth)"]
+    MUX --> RL["RateLimiter\n.Wrap"] --> RL_H["Rate-Limited\n(admin/auth,\napp/auth)"]
 
-    MB --> REG_H["Register\n(launch token\nin body)"]
+    MUX --> REG_H["Register\n(launch token\nin body)"]
 ```
 
 **Route-to-middleware mapping from `cmd/broker/main.go`:**
@@ -435,8 +310,6 @@ flowchart LR
 
 6. **Apps as first-class entities.** Developer applications are registered with the broker via `awrit` and authenticate directly using client credentials (`POST /v1/app/auth`). Each app has its own scope ceiling and configurable JWT TTL (bounded by broker-wide min/max).
 
-7. **Mutual auth not HTTP-exposed.** `MutAuthHdl` in `internal/mutauth` provides a 3-step mutual authentication handshake, but it is not registered on any HTTP mux. It exists as a Go API only, tested in unit tests, intended for future HTTP exposure.
-
 ---
 
 ## Security Assumptions
@@ -445,9 +318,9 @@ These are explicit trust boundaries and limitations of the current implementatio
 
 - **X-Forwarded-For trusted unconditionally.** The `clientIP()` function in `internal/authz/rate_mw.go` trusts the first entry in `X-Forwarded-For` without validation. In production, the broker must sit behind a trusted reverse proxy that sets this header correctly. Without a trusted proxy, rate limiting can be bypassed via header spoofing.
 
-- **Persistent and transient state split.** Audit events, revocations, and app registrations are persisted to SQLite and reloaded on startup. Nonces, agent records, and launch tokens are transient (memory only). All previously issued tokens become unverifiable after restart (new signing keys). The split is intentional — audit and revocation are security-critical; nonces and agent records are ephemeral by design.
+- **Persistent and transient state split.** Audit events, revocations, and app registrations are persisted to SQLite and reloaded on startup. The Ed25519 signing key is persisted to disk (`AA_SIGNING_KEY_PATH`), so tokens issued before a restart remain verifiable. Nonces, agent records, and launch tokens are transient (memory only) and cleared on restart. The split is intentional — audit, revocation, and the signing key are security-critical; nonces and agent records are ephemeral by design.
 
-- **Single broker instance.** There is no replication, consensus, or shared state mechanism. The broker is a single process. Running multiple instances would result in split-brain token verification (each instance has its own signing key).
+- **Single broker instance.** There is no replication, consensus, or shared state mechanism. The broker is a single process. Running multiple instances against separate databases would result in split-brain state for nonces, agent records, and revocation lists. The signing key can be shared via a common `AA_SIGNING_KEY_PATH`, but transient in-memory state cannot.
 
 - **Nonce window is 30 seconds.** Nonces expire after 30 seconds. Agents must complete the challenge-response flow within this window. Clock skew between agent and broker can cause failures.
 
@@ -459,10 +332,11 @@ These are explicit trust boundaries and limitations of the current implementatio
 
 | Dependency | Version | Purpose |
 |---|---|---|
-| `github.com/prometheus/client_golang` | v1.23.2 | Prometheus metrics exposition |
-| `github.com/prometheus/client_model` | v0.6.2 | Prometheus data model |
+| `github.com/prometheus/client_golang` | v1.23.2 | Metrics exposition |
+| `github.com/prometheus/client_model` | v0.6.2 | Metrics data model |
 | `github.com/spiffe/go-spiffe/v2` | v2.6.0 | SPIFFE ID validation |
-| `modernc.org/sqlite` | v1.35.0 | Pure-Go SQLite driver for audit event persistence (zero CGo) |
+| `github.com/spf13/cobra` | v1.10.2 | CLI framework for `awrit` |
+| `modernc.org/sqlite` | v1.46.1 | Pure-Go SQLite driver for audit event persistence (zero CGo) |
 | Go stdlib `crypto/ed25519` | -- | Token signing and nonce signature verification |
 | Go stdlib `crypto/sha256` | -- | Audit hash chain, delegation chain hash |
 | Go stdlib `net/http` | -- | HTTP server (Go 1.22+ method routing) |
@@ -479,57 +353,6 @@ The broker runs two background tasks on a 60-second ticker:
 **Agent Expiration** (`store.ExpireAgents`) — Marks agents as expired when they exceed inactivity thresholds. This catches agents that crashed without calling `POST /v1/token/release` to self-revoke.
 
 Both tasks log their results at the `Ok` level with the operation name and count of affected records.
-
----
-
-## Mutual Authentication Protocol
-
-The `mutauth` package provides agent-to-agent mutual authentication using a three-step cryptographic handshake. This is currently a Go API only — HTTP exposure is planned for a future release.
-
-### The Three-Step Handshake
-
-```mermaid
-sequenceDiagram
-    participant A as Agent A (Initiator)
-    participant Broker
-    participant B as Agent B (Responder)
-
-    rect rgb(30, 40, 60)
-        Note over A,Broker: Step 1: Initiate
-        A->>Broker: InitiateHandshake(myToken, targetAgentID)
-        Broker->>Broker: Verify A's token ✓<br/>Confirm B exists ✓<br/>Generate nonce
-        Broker-->>A: nonce
-    end
-
-    rect rgb(20, 50, 50)
-        Note over A,B: Step 2: Respond
-        A->>B: "Here's the nonce. Prove you're agent B."
-        B->>B: Verify A's token/identity ✓<br/>Sign nonce with Ed25519 key
-        B-->>A: signed_nonce + counter_nonce
-    end
-
-    rect rgb(40, 30, 60)
-        Note over A,Broker: Step 3: Complete
-        A->>Broker: CompleteHandshake(B's signed nonce)
-        Broker->>Broker: Look up B's public key<br/>Verify nonce signature ✓
-        Broker-->>A: Mutual auth verified ✓
-    end
-```
-
-### Discovery Registry
-
-The `DiscoveryRegistry` maps agent SPIFFE IDs to network endpoints so agents can find each other:
-
-| Operation | What it does |
-|-----------|-------------|
-| `Bind(agentID, endpoint)` | Associates an agent's SPIFFE ID with a reachable endpoint |
-| `Resolve(agentID)` | Looks up the endpoint for a given agent ID |
-| `Unbind(agentID)` | Removes an agent's endpoint binding |
-| `VerifyBinding(agentID, presentedID)` | Identity-consistency check during handshakes |
-
-### Heartbeat Manager
-
-The `HeartbeatMgr` tracks agent liveness with periodic heartbeats (default: 30-second interval, max 3 consecutive misses). When an agent exceeds the miss threshold, the heartbeat manager can optionally auto-revoke the agent's credentials via `revoke.RevSvc`.
 
 ---
 

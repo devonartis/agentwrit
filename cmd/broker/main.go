@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
+
 // Command broker starts the AgentAuth broker HTTP server.
 //
 // It wires all internal services together, registers routes on an

@@ -7,9 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Architecture component mapping + signing key documentation (2026-04-13)
+
+- Pattern component table now maps all 8 EAC v1.3 components with correct numbering. Component 6 (Mutual Authentication) documented as present but not wired. Component 7 (Delegation) and 8 (Observability) added.
+- Package count corrected (14→15) and `mutauth` added to directory layout. Clarified distinction: `mutauth` package is agent-to-agent auth (Component 6, planned); server-side mTLS transport (`AA_TLS_MODE=mtls` in `cmd/broker/serve.go`) is separate and working.
+- Security Assumptions: removed false claim that "all previously issued tokens become unverifiable after restart (new signing keys)." The signing key is persistent via `internal/keystore` — tokens survive restarts. Single-broker note corrected to describe the actual split-brain risk (in-memory state, not signing keys).
+
+### Fixed — SPDX identifier + gate + middleware diagram (2026-04-13)
+
+- SPDX identifier corrected from `PolyForm-Internal-Use-1.0.0` to `LicenseRef-PolyForm-Internal-Use-1.0.0` across LICENSE and all 77 Go files. PolyForm Internal Use is not on the SPDX License List — `LicenseRef-` prefix is required by spec for unlisted licenses.
+- CI SPDX gate now checks the exact expected identifier, not just presence of `SPDX-License-Identifier:`.
+- Middleware stack diagram in `docs/architecture.md` corrected to match actual wrapping order in `cmd/broker/main.go`: `RequestID → Logging → MaxBytesBody → SecurityHeaders → mux`.
+
+### Fixed — Architecture doc accuracy (2026-04-13)
+
+- Corrected SQLite version in External Dependencies table (v1.35.0 → v1.46.1).
+- Added missing `cobra` CLI dependency to table.
+- Removed Prometheus branding from `obs` package descriptions — implementation detail, not a feature.
+- Fixed "Open Source" label in token-lifecycle SVG → "Free for internal use".
+
+### Added — SPDX headers on all Go source files (2026-04-13)
+
+- Every `.go` file in `cmd/` and `internal/` (77 files) now carries `// SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0` as the first line.
+- CI `contamination` gate extended with an SPDX header check — new Go files without the header will fail the gate.
+
+### Changed — License: AGPL-3.0 → PolyForm Internal Use 1.0.0 (2026-04-13)
+
+- **`LICENSE`** — replaced AGPL-3.0 text with PolyForm Internal Use License 1.0.0 (source-available, permanent, no sunset). SPDX identifier: `LicenseRef-PolyForm-Internal-Use-1.0.0`. Dual-license header added for commercial-use contact path.
+- **`README.md`** — license badge updated; License section rewritten with the free / paid dual-license split and the `licensing@agentwrit.com` contact line.
+- **`Dockerfile`** — `org.opencontainers.image.licenses` OCI label updated from `AGPL-3.0-only` to `LicenseRef-PolyForm-Internal-Use-1.0.0`.
+- **`docs/api/openapi.yaml`** — OpenAPI `info.license` block updated to reference PolyForm Internal Use 1.0.0.
+- **`docs/getting-started-operator.md`** — OCI labels reference updated to match the new Dockerfile label.
+- **What this means for users:**
+  - **Internal business use — including by for-profit companies — remains free and unchanged.** Any individual, business, or organization may use and modify AgentWrit for their own internal operations at no cost and without contacting the author. Contractors acting on behalf of a permitted user are covered for the duration of their engagement.
+  - **New restriction:** Offering AgentWrit as a hosted or managed service to third parties (paid or free), redistributing original or modified versions, reselling, or embedding AgentWrit in a product you sell now requires a commercial license. Email `licensing@agentwrit.com` with your use case.
+  - **SemVer note:** this is a license change, not a behavior change. No wire-format changes. No API changes. Deployed brokers continue to run unchanged. Anyone pinning the prior AGPL-3.0 versions (`v2.0.0` and earlier) should be aware subsequent releases ship under PolyForm Internal Use 1.0.0.
+
 ### Added — Architecture diagrams + splash pages (2026-04-13)
 
-- **`docs/diagrams/`** — 3 SVG architecture diagrams (architecture overview, token lifecycle, security topology) replacing the inline mermaid block. Built from code review, visual style adapted from agentauth-internal.
+- **`docs/diagrams/`** — 3 SVG architecture diagrams (architecture overview, token lifecycle, security topology) replacing the inline mermaid block. Built from code review — only components that exist in the codebase. No HITL, no resource server, no monitoring boxes.
 - **`docs/python-sdk.md`** — splash page for the Python SDK (private repo). Shows status, code sample, and links to raw HTTP alternative.
 - **`docs/demos.md`** — splash page for MedAssist AI and Support Ticket demos (ship with Python SDK).
 - **`README.md`** — added Ephemeral Agent Credentialing v1.3 pattern lineage in "How it works". All private-repo links now point to splash pages instead of 404s.

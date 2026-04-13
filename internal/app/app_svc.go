@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
+
 // Package app manages the app credential lifecycle. Apps are software that
 // manage agents — an orchestrator, a CI pipeline, a SaaS backend. Admin
 // registers the app, giving it a scope ceiling (the maximum permissions it

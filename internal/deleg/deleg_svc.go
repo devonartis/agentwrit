@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
+
 // Package deleg provides scope-attenuated token delegation with chain
 // verification and depth limiting.
 //

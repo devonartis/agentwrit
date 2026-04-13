@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
+
 package token
 
 // Revoker allows TknSvc to revoke and check revocation without importing the revoke package.

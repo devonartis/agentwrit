@@ -1,6 +1,6 @@
 # AgentWrit Python SDK
 
-> **Coming soon.** The Python SDK is in active development and will be published as an open-source repo at [`devonartis/agentwrit-python`](https://github.com/devonartis/agentwrit-python) once it's ready.
+> **Coming soon to public.** The Python SDK is complete and will be published at [`devonartis/agentwrit-python`](https://github.com/devonartis/agentwrit-python) after final cleanup.
 
 ## What it does
 

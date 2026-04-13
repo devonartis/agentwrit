@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
+
 // Command awrit token subcommand — token operations including release.
 package main
 

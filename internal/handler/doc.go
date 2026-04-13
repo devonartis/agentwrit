@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
+
 // Package handler provides the HTTP layer for the broker. Handlers are thin —
 // they parse requests, call a domain service, and format responses. All
 // business logic lives in the service packages (token, admin, app, identity,

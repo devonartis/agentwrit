@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
+
 // Package token implements EdDSA (Ed25519) JWT token issuance, verification,
 // and renewal for the AgentAuth broker.
 //

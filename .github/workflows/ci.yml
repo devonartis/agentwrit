@@ -120,6 +120,18 @@ jobs:
             exit 1
           fi
           echo "PASS: no stale brand strings"
+      - name: SPDX header check
+        run: |
+          EXPECTED="// SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0"
+          WRONG=$(find cmd/ internal/ -name '*.go' -exec sh -c \
+            'head -1 "$1" | grep -qxF "'"$EXPECTED"'" || echo "$1"' _ {} \;)
+          if [ -n "$WRONG" ]; then
+            echo "FAIL: Go files with missing or wrong SPDX header:"
+            echo "$WRONG"
+            echo "Expected first line: $EXPECTED"
+            exit 1
+          fi
+          echo "PASS: all Go files have correct SPDX header"
 
   unit-tests:
     name: unit-tests

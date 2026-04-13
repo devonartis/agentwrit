@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
+
 // Package store is the single persistence layer for the broker. It holds
 // everything: nonces (challenge-response), launch tokens (agent bootstrapping),
 // agent records, app records, audit events, and revocations.

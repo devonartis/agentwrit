@@ -201,14 +201,9 @@
   <text x="970" y="710" class="component-text" fill="#4c1d95">Per-app override</text>
   <text x="970" y="730" class="component-text" fill="#4c1d95">Revocable at 4 levels</text>
 
-  <!-- Extension point callout -->
-  <rect x="60" y="790" width="1100" height="60" rx="10" fill="#fffbeb" stroke="#d97706" stroke-width="2"/>
-  <text x="600" y="815" text-anchor="middle" class="component-title" fill="#92400e">Extension Point: Enterprise Modules</text>
-  <text x="600" y="837" text-anchor="middle" class="component-text" fill="#78350f">HITL approval, OIDC provider, cloud credential exchange, and federation bridge plug into the broker via interfaces. Zero add-on code in this repo.</text>
-
   <!-- Legend -->
-  <text x="60" y="890" class="component-title" fill="#0f172a">Trust Model:</text>
-  <text x="220" y="890" class="component-text" fill="#334155">Zone 1 (Operator) controls scope ceilings, revocation, and audit.</text>
-  <text x="220" y="910" class="component-text" fill="#334155">Zone 2 (App) authenticates and creates launch tokens bounded by the ceiling.</text>
-  <text x="220" y="930" class="component-text" fill="#334155">Zone 3 (Agent) registers with Ed25519, receives scoped JWT, uses it at resource servers. No shared secrets.</text>
+  <text x="60" y="800" class="component-title" fill="#0f172a">Trust Model:</text>
+  <text x="220" y="800" class="component-text" fill="#334155">Zone 1 (Operator) controls scope ceilings, revocation, and audit.</text>
+  <text x="220" y="820" class="component-text" fill="#334155">Zone 2 (App) authenticates and creates launch tokens bounded by the ceiling.</text>
+  <text x="220" y="840" class="component-text" fill="#334155">Zone 3 (Agent) registers with Ed25519, receives scoped JWT. No shared secrets at the agent level.</text>
 </svg>

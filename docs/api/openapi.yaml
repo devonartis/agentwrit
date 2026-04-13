@@ -9,8 +9,8 @@ info:
   contact:
     name: AgentWrit
   license:
-    name: AGPL-3.0
-    url: https://www.gnu.org/licenses/agpl-3.0.html
+    name: LicenseRef-PolyForm-Internal-Use-1.0.0
+    url: https://polyformproject.org/licenses/internal-use/1.0.0
 
 servers:
   - url: http://localhost:8080
