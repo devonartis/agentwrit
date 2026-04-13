@@ -12,16 +12,8 @@
 [![EdDSA](https://img.shields.io/badge/Signing-Ed25519%20EdDSA-8B5CF6)](https://ed25519.cr.yp.to/)
 [![SPIFFE](https://img.shields.io/badge/Identity-SPIFFE-0F9D58)](https://spiffe.io/)
 
-<!--
-Badge note: CI, CodeQL, and OpenSSF Scorecard badges will show as "not found"
-or broken while this repo is private — those badges require public repo visibility
-(and for CodeQL/Scorecard, the workflows must be re-enabled, see TD-VUL-006).
-They're added now so the moment the repo flips public, they light up without
-needing a README update. Fire-and-forget.
--->
-
 > [!IMPORTANT]
-> **Building in public — pre-1.0.** The broker core is stable and we use it daily, but the Python SDK and demo app are still landing. Feel free to try it as we build in the open. For anything non-lab, pin to a `v<semver>` release or a `main-<sha>` image digest — `:latest` moves with every `main` commit and will change without notice. Issues are welcome; external PRs are paused until the contribution workflow is ready. See [CHANGELOG.md](CHANGELOG.md) for what shipped recently.
+> **Building in public — pre-1.0.** The broker core is stable and we use it daily, but the Python SDK and demo app are still landing. Feel free to try it as we build in the open. For anything non-lab, pin to a versioned tag like `v2.0.0` or a commit-pinned digest like `main-899e4ca3` — `:latest` moves with every `main` commit and will change without notice. Issues are welcome; external PRs are paused until the contribution workflow is ready. See [CHANGELOG.md](CHANGELOG.md) for what shipped recently.
 
 ---
 
@@ -69,7 +61,7 @@ Prerequisites: [Docker](https://docs.docker.com/get-docker/). That's it for Opti
 
 The signed, multi-arch (`linux/amd64` + `linux/arm64`) broker image is published to Docker Hub on every push to `main` and on release tags. Pull and run directly — no git clone, no Go toolchain.
 
-**Step 1 — Set a strong admin secret and start the broker.**
+#### Step 1 — Set a strong admin secret and start the broker
 
 ```bash
 # The broker exits on startup if AA_ADMIN_SECRET is unset. Use a real random value.
@@ -94,7 +86,7 @@ curl -s http://localhost:8080/v1/health | jq .
 - `AA_BIND_ADDRESS=0.0.0.0` — inside the container, bind to all interfaces so Docker's port forwarding can reach it. (The default `127.0.0.1` is for VPS mode.)
 - `AA_DB_PATH` / `AA_SIGNING_KEY_PATH` — persist the SQLite audit log and the Ed25519 signing key to the named volume so they survive container restarts.
 
-**Step 2 — Authenticate as admin.**
+#### Step 2 — Authenticate as admin
 
 The admin secret isn't a bearer token — you exchange it for a short-lived admin JWT:
 
@@ -106,7 +98,7 @@ ADMIN_TOKEN=$(curl -s -X POST http://localhost:8080/v1/admin/auth \
 echo "${ADMIN_TOKEN:0:20}..."  # should print "eyJhbGciOiJFZERTQSIs..."
 ```
 
-**Step 3 — Create a launch token.**
+#### Step 3 — Create a launch token
 
 A launch token is a one-time registration credential. The agent presents it once (along with a signed challenge nonce) to get its real task-scoped JWT. You, the operator, decide what scopes the resulting agent is allowed to request:
 
@@ -124,7 +116,7 @@ LAUNCH_TOKEN=$(curl -s -X POST http://localhost:8080/v1/admin/launch-tokens \
 echo "Launch token: ${LAUNCH_TOKEN:0:20}..."
 ```
 
-**Step 4 — Register the agent and get a scoped JWT.**
+#### Step 4 — Register the agent and get a scoped JWT
 
 The agent generates an Ed25519 key pair, gets a nonce from the broker, signs it, and registers with the launch token plus the signed nonce. The broker verifies the signature, issues a SPIFFE identity, and returns a short-lived JWT scoped to `read:data:*`.
 
@@ -155,13 +147,15 @@ agent.release()
 
 Available Docker Hub tags:
 
-| Tag | Moves | Use for |
-|---|---|---|
-| `latest` | Every `main` push | Lab and evaluation |
-| `main-<sha>` | Every `main` push | Reproducible deployments — pin to a specific commit |
-| `v<major>.<minor>.<patch>` / `v<major>.<minor>` / `v<major>` | Release tags | **Production** — pin to an exact semver release |
+| Tag format | Example | Moves | Use for |
+|---|---|---|---|
+| `latest` | `latest` | Every `main` push | Lab and evaluation |
+| `main-<commit-sha>` | `main-899e4ca3…` | Every `main` push | Reproducible deployments — pins to a specific commit |
+| `v<major>.<minor>.<patch>` | `v2.0.0` | Release tags | **Production** — pins to an exact semver release |
+| `v<major>.<minor>` | `v2.0` | Release tags | Tracks patch updates within a minor version |
+| `v<major>` | `v2` | Release tags | Tracks minor and patch updates within a major version |
 
-Never pin production to `:latest`. Pin to a `v<semver>` or `main-<sha>` digest and upgrade on a schedule you control.
+Never pin production to `:latest`. Pin to a versioned tag (for example `v2.0.0`) or a commit-pinned digest (for example `main-899e4ca3`) and upgrade on a schedule you control.
 
 **Verify the image signature** (optional, recommended for production):
 
@@ -609,8 +603,7 @@ server {
 
 | Document | Description |
 |----------|-------------|
-| [Contributing](CONTRIBUTING.md) | Development setup, coding conventions, PR process |
-| [Code of Conduct](CODE_OF_CONDUCT.md) | Community standards for contributors |
+| [Code of Conduct](CODE_OF_CONDUCT.md) | Community standards |
 | [Security Policy](SECURITY.md) | Vulnerability reporting, security design principles |
 | [Changelog](CHANGELOG.md) | Release history |
 
@@ -620,6 +613,4 @@ server {
 
 AgentWrit is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. See [LICENSE](LICENSE) for the full text.
 
-Substantial contributions require accepting the [Contributor License Agreement](CLA.md). See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
-
-For commercial licensing (embedding in proprietary products, hosted/managed services without AGPL obligations), see [ENTERPRISE_LICENSE.md](ENTERPRISE_LICENSE.md).
+AGPL-3.0 Section 13 ("Remote Network Interaction") requires anyone offering modified AgentWrit as a network service to make the source code available. Self-hosting, local modification, and internal use are unrestricted. See [LICENSE](LICENSE) for the exact terms.

@@ -1,83 +1,42 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# pre-commit — blocks committing dev files to main.
+# pre-commit — reject any commit that carries gitignored paths in the index.
 #
-# Purpose:
-#   Main must stay clean. This hook catches the forgotten strip step
-#   when merging develop → main. If dev files are staged on main,
-#   the commit is refused with a helpful message.
+# Why this exists:
+#   Internal artifacts (MEMORY.md, FLOW.md, TECH-DEBT.md, .claude/, .agents/,
+#   CLAUDE.md, AGENTS.md, .plans/, adr/, ENTERPRISE_LICENSE.md, CLA.md,
+#   CONTRIBUTING.md, etc.) live in ~/proj/devflow/agentwrit/ or stay on disk
+#   as gitignored files for Claude Code discovery. None of them should ever
+#   enter this repo's git history on any branch.
 #
-# Install (one-time, per clone):
+#   .gitignore prevents accidental `git add .` from tracking them. This hook
+#   is the narrow safety net against `git add -f <path>` — the only way a
+#   gitignored path can actually slip into the index.
+#
+#   Replaces the old "strip dev files from main" model (deleted strip_for_main.sh
+#   and main-hygiene gate). Runs on every branch, every commit — there is no
+#   "safe branch" for these paths anymore.
+#
+# Install (one-time per clone):
 #   git config core.hooksPath .githooks
-#
-# The hook is a no-op on any branch other than main.
 
-BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+# List cached (tracked) files that also match .gitignore patterns.
+# Non-empty output = someone force-added a gitignored path and is about to commit it.
+TRACKED_IGNORED=$(git ls-files -c --exclude-standard --ignored 2>/dev/null || true)
 
-# Only enforce on main. Dev files are fine on develop (and feature branches).
-if [[ "$BRANCH" != "main" ]]; then
-  exit 0
-fi
-
-# Files/dirs that must NEVER land on main.
-# Keep this list in sync with the strip_path calls in scripts/strip_for_main.sh.
-# The two lists exist for defense in depth:
-#   - strip_for_main.sh is the automated pre-merge step (runs once per merge)
-#   - this hook is the last-chance safety net (runs on every commit to main)
-# If either catches a stray dev file, the other should too.
-FORBIDDEN=(
-  "MEMORY.md"
-  "MEMORY_ARCHIVE.md"
-  "FLOW.md"
-  "TECH-DEBT.md"
-  "AGENTS.md"
-  "CLAUDE.md"
-  "COWORK_SESSION.md"
-  "COWORK_DOCS_AUDIT.md"
-  ".active_module"
-  ".plans"
-  ".claude"
-  ".agents"
-  "audit"
-  "adr"
-  ".vscode"
-  "generate_pdf.py"
-)
-
-# Collect forbidden paths in the staged index
-STAGED=$(git diff --cached --name-only --diff-filter=AM 2>/dev/null || true)
-[[ -z "$STAGED" ]] && exit 0
-
-VIOLATIONS=""
-for f in $STAGED; do
-  for bad in "${FORBIDDEN[@]}"; do
-    # Match exact file OR anything inside a forbidden directory
-    if [[ "$f" == "$bad" ]] || [[ "$f" == "$bad/"* ]]; then
-      VIOLATIONS="${VIOLATIONS}  ${f}\n"
-    fi
-  done
-done
-
-# Glob patterns
-for f in $STAGED; do
-  case "$f" in
-    AgentAuth_*.docx|docs/QA_REPORT_*.md|tests/*/evidence/DOC-AUDIT-REPORT.md)
-      VIOLATIONS="${VIOLATIONS}  ${f}\n"
-      ;;
-  esac
-done
-
-if [[ -n "$VIOLATIONS" ]]; then
+if [[ -n "$TRACKED_IGNORED" ]]; then
   echo ""
-  echo "ERROR: attempting to commit development files to 'main'."
+  echo "ERROR: refusing commit — gitignored paths are staged in the index:"
   echo ""
-  echo "These files are develop-only and must not reach main:"
-  echo -e "$VIOLATIONS"
-  echo "Fix: run ./scripts/strip_for_main.sh to remove them, then re-stage and commit."
+  echo "$TRACKED_IGNORED" | sed 's/^/  /'
   echo ""
-  echo "(If you really meant to commit these to main, bypass with --no-verify —"
-  echo "but that is almost always a mistake.)"
+  echo "These paths are gitignored and must not be committed on any branch."
+  echo "If you truly need to track one of them, the correct fix is to remove"
+  echo "the pattern from .gitignore, not to force-add past it."
+  echo ""
+  echo "To unstage: git rm --cached <path>  (keeps file on disk, removes from index)"
+  echo ""
   exit 1
 fi
 
