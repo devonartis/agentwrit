@@ -14,7 +14,7 @@ AgentWrit sits between AI agents and the resources they need to access, providin
   <img src="diagrams/architecture-overview.svg" alt="AgentWrit Architecture Overview" width="100%">
 </p>
 
-> **More diagrams:** [Token Lifecycle](diagrams/token-lifecycle.svg) · [Security Topology](diagrams/security-topology.svg)
+> **More diagrams:** [Token Lifecycle](token-lifecycle.md) · [Security Topology](security-topology.md)
 
 **Broker** (`cmd/broker`) -- The central authority. Loads or generates a persistent Ed25519 signing key (`internal/keystore`), issues EdDSA-signed JWTs, validates challenge-response registrations, manages scope attenuation, delegation, revocation, and maintains a hash-chained audit trail. All endpoints use `application/json` with RFC 7807 error responses.
 
