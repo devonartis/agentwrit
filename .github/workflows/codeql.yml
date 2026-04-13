@@ -2,9 +2,10 @@ name: CodeQL
 
 # Runs CodeQL static analysis for Go on every push and PR against develop
 # and main, plus a weekly full run every Monday. SARIF uploads to GitHub
-# Code Scanning which is free on public repos. This workflow was parked
-# under `workflow_dispatch:` while the repo was private (GHAS would have
-# been required) — re-enabled 2026-04-12 after the public flip (TD-VUL-006).
+# Code Scanning which is free on public repos. On private repos this
+# requires paid GHAS and will fail — continue-on-error lets the check
+# surface as a warning rather than blocking the PR.
+# Re-enabled 2026-04-12 after the public flip (TD-VUL-006).
 
 on:
   pull_request:
@@ -24,6 +25,7 @@ jobs:
   analyze:
     name: analyze
     runs-on: ubuntu-latest
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:

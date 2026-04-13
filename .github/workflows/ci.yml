@@ -243,13 +243,15 @@ jobs:
 
   # dep-review runs on every PR to catch disallowed licenses and known
   # CVEs in introduced dependencies BEFORE they merge. Uses the GitHub
-  # Dependency Graph API, which is free on public repos. Was parked
-  # while the repo was private (would have required paid GHAS); re-enabled
-  # 2026-04-12 after the public flip (TD-VUL-005).
+  # Dependency Graph API, which is free on public repos. On private repos
+  # this requires paid GHAS and will fail — continue-on-error lets the
+  # check surface as a warning rather than blocking the PR.
+  # Re-enabled 2026-04-12 after the public flip (TD-VUL-005).
   dep-review:
     name: dep-review
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    continue-on-error: true
     permissions:
       contents: read
       pull-requests: write
