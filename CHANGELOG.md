@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed — Architecture component mapping + signing key documentation (2026-04-13)
 
 - Pattern component table now maps all 8 EAC v1.3 components with correct numbering. Component 6 (Mutual Authentication) documented as present but not wired. Component 7 (Delegation) and 8 (Observability) added.
+- Package count corrected (14→15) and `mutauth` added to directory layout. Clarified distinction: `mutauth` package is agent-to-agent auth (Component 6, planned); server-side mTLS transport (`AA_TLS_MODE=mtls` in `cmd/broker/serve.go`) is separate and working.
 - Security Assumptions: removed false claim that "all previously issued tokens become unverifiable after restart (new signing keys)." The signing key is persistent via `internal/keystore` — tokens survive restarts. Single-broker note corrected to describe the actual split-brain risk (in-memory state, not signing keys).
 
 ### Fixed — SPDX identifier + gate + middleware diagram (2026-04-13)
