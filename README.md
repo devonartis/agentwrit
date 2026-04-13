@@ -34,10 +34,10 @@ Think of it as an issuer of legal **writs** for software: narrow authority, time
 | Without AgentWrit | With AgentWrit |
 |---|---|
 | Agent gets a long-lived API key | Agent requests a token per task |
-| Key works for everything, forever | Token works for one task, expires in minutes |
+| Key is over-permissioned and long-lived | Token is scoped to one task, expires in minutes |
 | Leaked key = full blast radius | Leaked token = one task, already expiring |
-| Revocation is slow and manual | Revocation is instant at 4 levels |
-| No record of what was issued | Every credential event is audited in a tamper-evident hash chain |
+| Revoking a static key means rotating it everywhere | Revocation is instant at 4 levels — token, agent, task, or chain |
+| No per-agent, per-task credential audit trail | Every credential event is audited in a tamper-evident hash chain |
 
 > **What the audit trail covers:** The broker logs credential lifecycle events — issue, renew, revoke, delegate, release, auth failures, and scope violations. It does not see what the agent does with the token at the resource server.
 
