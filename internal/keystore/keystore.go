@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Internal-Use-1.0.0
+
 // Package keystore loads or generates an Ed25519 signing key pair,
 // persisting it to disk in PEM-encoded PKCS8 format.
 package keystore

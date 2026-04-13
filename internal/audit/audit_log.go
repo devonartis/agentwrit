@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Internal-Use-1.0.0
+
 // Package audit provides a tamper-evident, hash-chain audit trail with
 // automatic PII sanitization.
 //

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — SPDX headers on all Go source files (2026-04-13)
+
+- Every `.go` file in `cmd/` and `internal/` (77 files) now carries `// SPDX-License-Identifier: PolyForm-Internal-Use-1.0.0` as the first line.
+- CI `contamination` gate extended with an SPDX header check — new Go files without the header will fail the gate.
+
 ### Changed — License: AGPL-3.0 → PolyForm Internal Use 1.0.0 (2026-04-13)
 
 - **`LICENSE`** — replaced AGPL-3.0 text with PolyForm Internal Use License 1.0.0 (source-available, permanent, no sunset). SPDX identifier: `PolyForm-Internal-Use-1.0.0`. Dual-license header added for commercial-use contact path.

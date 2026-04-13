@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Internal-Use-1.0.0
+
 // Package app — HTTP handlers for app CRUD (admin-operated) and app
 // authentication (self-service). The /v1/admin/apps/* routes are for the
 // operator managing apps; /v1/app/auth is how the app itself logs in.
