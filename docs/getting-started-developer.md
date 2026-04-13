@@ -26,7 +26,7 @@ The registration flow gives you full control over your keys. You manage the cryp
   - Python 3.8+ with `requests` and `cryptography`
   - Go 1.24+ with the standard library
 
-The [AgentWrit Python SDK](https://github.com/devonartis/agentauth-python) handles the full agent lifecycle. This guide covers the raw HTTP API for any language.
+The [AgentWrit Python SDK](https://github.com/devonartis/agentwrit-python) handles the full agent lifecycle. This guide covers the raw HTTP API for any language.
 
 ---
 

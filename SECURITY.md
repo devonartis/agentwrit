@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in AgentAuth, please report it responsibly to **security@agentauth.dev** rather than using public issue trackers.
+If you discover a security vulnerability in AgentWrit, please report it responsibly to **security@agentwrit.com** rather than using public issue trackers.
 
 **We ask that you:**
 - Provide detailed information about the vulnerability
@@ -43,13 +43,13 @@ The following items are **not** considered security vulnerabilities:
 - **Denial of Service against single-instance brokers**: The broker is designed to run as a single instance in trusted environments
 - **Issues requiring physical access**: Attacking the host system or underlying infrastructure
 - **Social engineering**: Techniques that manipulate users outside the system
-- **Client-side vulnerabilities**: Issues in applications using AgentAuth that don't stem from AgentAuth itself
+- **Client-side vulnerabilities**: Issues in applications using AgentWrit that don't stem from AgentWrit itself
 - **Configuration errors**: Improper deployment or configuration by operators
 - **Third-party dependency vulnerabilities**: These should be reported to the maintainers of those dependencies
 
 ## Security Design Principles
 
-AgentAuth is built on these core security principles:
+AgentWrit is built on these core security principles:
 
 1. **Short-Lived Tokens**: Authorization tokens have bounded lifetimes to limit exposure
 2. **Ed25519 Signatures**: All tokens are cryptographically signed using Ed25519
@@ -61,7 +61,7 @@ AgentAuth is built on these core security principles:
 
 ## Known Limitations
 
-Users should be aware of these limitations when deploying AgentAuth:
+Users should be aware of these limitations when deploying AgentWrit:
 
 - **Single Broker Instance**: The broker is designed as a single instance within a secure network. It does not support clustering or horizontal scaling. High availability requires load balancer failover.
 - **Signing Key Persistence**: The broker loads or creates an Ed25519 key at `AA_SIGNING_KEY_PATH` (default `./signing.key`). Persist this file across restarts so previously issued tokens remain valid; losing or rotating the key invalidates outstanding JWTs.
@@ -73,11 +73,11 @@ For tracked operational issues and tech debt, see the project issue tracker on G
 
 ## Threat Model
 
-For detailed information about AgentAuth's threat model, security assumptions, and architectural security considerations, see [docs/concepts.md](docs/concepts.md).
+For detailed information about AgentWrit's threat model, security assumptions, and architectural security considerations, see [docs/concepts.md](docs/concepts.md).
 
 ## Encrypted Communications
 
-For sensitive security correspondence, you may request a PGP key from **security@agentauth.dev** if you need end-to-end encrypted email.
+For sensitive security correspondence, you may request a PGP key from **security@agentwrit.com** if you need end-to-end encrypted email.
 
 ## Security Updates
 

@@ -2,9 +2,9 @@
 
 These scenarios show how the Ephemeral Agent Credentialing components work together in production deployments with real API calls.
 
-**Want to run a real demo?** The [Python SDK](https://github.com/devonartis/agentauth-python) includes two working demo applications that implement these patterns against a live broker:
-- [MedAssist AI](https://github.com/devonartis/agentauth-python/tree/main/demo) — healthcare multi-agent pipeline with scope isolation, delegation, and LLM tool-calling
-- [Support Ticket Zero-Trust](https://github.com/devonartis/agentauth-python/tree/main/demo2) — three LLM-driven agents with streaming execution and natural token expiry
+**Want to run a real demo?** The [Python SDK](https://github.com/devonartis/agentwrit-python) includes two working demo applications that implement these patterns against a live broker:
+- [MedAssist AI](https://github.com/devonartis/agentwrit-python/tree/main/demo) — healthcare multi-agent pipeline with scope isolation, delegation, and LLM tool-calling
+- [Support Ticket Zero-Trust](https://github.com/devonartis/agentwrit-python/tree/main/demo2) — three LLM-driven agents with streaming execution and natural token expiry
 
 ---
 
