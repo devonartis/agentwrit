@@ -355,8 +355,8 @@ If you're deploying AgentWrit in production:
 
 ### See It In a Real App
 Want to see AgentWrit in a full application instead of raw curl commands?
-- **[MedAssist AI Demo](https://github.com/devonartis/agentwrit-python/tree/main/demo)** -- Healthcare multi-agent pipeline with LLM tool-calling, delegation, and per-patient scoping
-- **[Support Ticket Demo](https://github.com/devonartis/agentwrit-python/tree/main/demo2)** -- Three agents processing support tickets with streaming execution and natural token expiry
+- **[MedAssist AI Demo](demos.md)** -- Healthcare multi-agent pipeline with LLM tool-calling, delegation, and per-patient scoping
+- **[Support Ticket Demo](demos.md)** -- Three agents processing support tickets with streaming execution and natural token expiry
 
 ### For Everyone
 To deepen your understanding:

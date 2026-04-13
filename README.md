@@ -87,7 +87,7 @@ You now have a launch token. The agent presents this once to register and get it
 
 | I want to... | Go to |
 |---|---|
-| Register an agent with this launch token (Python SDK) | [Python SDK →](https://github.com/devonartis/agentwrit-python) |
+| Register an agent with this launch token (Python SDK) | [Python SDK →](docs/python-sdk.md) |
 | See the raw HTTP registration flow (curl + openssl) | [Getting Started walkthrough →](docs/getting-started-user.md) |
 | Build from source or use Docker Compose instead | [Other install options →](#other-install-options) |
 | Understand what just happened (auth model, SPIFFE IDs, scopes) | [Concepts →](docs/concepts.md) |
@@ -95,6 +95,8 @@ You now have a launch token. The agent presents this once to register and get it
 ---
 
 ## How it works
+
+AgentWrit implements the [Ephemeral Agent Credentialing v1.3](https://github.com/devonartis/AI-Security-Blueprints/blob/main/patterns/ephemeral-agent-credentialing/versions/v1.3.md) security pattern — an 8-component architecture purpose-built for autonomous AI agents. The pattern was developed as part of the [AI Security Blueprints](https://github.com/devonartis/AI-Security-Blueprints) project and AgentWrit is its reference implementation.
 
 <p align="center">
   <img src="docs/diagrams/architecture-overview.svg" alt="AgentWrit Architecture Overview" width="100%">
@@ -139,7 +141,7 @@ The Python SDK includes **MedAssist AI**: a FastAPI web app where a local LLM dy
 | Clinical agent delegates to prescription agent | Delegation with scope attenuation |
 | Tokens renew and release at end of encounter | Full lifecycle management |
 
-**Run it:** [MedAssist AI demo →](https://github.com/devonartis/agentwrit-python/tree/main/demo) · [Beginner's guide →](https://github.com/devonartis/agentwrit-python/blob/main/demo/BEGINNERS_GUIDE.md) · [Presenter's guide →](https://github.com/devonartis/agentwrit-python/blob/main/demo/PRESENTERS_GUIDE.md)
+**Run it:** [MedAssist AI demo →](docs/demos.md) · [Beginner's guide →](docs/demos.md) · [Presenter's guide →](docs/demos.md)
 
 ---
 
@@ -147,7 +149,7 @@ The Python SDK includes **MedAssist AI**: a FastAPI web app where a local LLM dy
 
 | Language | Repo | Install | Status |
 |----------|------|---------|--------|
-| **Python** | [agentwrit-python](https://github.com/devonartis/agentwrit-python) | `pip install agentauth` *(PyPI rename pending)* | v0.3.0 — 15 acceptance tests passing |
+| **Python** | [agentwrit-python](docs/python-sdk.md) | `pip install agentauth` *(PyPI rename pending)* | v0.3.0 — 15 acceptance tests passing |
 | **TypeScript** | Coming soon | — | Planned |
 
 ```python
@@ -167,7 +169,7 @@ response = httpx.get(url, headers=agent.bearer_header)
 agent.release()
 ```
 
-**Full SDK docs:** [Python SDK →](https://github.com/devonartis/agentwrit-python)
+**Full SDK docs:** [Python SDK →](docs/python-sdk.md)
 
 ---
 
@@ -301,8 +303,8 @@ go test ./... -short       # Unit tests only
 | Follow common workflows | [Common Tasks →](docs/common-tasks.md) |
 | Debug an issue | [Troubleshooting →](docs/troubleshooting.md) |
 | See real-world integration patterns | [Integration Patterns →](docs/integration-patterns.md) |
-| Use the Python SDK | [Python SDK →](https://github.com/devonartis/agentwrit-python) |
-| Run the MedAssist demo | [MedAssist AI →](https://github.com/devonartis/agentwrit-python/tree/main/demo) |
+| Use the Python SDK | [Python SDK →](docs/python-sdk.md) |
+| Run the MedAssist demo | [MedAssist AI →](docs/demos.md) |
 | Report a security vulnerability | [Security Policy →](SECURITY.md) |
 | Read the changelog | [CHANGELOG →](CHANGELOG.md) |
 
