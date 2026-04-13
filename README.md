@@ -96,14 +96,11 @@ You now have a launch token. The agent presents this once to register and get it
 
 ## How it works
 
-```mermaid
-flowchart LR
-    ADMIN["Operator"] -->|"create launch token"| BROKER["AgentWrit Broker"]
-    APP["Your App"] -->|"hand launch token to agent"| AGENT["AI Agent"]
-    AGENT -->|"register + get scoped JWT"| BROKER
-    AGENT -->|"Bearer token"| RS["Resource Server"]
-    BROKER -->|"audit every event"| AUDIT["Hash-chain log"]
-```
+<p align="center">
+  <img src="docs/diagrams/architecture-overview.svg" alt="AgentWrit Architecture Overview" width="100%">
+</p>
+
+> **Detailed diagrams:** [Token Lifecycle](docs/diagrams/token-lifecycle.svg) · [Security Topology](docs/diagrams/security-topology.svg)
 
 1. **Operator** creates a launch token with an allowed scope ceiling
 2. **App** hands the launch token to the agent for a specific task
