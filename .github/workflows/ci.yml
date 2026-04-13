@@ -120,6 +120,16 @@ jobs:
             exit 1
           fi
           echo "PASS: no stale brand strings"
+      - name: SPDX header check
+        run: |
+          MISSING=$(find cmd/ internal/ -name '*.go' -exec sh -c \
+            'head -1 "$1" | grep -qF "SPDX-License-Identifier:" || echo "$1"' _ {} \;)
+          if [ -n "$MISSING" ]; then
+            echo "FAIL: Go files missing SPDX-License-Identifier header:"
+            echo "$MISSING"
+            exit 1
+          fi
+          echo "PASS: all Go files have SPDX headers"
 
   unit-tests:
     name: unit-tests

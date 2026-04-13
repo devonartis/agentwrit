@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Internal-Use-1.0.0
+
 // audit.go implements the awrit audit command group.
 package main
 
