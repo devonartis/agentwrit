@@ -4,6 +4,21 @@ Archived lessons and session history. See MEMORY.md for current context.
 
 ---
 
+### Public release readiness session (2026-04-08)
+
+**What happened:** Implemented the "public release readiness" plan: created `.plans/release-readiness.md` (merge checklist, license tradeoffs Apache vs source-available), `.plans/reviews/public-release-review-2026-04-08.md` (structured review snapshot), updated `AGENTS.md` / `FLOW.md`, fixed `CONTRIBUTING.md` (wrong clone URL, wrong import path, obsolete `smoketest` in tree), fixed `SECURITY.md` (stale limitations + broken KNOWN-ISSUES link), added `CODE_OF_CONDUCT.md`.
+
+**Standing rule:** License is now AGPL-3.0 + CLA + enterprise summary. All four files (`LICENSE`, `CLA.md`, `ENTERPRISE_LICENSE.md`, `CONTRIBUTING.md`) must stay in sync on license references. Domain name decision (TD-019) blocks going public — all contact emails are placeholder.
+
+**What's NOT done:** GitHub public flip; external security audit; domain name decision (TD-019); `docs/getting-started-developer.md` needs SDK link; OpenAPI spec still says Apache 2.0.
+
+**Pending review branches (2026-04-08):**
+- **Core:** `docs/readme-sdk-demo` — SDK section + MedAssist demo showcase in README
+- **Python SDK:** `docs/readme-license-cleanup` — MIT LICENSE file, pyproject fix, README rewrite with demo section
+- These depend on each other — core README links to SDK repo content. Review together.
+
+---
+
 ### CC v4 Cleanup + Rename Session (2026-04-04) — taking develop from scratch pad to release-ready
 
 **What happened:**

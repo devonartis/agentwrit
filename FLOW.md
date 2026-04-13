@@ -566,3 +566,84 @@ Audit report surfaced P1/P2 findings against the codebase. After verification:
 1. **`fix/td-cli-002-awrit-init-config-path`** — two-line fix in `cmd/awrit/init_cmd.go:53-64`, unit test, gates, PR. Bug report ready at `.plans/bugs/BUG-CLI-002-awrit-init-config-path.md`.
 2. **Code-side rebrand** — rename `agentauth_*` Prometheus metrics in `internal/obs/obs.go` and `urn:agentauth:error:` in `internal/problemdetails/problemdetails.go` to match the docs. Separate PR.
 3. **Merge `doc/docs-layout-archon-style`** — after user review.
+
+---
+
+## 2026-04-12 — AgentWrit rebrand executed end-to-end + first Docker Hub publish
+
+### Action: PR #11 `doc/docs-layout-archon-style` merged (merge commit `6b41574`)
+9 P1/P2 doc audit corrections landed. TD-CLI-002 and TD-CLI-003 logged. Bug report at `.plans/bugs/BUG-CLI-002-awrit-init-config-path.md`.
+
+### Action: PR #12 `fix/rebrand-runtime-doc-alignment` merged (merge commit `17167fc`)
+- TD-RUNTIME-001 RESOLVED — `internal/problemdetails` URN `urn:agentauth:error:*` → `urn:agentwrit:error:*`
+- TD-OBS-001 RESOLVED — 13 metric names in `internal/obs/obs.go` renamed `agentauth_*` → `agentwrit_*`; `internal/handler/handler_test.go` assertions updated
+- TD-CLI-002 RESOLVED — `cmd/awrit/init_cmd.go:53-64` defaults match broker auto-load paths; unit test added
+- **GitHub repo renamed** `devonartis/agentauth` → `devonartis/agentwrit` via `gh api PATCH`; local remote updated
+- **Go module path renamed** `github.com/devonartis/agentauth` → `github.com/devonartis/agentwrit` across 47 `.go` files + `go.mod`; `go test ./...` clean on all 16 packages
+- Cosmetic sweeps: README title/badges/clone URL/nginx example, CONTRIBUTING import path, `docs/getting-started-user.md` clone URLs, `ci.yml` docker image tag, `scripts/gates.sh` match, `scripts/gen_test_certs.sh` cert dir + CA CN, `.github/dependabot.yml` + `scripts/smoke/core-contract.sh` header comments
+- **Brand-alignment CI gate** — `contamination` extended with `grep 'urn:agentauth\|agentauth_\|github\.com/devonartis/agentauth[^-]'` in `internal/ cmd/ --include='*.go'`; mirrored in `scripts/gates.sh`
+- `.gitignore` hardened with `*TOKEN*`, `*SECRET*`, `*CREDENTIAL*` patterns (after a stray empty `DOCKER_INFO_TOKEN.md` appeared during Docker Hub setup)
+- Sister repo renamed: `devonartis/agentauth-python` → `devonartis/agentwrit-python`; visibility unchanged (still private)
+
+### Action: PR #13 `fix/main-hygiene-gate` merged (merge commit `ffa8174`)
+New `main-hygiene` CI job greps for strip-target paths and fails on main push. Guarded `if: github.event_name == 'push' && github.ref == 'refs/heads/main'` so PR runs against develop skip. Added to `GATE_LIST`, `gates-passed needs:`, and `scripts/gates.sh GATES_FULL`. Gate-parity verified 14 gates on both sides. TD-CI-002 and TD-CI-003 logged.
+
+### Action: PR #14 `fix/td-ci-002-dockerhub-publish` merged (merge commit `11d4a01`)
+- TD-CI-002 RESOLVED — new `.github/workflows/release.yml`, multi-arch (amd64+arm64) buildx+QEMU, cosign keyless signing via Sigstore+OIDC, SLSA provenance mode=max, SBOM attestation
+- Tags: `latest`, `main-<sha>`, `v<major>.<minor>.<patch>`, `v<major>.<minor>`, `v<major>`
+- Cache `type=gha mode=max`
+- All 6 docker actions SHA-pinned via `gh api repos/<repo>/commits/<tag>`
+- Dockerfile: OCI labels baked at build time; `go build -trimpath`; release workflow overrides revision/version/created at publish time
+- README "Option A: Pre-built image from Docker Hub (fastest)" added ahead of clone-and-build
+- `docs/getting-started-operator.md` Quick Start restructured into 3 deployment options
+- `docker-compose.yml` commented `image: devonartis/agentwrit:latest` alternative; stale `AA_DB_PATH` default `agentauth.db` → `data.db` fixed
+- Rebased onto develop after PR #13 merge; CHANGELOG.md and TECH-DEBT.md conflicts resolved keeping RESOLVED version; force-pushed with `--force-with-lease`
+
+### Action: Strip-merge develop → main — FIRST attempt failed silently (`bf70f5d`)
+Used stale local `develop` because `gh pr merge` updates origin but not local. Commit message claimed PRs #12/#13/#14 but diff only had #12. Detected when `release.yml` did not fire — workflow file was not on main. Root cause and fix now in [`feedback_fetch_before_merge.md`](../../Users/divineartis/.claude/projects/-Users-divineartis-proj-agentauth-core/memory/feedback_fetch_before_merge.md) memory file.
+
+### Action: Catch-up strip-merge `8a73d7d`
+`git fetch origin && git checkout develop && git pull origin develop` (local moved `17167fc` → `11d4a01`), then merged into main. Verified `git diff --cached --stat` matched expected surface BEFORE writing commit message. Push fired both `ci.yml` (first live `main-hygiene` — passed) and `release.yml` (first Docker Hub publish attempt).
+
+### Action: Docker Hub publish saga — 3 attempts on run 24319397745
+- Attempt 1 + 2: failed at "Log in to Docker Hub" with `unauthorized: incorrect username or password`
+- Diagnostic: verified the PAT value with `docker login docker.io -u devonartis` locally — `Login Succeeded`. Confirmed: issue was the value sitting in GitHub's `DOCKERHUB_TOKEN` secret didn't match the local working value.
+- User regenerated PAT, pasted the exact same working value into GitHub
+- Attempt 3: all steps green. First `devonartis/agentwrit:latest` + `devonartis/agentwrit:main-8a73d7dfa722...` live on Docker Hub
+
+### Action: PR #15 `docs/build-in-public-banner` merged (merge commit `3543e33`)
+- **Build-in-public `[!IMPORTANT]` banner** added under README badges with pre-1.0 status, version pinning guidance, issues-welcome/PRs-paused policy
+- **README newcomer rewrite** — plain-English "What is AgentWrit?" hero using legal writ metaphor, new "The problem AgentWrit solves" framing, Quick Start rewritten as 5-minute zero-to-first-agent-token walkthrough with every env var explained inline
+- 5 remaining prose `AgentAuth` references swept; Python SDK links updated `agentauth-python` → `agentwrit-python`; `pip install agentauth` retained with `(PyPI rename pending)` note
+- **CONTRIBUTING.md Decision 014 rewrite** — "Contribution Policy (READ FIRST)" section with accepted/not-accepted table + 5-item exit criteria; deleted misleading "Pull Request Process" section + PR checklist; new "Filing a good Issue" section with concrete templates; new "If you're reading this to understand the code" section preserving dev-setup content
+
+### Action: Third strip-merge `899e4ca`
+Fast-forward of updated develop (`11d4a01` → `3543e33`) into main. `scripts/strip_for_main.sh` removed 16 dev paths. Push fired both workflows — `ci.yml` green (second live `main-hygiene` pass), `release.yml` completed in <60s due to buildx `type=gha` cache hit (docs-only changes, Docker layers unchanged). New image digests re-pushed under `latest` + `main-899e4ca35575...`.
+
+### Verification: Docker Hub image live
+`curl -s 'https://hub.docker.com/v2/repositories/devonartis/agentwrit/tags/?page_size=50' | jq` confirmed: `latest` and `main-899e4ca...` tags present, identical manifest digests, `amd64` + `arm64` image manifests + two `unknown/unknown` cosign signature/SBOM attestation artifacts.
+
+### Decision: Public repo flip deferred to next session
+All prerequisites met. One `gh api -X PATCH /repos/devonartis/agentwrit --field visibility=public` call away. Deferred for a fresh-eyes visual review of rendered main on github.com. Sister repo `devonartis/agentwrit-python` remains private per explicit user instruction ("this repo only we can turn on public").
+
+### Decision 013 amendment needed (not yet written)
+The rebrand decision said "Protocol never moves — SPIFFE IDs, JWT issuer, Prometheus prefixes, env vars all stay `agentauth` forever." Today's session renamed `agentauth_*` Prometheus metrics and `urn:agentauth:error:*` URN namespace, which technically contradicts that decision. The correct refinement: env vars (`AA_*`) stay, JWT `iss`/`aud` stay user-configurable, SPIFFE trust domain stays (already `agentwrit.local`), but Prometheus metric names and RFC 7807 URNs are NOT wire format — they're observability/error-reporting surface that can and should be renamed. Needs a decision amendment in the KB.
+
+### Status: Main at `899e4ca` — public-flip ready
+- 4 PRs merged (#12, #13, #14, #15), 3 strip-merges (`bf70f5d` → amended by `8a73d7d` + `899e4ca`)
+- GitHub repo: `devonartis/agentwrit` (renamed)
+- Sister repo: `devonartis/agentwrit-python` (renamed, still private)
+- Go module: `github.com/devonartis/agentwrit` (47 files swept)
+- Docker Hub: `devonartis/agentwrit:latest` + `main-899e4ca35575...` live, multi-arch, cosign-signed
+- CI gates live: `main-hygiene` (strip-target guard), `contamination` + brand-alignment grep
+- Memory files added: `feedback_ephemeral_narrow_permissions.md`, `feedback_fetch_before_merge.md`
+
+### What's Next (after 2026-04-12)
+
+1. **Public repo flip** — `gh api -X PATCH /repos/devonartis/agentwrit --field visibility=public` after visual review
+2. **Re-enable GHAS workflows (TD-VUL-005/006)** — uncomment `dep-review`, restore `codeql.yml` + `scorecard.yml` triggers; free on public repos; small follow-up PR
+3. **TD-CI-003** — automated `develop → main` PR workflow to remove admin-bypass direct-push
+4. **release.yml `workflow_dispatch`** — manual trigger for secret rotations + selective republishes
+5. **Decision 013 amendment** — clarify Protocol/observability distinction
+6. **Logo / brand work** — paused pending visual references
+7. **Python package PyPI rename** — separate cycle in SDK repo

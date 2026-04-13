@@ -2,6 +2,56 @@
 
 ## Recent Lessons (last 3 sessions — older archived to MEMORY_ARCHIVE.md)
 
+### AgentWrit rebrand shipped + first Docker Hub publish (2026-04-12, full-day arc)
+
+**What happened:** Walked in expecting a docs audit cleanup, walked out with the entire AgentWrit rebrand executed. Four PRs merged to develop and strip-merged to main (#12 runtime alignment + GH repo rename + Go module path rename across 47 files, #13 `main-hygiene` CI gate, #14 TD-CI-002 Docker Hub publish workflow with cosign keyless signing, #15 build-in-public banner + newcomer README rewrite + CONTRIBUTING Decision 014 policy). GitHub repo renamed `devonartis/agentauth` → `devonartis/agentwrit` via `gh api PATCH`. Sister repo `devonartis/agentauth-python` → `devonartis/agentwrit-python` (still private). First `devonartis/agentwrit:latest` + `main-899e4ca...` live on Docker Hub, multi-arch (amd64+arm64), cosign-signed. Main at `899e4ca`, clean of strip targets, public-flip-ready.
+
+**Golden lessons — blog material:**
+
+- **Ephemeral, narrow permissions. Dogfood the product.** During permission friction, I kept reaching for wide command patterns (`gh run *`, `gh api *`) so each tool call would slot into a broader harness grant. Divine refused and said: *"that is why I have to keep allowing it instead of allowing what you need — that is what agentwrit IS, you get access dynamically what you need, nothing wide."* The request behavior of asking for wide command patterns is the exact anti-pattern the product exists to prevent. Asking for `gh run *` is the harness equivalent of a long-lived cloud IAM key. Asking for `gh api repos/.../actions/runs/<ID>` is the harness equivalent of an ephemeral task-scoped token. Saved as `feedback_ephemeral_narrow_permissions.md`. This is THE story of the session — the agent building AgentWrit was dogfooding the opposite of AgentWrit until Divine called it out.
+
+- **Fetch origin before cross-branch merges.** First strip-merge to main was a quiet disaster: used `gh pr merge` to land PR #14, then did `git merge develop` locally without fetching, silently merged stale local `develop` (still at PR #12) into main, pushed a commit message that CLAIMED to include PRs #12/#13/#14 when the diff only had PR #12. Caught because `release.yml` didn't fire — the workflow file wasn't in the merge because PR #14's content wasn't in local develop. Lesson: `gh pr merge` updates `origin/<branch>` on the server, NOT the local branch. Always `git fetch origin` + pull BOTH source and target before cross-branch merges. Saved as `feedback_fetch_before_merge.md`.
+
+- **Verify the diff before writing the commit message.** The `bf70f5d` commit message was written from memory of what I'd intended to land, not from `git diff --cached --stat` of what actually landed. On `main`, a lying commit message is a public record that lies. Read the stat before writing the message, every time — if the stat doesn't match what you're about to write, fix the merge, not the message.
+
+- **Audit gaps in "complete" rebrands come from category omissions, not file omissions.** The original hardcoded-identity audit enumerated *specific files* (JWT claim code, config defaults, config search paths) but didn't enumerate *categories of strings* (URN namespaces, Prometheus metric prefixes, OCI image labels, CA CN defaults in cert scripts, project tree root names in docs). The docs brand sweep updated `urn:agentwrit:error:*` and `agentwrit_*` in documentation but the runtime code still emitted the old values. Fix: extended the `contamination` CI gate with a brand-alignment grep (`urn:agentauth|agentauth_|github.com/devonartis/agentauth[^-]`) in `internal/ cmd/ --include='*.go'`. Catches the category, not specific files. Mirrored in `scripts/gates.sh` for gate-parity.
+
+- **Docker Hub PAT debugging: verify with local `docker login` before pasting to GitHub.** Three release.yml attempts failed at the login step with `unauthorized: incorrect username or password`. GitHub never exposes existing secret values; Docker Hub never exposes existing PAT values. Only way to isolate PAT-is-wrong vs GitHub-storage-is-wrong is to run `docker login docker.io -u <user>` locally with the exact value you're about to paste. If local succeeds, copy that same clipboard contents to GitHub. If local fails, regenerate the PAT. The fix worked on attempt 3 after a fresh PAT + local verification.
+
+- **AI image generation is unreliable at typography.** Wasted two credits generating cinematic hero illustrations that had nothing to do with a brand logo, then wasted more credits on "logo mark" prompts that were going to rely on Gemini 3 Pro cleanly rendering the wordmark "agentwrit" (which diffusion models routinely garble). Brand logos belong in Figma with hand-selected typography. AI image gen is acceptable for symbols/marks with NO text in the image. Paused the logo work until visual references exist — old AgentAuth logo for lineage comparison + 2–3 dev tool logos Divine respects for aesthetic calibration.
+
+- **Cron loops for CI polling, never `gh run watch`.** Blocking on `gh run watch` hijacks the conversation turn, can't be cleanly interrupted, and fights the harness. Cron-driven polling with the exact `gh api repos/.../actions/runs/<ID>` command string baked into the prompt is non-blocking, interruptible, and matches the narrow-permissions rule. Every CI wait from now on uses cron, not a blocking watch.
+
+**User corrections (blog-worthy):**
+
+1. **"That is why I have to keep allowing it instead of allowing what you need — that is what agentwrit is, you get access dynamically what you need, nothing wide."** The session-defining correction. Became the dogfood principle.
+
+2. **"You created a banner not a Logo"** / **"that is still boring"** / **"come on we need you to put your creative hat on WTH is going on now"** — when the agent generated a cinematic hero illustration instead of a brand mark, then proposed three generic "simple geometric mark" concepts. Real brand work needs real references (see: "AI image gen can't do typography").
+
+3. **"It should be written in a way for someone to get started who is not familiar with the product, it's not written like that."** The old README hero was jargon-heavy ("credential broker", "scope-attenuated tokens"). Newcomer rewrite uses plain English, leads with the writ metaphor, frames the problem before the solution, and ends with a five-minute zero-to-first-agent-token Quick Start walkthrough.
+
+4. **"You are asking for wildcards again"** (twice). After committing to narrow permissions, the agent still reached for `gh api repos/X/actions/*` patterns. Narrow means EXACT: `gh api repos/devonartis/agentwrit/actions/runs/24319397745`, no partial paths, no glob patterns.
+
+5. **"The python should not have been opened up to the public yet"** — user panicked when `gh api PATCH` was used to rename the sister repo, thinking `name=` might have also flipped visibility. It didn't (visibility is a separate field). But the lesson is: for anything with blast radius beyond local files, NAME the exact command and its exact effect BEFORE running it, not after. Rename, visibility flip, force push, merge to main, branch delete, strip — every one of these gets a "here's the command, here's what it changes and doesn't change" preview step.
+
+**Session thoughts:**
+
+- **The dogfood moment is the best story of the session.** An AI agent building a product that issues ephemeral narrow credentials to AI agents, asking its harness for broad static permissions to do its job, getting called out: the anti-pattern your product exists to prevent is the behavior you're exhibiting right now. The lesson isn't just for this session — it's for anyone building developer tools that AI agents will consume. The narrow-scope contract applies TO the agent, not just FROM the product.
+
+- **The rebrand was meant to be a Layer 1 (docs/marketing) swap per [[10-Projects/AgentAuth/decisions/013-agentwrit-rebrand|Decision 013]], explicitly NOT touching wire format.** But today's session DID touch code — `internal/problemdetails` URN prefix and `internal/obs` metric names. Those aren't wire format in the SPIFFE/JWT sense, but they ARE observability contracts that existing dashboards could be matching on. Decision 013 specifically said "Protocol never moves — SPIFFE IDs, JWT issuer, Prometheus prefixes, env vars all stay `agentauth` forever." **That rule was wrong for Prometheus prefixes and the URN namespace**, and the rebrand audit missed it. Today's session effectively amended Decision 013 in-place — the runtime code was renamed alongside the docs. Worth a followup decision note clarifying what "Protocol never moves" actually means going forward: env vars stay (`AA_*`), JWT `iss`/`aud` stay user-configurable, SPIFFE trust domain stays (already `agentwrit.local` per TD-CFG-001), but Prometheus names and RFC 7807 URNs are renameable because they're not part of the wire protocol — they're observability/error-reporting surface. Adds up but the original decision didn't distinguish.
+
+- **The build-in-public banner on the README is the most important change of the session.** The README now opens with an honest "pre-1.0, use it but pin versions, PRs paused, issues welcome" statement before getting to any technical content. This is what separates a dev tool you can trust from a black-box pre-release. The banner plus the newcomer Quick Start plus the CONTRIBUTING Decision 014 policy form one coherent message: this project is real, it's unfinished, and here's exactly what "unfinished" means.
+
+**What's NOT done (handoff to next session):**
+
+- **Public repo flip.** One `gh api -X PATCH /repos/devonartis/agentwrit --field visibility=public` call. Everything else is ready. Deferred for a dedicated visual review of rendered `main` before flipping.
+- **Re-enable GHAS-gated workflows** (TD-VUL-005/006) — `dep-review`, `codeql.yml`, `scorecard.yml` one-line uncomments. Free on public repos. Do right after the flip.
+- **Logo / brand work** — paused pending visual references. Old AgentAuth logo shown (currently live on Python SDK README — shield + key + blue-teal gradient, classic defensive security aesthetic). Direction proposed: shift the metaphor from defensive (shield, key, locks) to authoritative (seal, signature, writ). Need Divine's pick on 2–3 dev tool logos he respects before next credit burn.
+- **TD-CI-003** — automated `develop → main` PR workflow. Replaces manual strip-merges + admin bypass with a GHA. High priority after public flip.
+- **TD follow-up: workflow_dispatch on release.yml** — today's rerun-after-secret-fix was `gh api POST .../runs/<ID>/rerun-failed-jobs`, which works but only for already-failed runs. A manual dispatch trigger makes secret rotations one click.
+- **Python package PyPI rename** — `from agentauth import AgentAuthApp` still works; PyPI package name `agentauth` unchanged. Separate cycle in the SDK repo when a coordinated release is ready.
+- **Decision 013 amendment** — clarify that "Protocol never moves" excludes Prometheus prefixes and RFC 7807 URN namespaces (observability/error surface, not wire format). Today's session effectively made this decision; write it down so future-me knows when to resist "protocol never moves" pressure for non-wire-format code.
+
 ### M-sec CI/build/gates v1 shipped — all-nighter (2026-04-10, Phase A–D execution)
 
 **What happened:** Ran the CI/gates strategy from [[Obsidian KB Decision 015]] straight through to shipped. 03:40 decision → 09:00 running on main. 31/31 tasks done. Three PRs merged (PR #3 main implementation, PR #4 strip-script mid-merge fix, PR #5 README badges + `.vscode/` gitignore). Two `develop → main` strip merges landed clean: `a72a959` and `4213cf8`. Both branches now protected behind `gates-passed`. Decision 016 written to capture the reasoning shift behind Decision 014 (policy unchanged, justification updated). Rewrote the `obsidian:log` skill mid-session to support dual-write mode with log voice + journal voice as separate shapes.
@@ -120,21 +170,6 @@
 - Domain placeholder emails in CLA.md, ENTERPRISE_LICENSE.md, SECURITY.md, CODE_OF_CONDUCT.md — per Decision 013 domain is `agentwrit.com`
 - `docs/api/openapi.yaml` still says Apache 2.0
 - `docs/getting-started-developer.md` needs SDK link
-
----
-
-### Public release readiness session (2026-04-08)
-
-**What happened:** Implemented the “public release readiness” plan: created `.plans/release-readiness.md` (merge checklist, license tradeoffs Apache vs source-available), `.plans/reviews/public-release-review-2026-04-08.md` (structured review snapshot), updated `AGENTS.md` / `FLOW.md`, fixed `CONTRIBUTING.md` (wrong clone URL, wrong import path, obsolete `smoketest` in tree), fixed `SECURITY.md` (stale limitations + broken KNOWN-ISSUES link), added `CODE_OF_CONDUCT.md`.
-
-**Standing rule:** License is now AGPL-3.0 + CLA + enterprise summary. All four files (`LICENSE`, `CLA.md`, `ENTERPRISE_LICENSE.md`, `CONTRIBUTING.md`) must stay in sync on license references. Domain name decision (TD-019) blocks going public — all contact emails are placeholder.
-
-**What's NOT done:** GitHub public flip; external security audit; domain name decision (TD-019); `docs/getting-started-developer.md` needs SDK link; OpenAPI spec still says Apache 2.0.
-
-**Pending review branches (2026-04-08):**
-- **Core:** `docs/readme-sdk-demo` — SDK section + MedAssist demo showcase in README
-- **Python SDK:** `docs/readme-license-cleanup` — MIT LICENSE file, pyproject fix, README rewrite with demo section
-- These depend on each other — core README links to SDK repo content. Review together.
 
 ---
 
