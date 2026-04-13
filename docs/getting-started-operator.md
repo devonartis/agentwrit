@@ -73,7 +73,7 @@ If verification fails, **do not run the image** — it was not produced by this 
 - Platforms: `linux/amd64`, `linux/arm64`
 - Binary: `/broker` (entry point)
 - Ports exposed: `8080`
-- OCI labels: `org.opencontainers.image.source`, `revision`, `created`, `title`, `description`, `licenses=AGPL-3.0-only`
+- OCI labels: `org.opencontainers.image.source`, `revision`, `created`, `title`, `description`, `licenses=PolyForm-Internal-Use-1.0.0`
 
 ### Docker Hub listing
 

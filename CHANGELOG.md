@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — License: AGPL-3.0 → PolyForm Internal Use 1.0.0 (2026-04-13)
+
+- **`LICENSE`** — replaced AGPL-3.0 text with PolyForm Internal Use License 1.0.0 (source-available, permanent, no sunset). SPDX identifier: `PolyForm-Internal-Use-1.0.0`. Dual-license header added for commercial-use contact path.
+- **`README.md`** — license badge updated; License section rewritten with the free / paid dual-license split and the `licensing@agentwrit.com` contact line.
+- **`Dockerfile`** — `org.opencontainers.image.licenses` OCI label updated from `AGPL-3.0-only` to `PolyForm-Internal-Use-1.0.0`.
+- **`docs/api/openapi.yaml`** — OpenAPI `info.license` block updated to reference PolyForm Internal Use 1.0.0.
+- **`docs/getting-started-operator.md`** — OCI labels reference updated to match the new Dockerfile label.
+- **What this means for users:**
+  - **Internal business use — including by for-profit companies — remains free and unchanged.** Any individual, business, or organization may use and modify AgentWrit for their own internal operations at no cost and without contacting the author. Contractors acting on behalf of a permitted user are covered for the duration of their engagement.
+  - **New restriction:** Offering AgentWrit as a hosted or managed service to third parties (paid or free), redistributing original or modified versions, reselling, or embedding AgentWrit in a product you sell now requires a commercial license. Email `licensing@agentwrit.com` with your use case.
+  - **SemVer note:** this is a license change, not a behavior change. No wire-format changes. No API changes. Deployed brokers continue to run unchanged. Anyone pinning the prior AGPL-3.0 versions (`v2.0.0` and earlier) should be aware subsequent releases ship under PolyForm Internal Use 1.0.0.
+
 ### Added — Architecture diagrams + splash pages (2026-04-13)
 
 - **`docs/diagrams/`** — 3 SVG architecture diagrams (architecture overview, token lifecycle, security topology) replacing the inline mermaid block. Built from code review — only components that exist in the codebase. No HITL, no resource server, no monitoring boxes.
