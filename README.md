@@ -5,7 +5,7 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/devonartis/agentwrit/badge)](https://securityscorecards.dev/viewer/?uri=github.com/devonartis/agentwrit)
 [![Go Reference](https://pkg.go.dev/badge/github.com/devonartis/agentwrit.svg)](https://pkg.go.dev/github.com/devonartis/agentwrit)
 [![Go Report Card](https://goreportcard.com/badge/github.com/devonartis/agentwrit)](https://goreportcard.com/report/github.com/devonartis/agentwrit)
-[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![License](https://img.shields.io/badge/License-PolyForm%20Internal%20Use%201.0.0-blue.svg)](https://polyformproject.org/licenses/internal-use/1.0.0)
 [![Go Version](https://img.shields.io/badge/Go-1.24%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 [![Security Policy](https://img.shields.io/badge/Security-Policy-green?logo=shield)](SECURITY.md)
@@ -312,4 +312,17 @@ go test ./... -short       # Unit tests only
 
 ## License
 
-AgentWrit is licensed under **AGPL-3.0**. Anyone offering modified AgentWrit as a network service must make source available. Self-hosting and internal use are unrestricted. See [LICENSE](LICENSE).
+AgentWrit is licensed under the **[PolyForm Internal Use License 1.0.0](https://polyformproject.org/licenses/internal-use/1.0.0)** — a source-available license designed for internal business use.
+
+**Free for internal use by anyone, including for-profit companies.** Any individual, business, or organization may use and modify AgentWrit for their own internal operations at no cost and without contacting the licensor. This includes modification by contractors acting on behalf of a permitted user. Internal business use by a for-profit company is explicitly permitted and free.
+
+**Requires a commercial license:**
+
+- Hosted or managed-service offerings (SaaS) to third parties — paid or free
+- Embedding AgentWrit in a product you sell or sublicense
+- Resale or redistribution of AgentWrit or modified versions
+- Any third-party access to a running AgentWrit instance, including shared installs across unrelated organizations
+
+**Dual-license contact:** Non-commercial and research use (nonprofits, education, mentorship programs, open-source projects, trade groups) is typically free on request. Commercial embedding, resale, and hosted-service offerings require a paid commercial license. Email **licensing@agentwrit.com** with your use case.
+
+See [LICENSE](LICENSE) for the full license text.
