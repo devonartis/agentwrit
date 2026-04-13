@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Diagram documentation pages + README fix (2026-04-13)
+
+- Token lifecycle and security topology diagrams now have dedicated markdown pages (`docs/token-lifecycle.md`, `docs/security-topology.md`) with context tables and navigation. Architecture doc links updated.
+- README: fixed "Key works for everything, forever" — IAM keys don't work like that. Changed to "Key is over-permissioned and long-lived."
+
 ### Added — AgentWrit logo (2026-04-13)
 
 - README hero image added — centered logo at `docs/diagrams/agentwrit-logo.png`.
