@@ -1,22 +1,20 @@
 name: Scorecard supply-chain security
 
-# DISABLED: OpenSSF Scorecard uploads SARIF to GitHub Code Scanning,
-# which requires GitHub Advanced Security (GHAS) on private repos.
-# devonartis/agentauth is currently private without GHAS. Also,
-# several Scorecard checks (branch protection settings, code review
-# policies) only signal meaningfully on public repos with a track
-# record — running it on a private solo-maintainer repo would flag
-# everything as low-score false negatives.
-#
-# Re-enable when the repo flips public (Phase 4). Scorecard is
-# precisely the kind of outside-in signal that becomes valuable
-# AT that moment — the first public run is the baseline score that
-# gets published on the badge (Task 30).
-#
-# Tracking: TD-VUL-006 in TECH-DEBT.md (same entry as CodeQL).
+# Runs OpenSSF Scorecard against the repo on every push to main and on a
+# weekly schedule. SARIF uploads to GitHub Code Scanning which is free on
+# public repos. Several Scorecard checks (branch protection, code review,
+# signed releases) only signal meaningfully on public repos — now that
+# we've flipped public, the first run establishes the baseline published
+# on the Scorecard badge in the README. Parked under `workflow_dispatch:`
+# while the repo was private; re-enabled 2026-04-12 (TD-VUL-006).
 
 on:
-  workflow_dispatch:  # manual trigger only until public flip
+  branch_protection_rule:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 7 * * 1'  # weekly Monday 07:00 UTC
+  workflow_dispatch:
 
 permissions: read-all
 

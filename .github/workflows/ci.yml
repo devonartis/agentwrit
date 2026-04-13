@@ -14,7 +14,7 @@ name: CI
 # - docker-build
 # - smoke-l25
 # - sbom
-# - main-hygiene
+# - no-tracked-ignored
 # GATE_LIST_END
 
 on:
@@ -241,13 +241,24 @@ jobs:
           path: sbom.spdx.json
           retention-days: 30
 
-  # dep-review is removed temporarily: actions/dependency-review-action
-  # requires GitHub Advanced Security (GHAS) on private repos. devonartis/
-  # agentauth is private without GHAS, so the action fails with a 403
-  # from the Dependency Graph API on every PR. Re-enable when:
-  #   (a) the repo flips public (GHAS is free on public repos), OR
-  #   (b) GHAS is purchased for the private repo.
-  # Tracking: TD-VUL-005 in TECH-DEBT.md.
+  # dep-review runs on every PR to catch disallowed licenses and known
+  # CVEs in introduced dependencies BEFORE they merge. Uses the GitHub
+  # Dependency Graph API, which is free on public repos. Was parked
+  # while the repo was private (would have required paid GHAS); re-enabled
+  # 2026-04-12 after the public flip (TD-VUL-005).
+  dep-review:
+    name: dep-review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48  # v4.9.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: true
 
   changelog:
     name: changelog
@@ -279,68 +290,33 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - run: ./scripts/test-gate-parity.sh
 
-  # main-hygiene only runs on push to main (the branch where strip-target
-  # paths must not exist). On PR runs it auto-skips via the `if:` guard
-  # because PRs target develop, which legitimately carries these files.
-  # On main this is the automated safety net that catches a missed
-  # ./scripts/strip_for_main.sh — a strip-target file slipping through
-  # would otherwise only be caught by manual review after-the-fact.
-  # Keep the STRIP_PATHS array in sync with scripts/strip_for_main.sh
-  # and the mirror block in scripts/gates.sh.
-  main-hygiene:
-    name: main-hygiene
+  # no-tracked-ignored — fails if any gitignored path is present in the git index.
+  #
+  # Replaces the old main-hygiene + strip_for_main.sh model. Under the sister-folder
+  # pattern (Decision 019), dev-internal artifacts live in ~/proj/devflow/agentwrit/
+  # or stay on disk as gitignored files for Claude Code discovery. None of them
+  # should ever enter the git index on any branch. .gitignore prevents accidental
+  # `git add .`; this gate is the narrow safety net against `git add -f` force-adds.
+  #
+  # Runs on every push and PR (not just main) so the failure mode is caught as
+  # early as possible rather than at merge time.
+  no-tracked-ignored:
+    name: no-tracked-ignored
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-      - name: Main must not contain dev-only paths
+      - name: No gitignored paths in the tracked index
         run: |
-          STRIP_PATHS=(
-            "MEMORY.md"
-            "MEMORY_ARCHIVE.md"
-            "FLOW.md"
-            "TECH-DEBT.md"
-            "AGENTS.md"
-            "CLAUDE.md"
-            "COWORK_SESSION.md"
-            "COWORK_DOCS_AUDIT.md"
-            ".active_module"
-            ".plans"
-            ".claude"
-            ".agents"
-            "audit"
-            "adr"
-            ".vscode"
-            "generate_pdf.py"
-          )
-          found=0
-          for path in "${STRIP_PATHS[@]}"; do
-            if [[ -e "$path" ]]; then
-              echo "FAIL: dev-only path found on main: $path"
-              found=$((found + 1))
-            fi
-          done
-          # Glob patterns (match strip_for_main.sh)
-          for f in AgentAuth_*.docx docs/QA_REPORT_*.md; do
-            if [[ -e "$f" ]]; then
-              echo "FAIL: dev-only glob match found on main: $f"
-              found=$((found + 1))
-            fi
-          done
-          for f in tests/*/evidence/DOC-AUDIT-REPORT.md; do
-            if [[ -e "$f" ]]; then
-              echo "FAIL: dev-only test audit report found on main: $f"
-              found=$((found + 1))
-            fi
-          done
-          if [[ $found -gt 0 ]]; then
+          tracked_ignored=$(git ls-files -c --exclude-standard --ignored || true)
+          if [[ -n "$tracked_ignored" ]]; then
+            echo "FAIL: gitignored paths found in the git index:"
+            echo "$tracked_ignored" | sed 's/^/  /'
             echo ""
-            echo "$found strip-target path(s) found on main."
-            echo "These files are dev-only and must be stripped before landing."
-            echo "Fix: ./scripts/strip_for_main.sh (run mid-merge per its docs)."
+            echo "These paths match .gitignore patterns and must not be tracked."
+            echo "Fix: git rm --cached <path>  (keeps the file on disk, untracked)"
             exit 1
           fi
-          echo "PASS: main is clean of dev-only paths"
+          echo "PASS: no gitignored paths are tracked"
 
   gates-passed:
     name: gates-passed
@@ -360,7 +336,7 @@ jobs:
       - smoke-l25
       - sbom
       - gate-parity
-      - main-hygiene
+      - no-tracked-ignored
     if: always()
     steps:
       - name: Check all gates passed
