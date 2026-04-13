@@ -35,7 +35,7 @@ AgentWrit inverts that model:
 - **Scopes are narrow** — one task, one resource, one agent
 - **Lifetimes are short** — minutes, not years — with renewal via a fresh broker call
 - **Revocation is instant** at token, agent, task, or delegation-chain granularity
-- **Every issue / renew / revoke / delegate / release event is audited** in a tamper-evident hash chain
+- **Every credential event is audited** — issue, renew, revoke, delegate, release, auth failures, and scope violations are recorded in a tamper-evident hash chain (the broker logs credential lifecycle, not what the agent does with the token at the resource server)
 
 The broker is the only component that holds your long-lived keys. Agents only ever see short-lived JWTs.
 
