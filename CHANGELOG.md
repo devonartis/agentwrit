@@ -27,14 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added — SPDX headers on all Go source files (2026-04-13)
 
-- Every `.go` file in `cmd/` and `internal/` (77 files) now carries `// SPDX-License-Identifier: PolyForm-Internal-Use-1.0.0` as the first line.
+- Every `.go` file in `cmd/` and `internal/` (77 files) now carries `// SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0` as the first line.
 - CI `contamination` gate extended with an SPDX header check — new Go files without the header will fail the gate.
 
 ### Changed — License: AGPL-3.0 → PolyForm Internal Use 1.0.0 (2026-04-13)
 
-- **`LICENSE`** — replaced AGPL-3.0 text with PolyForm Internal Use License 1.0.0 (source-available, permanent, no sunset). SPDX identifier: `PolyForm-Internal-Use-1.0.0`. Dual-license header added for commercial-use contact path.
+- **`LICENSE`** — replaced AGPL-3.0 text with PolyForm Internal Use License 1.0.0 (source-available, permanent, no sunset). SPDX identifier: `LicenseRef-PolyForm-Internal-Use-1.0.0`. Dual-license header added for commercial-use contact path.
 - **`README.md`** — license badge updated; License section rewritten with the free / paid dual-license split and the `licensing@agentwrit.com` contact line.
-- **`Dockerfile`** — `org.opencontainers.image.licenses` OCI label updated from `AGPL-3.0-only` to `PolyForm-Internal-Use-1.0.0`.
+- **`Dockerfile`** — `org.opencontainers.image.licenses` OCI label updated from `AGPL-3.0-only` to `LicenseRef-PolyForm-Internal-Use-1.0.0`.
 - **`docs/api/openapi.yaml`** — OpenAPI `info.license` block updated to reference PolyForm Internal Use 1.0.0.
 - **`docs/getting-started-operator.md`** — OCI labels reference updated to match the new Dockerfile label.
 - **What this means for users:**
