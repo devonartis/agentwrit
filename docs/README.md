@@ -60,12 +60,12 @@ Lookup documentation for endpoints, CLI commands, and internals.
 
 ## Live Demos
 
-See AgentWrit in action with the [Python SDK](https://github.com/devonartis/agentauth-python) demo applications:
+See AgentWrit in action with the [Python SDK](https://github.com/devonartis/agentwrit-python) demo applications:
 
 | Demo | What it shows |
 |------|-------------|
-| **[MedAssist AI](https://github.com/devonartis/agentauth-python/tree/main/demo)** | Healthcare multi-agent pipeline — clinical, prescription, and billing agents operating under strict scope isolation with LLM tool-calling, delegation, and per-patient scoping |
-| **[Support Ticket Zero-Trust](https://github.com/devonartis/agentauth-python/tree/main/demo2)** | Three LLM-driven agents processing support tickets with broker-issued scoped credentials, streaming execution via SSE, and natural token expiry |
+| **[MedAssist AI](https://github.com/devonartis/agentwrit-python/tree/main/demo)** | Healthcare multi-agent pipeline — clinical, prescription, and billing agents operating under strict scope isolation with LLM tool-calling, delegation, and per-patient scoping |
+| **[Support Ticket Zero-Trust](https://github.com/devonartis/agentwrit-python/tree/main/demo2)** | Three LLM-driven agents processing support tickets with broker-issued scoped credentials, streaming execution via SSE, and natural token expiry |
 
 Both demos run against a real AgentWrit broker and show the full credential lifecycle: agent registration, scope enforcement, delegation, renewal, release, and revocation.
 
