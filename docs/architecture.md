@@ -1,6 +1,6 @@
 # Architecture — How AgentWrit Works Inside
 
-Two binaries, one Go module, fourteen internal packages. This page shows how every component connects — from HTTP request to signed JWT to audit record.
+Two binaries, one Go module, fifteen internal packages. This page shows how every component connects — from HTTP request to signed JWT to audit record.
 
 **Prerequisites:** [Concepts](concepts.md) helps, but isn't required.
 
@@ -90,6 +90,7 @@ agentwrit/
 |   |-- handler/                 # HTTP handlers for all broker endpoints + security_hdl.go (SecurityHeaders)
 |   |-- identity/                # Challenge-response registration, SPIFFE IDs
 |   |-- keystore/                # Ed25519 signing key persistence (PKCS8 PEM)
+|   |-- mutauth/                 # Agent-to-agent mutual authentication (Component 6 — not wired into broker; server-side mTLS is in cmd/broker/serve.go via AA_TLS_MODE=mtls)
 |   |-- obs/                     # Structured logging
 |   |-- problemdetails/          # RFC 7807 errors, request ID, body limits
 |   |-- revoke/                  # Four-level token revocation
@@ -126,7 +127,7 @@ Each service is initialized in `cmd/broker/main.go` with explicit constructor in
 
 ## Pattern Components Mapped to Code
 
-The 8-component Ephemeral Agent Credentialing pattern maps to Go packages. Components 1–5, 7, and 8 are fully implemented. Component 6 (Agent-to-Agent Mutual Authentication) has a package (`mutauth`) but is not wired into the broker — it is planned work.
+The 8-component Ephemeral Agent Credentialing pattern maps to Go packages. Components 1–5, 7, and 8 are fully implemented. Component 6 (Agent-to-Agent Mutual Authentication) has a package (`mutauth`) but is not wired into the broker — it is planned work. Note: server-side mTLS transport (via `AA_TLS_MODE=mtls`) is implemented in `cmd/broker/serve.go` using Go stdlib `crypto/tls` and is independent of the `mutauth` package. The `mutauth` package implements the pattern's agent-to-agent authentication handshake, which is a different concern.
 
 | Pattern Component | Go Packages | Key Types | Key Functions |
 |---|---|---|---|
@@ -139,7 +140,7 @@ The 8-component Ephemeral Agent Credentialing pattern maps to Go packages. Compo
 | 3. Zero-Trust Enforcement | `authz`, `handler` | `ValMw`, `RateLimiter` | `ValMw.Wrap()`, `ValMw.RequireScope()`, `ValMw.RequireAnyScope()`, `ScopeIsSubset()` |
 | 4. Automatic Expiration & Revocation | `revoke`, `token`, `handler` | `RevSvc`, `Revoker`, `RevokeHdl`, `ReleaseHdl` | `RevSvc.Revoke()`, `RevSvc.RevokeByJTI()`, `RevSvc.IsRevoked()`, `RevSvc.LoadFromEntries()` |
 | 5. Immutable Audit Logging | `audit`, `handler` | `AuditLog`, `AuditEvent`, `AuditHdl`, `RecordOption` | `AuditLog.Record()`, `AuditLog.Query()`, `WithOutcome()`, `WithResource()` |
-| 6. Mutual Authentication | `mutauth` *(not wired)* | `MutAuthHdl`, `Discovery`, `Heartbeat` | Package exists but is not registered in `cmd/broker/main.go`. Planned. |
+| 6. Mutual Authentication | `mutauth` *(not wired)* | `MutAuthHdl`, `Discovery`, `Heartbeat` | Agent-to-agent auth handshake. Package exists but is not registered in `cmd/broker/main.go`. Planned. (Server-side mTLS is separate — see `cmd/broker/serve.go`.) |
 | 7. Delegation Chain Verification | `deleg`, `handler` | `DelegSvc`, `DelegHdl`, `DelegRecord` | `DelegSvc.Delegate()` |
 | 8. Operational Observability | `obs`, `handler` | `HealthHdl`, `MetricsHdl` | `obs.Ok()`, `obs.Warn()`, `obs.Fail()`, `obs.Trace()`, `/v1/health`, `/v1/metrics` |
 
