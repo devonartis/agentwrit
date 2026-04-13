@@ -1,4 +1,8 @@
-# AgentWrit
+<p align="center">
+  <img src="docs/diagrams/agentwrit-logo.png" alt="AgentWrit" width="400">
+</p>
+
+<h1 align="center">AgentWrit</h1>
 
 [![CI](https://github.com/devonartis/agentwrit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/devonartis/agentwrit/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/devonartis/agentwrit/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/devonartis/agentwrit/actions/workflows/codeql.yml)
