@@ -31,13 +31,16 @@ Think of it as an issuer of legal **writs** for software: narrow authority, time
 
 ### Why this matters
 
-| Without AgentWrit | With AgentWrit |
+Traditional IAM was built for humans and long-running services — not for AI agents that spin up, do one task, and disappear. Agents are ephemeral, task-scoped, and delegate to other agents. They need credentials that match that lifecycle. AgentWrit was purpose-built for it.
+
+| Traditional IAM for agents | AgentWrit |
 |---|---|
-| Agent gets a long-lived API key | Agent requests a token per task |
-| Key is over-permissioned and long-lived | Token is scoped to one task, expires in minutes |
-| Leaked key = full blast radius | Leaked token = one task, already expiring |
-| Revoking a static key means rotating it everywhere | Revocation is instant at 4 levels — token, agent, task, or chain |
-| No per-agent, per-task credential audit trail | Every credential event is audited in a tamper-evident hash chain |
+| Agents get static API keys or service account credentials designed for long-running services | Each agent requests a token scoped to one task |
+| Credentials are over-permissioned because scoping per-task is manual and fragile | Scope attenuation is automatic — permissions only narrow, never expand |
+| Leaked credential exposes everything the service account can access | Leaked token exposes one task, already expiring in minutes |
+| Revoking a static key means rotating it everywhere it's used | Revocation is instant at 4 levels — token, agent, task, or delegation chain |
+| No visibility into which agent used which credential for which task | Every credential event is audited per-agent, per-task in a tamper-evident hash chain |
+| No native concept of agent-to-agent delegation | Delegation is built in — Agent A can delegate narrower-scoped tokens to Agent B with full chain tracking |
 
 > **What the audit trail covers:** The broker logs credential lifecycle events — issue, renew, revoke, delegate, release, auth failures, and scope violations. It does not see what the agent does with the token at the resource server.
 
