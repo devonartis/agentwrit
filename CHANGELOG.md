@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — stale agentauth brand refs missed in rebrand (2026-04-13)
+
+- **`SECURITY.md`** — contact emails `security@agentauth.dev` → `security@agentwrit.com`; all "AgentAuth" brand references → "AgentWrit".
+- **`CODE_OF_CONDUCT.md`** — contact email `conduct@agentauth.dev` → `conduct@agentwrit.com`.
+- **`docs/scenarios.md`**, **`docs/agentwrit-explained.md`**, **`docs/README.md`**, **`docs/getting-started-developer.md`**, **`docs/getting-started-user.md`** — 11 Python SDK links still pointing to pre-rename `agentauth-python` → `agentwrit-python`.
+
 ### Changed — README rewrite for newcomers + build-in-public banner (2026-04-12)
 
 - **`README.md`** — significant rewrite of the top section for people who are not already familiar with the product:
