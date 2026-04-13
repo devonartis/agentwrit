@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Architecture doc accuracy (2026-04-13)
+
+- Corrected SQLite version in External Dependencies table (v1.35.0 → v1.46.1).
+- Added missing `cobra` CLI dependency to table.
+- Removed Prometheus branding from `obs` package descriptions — implementation detail, not a feature.
+- Fixed "Open Source" label in token-lifecycle SVG → "Free for internal use".
+
 ### Added — SPDX headers on all Go source files (2026-04-13)
 
 - Every `.go` file in `cmd/` and `internal/` (77 files) now carries `// SPDX-License-Identifier: PolyForm-Internal-Use-1.0.0` as the first line.
