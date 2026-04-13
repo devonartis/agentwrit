@@ -248,5 +248,5 @@
   <text x="460" y="730" class="legend-text" fill="#333">Registration (Agent)</text>
   <rect x="660" y="718" width="14" height="14" fill="url(#g-amber)" rx="2"/>
   <text x="680" y="730" class="legend-text" fill="#333">Lifecycle (Token States)</text>
-  <text x="920" y="730" class="legend-text" fill="#666">AgentWrit Core — Open Source</text>
+  <text x="920" y="730" class="legend-text" fill="#666">AgentWrit Core — Free for internal use</text>
 </svg>

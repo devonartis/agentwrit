@@ -34,7 +34,7 @@ flowchart TB
 
         subgraph Foundation["Foundation Layer"]
             CFG["cfg\nEnv var config"]
-            OBS["obs\nStructured logging\nPrometheus metrics"]
+            OBS["obs\nStructured logging"]
             STORE["store\nSqlStore\nSQLite + In-memory"]
             KEYSTORE["keystore\nEd25519 key persistence\nPKCS8 PEM"]
         end
@@ -90,7 +90,7 @@ agentwrit/
 |   |-- handler/                 # HTTP handlers for all broker endpoints + security_hdl.go (SecurityHeaders)
 |   |-- identity/                # Challenge-response registration, SPIFFE IDs
 |   |-- keystore/                # Ed25519 signing key persistence (PKCS8 PEM)
-|   |-- obs/                     # Structured logging and Prometheus metrics
+|   |-- obs/                     # Structured logging
 |   |-- problemdetails/          # RFC 7807 errors, request ID, body limits
 |   |-- revoke/                  # Four-level token revocation
 |   |-- store/                   # SQLite-backed persistence + in-memory maps
@@ -120,7 +120,7 @@ Each service is initialized in `cmd/broker/main.go` with explicit constructor in
 | `store` | — | Foundation — no dependencies |
 | `keystore` | — | Foundation — loads/generates Ed25519 key from disk |
 | `cfg` | — | Foundation — parses `AA_*` env vars and config files |
-| `obs` | — | Foundation — structured logging, Prometheus counters |
+| `obs` | — | Foundation — structured logging |
 
 ---
 
@@ -329,10 +329,11 @@ These are explicit trust boundaries and limitations of the current implementatio
 
 | Dependency | Version | Purpose |
 |---|---|---|
-| `github.com/prometheus/client_golang` | v1.23.2 | Prometheus metrics exposition |
-| `github.com/prometheus/client_model` | v0.6.2 | Prometheus data model |
+| `github.com/prometheus/client_golang` | v1.23.2 | Metrics exposition |
+| `github.com/prometheus/client_model` | v0.6.2 | Metrics data model |
 | `github.com/spiffe/go-spiffe/v2` | v2.6.0 | SPIFFE ID validation |
-| `modernc.org/sqlite` | v1.35.0 | Pure-Go SQLite driver for audit event persistence (zero CGo) |
+| `github.com/spf13/cobra` | v1.10.2 | CLI framework for `awrit` |
+| `modernc.org/sqlite` | v1.46.1 | Pure-Go SQLite driver for audit event persistence (zero CGo) |
 | Go stdlib `crypto/ed25519` | -- | Token signing and nonce signature verification |
 | Go stdlib `crypto/sha256` | -- | Audit hash chain, delegation chain hash |
 | Go stdlib `net/http` | -- | HTTP server (Go 1.22+ method routing) |
