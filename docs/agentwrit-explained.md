@@ -156,7 +156,7 @@ Ready to see it in action? Start here:
 **[Your First Five Minutes →](getting-started-user.md)**
 Run a local setup with Docker, walk through the registration flow, and get your first agent token.
 
-**[Live Demos →](https://github.com/devonartis/agentwrit-python)**
+**[Live Demos →](demos.md)**
 See AgentWrit in real applications — a healthcare multi-agent pipeline and a support ticket zero-trust demo, both running against a live broker with LLM-driven agents.
 
 Or jump to the topic that matches your interest:

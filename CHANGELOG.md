@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Architecture diagrams + splash pages (2026-04-13)
+
+- **`docs/diagrams/`** — 3 SVG architecture diagrams (architecture overview, token lifecycle, security topology) replacing the inline mermaid block. Built from code review, visual style adapted from agentauth-internal.
+- **`docs/python-sdk.md`** — splash page for the Python SDK (private repo). Shows status, code sample, and links to raw HTTP alternative.
+- **`docs/demos.md`** — splash page for MedAssist AI and Support Ticket demos (ship with Python SDK).
+- **`README.md`** — added Ephemeral Agent Credentialing v1.3 pattern lineage in "How it works". All private-repo links now point to splash pages instead of 404s.
+- **`docs/`** — 5 doc files updated: private `agentwrit-python` links replaced with splash page links.
+
 ### Changed — README overhaul for scannability and wayfinding (2026-04-13)
 
 - **`README.md`** — full restructure for newcomers who scan, not read:
