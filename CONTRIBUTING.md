@@ -1,9 +1,10 @@
-# Contributing to AgentAuth
+# Contributing to AgentWrit
 
-Thank you for your interest in contributing to AgentAuth. This guide covers everything you need to set up your environment, follow our standards, and submit contributions that can be reviewed and merged with confidence.
+Thank you for your interest in AgentWrit. **This project is in build-in-public mode and is not currently accepting external pull requests.** Bug reports, feature requests, and design feedback via GitHub Issues are very welcome. This guide explains what we *do* accept right now, what we don't, and what to expect if that changes.
 
 ## Table of Contents
 
+- [Contribution Policy (READ FIRST)](#contribution-policy-read-first)
 - [Code of Conduct](#code-of-conduct)
 - [License and CLA](#license-and-cla)
 - [Project Structure](#project-structure)
@@ -12,8 +13,32 @@ Thank you for your interest in contributing to AgentAuth. This guide covers ever
 - [Development Workflow](#development-workflow)
 - [Testing](#testing)
 - [Code Style](#code-style)
-- [Pull Request Process](#pull-request-process)
 - [Security Contributions](#security-contributions)
+
+## Contribution Policy (READ FIRST)
+
+**Current state: accepting Issues only. External Pull Requests are paused.**
+
+| Type of contribution | Status | How |
+|---|---|---|
+| **Bug reports** | ✅ Welcome | Open a GitHub Issue with reproducer steps, the image tag or commit SHA you were running, and the broker logs around the incident |
+| **Feature requests** | ✅ Welcome | Open a GitHub Issue explaining the use case and the problem you're trying to solve — not a proposed solution |
+| **Design feedback / discussion** | ✅ Welcome | GitHub Discussions (once enabled) or an Issue tagged `discussion` |
+| **Security vulnerabilities** | ✅ Welcome, private channel | See [SECURITY.md](SECURITY.md) — **do not** open a public Issue for vulnerabilities |
+| **Documentation typo / minor fix PRs** | ❌ Not accepting yet | File an Issue instead. The maintainer will make the edit. |
+| **Bug fix PRs** | ❌ Not accepting yet | File an Issue with the bug. Fix will land on a maintainer branch. |
+| **Feature PRs** | ❌ Not accepting yet | File an Issue with the use case. Feature design is discussed in the Issue before code is written. |
+
+**Why the PR pause:** AgentWrit is pre-1.0 and the contribution workflow (CLA automation, review bandwidth, test coverage for contributor-safety, commit-signing policy, PR template) hasn't been built out yet. Shipping a broken contributor experience is worse than shipping no contributor experience — we'd rather wait until the workflow is ready than accept PRs we can't review carefully.
+
+**When will PRs reopen?** When all of the following are true:
+1. CLA acceptance is automated (not a manual email exchange)
+2. The PR template exists and CI posts a comment with the relevant checklist
+3. There's a documented SLA for first-response on issues and PRs
+4. At least one non-maintainer has successfully used the contribution workflow end-to-end (as a dry run)
+5. Commit-signing is required and enforced for all PRs
+
+The [CHANGELOG](CHANGELOG.md) will announce the change when it happens, and this section will be updated. Until then, **please file issues rather than PRs**. Issues cost the maintainer ~1 minute of triage; an unreviewable PR costs hours of context reconstruction.
 
 ## Code of Conduct
 
@@ -21,16 +46,16 @@ This project and everyone participating in it is governed by our [Code of Conduc
 
 ## License and CLA
 
-The core AgentAuth server is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. By contributing, you agree that your contributions will be licensed under AGPL-3.0.
+The core AgentWrit server is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. Any code that does eventually land from external contributors will be licensed under AGPL-3.0.
 
-Substantial contributions (anything beyond typo fixes or minor doc corrections) require accepting the **[Contributor License Agreement](CLA.md)**. The CLA grants the project maintainer additional rights for commercial and enterprise use while you retain full ownership of your contributions. See `CLA.md` for the complete terms.
+Substantial contributions (anything beyond typo fixes or minor doc corrections) require accepting the **[Contributor License Agreement](CLA.md)**. The CLA grants the project maintainer additional rights for commercial and enterprise use while you retain full ownership of your contributions. See [`CLA.md`](CLA.md) for the complete terms.
 
-**We cannot merge non-trivial contributions unless the CLA has been accepted.**
+The CLA requirement is one of the things being automated before external PRs reopen (see the Contribution Policy above).
 
 ## Project Structure
 
 ```
-agentauth/
+agentwrit/
 ├── cmd/
 │   ├── broker/              # Credential broker HTTP server (main binary)
 │   └── awrit/               # Operator CLI — admin auth, app management, audit
@@ -366,50 +391,33 @@ log.Printf("Token %s validated for scope %s", tokenID, scope)
 - Security-sensitive events (auth failures, scope violations, revocations) must get audit entries
 - Security headers on all HTTP responses
 
-## Pull Request Process
+## Filing a good Issue
 
-1. **Ensure your branch is up to date** with `develop`:
+Since PRs are paused, the quality of your **issue report** is what lets the maintainer actually fix things. A good issue includes:
 
-   ```bash
-   git fetch origin
-   git rebase origin/develop
-   ```
+**For bug reports:**
+- **What you did** — exact commands, env vars, image tag or commit SHA (`docker pull devonartis/agentwrit:main-abc1234`)
+- **What you expected** — concrete, not "it should work"
+- **What actually happened** — error message verbatim, not paraphrased
+- **Broker logs** around the incident — `docker logs agentwrit 2>&1 | tail -100` or the equivalent
+- **Request ID** if the error was an HTTP response — broker emits `X-Request-ID` on every response, include it
+- **Environment** — OS, Docker version, deployment mode (Docker Hub image / source build / VPS binary)
 
-2. **Verify all quality gates pass:**
+**For feature requests:**
+- **The problem you're trying to solve** — what are you actually trying to accomplish?
+- **The workflow that doesn't work today** — specific steps, not generalizations
+- **Who else this affects** — only you, a team, a class of users, etc.
+- **Not:** a proposed implementation — that's for the maintainer to design after the problem is understood
 
-   ```bash
-   gofmt -l ./...                              # No output = clean
-   go vet ./...                                # No warnings
-   go test ./...                               # All pass
-   go build -o bin/broker ./cmd/broker/        # Broker builds
-   go build -o bin/awrit  ./cmd/awrit/         # CLI builds
-   ```
+**For security issues:** do NOT open a public Issue. See [SECURITY.md](SECURITY.md) for the private disclosure channel.
 
-3. **Submit your PR** against **`develop`** (not `main`) with:
+A well-written issue turns into a fix in minutes. A vague one bounces for days asking for the information above. If you're not sure what's needed, over-share — context is cheap to remove but expensive to guess.
 
-   - A clear title following commit message conventions
-   - Description of **what** changed and **why**
-   - Reference to the issue it addresses (e.g., "Fixes #42")
-   - Integration evidence for broker-facing changes (terminal output in PR description)
-   - Documentation updates if behavior changed
+## If you're reading this to understand the code, not contribute
 
-4. **CLA acceptance** — if this is your first substantial contribution, you will be asked to confirm that you accept the [CLA](CLA.md)
+The sections below (Prerequisites, Getting Started, Development Workflow, Testing, Code Style) are still here because **reading the code is a first-class use of this repo**. You can clone the repo, build it, run tests, trace behavior, and learn how ephemeral agent credentialing works without submitting any code back. That's explicitly supported — the AGPL-3.0 license guarantees it and the standards below exist so the code stays readable.
 
-5. **Code review** — all PRs require approval from at least one maintainer. Be responsive to feedback.
-
-### PR Checklist
-
-Before marking your PR as ready for review:
-
-- [ ] Code compiles (`go build ./...`)
-- [ ] All unit tests pass (`go test ./...`)
-- [ ] New code has unit tests (table-driven with subtests)
-- [ ] Integration evidence included for broker-facing changes
-- [ ] `gofmt` and `go vet` are clean
-- [ ] Comments explain who/why/boundaries (not what the code does)
-- [ ] No new dependencies without prior discussion
-- [ ] Documentation updated if behavior changed
-- [ ] Commit messages follow conventions
+When PRs reopen, these same sections will be the standard contributors are held to.
 - [ ] PR targets `develop`, not `main`
 - [ ] CLA accepted (first-time contributors)
 
