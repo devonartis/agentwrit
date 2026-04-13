@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PolyForm-Internal-Use-1.0.0
+// SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
 
 // Package app — HTTP handlers for app CRUD (admin-operated) and app
 // authentication (self-service). The /v1/admin/apps/* routes are for the

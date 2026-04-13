@@ -251,21 +251,21 @@ The broker applies two layers of middleware: global middleware on all requests, 
 flowchart LR
     REQ["HTTP\nRequest"] --> RID["RequestID\nMiddleware"]
     RID --> LOG["Logging\nMiddleware"]
-    LOG --> MUX["http.ServeMux\nRoute Match"]
-    MUX --> SEC["SecurityHeaders\n(global)"]
-    SEC --> MB["MaxBytesBody\n1 MB (global)"]
+    LOG --> MB["MaxBytesBody\n1 MB (global)"]
+    MB --> SEC["SecurityHeaders\n(global)"]
+    SEC --> MUX["http.ServeMux\nRoute Match"]
 
-    MB --> PUB["Public Handlers\n(health, challenge,\nmetrics, validate)"]
+    MUX --> PUB["Public Handlers\n(health, challenge,\nmetrics, validate)"]
 
-    MB --> AUTH_ONLY["ValMw.Wrap"] --> AUTH_H["Auth Handlers\n(renew, delegate,\nrelease)"]
+    MUX --> AUTH_ONLY["ValMw.Wrap"] --> AUTH_H["Auth Handlers\n(renew, delegate,\nrelease)"]
 
-    MB --> AUDIT_W["ValMw.Wrap"] --> AUDIT_C["ValMw\n.RequireScope"] --> AUDIT_H["Audit Handler\n(audit/events)"]
+    MUX --> AUDIT_W["ValMw.Wrap"] --> AUDIT_C["ValMw\n.RequireScope"] --> AUDIT_H["Audit Handler\n(audit/events)"]
 
-    MB --> SCOPE_W["ValMw.Wrap"] --> SCOPE_C["ValMw\n.RequireScope /\n.RequireAnyScope"] --> ADMIN_H["Scoped POST Handlers\n(revoke, launch-tokens,\nadmin/apps)"]
+    MUX --> SCOPE_W["ValMw.Wrap"] --> SCOPE_C["ValMw\n.RequireScope /\n.RequireAnyScope"] --> ADMIN_H["Scoped POST Handlers\n(revoke, launch-tokens,\nadmin/apps)"]
 
-    MB --> RL["RateLimiter\n.Wrap"] --> RL_H["Rate-Limited\n(admin/auth,\napp/auth)"]
+    MUX --> RL["RateLimiter\n.Wrap"] --> RL_H["Rate-Limited\n(admin/auth,\napp/auth)"]
 
-    MB --> REG_H["Register\n(launch token\nin body)"]
+    MUX --> REG_H["Register\n(launch token\nin body)"]
 ```
 
 **Route-to-middleware mapping from `cmd/broker/main.go`:**
