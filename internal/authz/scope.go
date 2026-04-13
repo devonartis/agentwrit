@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PolyForm-Internal-Use-1.0.0
+// SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
 
 // Package authz provides scope-based authorization and Bearer token
 // validation middleware for the AgentAuth broker.

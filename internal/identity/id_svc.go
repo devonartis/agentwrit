@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PolyForm-Internal-Use-1.0.0
+// SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
 
 // Package identity implements the agent registration flow including
 // challenge-response verification, SPIFFE ID generation, Ed25519 key

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PolyForm-Internal-Use-1.0.0
+// SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
 
 // Command awrit revoke subcommand — revokes tokens at various granularity levels.
 package main

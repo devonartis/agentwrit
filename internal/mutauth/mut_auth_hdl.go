@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PolyForm-Internal-Use-1.0.0
+// SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
 
 // Package mutauth provides agent-to-agent mutual authentication using a
 // three-step cryptographic handshake protocol.

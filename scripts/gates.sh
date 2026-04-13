@@ -115,7 +115,7 @@ run_gate "format" bash -c 'test -z "$(gofmt -l .)"'
 # Brand alignment portion catches the gap that let obs.go metric names and
 # problemdetails.go URN namespace survive the first rebrand pass
 # (TD-RUNTIME-001 / TD-OBS-001).
-run_gate "contamination" bash -c "! grep -ri 'hitl\|approval\|oidc\|federation\|cloud\|sidecar' internal/ cmd/ 2>/dev/null && ! grep -rn 'urn:agentauth\|agentauth_\|github\.com/devonartis/agentauth[^-]' internal/ cmd/ --include='*.go' 2>/dev/null && ! find cmd/ internal/ -name '*.go' -exec sh -c 'head -1 \"\$1\" | grep -qF SPDX-License-Identifier: || echo \"\$1\"' _ {} \; | grep ."
+run_gate "contamination" bash -c "! grep -ri 'hitl\|approval\|oidc\|federation\|cloud\|sidecar' internal/ cmd/ 2>/dev/null && ! grep -rn 'urn:agentauth\|agentauth_\|github\.com/devonartis/agentauth[^-]' internal/ cmd/ --include='*.go' 2>/dev/null && ! find cmd/ internal/ -name '*.go' -exec sh -c 'head -1 \"\$1\" | grep -qxF \"// SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0\" || echo \"\$1\"' _ {} \; | grep ."
 
 run_gate "unit-tests" go test -short -count=1 ./...
 

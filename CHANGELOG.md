@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — SPDX identifier + gate + middleware diagram (2026-04-13)
+
+- SPDX identifier corrected from `PolyForm-Internal-Use-1.0.0` to `LicenseRef-PolyForm-Internal-Use-1.0.0` across LICENSE and all 77 Go files. PolyForm Internal Use is not on the SPDX License List — `LicenseRef-` prefix is required by spec for unlisted licenses.
+- CI SPDX gate now checks the exact expected identifier, not just presence of `SPDX-License-Identifier:`.
+- Middleware stack diagram in `docs/architecture.md` corrected to match actual wrapping order in `cmd/broker/main.go`: `RequestID → Logging → MaxBytesBody → SecurityHeaders → mux`.
+
 ### Fixed — Architecture doc accuracy (2026-04-13)
 
 - Corrected SQLite version in External Dependencies table (v1.35.0 → v1.46.1).

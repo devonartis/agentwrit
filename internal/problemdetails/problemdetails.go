@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PolyForm-Internal-Use-1.0.0
+// SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
 
 // Package problemdetails implements RFC 7807 "application/problem+json"
 // error responses and HTTP request infrastructure for the AgentWrit broker.

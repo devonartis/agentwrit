@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PolyForm-Internal-Use-1.0.0
+// SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
 
 // rate_mw.go — per-key token-bucket rate limiter. Protects admin auth
 // (per-IP) and app auth (per-client_id) against brute force and credential
