@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — AgentWrit logo (2026-04-13)
+
+- README hero image added — centered logo at `docs/diagrams/agentwrit-logo.png`.
+
 ### Fixed — Architecture component mapping + signing key documentation (2026-04-13)
 
 - Pattern component table now maps all 8 EAC v1.3 components with correct numbering. Component 6 (Mutual Authentication) documented as present but not wired. Component 7 (Delegation) and 8 (Observability) added.
