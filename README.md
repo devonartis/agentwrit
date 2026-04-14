@@ -312,6 +312,7 @@ go test ./... -short       # Unit tests only
 | See real-world integration patterns | [Integration Patterns →](docs/integration-patterns.md) |
 | Use the Python SDK | [Python SDK →](docs/python-sdk.md) |
 | Run the MedAssist demo | [MedAssist AI →](docs/demos.md) |
+| Read the FAQ | [FAQ →](docs/faq.md) |
 | Report a security vulnerability | [Security Policy →](SECURITY.md) |
 | Read the changelog | [CHANGELOG →](CHANGELOG.md) |
 
