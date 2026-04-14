@@ -334,3 +334,9 @@ AgentWrit is licensed under the **[PolyForm Internal Use License 1.0.0](https://
 **Dual-license contact:** Non-commercial and research use (nonprofits, education, mentorship programs, open-source projects, trade groups) is typically free on request. Commercial embedding, resale, and hosted-service offerings require a paid commercial license. Email **licensing@agentwrit.com** with your use case.
 
 See [LICENSE](LICENSE) for the full license text.
+
+---
+
+## Built With
+
+Built with help from [Claude](https://claude.ai) by [Anthropic](https://anthropic.com).
