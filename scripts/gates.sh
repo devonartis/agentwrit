@@ -94,7 +94,15 @@ skip_gate() {
 # job AND with the linters-settings.gosec.excludes block in .golangci.yml.
 GOSEC_EXCLUDE="G117,G304,G101"
 
-# --- TASK gates ---
+# --- TASK gates (skipped in regression mode — CI already ran them on push) ---
+
+if [[ "$MODE" == "regression" ]]; then
+  echo ""
+  echo "=== Skipping task/full gates in regression mode ==="
+  echo "(CI gates run on every push; regression mode only runs test suites)"
+fi
+
+if [[ "$MODE" != "regression" ]]; then
 
 run_gate "build" go build ./cmd/broker ./cmd/awrit
 
@@ -191,6 +199,8 @@ if [[ "$MODE" == "full" ]]; then
     exit 0
   '
 fi
+
+fi  # end of MODE != regression
 
 # --- REGRESSION gates (only if mode is regression) ---
 
