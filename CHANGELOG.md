@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — FAQ from community feedback (2026-04-13)
+
+- New `docs/faq.md` — real questions from practitioners evaluating AgentWrit. Covers identity vs credential exchange, OIDC (enterprise), scope model, scope drift detection (roadmap), SDK status, restart/HA behavior, demo status, and licensing.
+- FAQ added to README documentation table.
+
 ### Added — Diagram documentation pages + README fix (2026-04-13)
 
 - Token lifecycle and security topology diagrams now have dedicated markdown pages (`docs/token-lifecycle.md`, `docs/security-topology.md`) with context tables and navigation. Architecture doc links updated.
