@@ -27,7 +27,7 @@ Scopes only move in one direction: down. Every boundary is enforced at issuance 
 
 - **Challenge-response** — Ed25519 keypair per agent instance. No shared secrets at the agent level.
 - **Hash-chain audit** — tamper-evident trail with 24 event types. Each record hashes the previous.
-- **Scope attenuation** — scopes can only narrow, never escalate. Delegation preserves the original principal.
+- **Scope attenuation** — scopes cannot widen; equal or narrower is accepted. Delegation preserves the original principal.
 - **Token TTL** — default 5 minutes, max 24 hours (configurable). Per-app override available. Revocable at 4 levels.
 
 ---

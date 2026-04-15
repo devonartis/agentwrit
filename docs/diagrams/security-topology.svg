@@ -188,8 +188,8 @@
   <rect x="660" y="620" width="260" height="140" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="2"/>
   <rect x="665" y="625" width="250" height="130" rx="8" fill="none" stroke="#dc2626" stroke-width="1" stroke-dasharray="2,2"/>
   <text x="790" y="648" text-anchor="middle" class="callout-title" fill="#7f1d1d">Scope Attenuation</text>
-  <text x="675" y="670" class="component-text" fill="#5f1313">Scopes can only narrow</text>
-  <text x="675" y="690" class="component-text" fill="#5f1313">Never escalate</text>
+  <text x="675" y="670" class="component-text" fill="#5f1313">Scopes cannot widen</text>
+  <text x="675" y="690" class="component-text" fill="#5f1313">Equal or narrower</text>
   <text x="675" y="710" class="component-text" fill="#5f1313">Delegation preserves</text>
   <text x="675" y="730" class="component-text" fill="#5f1313">original principal</text>
 

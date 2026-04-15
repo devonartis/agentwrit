@@ -678,7 +678,7 @@ import requests
 BROKER = "http://localhost:8080"
 
 def delegate_token(broker, my_token, delegate_agent_id, scope, ttl=60):
-    """Delegate a narrower-scoped token to another agent."""
+    """Delegate a scope-attenuated token to another agent (equal or narrower)."""
     resp = requests.post(
         f"{broker}/v1/delegate",
         headers={"Authorization": f"Bearer {my_token}"},
@@ -839,7 +839,7 @@ try {
 | Status | Meaning | Action |
 |--------|---------|--------|
 | 400 | Invalid request (bad format, missing fields) | Verify `delegate_to` is a valid SPIFFE ID and `scope` is an array |
-| 403 | Scope escalation or widening attempted | Ensure delegated scope is a strict subset of your scope |
+| 403 | Scope escalation or widening attempted | Ensure delegated scope does not widen your scope (equal or narrower is accepted) |
 | 404 | Delegate agent not found in broker | Verify the agent's SPIFFE ID is correct and it has registered |
 | 401 | Your token is invalid or expired | Renew or re-register to get a fresh token |
 
