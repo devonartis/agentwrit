@@ -209,7 +209,7 @@ sequenceDiagram
 
 ### Delegation Flow
 
-Agent A delegates a narrower-scoped token to Agent B:
+Agent A delegates a scope-attenuated token to Agent B (equal or narrower scope; widening is rejected):
 
 ```mermaid
 sequenceDiagram

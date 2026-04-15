@@ -3,14 +3,18 @@
 // Package deleg provides scope-attenuated token delegation with chain
 // verification and depth limiting.
 //
-// Delegation allows an authenticated agent to issue a narrower-scoped token
-// to another registered agent. The delegated token carries a delegation
+// Delegation allows an authenticated agent to issue a scope-attenuated
+// token to another registered agent (equal or narrower scope; widening
+// is rejected). The delegated token carries a delegation
 // chain that records the full provenance (who delegated what scope, and
 // when). Delegation depth is capped at [maxDelegDepth] (5) to prevent
 // unbounded chains.
 //
-// The delegated scope must be a strict subset of the delegator's scope
-// (attenuation only — scopes can never expand).
+// The delegated scope cannot widen the delegator's scope; equal or
+// narrower is accepted. Same-scope delegation is a deliberate pattern
+// (e.g., fan-out to workers carrying the parent's full authority) and
+// is allowed by [authz.ScopeIsSubset]. See issue #41 for why this is
+// not a strict-subset check.
 package deleg
 
 import (
