@@ -36,11 +36,11 @@ Traditional IAM was built for humans and long-running services — not for AI ag
 | Traditional IAM for agents | AgentWrit |
 |---|---|
 | Agents get static API keys or service account credentials designed for long-running services | Each agent requests a token scoped to one task |
-| Credentials are over-permissioned because scoping per-task is manual and fragile | Scope attenuation is automatic — permissions only narrow, never expand |
+| Credentials are over-permissioned because scoping per-task is manual and fragile | Scope attenuation is automatic — permissions cannot widen, only equal or narrower |
 | Leaked credential exposes everything the service account can access | Leaked token exposes one task, already expiring in minutes |
 | Revoking a static key means rotating it everywhere it's used | Revocation is instant at 4 levels — token, agent, task, or delegation chain |
 | No visibility into which agent used which credential for which task | Every credential event is audited per-agent, per-task in a tamper-evident hash chain |
-| No native concept of agent-to-agent delegation | Delegation is built in — Agent A can delegate narrower-scoped tokens to Agent B with full chain tracking |
+| No native concept of agent-to-agent delegation | Delegation is built in — Agent A can delegate scope-attenuated tokens to Agent B (equal or narrower) with full chain tracking |
 
 > **What the audit trail covers:** The broker logs credential lifecycle events — issue, renew, revoke, delegate, release, auth failures, and scope violations. It does not see what the agent does with the token at the resource server.
 

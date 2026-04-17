@@ -2092,7 +2092,7 @@ When implementing AgentWrit patterns, verify:
 ### Scope and Delegation
 
 - [ ] Scope ceilings are enforced at the broker level
-- [ ] Delegation always narrows scope (never escalates)
+- [ ] Delegation does not widen scope (equal or narrower)
 - [ ] Delegation depth is limited (maximum 5 hops)
 - [ ] Scope format is validated: `action:resource:identifier`
 - [ ] Wildcard scope (`*`) is used narrowly and intentionally

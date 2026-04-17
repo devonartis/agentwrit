@@ -72,7 +72,10 @@ func scopeCovers(requested, allowed string) bool {
 // least one scope in allowed. A scope is covered when its action and
 // resource match and either the identifiers are equal or the allowed
 // identifier is the wildcard "*". This enforces the attenuation rule:
-// scopes can only narrow, never expand.
+// requested scopes cannot widen allowed scopes. Equal is accepted
+// (same-scope delegation is a deliberate pattern); narrower is accepted;
+// broader is rejected. See issue #41 for why this is not a strict-subset
+// check.
 func ScopeIsSubset(requested, allowed []string) bool {
 	for _, req := range requested {
 		covered := false

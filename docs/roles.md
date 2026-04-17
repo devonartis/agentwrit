@@ -94,7 +94,7 @@ write:logs:agent-run-42
 | `POST /v1/token/validate` | External services check this token to decide if the agent is authorized |
 | `POST /v1/token/renew` | Extend the session — same scope, same original TTL, old token revoked first |
 | `POST /v1/token/release` | Self-revoke when the task is done |
-| `POST /v1/delegate` | Create a narrower-scoped token for another registered agent |
+| `POST /v1/delegate` | Create a scope-attenuated token (equal or narrower) for another registered agent |
 
 **What the agent cannot do:** call any admin or app endpoint. It has no `admin:*` or `app:*` scopes. The broker enforces this.
 

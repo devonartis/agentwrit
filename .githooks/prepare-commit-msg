@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# prepare-commit-msg — stamp Claude co-author trailer on Claude-driven commits.
+#
+# Why this exists:
+#   commit.template (.gitmessage) only fires when git opens an editor.
+#   `git commit -m "..."` and HEREDOC variants (used by Claude Code and
+#   scripts) bypass it entirely. That is why commits after 2026-03-30
+#   stopped carrying the "Co-authored-by: Claude" line even though
+#   .gitmessage still declared the intent.
+#
+#   This hook runs on every commit path, strips any existing Claude
+#   co-author line (in any historical variant — "Claude", "Claude Opus 4.6",
+#   "Claude Sonnet 4.6"), then appends the canonical trailer. Result:
+#   exactly one Claude trailer in a consistent form across the log.
+#
+# Scope:
+#   Only stamps when Claude is clearly the driver. Detection is via the
+#   CLAUDECODE=1 environment variable, which Claude Code sets in the env
+#   of every shell command it runs (including `git commit`). A commit you
+#   run yourself in your own terminal has no CLAUDECODE set and is left
+#   untouched — your solo commits stay honestly attributed to you alone.
+#
+#   This is a stronger honesty guarantee than the old .gitmessage template,
+#   which stamped every editor-driven commit regardless of who was typing.
+#
+# Skipped commit sources:
+#   - merge   : git is assembling a merge commit message; don't stamp.
+#   - squash  : git is assembling a squash message from other commits.
+#   - commit  : this is an --amend or cherry-pick reusing an existing
+#               message. The trailer is already on the source commit
+#               (if it should be). Leave it alone so amends don't mutate
+#               history unexpectedly.
+#
+# Install (one-time per clone — already set repo-wide):
+#   git config core.hooksPath .githooks
+
+COMMIT_MSG_FILE="$1"
+COMMIT_SOURCE="${2:-}"
+
+# Only stamp when Claude Code is driving this commit.
+if [[ "${CLAUDECODE:-}" != "1" ]]; then
+  exit 0
+fi
+
+case "$COMMIT_SOURCE" in
+  merge|squash|commit) exit 0 ;;
+esac
+
+TRAILER="Co-authored-by: Claude <noreply@anthropic.com>"
+
+TMP=$(mktemp)
+trap 'rm -f "$TMP"' EXIT
+
+# Strip any existing Claude co-author line. Character classes (not the /I
+# flag) because BSD sed on macOS does not support case-insensitive match.
+# Matches: "Co-authored-by: Claude", "co-authored-by:  Claude Opus 4.6",
+# "Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>", etc.
+sed -E '/^[Cc]o-[Aa]uthored-[Bb]y:[[:space:]]*Claude.*/d' "$COMMIT_MSG_FILE" > "$TMP"
+
+# Append the canonical trailer. interpret-trailers handles the blank-line
+# separator between body and trailer block per git convention. Using
+# addIfDifferent as belt-and-suspenders — we already stripped Claude lines
+# above, so this will always add ours; the flag just guards against future
+# edits to the strip regex.
+git interpret-trailers \
+  --if-exists addIfDifferent \
+  --trailer "$TRAILER" \
+  "$TMP" > "$COMMIT_MSG_FILE"
