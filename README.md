@@ -17,7 +17,7 @@
 [![SPIFFE](https://img.shields.io/badge/Identity-SPIFFE-0F9D58)](https://spiffe.io/)
 
 > [!IMPORTANT]
-> **Building in public — pre-1.0.** The broker core is stable and we use it daily, but the Python SDK and demo app are still landing. Feel free to try it as we build in the open. For anything non-lab, pin to a versioned tag like `v2.0.0` or a commit-pinned digest like `main-899e4ca3` — `:latest` moves with every `main` commit and will change without notice. Issues are welcome; external PRs are paused until the contribution workflow is ready. See [CHANGELOG.md](CHANGELOG.md) for what shipped recently.
+> **Building in public.** The broker core is stable and we use it daily, but the Python SDK and demo app are still landing. For anything non-lab, pin to a versioned tag like `v2.0.0` or a commit-pinned digest like `main-899e4ca3` — `:latest` moves with every `main` commit and will change without notice. Issues are welcome; external PRs are paused until the contribution workflow is ready. See [CHANGELOG.md](CHANGELOG.md) for what shipped recently.
 
 ---
 
