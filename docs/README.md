@@ -53,6 +53,8 @@ Lookup documentation for endpoints, CLI commands, and internals.
 | [API Reference](api.md) | All 19 HTTP endpoints — request/response formats, error codes, rate limits |
 | [CLI Reference (awrit)](awrit-reference.md) | Every `awrit` command with examples and output formats |
 | [Architecture](architecture.md) | Internal package map, component diagrams, data flow |
+| [Token Lifecycle](token-lifecycle.md) | Diagram and walkthrough — issuance, renewal, delegation, revocation, release, expiration |
+| [Security Topology](security-topology.md) | Diagram and walkthrough — three trust zones, scope attenuation chain, security properties |
 | [Implementation Map](implementation-map.md) | Where every feature lives in the codebase — file paths, function names, test locations |
 | [Concepts Deep Dive](concepts.md) | The full security pattern, industry context, and all eight components |
 

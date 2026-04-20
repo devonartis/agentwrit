@@ -109,7 +109,7 @@ AgentWrit implements the [Ephemeral Agent Credentialing v1.3](https://github.com
   <img src="docs/diagrams/architecture-overview.svg" alt="AgentWrit Architecture Overview" width="100%">
 </p>
 
-> **Detailed diagrams:** [Token Lifecycle](docs/diagrams/token-lifecycle.svg) · [Security Topology](docs/diagrams/security-topology.svg)
+> **Detailed diagrams:** [Token Lifecycle](docs/token-lifecycle.md) · [Security Topology](docs/security-topology.md)
 
 1. **Operator** creates a launch token with an allowed scope ceiling
 2. **App** hands the launch token to the agent for a specific task
