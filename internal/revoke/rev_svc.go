@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
 
-// Package revoke provides four-level token revocation for the AgentAuth
+// Package revoke provides four-level token revocation for the AgentWrit
 // broker.
 //
 // Revocation operates at four granularity levels:

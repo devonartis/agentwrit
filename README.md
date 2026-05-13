@@ -156,14 +156,14 @@ The Python SDK includes **MedAssist AI**: a FastAPI web app where a local LLM dy
 
 | Language | Repo | Install | Status |
 |----------|------|---------|--------|
-| **Python** | [agentwrit-python](docs/python-sdk.md) | `pip install agentauth` *(PyPI rename pending)* | v0.3.0 — 15 acceptance tests passing |
+| **Python** | [agentwrit-python](docs/python-sdk.md) | `pip install agentwrit` | v0.3.0 — 15 acceptance tests passing |
 | **TypeScript** | Coming soon | — | Planned |
 
 ```python
-from agentauth import AgentAuthApp
+from agentwrit import AgentWritApp
 
 # The SDK hides the Ed25519 challenge-response flow
-agent = AgentAuthApp(broker_url="http://localhost:8080").register(
+agent = AgentWritApp(broker_url="http://localhost:8080").register(
     launch_token=LAUNCH_TOKEN,
     task_id="read-customer-42",
     requested_scope=["read:data:customers:42"],

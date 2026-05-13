@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
 
 // Package token implements EdDSA (Ed25519) JWT token issuance, verification,
-// and renewal for the AgentAuth broker.
+// and renewal for the AgentWrit broker.
 //
 // Tokens follow the compact JWT serialization (header.payload.signature) with
 // algorithm "EdDSA". Claims include standard fields (iss, sub, exp, nbf, iat,
-// jti) plus AgentAuth extensions (scope, task_id, orch_id, delegation_chain).
+// jti) plus AgentWrit extensions (scope, task_id, orch_id, delegation_chain).
 //
 // The issuer (iss claim) is operator-configured via cfg.Issuer (env: AA_ISSUER).
 // Empty cfg.Issuer skips issuer enforcement on verify, mirroring the Audience
@@ -28,7 +28,7 @@ var (
 	ErrNoExpiry         = errors.New("token has no expiry")
 )
 
-// TknClaims represents the JWT payload for an AgentAuth token. Standard
+// TknClaims represents the JWT payload for an AgentWrit token. Standard
 // registered claims (iss, sub, aud, exp, nbf, iat, jti) are complemented
 // by private claims for scope enforcement, task tracking, and delegation.
 type TknClaims struct {
