@@ -1,4 +1,4 @@
-# .golangci.yml — golangci-lint configuration for agentauth-core
+# .golangci.yml — golangci-lint configuration for agentwrit-core
 #
 # M-sec linter set: security-aware defaults plus the core Go linters.
 #

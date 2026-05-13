@@ -7,9 +7,9 @@
 The Python SDK wraps the broker's Ed25519 challenge-response registration flow into simple function calls. You don't need to manage nonces, signatures, or token renewal manually.
 
 ```python
-from agentauth import AgentAuthApp
+from agentwrit import AgentWritApp
 
-agent = AgentAuthApp(broker_url="http://localhost:8080").register(
+agent = AgentWritApp(broker_url="http://localhost:8080").register(
     launch_token=LAUNCH_TOKEN,
     task_id="read-customer-42",
     requested_scope=["read:data:customers:42"],
@@ -27,7 +27,7 @@ agent.release()
 - **v0.3.0** — 15 acceptance tests passing against a live broker
 - Full agent lifecycle: register, renew, delegate, release
 - Scope checking and validation helpers
-- `pip install agentauth` *(PyPI rename to `agentwrit` pending)*
+- `pip install agentwrit`
 
 ## In the meantime
 

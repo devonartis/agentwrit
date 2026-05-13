@@ -32,14 +32,14 @@ message "token is invalid or expired" — NOT "token has been revoked".
 Admin token: eyJhbGciOiJFZERTQSIsInR5cCI6Ik...
 
 --- Step 2: Create launch token and register agent ---
-Agent ID: spiffe://agentauth.local/agent/s2-orch/s2-task/d72568a5b27b3fab
+Agent ID: spiffe://agentwrit.local/agent/s2-orch/s2-task/790501763e589167
 Agent token: eyJhbGciOiJFZERTQSIsInR5cCI6Ik...
 
 --- Step 3: Operator revokes the agent ---
 {
   "revoked": true,
   "level": "agent",
-  "target": "spiffe://agentauth.local/agent/s2-orch/s2-task/d72568a5b27b3fab",
+  "target": "spiffe://agentwrit.local/agent/s2-orch/s2-task/790501763e589167",
   "count": 1
 }
 
@@ -51,4 +51,4 @@ Agent token: eyJhbGciOiJFZERTQSIsInR5cCI6Ik...
 
 ## Verdict
 
-PASS — The operator revoked agent spiffe://agentauth.local/agent/s2-orch/s2-task/d72568a5b27b3fab. When the app then validated the revoked token, the broker returned the generic message "token is invalid or expired" — identical to what it returns for any other bad token. The response does NOT say "token has been revoked". An attacker cannot tell whether the token was ever valid.
+PASS — The operator revoked agent spiffe://agentwrit.local/agent/s2-orch/s2-task/790501763e589167. When the app then validated the revoked token, the broker returned the generic message "token is invalid or expired" — identical to what it returns for any other bad token. The response does NOT say "token has been revoked". An attacker cannot tell whether the token was ever valid.

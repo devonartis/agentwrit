@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — remaining current-surface AgentAuth references (2026-05-13)
+
+- Replaced stale current-surface `AgentAuth` / `agentauth` references with `AgentWrit` / `agentwrit` in CLI text, broker startup output, Go comments, Python SDK examples, config headers, contribution-policy text, and SEC-L2b setup files.
+- Aligned TLS and mTLS compose overlays with `scripts/gen_test_certs.sh` by changing cert mounts from `/tmp/agentauth-certs` to `/tmp/agentwrit-certs`.
+- Refreshed SEC-L2b S2/S3 evidence so recorded current runtime output uses `spiffe://agentwrit.local/...` and `urn:agentwrit:error:unauthorized`.
+- Bumped the pinned Go toolchain from `go1.25.9` to `go1.25.10` so `govulncheck` no longer reports fixed standard-library vulnerabilities in CI.
+- Preserved older changelog history and the CI/gates watchdog regexes that intentionally mention legacy `agentauth` strings.
+
 ### Fixed — Delegation framing aligned with non-strict subset behavior (2026-04-15)
 
 - Comments and docs in 9 places claimed delegation enforces strict narrowing ("strict subset", "only narrow", "narrower-scoped"). The actual `authz.ScopeIsSubset` is a non-strict containment check — equal scopes pass, and same-scope delegation is a deliberate pattern (e.g., fan-out to workers carrying the parent's full authority, verified by SDK acceptance Story 8). Wording corrected across `internal/deleg/deleg_svc.go`, `internal/authz/scope.go`, `README.md`, `docs/security-topology.md`, `docs/architecture.md`, `docs/roles.md`, `docs/common-tasks.md`, `docs/integration-patterns.md`, and the `docs/diagrams/security-topology.svg` callout label. Two source-file docstrings now carry a back-reference to issue #41 explaining why this is not a strict-subset check. Closes #41.

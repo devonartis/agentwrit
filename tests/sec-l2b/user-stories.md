@@ -1,6 +1,6 @@
-# SEC-L2b: Error Handling & Headers — Acceptance Stories (agentauth-core)
+# SEC-L2b: Error Handling & Headers — Acceptance Stories (agentwrit-core)
 
-Adapted from legacy `agentauth/tests/fix-sec-l2b/user-stories.md`.
+Adapted from the legacy pre-rename SEC-L2b test suite.
 Removed S5 (HSTS/TLS — optional, cert-dependent) and S7 (JWKS Cache-Control — OIDC, not in core).
 
 ## Precondition

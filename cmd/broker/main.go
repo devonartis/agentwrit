@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LicenseRef-PolyForm-Internal-Use-1.0.0
 
-// Command broker starts the AgentAuth broker HTTP server.
+// Command broker starts the AgentWrit broker HTTP server.
 //
 // It wires all internal services together, registers routes on an
 // [http.ServeMux], and listens on the port configured by AA_PORT (default
@@ -222,7 +222,7 @@ func main() {
 		obs.Warn("BROKER", "main", "binding to 0.0.0.0 without TLS — use AA_TLS_MODE=tls in production")
 	}
 	obs.Ok("BROKER", "main", "starting broker", "addr="+addr, "version="+version)
-	fmt.Printf("AgentAuth broker v%s listening on %s\n", version, addr)
+	fmt.Printf("AgentWrit broker v%s listening on %s\n", version, addr)
 
 	if err := serve(c, addr, rootHandler, func() {
 		if err := sqlStore.Close(); err != nil {
