@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replaced stale current-surface `AgentAuth` / `agentauth` references with `AgentWrit` / `agentwrit` in CLI text, broker startup output, Go comments, Python SDK examples, config headers, contribution-policy text, and SEC-L2b setup files.
 - Aligned TLS and mTLS compose overlays with `scripts/gen_test_certs.sh` by changing cert mounts from `/tmp/agentauth-certs` to `/tmp/agentwrit-certs`.
 - Refreshed SEC-L2b S2/S3 evidence so recorded current runtime output uses `spiffe://agentwrit.local/...` and `urn:agentwrit:error:unauthorized`.
+- Bumped the pinned Go toolchain from `go1.25.9` to `go1.25.10` so `govulncheck` no longer reports fixed standard-library vulnerabilities in CI.
 - Preserved older changelog history and the CI/gates watchdog regexes that intentionally mention legacy `agentauth` strings.
 
 ### Fixed — Delegation framing aligned with non-strict subset behavior (2026-04-15)
