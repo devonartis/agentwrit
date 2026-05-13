@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────
 # SEC-L2b: Error Handling & Headers — Acceptance + Regression Tests
-# Adapted for agentauth-core (no OIDC, no HITL, no sidecar, no cloud)
+# Adapted for agentwrit-core (no OIDC, no HITL, no sidecar, no cloud)
 # ─────────────────────────────────────────────────────────────────
 #
 # Usage:
@@ -50,7 +50,7 @@ skip() {
   SKIP=$((SKIP + 1))
 }
 
-banner "SEC-L2b Acceptance + Regression Tests (agentauth-core)"
+banner "SEC-L2b Acceptance + Regression Tests (agentwrit-core)"
 echo "  Broker: ${BROKER_URL}"
 echo "  Date:   $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 

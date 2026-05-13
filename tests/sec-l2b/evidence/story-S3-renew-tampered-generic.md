@@ -36,13 +36,13 @@ Tampered token: eyJhbGciOiJFZERTQSIsInR5cCI6Ik...tampered
 HTTP response:
 jq: parse error: Invalid numeric literal at line 3, column 5
 {
-  "type": "urn:agentauth:error:unauthorized",
+  "type": "urn:agentwrit:error:unauthorized",
   "title": "Unauthorized",
   "status": 401,
   "detail": "token verification failed",
   "instance": "/v1/token/renew",
   "error_code": "unauthorized",
-  "request_id": "599341393453d4a0"
+  "request_id": "e29a2963bd5e8f66"
 }
 
 ## Verdict
