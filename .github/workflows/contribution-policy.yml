@@ -82,9 +82,9 @@ jobs:
             core.info(`Author ${author} not exempt — closing PR per Decision 014`);
 
             const policy_comment = [
-              `Hi @${author}, thank you for your interest in AgentAuth!`,
+              `Hi @${author}, thank you for your interest in AgentWrit!`,
               '',
-              'Per our contribution policy ([Decision 014](https://github.com/' + owner + '/' + repo + '/blob/develop/CONTRIBUTING.md)), AgentAuth does not accept external code contributions at this time — including bug fixes.',
+              'Per our contribution policy ([Decision 014](https://github.com/' + owner + '/' + repo + '/blob/develop/CONTRIBUTING.md)), AgentWrit does not accept external code contributions at this time — including bug fixes.',
               '',
               'We actively welcome:',
               '- **Bug reports** — please [open an issue](https://github.com/' + owner + '/' + repo + '/issues/new)',

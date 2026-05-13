@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# gates.sh — quality gate runner for AgentAuth (M-sec)
+# gates.sh — quality gate runner for AgentWrit Core (M-sec)
 #
 # Usage:
 #   ./scripts/gates.sh task          Fast dev-loop gates (build/vet/lint/format/

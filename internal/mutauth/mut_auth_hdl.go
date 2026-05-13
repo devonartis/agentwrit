@@ -4,7 +4,7 @@
 // three-step cryptographic handshake protocol.
 //
 // The protocol guarantees that both communicating agents hold valid
-// AgentAuth tokens and registered Ed25519 key pairs. The three steps are:
+// AgentWrit tokens and registered Ed25519 key pairs. The three steps are:
 //
 //  1. [MutAuthHdl.InitiateHandshake] — the initiator verifies its own
 //     token and the target agent's registration, then produces a

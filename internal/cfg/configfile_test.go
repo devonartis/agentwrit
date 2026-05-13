@@ -14,7 +14,7 @@ import (
 func TestLoadConfigFile_ValidDevConfig(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config")
-	content := "# AgentAuth Configuration\nMODE=development\nADMIN_SECRET=my-test-secret\n"
+	content := "# AgentWrit Configuration\nMODE=development\nADMIN_SECRET=my-test-secret\n"
 	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}

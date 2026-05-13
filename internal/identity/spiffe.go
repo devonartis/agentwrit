@@ -9,7 +9,7 @@ import (
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 )
 
-// NewSpiffeId constructs a SPIFFE ID in the AgentAuth canonical format:
+// NewSpiffeId constructs a SPIFFE ID in the AgentWrit canonical format:
 //
 //	spiffe://{trustDomain}/agent/{orchID}/{taskID}/{instanceID}
 //
@@ -31,7 +31,7 @@ func NewSpiffeId(trustDomain, orchID, taskID, instanceID string) (string, error)
 }
 
 // ParseSpiffeId validates a SPIFFE ID string and extracts its path
-// components. The path must follow the AgentAuth format
+// components. The path must follow the AgentWrit format
 // /agent/{orchID}/{taskID}/{instanceID}. It returns an error if the ID
 // is malformed or does not match the expected structure.
 func ParseSpiffeId(id string) (orchID, taskID, instanceID string, err error) {

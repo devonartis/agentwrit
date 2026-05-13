@@ -1,6 +1,6 @@
 # mTLS overlay — mutual TLS (broker requires client cert).
 # Usage: docker compose -f docker-compose.yml -f docker-compose.mtls.yml up -d
-# Requires certs in /tmp/agentauth-certs (run scripts/gen_test_certs.sh first).
+# Requires certs in /tmp/agentwrit-certs (run scripts/gen_test_certs.sh first).
 services:
   broker:
     environment:
@@ -9,6 +9,6 @@ services:
       - AA_TLS_KEY=/certs/broker-key.pem
       - AA_TLS_CLIENT_CA=/certs/ca.pem
     volumes:
-      - /tmp/agentauth-certs:/certs:ro
+      - /tmp/agentwrit-certs:/certs:ro
     healthcheck:
       test: ["CMD", "curl", "-sf", "--cacert", "/certs/ca.pem", "--cert", "/certs/client.pem", "--key", "/certs/client-key.pem", "https://localhost:8080/v1/health"]
