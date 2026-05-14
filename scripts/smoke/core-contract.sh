@@ -25,23 +25,19 @@ set -euo pipefail
 #   AA_ADMIN_SECRET     (default: live-test-secret-32bytes-long-ok)
 #   BROKER_URL          (default: http://localhost:8080)
 #
-# Dependencies: curl, jq, python3 with cryptography installed.
-# python3 + cryptography is the established pattern for challenge-response
-# in this repo — see tests/sec-l2b/integration.sh for prior art.
+# Dependencies: curl, jq, go (for the Ed25519 helper at tests/sec-l2b/edsign).
+# Go stdlib only — matches the project rule that all crypto is Go stdlib
+# (.claude/rules/golang.md). See tests/sec-l2b/integration.sh for the same pattern.
 
 BROKER_URL="${BROKER_URL:-http://localhost:8080}"
 AA_ADMIN_SECRET="${AA_ADMIN_SECRET:-live-test-secret-32bytes-long-ok}"
 
-for dep in curl jq python3; do
+for dep in curl jq go; do
   if ! command -v $dep &>/dev/null; then
     echo "FAIL: missing dependency: $dep"
     exit 1
   fi
 done
-if ! python3 -c 'from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey' &>/dev/null; then
-  echo "FAIL: python3 cryptography package not installed (pip install cryptography)"
-  exit 1
-fi
 
 step=0
 pass() { step=$((step+1)); echo "  [$step] PASS: $1"; }
@@ -79,34 +75,28 @@ NONCE=$(echo "$CHALLENGE_RESP" | jq -r '.nonce // empty')
 pass "challenge nonce fetched"
 
 # --- Step 5: Register agent (Ed25519 challenge-response) ---
-# Python generates a keypair, signs the hex-decoded nonce, and POSTs to /v1/register.
-REG_RESP=$(python3 <<PYEOF
-import json, base64, urllib.request, sys
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+# Build the Go Ed25519 helper (stdlib only — see tests/sec-l2b/edsign/main.go).
+EDSIGN_BIN="${EDSIGN_BIN:-/tmp/sec-l2b-edsign}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+(cd "${REPO_ROOT}" && go build -o "$EDSIGN_BIN" ./tests/sec-l2b/edsign) \
+  || fail "edsign build" "go build of tests/sec-l2b/edsign failed"
 
-key = Ed25519PrivateKey.generate()
-pub_bytes = key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
-sig = key.sign(bytes.fromhex("${NONCE}"))
+SIG_JSON=$("$EDSIGN_BIN" "$NONCE")
+PUB_B64=$(echo "$SIG_JSON" | jq -r '.public_key // empty')
+SIG_B64=$(echo "$SIG_JSON" | jq -r '.signature // empty')
+[[ -n "$PUB_B64" && -n "$SIG_B64" ]] || fail "edsign helper" "missing public_key/signature in: $SIG_JSON"
 
-body = json.dumps({
-    "launch_token": "${LAUNCH_TOKEN}",
-    "nonce": "${NONCE}",
-    "public_key": base64.b64encode(pub_bytes).decode(),
-    "signature": base64.b64encode(sig).decode(),
-    "orch_id": "smoke-orch",
-    "task_id": "smoke-task",
-    "requested_scope": ["read:data:*"],
-}).encode()
-req = urllib.request.Request("${BROKER_URL}/v1/register", data=body,
-    headers={"Content-Type": "application/json"})
-try:
-    print(urllib.request.urlopen(req).read().decode())
-except urllib.error.HTTPError as e:
-    print(json.dumps({"error": e.code, "body": e.read().decode()}), file=sys.stderr)
-    sys.exit(1)
-PYEOF
-)
+REG_RESP=$(curl -sf -X POST "$BROKER_URL/v1/register" \
+  -H "Content-Type: application/json" \
+  -d "$(jq -nc \
+    --arg lt "$LAUNCH_TOKEN" \
+    --arg n  "$NONCE" \
+    --arg pk "$PUB_B64" \
+    --arg s  "$SIG_B64" \
+    '{launch_token:$lt, nonce:$n, public_key:$pk, signature:$s,
+      orch_id:"smoke-orch", task_id:"smoke-task", requested_scope:["read:data:*"]}')" \
+  || echo "{}")
 AGENT_TOKEN=$(echo "$REG_RESP" | jq -r '.access_token // empty')
 AGENT_ID=$(echo "$REG_RESP" | jq -r '.agent_id // empty')
 [[ -n "$AGENT_TOKEN" ]] || fail "agent registration" "no access_token in response: $REG_RESP"
@@ -170,33 +160,21 @@ LT2=$(echo "$LT2_RESP" | jq -r '.launch_token // empty')
 NONCE2=$(curl -sf "$BROKER_URL/v1/challenge" | jq -r '.nonce // empty')
 [[ -n "$NONCE2" ]] || fail "oos setup" "could not fetch second nonce"
 
-OOS_STATUS=$(python3 <<PYEOF
-import json, base64, urllib.request, urllib.error
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+SIG2_JSON=$("$EDSIGN_BIN" "$NONCE2")
+PUB2_B64=$(echo "$SIG2_JSON" | jq -r '.public_key // empty')
+SIG2_B64=$(echo "$SIG2_JSON" | jq -r '.signature // empty')
+[[ -n "$PUB2_B64" && -n "$SIG2_B64" ]] || fail "edsign helper (oos)" "missing public_key/signature in: $SIG2_JSON"
 
-key = Ed25519PrivateKey.generate()
-pub_bytes = key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
-sig = key.sign(bytes.fromhex("${NONCE2}"))
-
-body = json.dumps({
-    "launch_token": "${LT2}",
-    "nonce": "${NONCE2}",
-    "public_key": base64.b64encode(pub_bytes).decode(),
-    "signature": base64.b64encode(sig).decode(),
-    "orch_id": "smoke-orch",
-    "task_id": "smoke-oos",
-    "requested_scope": ["admin:all:*"],
-}).encode()
-req = urllib.request.Request("${BROKER_URL}/v1/register", data=body,
-    headers={"Content-Type": "application/json"})
-try:
-    urllib.request.urlopen(req)
-    print("200")  # This is a FAILURE — registration should have been denied
-except urllib.error.HTTPError as e:
-    print(e.code)
-PYEOF
-)
+OOS_BODY=$(jq -nc \
+  --arg lt "$LT2" \
+  --arg n  "$NONCE2" \
+  --arg pk "$PUB2_B64" \
+  --arg s  "$SIG2_B64" \
+  '{launch_token:$lt, nonce:$n, public_key:$pk, signature:$s,
+    orch_id:"smoke-orch", task_id:"smoke-oos", requested_scope:["admin:all:*"]}')
+OOS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BROKER_URL/v1/register" \
+  -H "Content-Type: application/json" \
+  -d "$OOS_BODY")
 if [[ "$OOS_STATUS" == "403" || "$OOS_STATUS" == "400" ]]; then
   pass "out-of-scope registration denied ($OOS_STATUS)"
 else

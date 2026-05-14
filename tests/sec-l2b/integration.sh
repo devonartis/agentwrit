@@ -92,33 +92,32 @@ if [ -z "$NONCE" ] || [ "$NONCE" = "null" ]; then
 fi
 echo "  Nonce: ${NONCE:0:20}..."
 
-# 2. Generate Ed25519 keypair, sign nonce, and register (Python helper)
-REG_RESP=$(python3 -c "
-import json, base64, sys, urllib.request
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+# 2. Build the Ed25519 helper (Go stdlib only — see tests/sec-l2b/edsign/main.go).
+#    Cached in /tmp; Go build cache makes rebuilds cheap.
+EDSIGN_BIN="${EDSIGN_BIN:-/tmp/sec-l2b-edsign}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+(cd "${REPO_ROOT}" && go build -o "$EDSIGN_BIN" ./tests/sec-l2b/edsign)
 
-key = Ed25519PrivateKey.generate()
-pub = key.public_key()
-pub_bytes = pub.public_bytes(Encoding.Raw, PublicFormat.Raw)
-pub_b64 = base64.b64encode(pub_bytes).decode()
-sig = key.sign(bytes.fromhex('${NONCE}'))
-sig_b64 = base64.b64encode(sig).decode()
+# 3. Generate Ed25519 keypair + signature for the launch nonce.
+SIG_JSON=$("$EDSIGN_BIN" "$NONCE")
+PUB_B64=$(echo "$SIG_JSON" | jq -r .public_key)
+SIG_B64=$(echo "$SIG_JSON" | jq -r .signature)
+if [ -z "$PUB_B64" ] || [ -z "$SIG_B64" ] || [ "$PUB_B64" = "null" ] || [ "$SIG_B64" = "null" ]; then
+  echo "FATAL: edsign helper returned bad output: $SIG_JSON"
+  exit 1
+fi
 
-body = json.dumps({
-    'launch_token': '${LAUNCH_TOKEN}',
-    'nonce': '${NONCE}',
-    'public_key': pub_b64,
-    'signature': sig_b64,
-    'orch_id': 'l2b-orch',
-    'task_id': 'l2b-task',
-    'requested_scope': ['read:data:*']
-}).encode()
-req = urllib.request.Request('${BROKER_URL}/v1/register', data=body,
-    headers={'Content-Type': 'application/json'})
-resp = urllib.request.urlopen(req)
-print(resp.read().decode())
-")
+# 4. Register via HTTP POST.
+REG_RESP=$(curl -sf -X POST "${BROKER_URL}/v1/register" \
+  -H "Content-Type: application/json" \
+  -d "$(jq -nc \
+    --arg lt "$LAUNCH_TOKEN" \
+    --arg n  "$NONCE" \
+    --arg pk "$PUB_B64" \
+    --arg s  "$SIG_B64" \
+    '{launch_token:$lt, nonce:$n, public_key:$pk, signature:$s,
+      orch_id:"l2b-orch", task_id:"l2b-task", requested_scope:["read:data:*"]}')")
 AGENT_TOKEN=$(echo "$REG_RESP" | jq -r .access_token)
 AGENT_ID=$(echo "$REG_RESP" | jq -r .agent_id)
 if [ -z "$AGENT_TOKEN" ] || [ "$AGENT_TOKEN" = "null" ]; then
@@ -157,27 +156,18 @@ LT2_RESP=$(curl -sf -X POST "${BROKER_URL}/v1/admin/launch-tokens" \
 LT2=$(echo "$LT2_RESP" | jq -r .launch_token)
 CHALLENGE2_RESP=$(curl -sf "${BROKER_URL}/v1/challenge")
 NONCE2=$(echo "$CHALLENGE2_RESP" | jq -r .nonce)
-REV_REG=$(python3 -c "
-import json, base64, urllib.request
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-
-key = Ed25519PrivateKey.generate()
-pub_bytes = key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
-sig = key.sign(bytes.fromhex('${NONCE2}'))
-body = json.dumps({
-    'launch_token': '${LT2}',
-    'nonce': '${NONCE2}',
-    'public_key': base64.b64encode(pub_bytes).decode(),
-    'signature': base64.b64encode(sig).decode(),
-    'orch_id': 'l2b-rev-orch',
-    'task_id': 'l2b-rev-task',
-    'requested_scope': ['read:data:*']
-}).encode()
-req = urllib.request.Request('${BROKER_URL}/v1/register', data=body,
-    headers={'Content-Type': 'application/json'})
-print(urllib.request.urlopen(req).read().decode())
-")
+SIG2_JSON=$("$EDSIGN_BIN" "$NONCE2")
+PUB2_B64=$(echo "$SIG2_JSON" | jq -r .public_key)
+SIG2_B64=$(echo "$SIG2_JSON" | jq -r .signature)
+REV_REG=$(curl -sf -X POST "${BROKER_URL}/v1/register" \
+  -H "Content-Type: application/json" \
+  -d "$(jq -nc \
+    --arg lt "$LT2" \
+    --arg n  "$NONCE2" \
+    --arg pk "$PUB2_B64" \
+    --arg s  "$SIG2_B64" \
+    '{launch_token:$lt, nonce:$n, public_key:$pk, signature:$s,
+      orch_id:"l2b-rev-orch", task_id:"l2b-rev-task", requested_scope:["read:data:*"]}')")
 REV_TOKEN=$(echo "$REV_REG" | jq -r .access_token)
 REV_ID=$(echo "$REV_REG" | jq -r .agent_id)
 echo "  Revoking agent: $REV_ID"
@@ -253,7 +243,7 @@ skip "S5: Requires TLS cert — not available in Docker test mode"
 
 # ── S6: Oversized body returns 413 (H7) ──
 section "S6: Oversized body returns 413 (H7)"
-S6_CODE=$(python3 -c "import sys; sys.stdout.buffer.write(b'{' + b'x' * (1024*1024) + b'}')" | \
+S6_CODE=$( ( printf '{'; head -c 1048576 /dev/zero | tr '\0' 'x'; printf '}' ) | \
   curl -s -o /dev/null -w "%{http_code}" -X POST "${BROKER_URL}/v1/token/validate" \
   -H "Content-Type: application/json" \
   --data-binary @-)
