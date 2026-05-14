@@ -1,5 +1,6 @@
 # Stage 1: Build broker binary
-FROM golang:1.24-alpine AS builder
+# Pinned by digest (Dependabot docker ecosystem rotates weekly). Tag: golang:1.24-alpine
+FROM golang:1.24-alpine@sha256:8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064ed54cfd245b7191 AS builder
 
 WORKDIR /app
 
@@ -13,7 +14,8 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o broker ./cmd/broker
 
 # Stage 2: Broker image
-FROM alpine:3.21 AS broker
+# Pinned by digest (Dependabot docker ecosystem rotates weekly). Tag: alpine:3.21
+FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d AS broker
 
 # OCI image labels — populated by docker/metadata-action in the release workflow.
 # Static labels (title/licenses/vendor) are baked in here so they're correct even
