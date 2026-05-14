@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security — OSSF Scorecard Tier-1 hardening (2026-05-13)
+
+- Moved top-level write permissions to job level in `.github/workflows/codeql.yml` (`security-events: write`, `actions: read`) and `.github/workflows/release.yml` (`packages: write`, `id-token: write`). Top level keeps `contents: read` only. OSSF Scorecard Token-Permissions check expected to lift from 0 → 10.
+- Pinned Docker base images by SHA digest in `Dockerfile`: `golang:1.24-alpine@sha256:8bee1901…1b7191` and `alpine:3.21@sha256:48b0309c…b7abc07d`. Tag names preserved on preceding comment lines (Dockerfile `FROM` syntax rejects trailing inline comments after `AS stage`). Rotated weekly by Dependabot's existing docker ecosystem.
+- Pinned `govulncheck` install in `.github/workflows/ci.yml` by commit SHA `d1f3801` (v1.1.4) instead of `@latest`.
+- Replaced the Python `cryptography` invocations in `tests/sec-l2b/integration.sh` AND `scripts/smoke/core-contract.sh` with a pure Go helper at `tests/sec-l2b/edsign/main.go` (Go stdlib `crypto/ed25519`, ~50 lines). Removed the `pip install --user cryptography` step from CI; added `actions/setup-go` to `smoke-l25` since the job now builds the helper. **The repo is now Python-free across `.github/`, `tests/sec-l2b/`, and `scripts/smoke/`.** Acceptance verified locally against live broker: `core-contract.sh` 10/10 PASS, `integration.sh` 9 PASS / 1 SKIP (HSTS-TLS) / 0 FAIL.
+- Net: OSSF Scorecard Pinned-Dependencies expected to lift from 8 → 10. Overall score expected to lift from 6.2 to ~7.3.
+
 ### Fixed — remaining current-surface AgentAuth references (2026-05-13)
 
 - Replaced stale current-surface `AgentAuth` / `agentauth` references with `AgentWrit` / `agentwrit` in CLI text, broker startup output, Go comments, Python SDK examples, config headers, contribution-policy text, and SEC-L2b setup files.
