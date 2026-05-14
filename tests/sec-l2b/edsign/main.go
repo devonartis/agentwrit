@@ -4,10 +4,12 @@
 // matches the project rule that all crypto is Go stdlib.
 //
 // Usage:
-//   ./edsign <hex-encoded-nonce>
+//
+//	./edsign <hex-encoded-nonce>
 //
 // Output (JSON on stdout):
-//   {"public_key":"<base64>","signature":"<base64>"}
+//
+//	{"public_key":"<base64>","signature":"<base64>"}
 //
 // Exit codes: 0 on success, 2 on argument error, 3 on crypto/encoding error.
 package main
