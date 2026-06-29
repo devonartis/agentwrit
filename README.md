@@ -192,6 +192,7 @@ agent.release()
 | | `POST` | `/v1/token/validate` | Resource server — verify a token |
 | **Auth** | `POST` | `/v1/admin/auth` | Operator — get admin JWT |
 | | `POST` | `/v1/app/auth` | App — client credential exchange |
+| | `POST` | `/v1/app/launch-tokens` | App — create agent launch tokens within its ceiling |
 | | `POST` | `/v1/register` | Agent — register with launch token |
 | **Token** | `POST` | `/v1/token/renew` | Agent/App — renew before expiry |
 | | `POST` | `/v1/token/release` | Agent — signal task completion |

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation — accuracy audit fixes (2026-06-29)
+
+- Corrected shipped docs against current code and the live Python SDK. The Python SDK ([`agentwrit`](https://pypi.org/project/agentwrit/) v0.3.0) and both demo apps (MedAssist, Support Tickets — published Docker images) are **live**; removed all "coming soon" banners and a fabricated SDK API from `docs/demos.md` and `docs/python-sdk.md`.
+- Dropped stale "enterprise module / open-core" framing (Decision 022 — one product, license is the moat) from `docs/faq.md` and `docs/design-decisions.md`.
+- Fixed user-facing accuracy bugs: sanitized token-validate error shape, config-driven `iss` claim (`AA_ISSUER`), `/v1/app/auth` rate limit (10/min, burst 3), audit event count (25), `KEY=VALUE` config-file format, `evt-NNNNNN` audit IDs, app deregister status (`inactive`), `go run` → `./bin/` per project rules, and OpenAPI schema fields. Added GitHub Security Advisory as the preferred disclosure channel in `SECURITY.md`.
+
+### Security — Go toolchain bump (2026-06-29)
+
+- Bumped `go.mod` toolchain `go1.25.10` → `go1.25.11`, clearing two Go stdlib advisories flagged by govulncheck: `GO-2026-5039` (net/textproto) and `GO-2026-5037` (crypto/x509). CI reads `go-version-file: go.mod`, so the bump applies across all jobs.
+
 ### Security — OSSF Scorecard Tier-1 hardening (2026-05-13)
 
 - Moved top-level write permissions to job level in `.github/workflows/codeql.yml` (`security-events: write`, `actions: read`) and `.github/workflows/release.yml` (`packages: write`, `id-token: write`). Top level keeps `contents: read` only. OSSF Scorecard Token-Permissions check expected to lift from 0 → 10.

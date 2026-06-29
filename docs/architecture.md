@@ -333,7 +333,7 @@ These are explicit trust boundaries and limitations of the current implementatio
 | Dependency | Version | Purpose |
 |---|---|---|
 | `github.com/prometheus/client_golang` | v1.23.2 | Metrics exposition |
-| `github.com/prometheus/client_model` | v0.6.2 | Metrics data model |
+| `github.com/prometheus/client_model` | v0.6.2 | Metrics data model (indirect — pulled in by `client_golang`, not a direct dependency) |
 | `github.com/spiffe/go-spiffe/v2` | v2.6.0 | SPIFFE ID validation |
 | `github.com/spf13/cobra` | v1.10.2 | CLI framework for `awrit` |
 | `modernc.org/sqlite` | v1.46.1 | Pure-Go SQLite driver for audit event persistence (zero CGo) |
