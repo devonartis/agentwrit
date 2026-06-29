@@ -42,7 +42,7 @@ Authentication endpoints are rate-limited to protect against brute-force attacks
 | Endpoint | Rate | Burst | Key | Retry-After |
 |----------|------|-------|-----|-------------|
 | `POST /v1/admin/auth` | 5 req/s | 10 | Per IP address | 1 second |
-| `POST /v1/app/auth` | Configurable | Configurable | Per `client_id` (falls back to IP) | 60 seconds |
+| `POST /v1/app/auth` | 10 req/min | 3 | Per `client_id` (falls back to IP) | 60 seconds |
 
 When a rate limit is exceeded, the broker returns `429 Too Many Requests` in RFC 7807 Problem Details format with a `Retry-After` header.
 
@@ -225,7 +225,7 @@ Verify a token and return its claims. Also checks revocation status.
 {
   "valid": true,
   "claims": {
-    "iss": "agentwrit",
+    "iss": "https://broker.example.com",
     "sub": "spiffe://agentwrit.local/agent/orch/task/instance",
     "exp": 1707600000,
     "nbf": 1707599700,
@@ -233,7 +233,8 @@ Verify a token and return its claims. Also checks revocation status.
     "jti": "a1b2c3d4e5f67890...",
     "scope": ["read:data:*"],
     "task_id": "task-001",
-    "orch_id": "my-orchestrator"
+    "orch_id": "my-orchestrator",
+    "sid": ""
   }
 }
 ```
@@ -678,7 +679,7 @@ Each `AuditEvent`:
 |---|---|---|
 | `id` | string | Sequential ID (`evt-000001`) |
 | `timestamp` | string | RFC3339 timestamp |
-| `event_type` | string | One of 23 event types |
+| `event_type` | string | One of 25 event types |
 | `agent_id` | string | Agent SPIFFE ID (if applicable) |
 | `task_id` | string | Task ID (if applicable) |
 | `orch_id` | string | Orchestration ID (if applicable) |
@@ -691,7 +692,7 @@ Each `AuditEvent`:
 | `hash` | string | SHA-256 hex hash of this event |
 | `prev_hash` | string | SHA-256 hex hash of the previous event |
 
-The 23 event types include the original lifecycle events (`admin_auth`, `agent_registered`, `token_issued`, `token_revoked`, `token_renewed`, `delegation_created`, etc.) plus 6 enforcement audit events:
+The 25 event types span the lifecycle events (`admin_auth`, `agent_registered`, `token_issued`, `token_revoked`, `token_renewed`, `delegation_created`, etc.), the app-management events (`app_registered`, `app_authenticated`, `app_updated`, …), and the enforcement audit events below:
 
 | Event Type | Description |
 |---|---|

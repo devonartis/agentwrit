@@ -311,7 +311,7 @@ Step 3 — Complete:
 
 ### Status
 
-Implemented as a Go API. Not HTTP-exposed. Intended for future HTTP endpoint registration. Fully tested in unit tests.
+Built as a Go API and covered by unit tests, but **not wired into the running broker** — `cmd/broker` does not mount these handlers, so mutual auth is not active in a live deployment. Not HTTP-exposed; mounting it (heartbeat + handshake + discovery) is planned future work.
 
 ---
 

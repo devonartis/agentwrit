@@ -201,7 +201,7 @@
     <rect x="50" y="530" width="280" height="85" rx="6" fill="url(#grad-amber)"/>
     <text x="190" y="550" class="service-text">Audit Log</text>
     <text x="190" y="566" class="label-text" text-anchor="middle" font-size="9" fill="#fffbeb">SHA-256 hash chain — each entry hashes the previous</text>
-    <text x="190" y="579" class="label-text" text-anchor="middle" font-size="9" fill="#fffbeb">24 event types (auth, register, issue, revoke, delegate...)</text>
+    <text x="190" y="579" class="label-text" text-anchor="middle" font-size="9" fill="#fffbeb">25 event types (auth, register, issue, revoke, delegate...)</text>
     <text x="190" y="592" class="label-text" text-anchor="middle" font-size="9" fill="#fffbeb">Tamper-evident · Queryable by operator · Persistent</text>
   </g>
 

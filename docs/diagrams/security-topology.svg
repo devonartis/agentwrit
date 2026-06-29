@@ -181,7 +181,7 @@
   <rect x="365" y="625" width="250" height="130" rx="8" fill="none" stroke="#15803d" stroke-width="1" stroke-dasharray="2,2"/>
   <text x="490" y="648" text-anchor="middle" class="callout-title" fill="#14532d">Hash-Chain Audit</text>
   <text x="375" y="670" class="component-text" fill="#1b4332">Tamper-evident trail</text>
-  <text x="375" y="690" class="component-text" fill="#1b4332">24 event types logged</text>
+  <text x="375" y="690" class="component-text" fill="#1b4332">25 event types logged</text>
   <text x="375" y="710" class="component-text" fill="#1b4332">Persistent to SQLite</text>
   <text x="375" y="730" class="component-text" fill="#1b4332">Queryable by operator</text>
 

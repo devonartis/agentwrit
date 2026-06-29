@@ -2,7 +2,10 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in AgentWrit, please report it responsibly to **security@agentwrit.com** rather than using public issue trackers.
+If you discover a security vulnerability in AgentWrit, please report it responsibly through a private channel rather than using public issue trackers:
+
+1. **Preferred — [GitHub Security Advisory](https://github.com/devonartis/agentwrit/security/advisories/new):** open a private advisory directly on the repository. This keeps the report private to maintainers and lets us coordinate a fix and disclosure in one place.
+2. **Email:** **security@agentwrit.com** if you prefer not to use GitHub.
 
 **We ask that you:**
 - Provide detailed information about the vulnerability
@@ -18,10 +21,8 @@ All vulnerability reports are taken seriously and will be investigated promptly.
 | Version | Status | Security Updates |
 |---------|--------|------------------|
 | 2.0.x   | Current | Yes |
-| 1.x     | EOL | No |
-| < 1.0   | Unsupported | No |
 
-Users should upgrade to 2.0.x to receive security patches. Version 1.x is no longer supported and will not receive updates.
+`2.0.0` is the only tagged release. Security patches land on the `2.0.x` line; run the latest `2.0.x` to receive them. Earlier version lines were never published.
 
 ## What Constitutes a Security Vulnerability
 

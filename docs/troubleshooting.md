@@ -365,7 +365,7 @@ The broker process exits immediately with exit code 1.
 
 ```bash
 export AA_ADMIN_SECRET="$(openssl rand -hex 32)"
-go run ./cmd/broker
+go build -o bin/broker ./cmd/broker && ./bin/broker
 ```
 
 For Docker Compose:
@@ -416,15 +416,15 @@ Or:
 ```bash
 awrit init --mode dev
 # or
-awrit init --mode prod --config-path /path/to/config.yaml
+awrit init --mode prod --config-path /path/to/config
 ```
 
-This creates a configuration file with a bcrypt-hashed admin secret. Set `AA_CONFIG_PATH` to point to this file:
+This creates a `KEY=VALUE` configuration file (not YAML — lines like `MODE=prod`, `ADMIN_SECRET=<bcrypt-hash>`) with a bcrypt-hashed admin secret. Set `AA_CONFIG_PATH` to point to this file:
 
 ```bash
 export AA_CONFIG_PATH="/path/to/config"
 unset AA_ADMIN_SECRET  # Must be UNSET (not empty) to fall through to config file
-go run ./cmd/broker
+go build -o bin/broker ./cmd/broker && ./bin/broker
 ```
 
 > **Warning:** Do not set `AA_ADMIN_SECRET=""` — an empty string is on the denylist and will cause the broker to exit. Leave the variable **unset** to let the config file provide the secret.
@@ -508,25 +508,19 @@ Or token is issued but with a shorter `expires_in` than requested.
 
 ```bash
 export AA_MAX_TTL=604800  # 7 days
-go run ./cmd/broker
+go build -o bin/broker ./cmd/broker && ./bin/broker
 ```
 
 2. **If you want to disable the ceiling entirely:**
 
 ```bash
 export AA_MAX_TTL=0  # 0 disables the ceiling
-go run ./cmd/broker
+go build -o bin/broker ./cmd/broker && ./bin/broker
 ```
 
-3. **If you want shorter-lived tokens (recommended for security), request a TTL within the ceiling:**
+3. **If you want shorter-lived tokens (recommended for security), set a smaller `max_ttl` on the launch token.**
 
-```python
-reg = requests.post(f"{BROKER}/v1/register", json={
-    ...
-    "requested_ttl": 300,  # 5 minutes, well within any ceiling
-    ...
-})
-```
+   The agent token's lifetime comes from the launch token's `max_ttl` (set by the operator/app when creating the launch token), clamped by `AA_MAX_TTL`. The `/v1/register` request has no TTL field — it only takes `launch_token`, `nonce`, `public_key`, `signature`, `orch_id`, `task_id`, and `requested_scope`. To cap a token at 5 minutes, create the launch token with `"max_ttl": 300`.
 
 4. **For Docker Compose, add the env var to the broker service:**
 
@@ -545,7 +539,7 @@ broker:
 Broker fails to start with one of these errors:
 
 ```
-FATAL: config file not found at path: /etc/broker/config.yaml
+FATAL: config file not found at path: /etc/broker/config
 ```
 
 ```
@@ -570,7 +564,7 @@ FATAL: admin secret rejected: does not meet security requirements
 awrit init --mode dev
 
 # Production mode (longer TTLs, bcrypt-hashed admin secret, config file)
-awrit init --mode prod --config-path /etc/broker/config.yaml
+awrit init --mode prod --config-path /etc/broker/config
 ```
 
 2. **For development, use environment variables instead of a config file:**
@@ -579,22 +573,22 @@ awrit init --mode prod --config-path /etc/broker/config.yaml
 export AA_ADMIN_SECRET="test-secret-at-least-16-chars"
 export AA_DEFAULT_TTL=300
 export AA_MAX_TTL=3600
-go run ./cmd/broker
+go build -o bin/broker ./cmd/broker && ./bin/broker
 ```
 
 3. **Ensure the config file is readable by the broker process:**
 
 ```bash
-ls -la /etc/broker/config.yaml
+ls -la /etc/broker/config
 # Should have read permissions for the broker user
 ```
 
 4. **To use the config file with the broker:**
 
 ```bash
-export AA_CONFIG_PATH=/etc/broker/config.yaml
+export AA_CONFIG_PATH=/etc/broker/config
 # Leave AA_ADMIN_SECRET unset or it will override the config file
-go run ./cmd/broker
+go build -o bin/broker ./cmd/broker && ./bin/broker
 ```
 
 5. **Env vars override config file values.** If both `AA_CONFIG_PATH` and individual env vars are set, env vars take precedence.
