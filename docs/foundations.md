@@ -131,9 +131,9 @@ header.payload.signature
 **Payload** — the claims (who you are, what you can do, when it expires):
 ```json
 {
-  "iss": "agentwrit",
+  "iss": "https://broker.example.com",
   "sub": "spiffe://agentwrit.local/agent/orch-456/task-789/a1b2c3d4",
-  "aud": ["agentwrit"],
+  "aud": ["https://broker.example.com"],
   "exp": 1711810500,
   "nbf": 1711810200,
   "iat": 1711810200,
@@ -149,7 +149,7 @@ header.payload.signature
 
 | Claim | What it carries |
 |-------|----------------|
-| `iss` | Issuer — always `"agentwrit"`. Tokens claiming a different issuer are rejected |
+| `iss` | Issuer — the broker's identity, set by the operator via `AA_ISSUER`. Empty by default; when set, tokens with a mismatched `iss` are rejected, and when empty the issuer check is skipped (mirrors the audience contract) |
 | `sub` | Subject — who this token represents. `"admin"` for operators, `"app:{id}"` for apps, SPIFFE URI for agents |
 | `aud` | Audience — who this token is intended for. Checked if configured |
 | `exp` | Expiration — Unix timestamp. Token is dead after this |

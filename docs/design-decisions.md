@@ -246,7 +246,7 @@ Specific mismatches:
 | Client credentials grant | Close to what apps do, but we add scope ceiling enforcement that OAuth doesn't have |
 | Token introspection | We have `POST /v1/token/validate`, but it's simpler — no active/inactive metadata, just valid/invalid + claims |
 
-We're not anti-OAuth. Enterprise modules could bridge to OAuth/OIDC (that's what the planned OIDC provider add-on is for). But the core doesn't need OAuth's complexity.
+We're not anti-OAuth. A planned OIDC bridge would let an AgentWrit identity token be exchanged for an OAuth/OIDC token that downstream services already trust — mounted behind a clean interface seam so the credential core stays simple. But the core itself doesn't need OAuth's complexity.
 
 ---
 
@@ -314,7 +314,7 @@ Each decision builds on the previous:
 6. **Tokens need permissions** → use `action:resource:identifier` scopes (granular, deterministic attenuation)
 7. **System needs management layers** → three roles: admin (operator), app (autonomous within ceiling), agent (does work)
 8. **Deployment can't be coupled to Docker** → remove sidecar, direct broker architecture
-9. **OAuth doesn't fit machine-to-machine ephemeral agents** → own token system, OIDC bridge as enterprise add-on
+9. **OAuth doesn't fit machine-to-machine ephemeral agents** → own token system, with a planned OIDC bridge behind an interface seam
 10. **Admin launch token creation bypasses ceiling** → restrict to dev mode (TD-013)
 11. **Different failure scenarios need different blast radii** → four revocation levels
 

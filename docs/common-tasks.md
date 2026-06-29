@@ -226,7 +226,7 @@ except requests.exceptions.RequestException as e:
 {
   "valid": true,
   "claims": {
-    "iss": "agentwrit",
+    "iss": "https://broker.example.com",
     "sub": "spiffe://agentwrit.local/agent/orch-001/task-analyze-q4/proc-abc123",
     "exp": 1745405630,
     "iat": 1745405330,
@@ -243,10 +243,11 @@ except requests.exceptions.RequestException as e:
 ```json
 {
   "valid": false,
-  "error": "token_revoked",
-  "detail": "Token JTI a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6 was revoked at 2026-02-15T10:00:00Z"
+  "error": "token is invalid or expired"
 }
 ```
+
+The invalid response is deliberately **sanitized**: a single opaque `error` string, no `detail` and no distinct error code. Expired, revoked, and bad-signature tokens are indistinguishable to the caller — the broker won't tell a holder *why* a token failed.
 
 **TypeScript/Node.js example:**
 
@@ -268,9 +269,8 @@ interface ClaimSet {
 
 interface ValidationResponse {
   valid: boolean;
-  claims?: ClaimSet;
-  error?: string;
-  detail?: string;
+  claims?: ClaimSet;       // present only when valid
+  error?: string;          // present only when invalid (opaque, sanitized)
 }
 
 async function validateToken(broker: string, token: string): Promise<ClaimSet> {
@@ -287,7 +287,7 @@ async function validateToken(broker: string, token: string): Promise<ClaimSet> {
   const result = (await response.json()) as ValidationResponse;
 
   if (!result.valid) {
-    throw new Error(`Token invalid: ${result.error} - ${result.detail}`);
+    throw new Error(`Token invalid: ${result.error}`);
   }
 
   return result.claims!;
@@ -327,13 +327,16 @@ try {
 
 **If this fails:**
 
-| Issue | Meaning | Action |
-|-------|---------|--------|
-| Broker unreachable | Network connectivity issue | Verify broker is running; check firewall rules |
-| Invalid token format | Token is malformed | Ensure you're passing the full JWT string |
-| `token_expired` | Token timestamp has passed | Renew the token or re-register to get a fresh one |
-| `token_revoked` | Token was revoked by operator | Re-register to get a fresh token; investigate with operator |
-| `invalid_signature` | JWT signature verification failed | Token may be corrupted or forged; obtain new one |
+A `200 OK` with `"valid": false` covers every token-rejection reason — the response does **not** distinguish them. The reasons below are why a token *can* be invalid, not values you'll see in the response. Re-register to get a fresh token; an operator can confirm the cause from the audit trail.
+
+| Reason (not distinguishable in the response) | Meaning |
+|-------|---------|
+| Expired | Token timestamp has passed |
+| Revoked | Token was revoked by an operator |
+| Bad signature | JWT signature verification failed (corrupted or forged) |
+| Malformed | Not a parseable JWT — ensure you pass the full token string |
+
+A network error (broker unreachable) surfaces separately as a failed HTTP request, not as `valid: false`.
 
 ---
 

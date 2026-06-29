@@ -699,8 +699,10 @@ components:
       properties:
         agent_id:
           type: string
-          description: SPIFFE ID assigned to the agent
-          example: spiffe://agentwrit.local/agent/agent-12345
+          description: >
+            SPIFFE ID assigned to the agent, in the form
+            spiffe://{trust_domain}/agent/{orch_id}/{task_id}/{instance_id}.
+          example: spiffe://agentwrit.local/agent/orch-001/task-analyze-q4/proc-abc123
         access_token:
           type: string
           description: JWT bearer token for the agent
@@ -899,6 +901,9 @@ components:
           items:
             type: object
             properties:
+              id:
+                type: string
+                description: Sequential event ID (e.g. evt-000001)
               timestamp:
                 type: string
                 format: date-time
@@ -908,11 +913,32 @@ components:
                 type: string
               task_id:
                 type: string
+              orch_id:
+                type: string
+              detail:
+                type: string
+                description: Human-readable description (PII-sanitized)
+              resource:
+                type: string
+                description: Target resource path (e.g. API endpoint)
               outcome:
                 type: string
                 enum: [success, denied]
-              details:
+              deleg_depth:
+                type: integer
+                description: Delegation chain depth (0 = direct)
+              deleg_chain_hash:
                 type: string
+                description: SHA-256 hash of the delegation chain
+              bytes_transferred:
+                type: integer
+                description: Bytes transferred (for metered operations)
+              hash:
+                type: string
+                description: SHA-256 hex hash of this event
+              prev_hash:
+                type: string
+                description: SHA-256 hex hash of the previous event
         total:
           type: integer
           description: Total number of events matching the query
@@ -998,16 +1024,14 @@ components:
           type: object
           description: Policy attached to the launch token
           properties:
-            agent_name:
-              type: string
             allowed_scope:
               type: array
               items:
                 type: string
-            ttl:
-              type: integer
             max_ttl:
               type: integer
+            single_use:
+              type: boolean
 
     # =========================================================================
     # App Registration
