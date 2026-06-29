@@ -99,7 +99,7 @@ go build ./...
 
 # 3. Start the broker
 export AA_ADMIN_SECRET="$(openssl rand -hex 32)"
-go run ./cmd/broker
+go build -o bin/broker ./cmd/broker && ./bin/broker
 ```
 
 The broker will log to stdout. You should see a "broker started" message.

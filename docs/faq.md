@@ -10,7 +10,7 @@ Questions from real practitioners evaluating AgentWrit for their environments. I
 
 AgentWrit handles the **identity plane** — proving who the agent is, what scope it has, and how long it can operate. It does not handle the **data plane** — injecting the actual secret (OAuth refresh token, database password, API key) for the downstream service.
 
-This is by design. The credential exchange bridge — where an AgentWrit identity token gets swapped for a real service credential via Vault, AWS Secrets Manager, cloud federation, or OIDC token exchange — is an enterprise module that plugs into the core via interfaces. Keeping secret injection out of the open core means the core has zero access to your actual secrets.
+This is by design. The credential exchange bridge — where an AgentWrit identity token gets swapped for a real service credential via Vault, AWS Secrets Manager, cloud federation, or OIDC token exchange — is a planned capability of the product, built behind a clean interface seam. Keeping secret injection out of the broker means the broker has zero access to your actual secrets — a security boundary, not a packaging one.
 
 **Who needs the bridge:** Anyone running agents against real APIs (Google Calendar, AWS services, databases) in production.
 
@@ -26,9 +26,9 @@ This is by design. The credential exchange bridge — where an AgentWrit identit
 
 ### Will AgentWrit support OIDC token exchange?
 
-OIDC provider and token exchange functionality is planned as an enterprise module. It would allow an AgentWrit identity token to be exchanged for an OIDC-compliant token that downstream services already trust — bridging AgentWrit's agent identity into existing OAuth2/OIDC infrastructure without those services needing to know about AgentWrit directly.
+OIDC provider and token exchange functionality is planned for the product. It would allow an AgentWrit identity token to be exchanged for an OIDC-compliant token that downstream services already trust — bridging AgentWrit's agent identity into existing OAuth2/OIDC infrastructure without those services needing to know about AgentWrit directly.
 
-The core broker exposes interfaces for this. The enterprise module plugs in without modifying core code. If you need this today, the source is available — you can build an OIDC bridge for your own internal use under the license.
+The broker exposes a clean interface seam for this so the capability mounts without disturbing the credential core. If you need this today, the source is available — you can build an OIDC bridge for your own internal use under the license.
 
 ---
 
@@ -55,9 +55,9 @@ Scopes only go in one direction: down. Every boundary narrows. No one in the cha
 
 ### Is there scope drift detection — granted vs actually-used?
 
-Not yet. AgentWrit audits everything it *issues* — 24 event types in a tamper-evident hash chain. But it can't see what the agent *does* with the token at the resource server. A scope-usage audit that compares granted vs actually-used scopes would require resource servers to report back to the broker.
+Not yet. AgentWrit audits everything it *issues* — 25 event types in a tamper-evident hash chain. But it can't see what the agent *does* with the token at the resource server. A scope-usage audit that compares granted vs actually-used scopes would require resource servers to report back to the broker.
 
-This is a real gap and a great feature idea. The audit infrastructure is already in place — the question is whether to build it into core or as an enterprise integration that includes resource server reporting. Either way, the "silent 403 for days because the agent had readonly when it needed write" scenario is exactly what it would catch.
+This is a real gap and a great feature idea. The audit infrastructure is already in place — the open question is the resource-server reporting half. Either way, the "silent 403 for days because the agent had readonly when it needed write" scenario is exactly what it would catch.
 
 **Related docs:**
 - [Architecture — audit trail](architecture.md#key-design-decisions) — how the hash-chain audit works today
@@ -69,11 +69,12 @@ This is a real gap and a great feature idea. The audit infrastructure is already
 
 ### Where are the SDKs? The broker works but custom HTTP is an adoption barrier.
 
-The Python SDK is cleaned, tested, and publishing soon. TypeScript SDK is next. Until then, every integration is custom HTTP against the [API reference](api.md).
+The Python SDK is **live** — [`agentwrit`](https://pypi.org/project/agentwrit/) v0.3.0 on PyPI (`pip install agentwrit` or `uv add agentwrit`), MIT-licensed, source at [`devonartis/agentwrit-python`](https://github.com/devonartis/agentwrit-python). TypeScript SDK is next. For other languages it's custom HTTP against the [API reference](api.md).
 
-The API is clean — 19 endpoints, JSON in/out, RFC 7807 errors — but we know "a day to integrate" is a real barrier. SDKs are the next priority.
+The API is clean — JSON in/out, RFC 7807 errors — and the Python SDK takes most integrations to a handful of lines. See the [Python SDK guide](python-sdk.md).
 
 **Related docs:**
+- [Python SDK](python-sdk.md) — the live client, install and API surface
 - [API Reference](api.md) — every endpoint, request/response shapes, error codes, rate limits
 - [Getting Started: Developer](getting-started-developer.md) — building an agent that authenticates with AgentWrit
 
@@ -101,10 +102,10 @@ So agents with valid tokens keep working during a broker restart. They just can'
 
 ### Where's the end-to-end example? Show an agent getting a credential, calling a real API, credential expiring.
 
-Coming. MedAssist is referenced in the docs but not shipped yet. An end-to-end demo — agent authenticates, gets scoped credential, calls a real API, credential expires — is on the roadmap. This is the thing that makes it real for people evaluating it.
+Shipped. Two end-to-end demos run via Docker Compose against a live broker — MedAssist (healthcare) and Support Tickets (three-agent pipeline). An LLM picks tools, the app spawns scoped agents on demand, and you watch scope denials, delegation, and TTL expiry on real traffic.
 
-In the meantime, the scenarios doc walks through the full flow with code:
-- [Real-World Scenarios](scenarios.md) — the 8 components in production contexts
+- [Demos](demos.md) — run steps, published images, what each one proves
+- [Real-World Scenarios](scenarios.md) — the components in production contexts
 
 ---
 
@@ -118,7 +119,7 @@ Yes. The PolyForm Internal Use License 1.0.0 means:
 - **Free for nonprofits, education, and research** — email `licensing@agentwrit.com` and it's done.
 - **Not free to resell or host as a SaaS** — building a managed service on top of AgentWrit requires a commercial license.
 
-### Can I build the enterprise features myself?
+### Can I build the unbuilt features myself?
 
 Yes — for your own internal use. The source code is public. You can build your own Vault bridge, OIDC exchange, scope telemetry, or anything else. Modify the code, extend it, deploy it internally. The only restriction is you can't resell it or offer it as a hosted service to others.
 
@@ -130,7 +131,7 @@ The [EAC v1.3 pattern](https://github.com/devonartis/AI-Security-Blueprints/blob
 
 ### "The identity layer is done. The last mile is not."
 
-Fair summary. The identity plane is solid — challenge-response registration, SPIFFE identities, scope attenuation, 4-level revocation, tamper-evident audit, delegation chains. The bridge to real service credentials is the enterprise module. The SDKs and demo are in progress.
+Fair summary. The identity plane is solid — challenge-response registration, SPIFFE identities, scope attenuation, 4-level revocation, tamper-evident audit, delegation chains. The Python SDK and both demos have shipped. The bridge to real service credentials is the next planned capability.
 
 AgentWrit was purpose-built for agents — not retrofitted from human IAM. Traditional IAM was designed for humans and long-running services. Agents are ephemeral, task-scoped, and delegate to each other. That's a different lifecycle, and it needs a different credential system.
 

@@ -599,7 +599,7 @@ requests.post(f"{BROKER}/v1/revoke",
 | 7. Delegation | — | Scope narrowing | — | — | 3-level: central→regional→branch |
 | 8. Observability | Metrics per scope | Revocation alerts | SLA monitoring | Batch completion metrics | Agent count + depth alerts |
 
-Component 6 (Mutual Auth) is implemented as a Go API and applies when agents need to verify each other's identity directly — for example, bank branch agents in a mesh topology exchanging compliance data (Scenario 5).
+Component 6 (Mutual Auth) is built as a Go API (unit-tested, not HTTP-exposed and not yet mounted in the broker) and would apply when agents need to verify each other's identity directly — for example, bank branch agents in a mesh topology exchanging compliance data (Scenario 5).
 
 ---
 

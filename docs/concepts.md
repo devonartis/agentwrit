@@ -68,7 +68,7 @@ AgentWrit implements the **Ephemeral Agent Credentialing** pattern, a security a
 5. **Immutable Accountability** -- All agent actions are logged in tamper-proof audit trails
 6. **Delegation Chain Integrity** -- Multi-agent workflows maintain cryptographic proof of authorization lineage
 
-These principles manifest as **seven concrete components** that work together to eliminate the credential exposure problem:
+These principles manifest as **eight concrete components** that work together to eliminate the credential exposure problem:
 
 ```mermaid
 flowchart TB
@@ -172,7 +172,7 @@ stateDiagram-v2
 ```
 
 **What AgentWrit implements:**
-- JWTs signed with EdDSA (Ed25519), containing claims: `sub` (SPIFFE ID), `scope`, `task_id`, `orch_id`, `delegation_chain`, `chain_hash`, `jti`, `exp`, `iat`
+- JWTs signed with EdDSA (Ed25519), containing claims: `iss`, `sub` (SPIFFE ID), `aud`, `scope`, `task_id`, `orch_id`, `delegation_chain`, `chain_hash`, `jti`, `sid`, `exp`, `nbf`, `iat`
 - Scope format: `action:resource:identifier` with wildcard `*` support in the identifier position
 - Default TTL of 300 seconds (5 minutes), configurable via `AA_DEFAULT_TTL`
 - Scope attenuation enforced at registration, delegation, and app-authenticated launch token creation
@@ -290,7 +290,7 @@ flowchart LR
     E2 -->|"hash feeds into"| E3
 ```
 
-Each hash is computed over: `prev_hash | event_id | timestamp | event_type | agent_id | task_id | orch_id | detail`. The genesis event uses 64 zeros as its previous hash. If an attacker modifies any event, every subsequent hash becomes invalid.
+Each hash is computed over 13 fields: `prev_hash | event_id | timestamp | event_type | agent_id | task_id | orch_id | detail | resource | outcome | deleg_depth | deleg_chain_hash | bytes_transferred`. The genesis event uses 64 zeros as its previous hash. If an attacker modifies any event, every subsequent hash becomes invalid.
 
 **What AgentWrit implements:**
 - `AuditLog` provides append-only storage with automatic hash chaining using SHA-256

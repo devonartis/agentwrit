@@ -242,7 +242,7 @@ export AA_TLS_CERT=/etc/broker/certs/broker.crt
 export AA_TLS_KEY=/etc/broker/certs/broker.key
 export AA_ADMIN_SECRET="$(openssl rand -hex 32)"
 
-go run ./cmd/broker
+go build -o bin/broker ./cmd/broker && ./bin/broker
 # AgentWrit broker v2.0.0 listening on :8080 (TLS)
 ```
 
@@ -263,7 +263,7 @@ export AA_TLS_KEY=/etc/broker/certs/broker.key
 export AA_TLS_CLIENT_CA=/etc/broker/certs/client-ca.crt
 export AA_ADMIN_SECRET="$(openssl rand -hex 32)"
 
-go run ./cmd/broker
+go build -o bin/broker ./cmd/broker && ./bin/broker
 ```
 
 Clients must present a certificate signed by the configured client CA:
@@ -354,7 +354,8 @@ Set `AA_DB_PATH` to a stable location on the host:
 
 ```bash
 export AA_DB_PATH="/var/lib/broker/data.db"
-AA_ADMIN_SECRET="..." go run ./cmd/broker
+go build -o bin/broker ./cmd/broker
+AA_ADMIN_SECRET="..." ./bin/broker
 ```
 
 In Docker Compose, mount a volume so the database survives container replacement:
