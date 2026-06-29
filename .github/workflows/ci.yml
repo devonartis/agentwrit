@@ -66,10 +66,10 @@ jobs:
       # DO NOT use golangci/golangci-lint-action here. Its pre-built
       # binaries are compiled against an older Go toolchain (≤ 1.23)
       # and exit 3 on our code because the go.mod toolchain directive
-      # is 1.25.10 — the embedded linter can't parse 1.25 stdlib/SSA.
+      # is 1.25.11 — the embedded linter can't parse 1.25 stdlib/SSA.
       #
       # Instead, `go install` golangci-lint from source. This compiles
-      # it with the CI runner's Go (matching our toolchain.go1.25.10)
+      # it with the CI runner's Go (matching our toolchain.go1.25.11)
       # so it parses the same way as local developers' brew-installed
       # binary. Migration to golangci-lint v2 (which fixes this) is
       # tracked for a later cycle.
