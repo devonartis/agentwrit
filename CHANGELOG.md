@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security — x/crypto + builder-image Go bump clears 20 HIGH image CVEs (2026-07-04)
+
+- Bumped `golang.org/x/crypto` `v0.48.0` → `v0.52.0` (pulls `golang.org/x/sys` `v0.41.0` → `v0.45.0`; `go.mod` `go` directive `1.24.0` → `1.25.0` per x/crypto's minimum), clearing 8 HIGH CVEs in `x/crypto/ssh` (CVE-2026-39827/-39828/-39829/-39830/-39832/-39835, CVE-2026-42508, CVE-2026-46595/-46597).
+- Bumped the Dockerfile builder base image `golang:1.24-alpine` → `golang:1.25-alpine` (digest-pinned, ships Go 1.25.11), clearing 12 HIGH Go stdlib CVEs across net/url, crypto/x509, crypto/tls, net, HTTP/2, net/mail, and mime (CVE-2026-25679, -27145, -32280/-32281/-32283, -33811/-33814, -39820, -39836, -42499, -42504). Root cause: official golang images set `GOTOOLCHAIN=local`, so the `toolchain go1.25.11` directive in `go.mod` (bumped 2026-06-29) was silently ignored inside Docker builds — the shipped binary was still built against the image's Go 1.24.13 stdlib. The builder tag must track the toolchain directive; a Dockerfile comment now documents the trap.
+- Surfaced by a trivy image scan in CI (this pipeline has no image-level CVE gate, so these accumulated unseen). All 20 findings had upstream fixes published. The public Docker Hub image refreshes on the next release merge.
+
 ### Documentation — accuracy audit fixes (2026-06-29)
 
 - Corrected shipped docs against current code and the live Python SDK. The Python SDK ([`agentwrit`](https://pypi.org/project/agentwrit/) v0.3.0) and both demo apps (MedAssist, Support Tickets — published Docker images) are **live**; removed all "coming soon" banners and a fabricated SDK API from `docs/demos.md` and `docs/python-sdk.md`.
