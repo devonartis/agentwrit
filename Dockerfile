@@ -19,8 +19,8 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o broker ./cmd/broker
 
 # Stage 2: Broker image
-# Pinned by digest (Dependabot docker ecosystem rotates weekly). Tag: alpine:3.21
-FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d AS broker
+# Pinned by digest (Dependabot docker ecosystem rotates weekly). Tag: alpine:3.21 (3.21.8)
+FROM alpine:3.21@sha256:ce64758a109eb420d874a118f87920e625e12d3634e03b4a5573fd9f6e5d3507 AS broker
 
 # OCI image labels — populated by docker/metadata-action in the release workflow.
 # Static labels (title/licenses/vendor) are baked in here so they're correct even
@@ -36,7 +36,9 @@ LABEL org.opencontainers.image.title="AgentWrit" \
       org.opencontainers.image.url="https://github.com/devonartis/agentwrit" \
       org.opencontainers.image.documentation="https://github.com/devonartis/agentwrit/blob/main/README.md"
 
-RUN apk --no-cache add ca-certificates sqlite curl
+# `apk upgrade` pulls security fixes published after the base digest was cut
+# (e.g. OpenSSL 3.3.7-r2) — container-scan blocks on any fixable HIGH/CRITICAL.
+RUN apk --no-cache upgrade && apk --no-cache add ca-certificates sqlite curl
 WORKDIR /root/
 COPY --from=builder /app/broker .
 EXPOSE 8080
