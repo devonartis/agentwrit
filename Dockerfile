@@ -1,11 +1,11 @@
 # Stage 1: Build broker binary
-# Pinned by digest (Dependabot docker ecosystem rotates weekly). Tag: golang:1.25-alpine
+# Pinned by digest (Dependabot docker ecosystem rotates weekly). Tag: golang:1.26.9-alpine
 # NOTE: official golang images set GOTOOLCHAIN=local, so the go.mod `toolchain`
-# directive is ignored in this build — the image's own Go version (1.25.11 at this
+# directive is ignored in this build — the image's own Go version (1.26.9 at this
 # digest) is what the binary's stdlib comes from. Keep this tag in lockstep with
 # go.mod's toolchain directive or container scans will flag stdlib CVEs that the
 # toolchain directive appears (wrongly) to have already fixed.
-FROM golang:1.25-alpine@sha256:523c3effe300580ed375e43f43b1c9b091b68e935a7c3a92bfcc4e7ed55b18c2 AS builder
+FROM golang:1.26.9-alpine@sha256:3082400e369fa24d5fc60bca20edab3f6d604e0c5a690ec66b295eff4dd87ade AS builder
 
 WORKDIR /app
 

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security — Go toolchain 1.25 → 1.26.9 clears 9 stdlib advisories (2026-10-13)
+
+- Bumped `go.mod` toolchain `go1.25.11` → `go1.26.9`, the Dockerfile builder image `golang:1.25-alpine` → `golang:1.26.9-alpine` (digest-pinned), and the GitLab CI image `golang:1.25` → `golang:1.26`. Clears 9 reachable Go stdlib advisories flagged by govulncheck in `net/http`, `net/textproto`, and `crypto/tls` (GO-2026-6603, -6605, -6607, -6608, -6610, -6611, -6612, -6613, -6617), all fixed in go1.26.9. Go 1.25 is out of upstream support (go1.25.14 was the last release), so there is no 1.25 patch. The `go` language directive stays `1.25.0`.
+
 ### Security — x/crypto + builder-image Go bump clears 20 HIGH image CVEs (2026-07-04)
 
 - Bumped `golang.org/x/crypto` `v0.48.0` → `v0.52.0` (pulls `golang.org/x/sys` `v0.41.0` → `v0.45.0`; `go.mod` `go` directive `1.24.0` → `1.25.0` per x/crypto's minimum), clearing 8 HIGH CVEs in `x/crypto/ssh` (CVE-2026-39827/-39828/-39829/-39830/-39832/-39835, CVE-2026-42508, CVE-2026-46595/-46597).

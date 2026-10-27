@@ -2,7 +2,7 @@ module github.com/devonartis/agentwrit
 
 go 1.25.0
 
-toolchain go1.25.11
+toolchain go1.26.9
 
 require (
 	github.com/prometheus/client_golang v1.23.2
