@@ -68,6 +68,15 @@ LAUNCH_TOKEN=$(echo "$LT_RESP" | jq -r '.launch_token // empty')
 [[ -n "$LAUNCH_TOKEN" ]] || fail "launch token" "no launch_token in response: $LT_RESP"
 pass "launch token issued"
 
+# Build the Go Ed25519 helper (stdlib only — see tests/sec-l2b/edsign/main.go)
+# BEFORE fetching the nonce: the nonce expires in 30s, and a cold build (CI may
+# first download the go.mod toolchain) can take longer than that.
+EDSIGN_BIN="${EDSIGN_BIN:-/tmp/sec-l2b-edsign}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+(cd "${REPO_ROOT}" && go build -o "$EDSIGN_BIN" ./tests/sec-l2b/edsign) \
+  || fail "edsign build" "go build of tests/sec-l2b/edsign failed"
+
 # --- Step 4: Challenge ---
 CHALLENGE_RESP=$(curl -sf "$BROKER_URL/v1/challenge" || echo "{}")
 NONCE=$(echo "$CHALLENGE_RESP" | jq -r '.nonce // empty')
@@ -75,12 +84,6 @@ NONCE=$(echo "$CHALLENGE_RESP" | jq -r '.nonce // empty')
 pass "challenge nonce fetched"
 
 # --- Step 5: Register agent (Ed25519 challenge-response) ---
-# Build the Go Ed25519 helper (stdlib only — see tests/sec-l2b/edsign/main.go).
-EDSIGN_BIN="${EDSIGN_BIN:-/tmp/sec-l2b-edsign}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-(cd "${REPO_ROOT}" && go build -o "$EDSIGN_BIN" ./tests/sec-l2b/edsign) \
-  || fail "edsign build" "go build of tests/sec-l2b/edsign failed"
 
 SIG_JSON=$("$EDSIGN_BIN" "$NONCE")
 PUB_B64=$(echo "$SIG_JSON" | jq -r '.public_key // empty')
