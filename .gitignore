@@ -68,6 +68,25 @@ __pycache__/
 /.claude/
 /.agents/
 
+# Group (c) — private dev repo (devonartis/agentwrit-dev) laid over this folder
+# as a second git work tree; its git data and files never belong in this repo
+/.dev.git/
+/.codex/
+/.devin/
+/.pi/
+/.pi-subagents/
+/.superpowers/
+/.devflow/
+/adws/
+/justfile
+/project-state.json
+/Pre-dev-PLAN.html
+/agentwrit-coding-agents.html
+/agentwrit-learning-guide.html
+/tools/devflow-orchestrator/
+/tools/ledger-guard/
+/tests/ledger-guard/
+
 # ---- Decision 018 — premature legal / contribution files
 # ENTERPRISE_LICENSE.md — commercial product doesn't exist yet
 # CLA.md / CONTRIBUTING.md — external contributions paused (Decisions 014/016)
