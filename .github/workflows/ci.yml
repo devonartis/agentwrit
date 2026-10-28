@@ -20,8 +20,11 @@ name: CI
 on:
   pull_request:
     branches: [develop]
+  # fix/** and feature/** pushes run the full gate set so a branch is proven
+  # green on GitHub before anyone opens a PR or merges it into develop.
+  # dep-review and changelog stay PR-only (they read PR data).
   push:
-    branches: [develop, main]
+    branches: [develop, main, 'fix/**', 'feature/**']
 
 concurrency:
   group: ci-${{ github.ref }}
