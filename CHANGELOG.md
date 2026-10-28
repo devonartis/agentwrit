@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security — Go toolchain 1.26.9 → 1.26.10 clears GO-2026-6809 (2026-10-27)
+
+- Bumped `go.mod` toolchain `go1.26.9` → `go1.26.10` and the Dockerfile builder image `golang:1.26.9-alpine` → `golang:1.26.10-alpine` (digest-pinned). Clears GO-2026-6809 (`crypto/x509` did not distrust compromised intermediate certificates), reachable from the broker via `x509.Certificate.Verify`; fixed in go1.26.10. The `go` language directive stays `1.25.0`.
+
 ### Security — Go toolchain 1.25 → 1.26.9 clears 9 stdlib advisories (2026-10-13)
 
 - Bumped `go.mod` toolchain `go1.25.11` → `go1.26.9`, the Dockerfile builder image `golang:1.25-alpine` → `golang:1.26.9-alpine` (digest-pinned), and the GitLab CI image `golang:1.25` → `golang:1.26`. Clears 9 reachable Go stdlib advisories flagged by govulncheck in `net/http`, `net/textproto`, and `crypto/tls` (GO-2026-6603, -6605, -6607, -6608, -6610, -6611, -6612, -6613, -6617), all fixed in go1.26.9. Go 1.25 is out of upstream support (go1.25.14 was the last release), so there is no 1.25 patch. The `go` language directive stays `1.25.0`.
