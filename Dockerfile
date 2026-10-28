@@ -1,11 +1,11 @@
 # Stage 1: Build broker binary
-# Pinned by digest (Dependabot docker ecosystem rotates weekly). Tag: golang:1.25-alpine
+# Pinned by digest (Dependabot docker ecosystem rotates weekly). Tag: golang:1.26.10-alpine
 # NOTE: official golang images set GOTOOLCHAIN=local, so the go.mod `toolchain`
-# directive is ignored in this build — the image's own Go version (1.25.11 at this
+# directive is ignored in this build — the image's own Go version (1.26.10 at this
 # digest) is what the binary's stdlib comes from. Keep this tag in lockstep with
 # go.mod's toolchain directive or container scans will flag stdlib CVEs that the
 # toolchain directive appears (wrongly) to have already fixed.
-FROM golang:1.25-alpine@sha256:523c3effe300580ed375e43f43b1c9b091b68e935a7c3a92bfcc4e7ed55b18c2 AS builder
+FROM golang:1.26.10-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS builder
 
 WORKDIR /app
 
@@ -19,8 +19,8 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o broker ./cmd/broker
 
 # Stage 2: Broker image
-# Pinned by digest (Dependabot docker ecosystem rotates weekly). Tag: alpine:3.21
-FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d AS broker
+# Pinned by digest (Dependabot docker ecosystem rotates weekly). Tag: alpine:3.21 (3.21.8)
+FROM alpine:3.21@sha256:ce64758a109eb420d874a118f87920e625e12d3634e03b4a5573fd9f6e5d3507 AS broker
 
 # OCI image labels — populated by docker/metadata-action in the release workflow.
 # Static labels (title/licenses/vendor) are baked in here so they're correct even
@@ -36,7 +36,9 @@ LABEL org.opencontainers.image.title="AgentWrit" \
       org.opencontainers.image.url="https://github.com/devonartis/agentwrit" \
       org.opencontainers.image.documentation="https://github.com/devonartis/agentwrit/blob/main/README.md"
 
-RUN apk --no-cache add ca-certificates sqlite curl
+# `apk upgrade` pulls security fixes published after the base digest was cut
+# (e.g. OpenSSL 3.3.7-r2) — container-scan blocks on any fixable HIGH/CRITICAL.
+RUN apk --no-cache upgrade && apk --no-cache add ca-certificates sqlite curl
 WORKDIR /root/
 COPY --from=builder /app/broker .
 EXPOSE 8080
