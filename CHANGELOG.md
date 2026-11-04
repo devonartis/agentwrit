@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — pre-push hook now actually checks pushes (2026-11-04)
+
+- `.githooks/pre-push` (added in #92) read git's push input split on tabs, but git separates the fields with spaces. The commit fields were empty, the comparison failed silently, and every push was allowed, including force-added private files. It now reads the fields with git's default whitespace split (#93).
+- Added `tests/pre-push-guard/`: live stories and evidence for both git hooks. The run proves that private files are refused at commit (pre-commit) and at push (pre-push), and that `git add .` and `git commit -a` leave them out. It also documents two gaps that need follow-up: `--no-verify` skips both hooks, and a clone without `core.hooksPath = .githooks` has no protection.
+
 ### Security — Go toolchain 1.26.9 → 1.26.10 clears GO-2026-6809 (2026-10-27)
 
 - Bumped `go.mod` toolchain `go1.26.9` → `go1.26.10` and the Dockerfile builder image `golang:1.26.9-alpine` → `golang:1.26.10-alpine` (digest-pinned). Clears GO-2026-6809 (`crypto/x509` did not distrust compromised intermediate certificates), reachable from the broker via `x509.Certificate.Verify`; fixed in go1.26.10. The `go` language directive stays `1.25.0`.
