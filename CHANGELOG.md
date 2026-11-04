@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — pre-push refusal message gives steps that work (2026-11-04)
+
+- When `.githooks/pre-push` refused a push, it advised `git reset HEAD <path>` to "remove from commit". That only unstages a file and leaves it in the commit, so following it got the push refused again. The message now says: untrack the file with `git rm --cached <path>`, then amend the latest commit, or `git reset --soft HEAD~1` if that commit held only private files. For an older commit, it says to rewrite that commit before pushing (#95). Live story S11 in `tests/pre-push-guard/` proves the steps work as printed.
+
 ### Fixed — pre-push hook now actually checks pushes (2026-11-04)
 
 - `.githooks/pre-push` (added in #92) read git's push input split on tabs, but git separates the fields with spaces. The commit fields were empty, the comparison failed silently, and every push was allowed, including force-added private files. It now reads the fields with git's default whitespace split (#93).

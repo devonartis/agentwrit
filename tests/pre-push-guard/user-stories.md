@@ -230,6 +230,45 @@ already tracks.
 
 ---
 
+## Added 2026-11-04: the refusal message must lead to a working fix (#95)
+
+Live test S5 found that the push guard's advice, "Remove from commit: `git reset HEAD <path>`",
+does not remove a file from a commit. It only unstages it. The push guard always runs after the
+commit has been made, so someone who follows that advice exactly is refused again. S11 holds the
+message to a simple standard: a person who follows **only the printed steps**, word for word, gets
+a clean push.
+
+## S11 — [ACCEPTANCE] Following the refusal message, word for word, fixes the push
+
+A developer is refused at push. They have no other help and do exactly what the message says,
+nothing more. The test covers the two situations that happen in practice, in one evidence file:
+
+- **Case A: the private file came along with real work.** One commit holds a public change
+  (`README.md`) plus a force-added `MEMORY.md`.
+- **Case B: the private file was committed on its own.** The latest commit holds only a force-added
+  `FLOW.md`, on top of a branch that is otherwise clean.
+
+In both cases the commit was made with `--no-verify`, as in S2, so the commit-time check did not
+stop it.
+
+**Mode:** CLI-only. **Tool:** `git push`, then only the commands the refusal message prints.
+**Expected:**
+- The refusal message prints steps that name the actual situations: untrack the file, then either
+  fix the latest commit or drop it if it held only the private file. It also says what to do if the
+  file is in an older commit.
+- **Case A:** following the steps gives a push that succeeds. The remote branch has `README.md`'s
+  change and does **not** have `MEMORY.md`.
+- **Case B:** following the steps gives a push that succeeds (or reports the branch already up to
+  date). The remote branch does **not** have `FLOW.md`.
+- In both cases the private file is still on the developer's disk.
+- The message does **not** contain `git reset HEAD <path>` as a way to remove a file from a commit.
+
+**Why:** the refusal is only half the job. If the message sends people down a dead end, they
+reach for `--no-verify` (S6), and the guard has taught them to bypass it. The message has to get
+an ordinary person, or an agent, unstuck without help.
+
+---
+
 ## Out of scope
 
 - Server-side protection (GitHub branch rules, push rules). The hook is local only.

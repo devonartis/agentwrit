@@ -77,8 +77,20 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     done <<< "$CHANGED"
     echo ""
     echo "Private files must never enter the public repo."
-    echo "Remove from index:  git rm --cached <path>"
-    echo "Remove from commit: git reset HEAD <path>"
+    # This hook always runs after the commit exists, so the advice must take the
+    # file out of a commit, not just out of the index. "git reset HEAD <path>"
+    # only unstaged it and sent people round in a loop (#95, live story S11).
+    echo "To fix, for each path listed above:"
+    echo ""
+    echo "  If it is in your LATEST commit:"
+    echo "    1. git rm --cached <path>         (the file stays on your disk)"
+    echo "    2. git commit --amend --no-edit"
+    echo "       or, if that commit held nothing but private files:"
+    echo "       git reset --soft HEAD~1"
+    echo "    3. Push again."
+    echo ""
+    echo "  If it is in an OLDER commit: rewrite that commit before pushing"
+    echo "  (for example with git rebase -i) and remove the path there."
     echo ""
     exit 1
   fi
