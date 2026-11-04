@@ -31,8 +31,11 @@ path_is_ignored() {
 }
 
 # ── Read refs from stdin (git push format) ────────────────────────────────
-# Each line: <local ref>\t<local sha1>\t<remote ref>\t<remote sha2>
-while IFS=$'\t' read -r local_ref local_sha remote_ref remote_sha; do
+# Each line: <local ref> SP <local sha1> SP <remote ref> SP <remote sha2>
+# Git separates the fields with spaces (githooks manual, pre-push). Splitting on
+# tabs left the sha fields empty, the diff failed silently, and every push was
+# allowed — see #93 and tests/pre-push-guard/ story S2.
+while read -r local_ref local_sha remote_ref remote_sha; do
   # Skip --dry-run
   [[ "$local_ref" == "refs/stash" ]] && continue
 
