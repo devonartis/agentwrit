@@ -178,6 +178,58 @@ is listed under Open Issues.
 
 ---
 
+## Added 2026-11-04: the commit-time guard (`.githooks/pre-commit`)
+
+The owner decided guards belong in git hooks, not in any one agent's settings, because several
+agents work in this repo. Git has no hook that runs on `git add`, so `git add .` cannot be refused
+directly. The commit-time hook covers it instead: whatever is staged, a private file stops the
+commit. These stories prove that hook, which has never been tested. Same persona, same practice
+clone and remote, CLI-only.
+
+## S8 — [ACCEPTANCE] The commit-time guard refuses a force-added private file
+
+Someone force-adds `TECH-DEBT.md` (private) with `git add -f` and tries to commit **without**
+`--no-verify`. This is the ordinary slip, made by any agent or person.
+
+**Mode:** CLI-only. **Tool:** `git add -f`, `git commit`.
+**Expected:**
+- The commit is refused with `refusing commit — gitignored paths are staged in the index`.
+- The output names `TECH-DEBT.md`.
+- No new commit exists: the branch tip is the same before and after.
+
+**Why:** this is the first line that stops a private file, before it is even in history. If it
+fails, the push check is the only thing left.
+
+---
+
+## S9 — [ACCEPTANCE] `git add .` leaves private files out
+
+With a private file (`FLOW.md`) and a public change (a line in `README.md`) both on disk, the
+developer runs `git add .` and commits.
+
+**Mode:** CLI-only. **Tool:** `git add .`, `git commit`.
+**Expected:** the commit succeeds and contains `README.md` only. `FLOW.md` is not in the commit and
+is still untracked on disk.
+
+**Why:** the owner's concern is people and agents that "add everything". This proves the ignore
+list keeps private files out of a blanket add, so the commit-time guard only has to catch the
+forced case (S8).
+
+---
+
+## S10 — [ACCEPTANCE] `git commit -a` leaves private files out
+
+Same setup as S9 (a changed public file plus an untracked private file on disk). The developer
+runs `git commit -a` without staging anything first.
+
+**Mode:** CLI-only. **Tool:** `git commit -a`.
+**Expected:** the commit contains the changed public file only. The private file is not in it.
+
+**Why:** `commit -a` is the other "grab everything" habit. This proves it only picks up files git
+already tracks.
+
+---
+
 ## Out of scope
 
 - Server-side protection (GitHub branch rules, push rules). The hook is local only.
