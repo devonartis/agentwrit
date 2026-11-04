@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# pre-push — reject any push that would introduce gitignored (private) paths
+# into the public repository.
+#
+# Why this exists:
+#   The pre-commit hook blocks `git add -f` for gitignored paths, but it only
+#   fires on `git commit`, not on `git push`. The remaining attack surface is:
+#
+#     1. Someone bypasses the pre-commit hook (--no-verify) or works outside it.
+#     2. Private files land in the local public repo's history.
+#     3. `git push` ships them to the remote.
+#
+# This hook is the final gate. It reads the refs git push is about to update
+# (fed on stdin) and diffs the local tip against the remote tip. If any
+# modified/added path matches a .gitignore pattern, the push is rejected.
+#
+# Scope:
+#   Runs on every push to every remote. There is no "safe remote" — private
+#   files must never leave this working tree via the public repo.
+#
+# Install (one-time per clone — already set repo-wide):
+#   git config core.hooksPath .githooks
+
+# ── Helper: does a path match .gitignore patterns? ────────────────────────
+# git check-ignore works on untracked files but fails on already-staged ones.
+# --no-index forces it to check against .gitignore regardless of index status.
+path_is_ignored() {
+  git check-ignore -v --no-index "$1" 2>/dev/null | grep -q .
+}
+
+# ── Read refs from stdin (git push format) ────────────────────────────────
+# Each line: <local ref>\t<local sha1>\t<remote ref>\t<remote sha2>
+while IFS=$'\t' read -r local_ref local_sha remote_ref remote_sha; do
+  # Skip --dry-run
+  [[ "$local_ref" == "refs/stash" ]] && continue
+
+  # Compare the new version (local) against the old version (remote).
+  # If remote_sha is all zeros, the ref is being created — compare against empty tree.
+  if [[ "$remote_sha" == "0000000000000000000000000000000000000000" ]]; then
+    remote_sha="4b825dc642cb6eb9a060e54bf8d69288fbee4904"  # empty tree SHA
+  fi
+
+  # Get the set of files that were added or modified in this push.
+  # `git diff-tree -r --no-commit-id --name-only` lists paths changed between
+  # two commits (or tree-ish). We only care about A (added) and M (modified).
+  # `--diff-filter=AM` filters to just those.
+  CHANGED=$(git diff-tree -r --no-commit-id --name-only --diff-filter=AM \
+    "$remote_sha" "$local_sha" 2>/dev/null || true)
+
+  if [[ -z "$CHANGED" ]]; then
+    continue
+  fi
+
+  # ── Check each changed path against .gitignore ────────────────────────
+  FOUND_PRIVATE=0
+  while IFS= read -r changed_path; do
+    if path_is_ignored "$changed_path"; then
+      FOUND_PRIVATE=1
+      break
+    fi
+  done <<< "$CHANGED"
+
+  if [[ "$FOUND_PRIVATE" -eq 1 ]]; then
+    echo ""
+    echo "ERROR: push rejected — private (gitignored) paths would be pushed:"
+    echo ""
+    # Re-enumerate to show all violations
+    while IFS= read -r changed_path; do
+      if path_is_ignored "$changed_path"; then
+        echo "  $changed_path"
+      fi
+    done <<< "$CHANGED"
+    echo ""
+    echo "Private files must never enter the public repo."
+    echo "Remove from index:  git rm --cached <path>"
+    echo "Remove from commit: git reset HEAD <path>"
+    echo ""
+    exit 1
+  fi
+
+done
+
+exit 0
