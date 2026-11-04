@@ -10,6 +10,7 @@
 |-----|-----------------|--------|
 | Run 1 | Pre-push hook as merged in PR #92 | **Stopped at S2: FAIL.** The hook split git's input on tabs, but git sends spaces, so it let every push through. Evidence is in git history at commit `08e3e31`. |
 | Run 2 | Pre-push hook after the fix (#93), plus the pre-commit hook (S8–S10, added on the owner's rule that guards live in git hooks) | All 13 stories run. See below. |
+| Run 3 | Pre-push refusal message after the fix for #95 (S11), in a fresh practice area | S11 PASS. |
 
 ## Story Results (Run 2)
 
@@ -28,6 +29,7 @@
 | S8 | The commit-time guard refuses a force-added `TECH-DEBT.md` | Developer / Security Reviewer | git | PASS |
 | S9 | `git add .` leaves private files out | Developer / Security Reviewer | git | PASS |
 | S10 | `git commit -a` leaves private files out | Developer / Security Reviewer | git | PASS |
+| S11 | Following the refusal message word for word fixes the push (run 3) | Developer / Security Reviewer | git | PASS |
 
 ## What this means in plain terms
 
@@ -44,9 +46,10 @@ place. This holds for every tool that runs git, not just one agent.
 2. **A clone without `core.hooksPath` is unprotected (S7).** The setting has to be added on every
    computer and in every agent's clone. Nothing warns when it is missing. Owner decision on whether
    to enforce it (for example, a session-start check in `sync.sh`).
-3. **The pre-push hook's advice line is misleading (found in S5).** "Remove from commit:
-   `git reset HEAD <path>`" only unstages a file. It does not remove a file from a commit that
-   already exists. Should be corrected in a follow-up.
+3. ~~**The pre-push hook's advice line is misleading (found in S5).**~~ **Fixed (#95).** The
+   refusal now gives steps that remove the file from the commit. S11 proves that following them
+   word for word gives a clean push, both when the private file came with other work and when it
+   was committed alone.
 4. **Story S5's steps assumed the private commit also held public work.** The test-author should
    update S5 to cover a commit that holds only the private file. The implementer did not edit the
    story; the deviation is recorded in the S5 evidence.
