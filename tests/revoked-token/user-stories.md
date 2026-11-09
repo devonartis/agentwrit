@@ -26,7 +26,10 @@ When someone uses a cancelled pass, two things must happen:
 records the attempt as an ordinary `token_auth_failed` with no owner, so the
 operator cannot tell a stolen cancelled pass from a typo. Two smaller fixes
 ride along: running `awrit token release` a second time on the same token must
-exit quietly with success, and the docs must say `401`, not `403`.
+exit quietly with success, and the docs must say `401`, not `403`. The quiet
+"nothing to release" answer is given only when the broker gives its plain
+"token verification failed" refusal; any other refusal is still reported as an
+error, so the operator is never told a live token is dead.
 
 ---
 
@@ -326,15 +329,22 @@ share the task so the story shows the operator can tell them apart.
 
 **Persona:** App (delegates and uses the pass), Operator
 **Mode:** Container, then VPS
-**Covers:** C3 (chain level).
+**Covers:** C3 (chain level), R1 (what the event shows for a delegated pass).
 
 Agent A hands part of its authority to agent B (a delegation). The operator
 cancels the whole chain starting at A. B's delegated pass must be refused.
 
+A delegated pass belongs to B, but it carries A's task and A's orchestrator
+(it is A's work that B is doing). So the audit entry names B as the agent and
+A's task and orchestrator. Because the operator cancelled the chain at A,
+searching the log for A's agent id does not find this entry; searching for
+A's task does. The two agents get different orchestrators here so the entry
+shows plainly which one it copied.
+
 **Steps:**
 1. App: `rt_app_login app.json`.
-2. App: `rt_new_agent rt-agent-s7a rt-orch rt-task-s7a`; keep `A_TOKEN`, `A_ID`.
-3. App: `rt_new_agent rt-agent-s7b rt-orch rt-task-s7b`; keep `B_ID`.
+2. App: `rt_new_agent rt-agent-s7a rt-orch-s7a rt-task-s7a`; keep `A_TOKEN`, `A_ID`.
+3. App: `rt_new_agent rt-agent-s7b rt-orch-s7b rt-task-s7b`; keep `B_ID`.
 4. Agent A delegates to B:
    `rt_call POST /v1/delegate "$A_TOKEN" "{\"delegate_to\":\"$B_ID\",\"scope\":[\"$RT_SCOPE\"],\"ttl\":300}"` (expect `200`);
    `D_TOKEN=$(jq -r .access_token "$RT_BODY")`.
@@ -343,14 +353,21 @@ cancels the whole chain starting at A. B's delegated pass must be refused.
 6. Operator: `./bin/awrit revoke --level chain --target "$A_ID"`
 7. Operator: record `R0=$(rt_audit_count token_revoked_access)`, `F0`.
 8. App: `rt_call POST /v1/token/renew "$D_TOKEN"`; `cat "$RT_BODY"`.
-9. Operator: `R1`, `F1`; then
-   `./bin/awrit audit events --event-type token_revoked_access --json`.
+9. Operator: `R1`, `F1`; then find the entry the way the spec says an
+   operator would, by the delegator's task:
+   `./bin/awrit audit events --event-type token_revoked_access --task-id rt-task-s7a --json`.
+10. Operator: `rt_audit_count token_revoked_access --agent-id "$A_ID"` (searching
+    by the chain root's own agent id).
 
-**Expected:** step 8 is the generic refusal; `R1-R0 = 1`; `F1-F0 = 0`; the new
-event names the delegated token's agent (`$B_ID`) as `agent_id`, outcome
-`denied`, resource `/v1/token/renew`. (See open question 3 in the report: the
-event's `task_id` for a delegated token is not stated in the spec; record what
-is shown but do not fail on it.)
+**Expected:** step 8 is the generic refusal; `R1-R0 = 1`; `F1-F0 = 0`. Step 9
+shows exactly one event with:
+`agent_id` = `$B_ID` (the delegatee, whose pass it is);
+`task_id` = `rt-task-s7a` (the delegator's task, not `rt-task-s7b`);
+`orch_id` = `rt-orch-s7a` (the delegator's orchestrator, not `rt-orch-s7b`);
+`outcome` `denied`; `resource` `/v1/token/renew`;
+`detail` `revoked token used | path=/v1/token/renew`.
+Step 10 prints `0`: the entry is not filed under A's agent id (spec section 8,
+"Delegated token, chain-level revocation").
 
 ---
 
@@ -500,6 +517,86 @@ not look like a failure.
 - Step 5: the same "not active" message; `exit=0` (accepted trade-off: a mistyped token looks the same).
 - `R1-R0 = 1`: the second release is itself recorded as a revoked-pass use for
   this agent. The audit listing also shows one `token_released` for the first release.
+- **This `token_revoked_access` entry is expected, by design.** Releasing a
+  token cancels it, so presenting it again is, to the broker, the use of a
+  cancelled token, exactly as a thief's attempt would be (spec section 8, row
+  "Released or renewed token used again"). It is not a bug and the story does
+  not fail on it. The operator tells a harmless retry from a stolen token by
+  matching the agent id and time against the `token_released` entry from
+  step 2. Telling them apart automatically is a follow-up, not part of this fix.
+
+---
+
+### RT-S15: Release Refused for Another Reason Is Still Reported as an Error [ACCEPTANCE]
+
+**Persona:** Operator (awrit only) after App setup. The two broker restarts are
+set-up steps, labelled as such.
+**Mode:** Container, then VPS
+**Covers:** C7 (the other side), spec section 5 CLI row, region G, section 8 row
+"401 that isn't 'token verification failed' on awrit token release".
+**Run order:** after RT-S13 and before RT-S14. It restarts the broker twice and
+leaves it as it found it.
+
+The quiet "nothing to release" answer from RT-S13 is safe only because the
+broker's plain refusal, `token verification failed`, means the token cannot be
+used. A broker can also refuse a token for a different reason while the token
+is still perfectly good: here, the broker is set to accept only tokens issued
+for a named audience, and this token was not issued for it. That token is
+genuine, unexpired and not cancelled. If the command said "not active, nothing
+to release", the operator would believe a live token was dead and walk away
+while it could still be used. The command must report an error instead.
+
+**How the test produces that refusal on a real broker.** The broker setting
+`AA_AUDIENCE` makes it accept only tokens issued for that audience; others get
+`401` with `token audience mismatch`. Tokens issued while the setting is empty
+carry no audience. So the app gets an agent token from the broker as usual
+(setting empty), then the same broker is restarted, keeping its data and its
+signing key, with `AA_AUDIENCE=rt-aud-other`. The token still has a good
+signature and has not expired, but this broker now refuses it for the audience
+reason. In real life this is an operator who changed the broker's audience
+setting, or who points `awrit` at a sibling broker that shares the signing key
+but expects a different audience.
+
+**Before you start:** `AA_AUDIENCE` must not be set in the shell (as for every
+other story): `echo "AA_AUDIENCE=${AA_AUDIENCE:-<unset>}"` prints
+`AA_AUDIENCE=<unset>`. Agent tokens last 5 minutes by default; do steps 2 to 7
+within that time.
+
+**Steps (Container):**
+1. App: `rt_app_login app.json`; `rt_new_agent rt-agent-s15 rt-orch rt-task-s15`.
+2. Set-up, restart the broker with the audience setting (same data volume, so
+   same signing key): `AA_AUDIENCE=rt-aud-other docker compose up -d broker`,
+   then repeat `curl -s "$BROKER_URL/v1/health"` until it reports healthy.
+3. Operator: `R0=$(rt_audit_count token_revoked_access --agent-id "$AGENT_ID")`
+4. Operator: `./bin/awrit token release --token "$AGENT_TOKEN"` ; `echo "exit=$?"`
+5. Operator: `R1=$(rt_audit_count token_revoked_access --agent-id "$AGENT_ID")`;
+   `./bin/awrit audit events --agent-id "$AGENT_ID"` (record what is shown).
+6. Set-up, put the broker back as it was: `docker compose up -d broker` (with
+   `AA_AUDIENCE` still unset), then repeat the health check until healthy.
+7. Operator, proof the token was alive all along:
+   `./bin/awrit token release --token "$AGENT_TOKEN"` ; `echo "exit=$?"`
+
+**Steps (VPS):** the same, except the restarts happen in the broker's own
+terminal (where `env.sh` was sourced, so `AA_DB_PATH` and `AA_SIGNING_KEY_PATH`
+keep the same data and key). Step 2: stop the broker (Ctrl-C) and start it
+with `AA_AUDIENCE=rt-aud-other ./bin/broker`. Step 6: stop it again and start
+`./bin/broker`. Supply the admin secret as in RT-PC2.
+
+**Expected:**
+- Step 4: the command exits non-zero (`exit=1`). Its output contains
+  `HTTP 401` and `token audience mismatch`. It does NOT contain `not active`
+  and does NOT contain `Token released successfully.`
+- `R1-R0 = 0`: the refused release is not recorded as a revoked-pass use, and
+  step 5's listing shows no `token_released` entry from step 4.
+- Step 7: prints `Token released successfully.`; `exit=0`. This proves the
+  token step 4 refused was live, so a "not active" message there would have
+  been false.
+- If step 7 prints the "not active" message instead, more than 5 minutes
+  passed and the token expired: the run proves nothing; start again at step 1.
+
+Note for the reader: today's code already reports this case as an error. The
+story guards that the FIX-1 change to `awrit token release` does not go too far
+and swallow refusals that do not mean "this token is unusable".
 
 ---
 
@@ -531,11 +628,37 @@ Run last, after the other stories in the same mode.
 | C1 revoked -> 401, generic text, no "revoked" | RT-S1, RT-S2, RT-S3, RT-S4-S8 |
 | C2 + R1 exactly one `token_revoked_access`, owner, denied, path, no `token_auth_failed` | RT-S3, RT-S4-S8 |
 | C3 four levels | RT-S4 (token), RT-S5 (agent), RT-S6 (task), RT-S7 (chain) |
+| R1 delegated pass: delegatee as agent, delegator's task and orchestrator | RT-S7 |
 | C4 expired / forged / garbage / never-valid | RT-S9, RT-S10 |
 | R3 expired AND revoked | RT-S11 |
 | C6 valid token still works | RT-S12 (RT-S1 step 2 for before-state) |
 | C7 release twice | RT-S13 |
+| C7 any other 401 on release stays an error (spec section 5, region G) | RT-S15 |
+| Retried release raises `token_revoked_access` by design (spec section 8) | RT-S13 |
 | Operator finds the use in the audit log | RT-S3 |
 | Developer: same 401 as expired | RT-S1, RT-S2 |
 | Security: thief learns nothing | RT-S2 |
 | Security: failed check hands no claims | RT-S1 (no `access_token` returned), RT-S8 (all three doors refuse); the "no claims" rule itself is a unit-test property |
+
+---
+
+## Regression Runner
+
+`tests/revoked-token/regression.sh` is a short automatic re-check of the core
+FIX-1 promises, run later by the regression gate (`./scripts/gates.sh
+regression`) so a future change cannot quietly undo this fix. It is not a
+story and does not replace the live evidence above.
+
+**Needs:** a broker already running (container or VPS) at `BROKER_URL`
+(default `http://localhost:8080`), `./bin/awrit` and `./bin/edsign` built as in
+RT-PC1, `curl`, `jq`, and `AA_ADMIN_SECRET` in the environment.
+
+**Run:** `bash tests/revoked-token/regression.sh`
+
+**It checks:** (1) a revoked agent token gets `401`, `token verification
+failed`, no "revoked" and no new token; (2) exactly one new
+`token_revoked_access` event names that agent, its task and orchestrator,
+outcome `denied`, resource `/v1/token/renew`; (3) a token nobody cancelled
+still renews and the new token is valid. It exits non-zero if any check fails,
+a tool or the secret is missing, or no broker answers. Each run leaves one
+small test app (`rt-regression-...`) and two test agents on the broker.
